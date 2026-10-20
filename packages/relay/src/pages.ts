@@ -132,7 +132,10 @@ interface BundleParts {
 
 class BadBundle extends Error {}
 
-async function readForm(req: Request): Promise<FormData> {
+/** Whatever FormData the runtime's Response gives (DOM, undici or Workers types alike). */
+type Form = Awaited<ReturnType<Response['formData']>>;
+
+async function readForm(req: Request): Promise<Form> {
   const declared = Number(req.headers.get('content-length') ?? NaN);
   if (declared > PAGE_LIMITS.requestBytes) throw new BadBundle('too_large');
   const reader = req.body?.getReader();
@@ -163,7 +166,7 @@ async function readForm(req: Request): Promise<FormData> {
   }
 }
 
-async function fieldBytes(value: FormDataEntryValue | null): Promise<Uint8Array | undefined> {
+async function fieldBytes(value: string | Blob | null): Promise<Uint8Array | undefined> {
   if (value === null) return undefined;
   if (typeof value === 'string') return new TextEncoder().encode(value);
   return new Uint8Array(await value.arrayBuffer());
@@ -196,7 +199,7 @@ function parseManifest(text: string): PublicManifest {
   };
 }
 
-async function readBundle(form: FormData): Promise<BundleParts> {
+async function readBundle(form: Form): Promise<BundleParts> {
   const out: BundleParts = {};
   const manifest = await fieldBytes(form.get('manifest'));
   const content = await fieldBytes(form.get('content'));
@@ -523,7 +526,7 @@ async function serveContent(req: Request, id: string, ctx: PagesContext): Promis
   const content = await ctx.store.get(contentKey(id));
   if (!content) return pageGone();
   const sandbox = meta.manifest.kind === 'static' ? 'sandbox' : 'sandbox allow-scripts allow-forms';
-  return new Response(req.method === 'HEAD' ? null : (content as BodyInit), {
+  return new Response(req.method === 'HEAD' ? null : (content as never), {
     status: 200,
     headers: [
       ['content-type', 'text/html; charset=utf-8'],

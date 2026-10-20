@@ -1,6 +1,7 @@
 // The public form (23 §4): what a participant sees of an external step. Only the step's writes
 // (as fields, with the current case values as defaults), the comments returned to the step, the
 // link's note, and who is asking. Field kinds come from value types, so the page never parses them.
+import { isDeepStrictEqual } from 'node:util';
 import {
   IDENTIFIER_PATTERNS, type CaseValue, type ExternalComment, type ExternalDocument, type ExternalFieldKind, type ExternalForm,
   type ExternalFormField, type ExtractSuggestion, type StepDef, type ValueType, type WriteDef,
@@ -101,7 +102,13 @@ function formField(name: string, w: WriteDef, input: Pick<FormInput, 'values' | 
   const draft = input.draft && Object.hasOwn(input.draft, name) ? input.draft[name] : undefined;
   const suggested = [...input.suggestions].reverse().find((s) => s.field === name && s.prefill);
   if (draft !== undefined && draft !== null) {
-    Object.assign(field, { value: draft, source: { kind: 'draft' } });
+    // A saved draft value that is still what a document said keeps that source, so the form
+    // can send it on (the core checks it against the stored suggestion again on submit).
+    const same = [...input.suggestions].reverse().find((s) => s.field === name && isDeepStrictEqual(s.value, draft));
+    Object.assign(field, {
+      value: draft,
+      source: same ? { kind: 'extracted', suggestionId: same.id, document: same.document, confidence: same.confidence } : { kind: 'draft' },
+    });
   } else if (current !== undefined && current.value !== null && current.value !== undefined) {
     const value = formValue(kind, current.value);
     if (value !== undefined) Object.assign(field, { value, source: { kind: 'case' } });

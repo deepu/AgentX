@@ -56,7 +56,7 @@ export interface SampleToolsOptions {
   /** Overrides the built-in GST registry. */
   gstRegistry?: Record<string, string>;
   /** Overrides what the extractor returns per document name. */
-  extracted?: Record<string, { name: string; value: string }[]>;
+  extracted?: Record<string, { name: string; value: string; confidence?: number }[]>;
   /**
    * Include the stand-in `intake.extract_fields` (default true). With false, the kernel binds the
    * real one, which reads uploaded documents through the quarantined extractor role.
@@ -90,19 +90,33 @@ export function sampleTools(opts: SampleToolsOptions = {}): ToolDefinition[] {
     },
   };
 
-  const extractFields: ToolDefinition<{ documents: string[] }> = {
+  const extractFields: ToolDefinition<{ documents: string[]; fields?: string[] }> = {
     name: 'intake.extract_fields',
     description: "Extract the fields printed on the client's uploaded documents (PAN card, GST certificate).",
     inputSchema: {
-      type: 'object', properties: { documents: { type: 'array', items: { type: 'string' } } },
+      type: 'object',
+      properties: { documents: { type: 'array', items: { type: 'string' } }, fields: { type: 'array', items: { type: 'string' } } },
       required: ['documents'], additionalProperties: false,
     },
     effect: 'read',
     // Document text is untrusted: reading it taints the session (07 §6).
     quarantine: true,
     source,
-    async execute({ documents }) {
-      return { fields: documents.flatMap((d) => (extracted[d] ?? []).map((f) => ({ ...f, document: d }))) };
+    async execute({ documents, fields }) {
+      // Documents come by name (scripted checkers) or by file id (a form's extraction, 23 §5).
+      const ids = documents.filter((d) => d.startsWith('file_'));
+      const names = new Map<string, string>();
+      if (ids.length && (pool || opts.databaseUrl)) {
+        const { rows } = await db().query(`select id, name from mw.files where id = any($1)`, [ids]);
+        for (const r of rows as { id: string; name: string }[]) names.set(r.id, r.name);
+      }
+      const wanted = fields?.length ? new Set(fields) : undefined;
+      return {
+        fields: documents.flatMap((d) => {
+          const name = names.get(d) ?? d;
+          return (extracted[name] ?? []).filter((f) => !wanted || wanted.has(f.name)).map((f) => ({ ...f, document: name }));
+        }),
+      };
     },
   };
 

@@ -465,7 +465,7 @@ export class InstallHub {
     const first = frame.body ? fromBase64(frame.body) : new Uint8Array(0);
     if (!frame.more) {
       this.finish(f);
-      head(new Response(NULL_BODY_STATUS.has(status) || f.method === 'HEAD' ? null : (first as BodyInit), { status, headers }));
+      head(new Response(NULL_BODY_STATUS.has(status) || f.method === 'HEAD' ? null : (first as never), { status, headers }));
       return;
     }
     f.received = first.length;
@@ -633,7 +633,7 @@ export function encodeForwardRequest(installId: string, req: ForwardRequest, ori
   const init: RequestInit & { duplex?: 'half' } = {
     method: 'POST',
     headers: { [FORWARD_HEADER]: toBase64Url(new TextEncoder().encode(JSON.stringify(head))) },
-    body: req.body as BodyInit | null,
+    body: req.body as never,
     signal: req.signal,
   };
   // Streaming request bodies need `duplex` in Node and Bun; Workers ignore it.

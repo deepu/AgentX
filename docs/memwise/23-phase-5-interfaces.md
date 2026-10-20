@@ -172,3 +172,13 @@ New case fields `client_phone: Phone`, `contact_by: Enum[email, whatsapp]`, `cli
 ## 12. Exit test
 
 `packages/server-core/src/memwise/__tests__/phase5-exit.test.ts`, against a real Postgres with scripted models, a Bun relay on a local port, the core connected to it through the tunnel, a local SMTP sink and the email-smtp plugin bound: staff prepare an intake for Asha Rao, approve the invite email, and the email arrives in the sink with a link through the relay. A browser at phone size (Playwright, 390×844) opens the link, uploads a PAN card and a GST certificate, sees the PAN and GSTIN pre-filled "from pan-card.pdf", saves a draft, comes back, and submits. The check runs on tainted input; the manager sends it back with a comment; a second link arrives, the old one says "already used"; the client sees the comment, fixes and submits; the manager approves (from an inbox link in an email), onboard writes `Customer`. A link that expired, a revoked link and the relay with the core offline each give their plain page. Screenshots of the phone screens go to the walkthrough.
+
+## 13. As built: where the code differs from this contract
+
+- **Tokens.** A link's token is an HMAC of its idempotency key under a kernel key (`mw.kernel_keys`), so a retried `external.invite` issues the same link; only the token's sha256 is stored.
+- **Invite.** When the participant has no address for the chosen channel, `external.invite` stops for a person (`needs_person`) rather than failing the step; `prepare` keeps its timeout.
+- **Forwarding.** The relay also forwards `PUT` (drafts) and `HEAD`; the OAuth callback only returns to origins listed in `oauthReturnOrigins`.
+- **Values sent back unchanged.** A value the client sends exactly as the case already has it (the form shows it to them) keeps its provenance; only what the client changed or added is `external`. A saved draft value that still matches a suggestion keeps that suggestion as its source.
+- **Form app build.** `apps/external-form` writes its files under `dist/assets/form/` and points at `../assets/form/<file>`; the core serves `/assets/form/<file>` from there.
+- **Scripted mode.** The stand-in `intake.extract_fields` reads documents by name or file id and returns what the scripted example's tool stub says, so the form's extraction works in demos.
+

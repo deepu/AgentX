@@ -47,6 +47,9 @@ beforeAll(() => {
   writeFileSync(join(dist, 'index.html'), '<!doctype html><html><head><script type="module" src="./assets/index-abc.js"></script><link rel="stylesheet" href="/assets/form/assets/index-abc.css"><link rel="icon" href="data:,"></head><body><div id="root"></div></body></html>')
   writeFileSync(join(dist, 'assets', 'index-abc.js'), 'console.log(1)')
   writeFileSync(join(dist, 'assets', 'index-abc.css'), 'body{}')
+  // apps/external-form writes its files under assets/form/ and points at ../assets/form/<file>.
+  mkdirSync(join(dist, 'assets', 'form'), { recursive: true })
+  writeFileSync(join(dist, 'assets', 'form', 'form-abc.js'), 'console.log(2)')
   writeFileSync(join(dist, 'assets', 'logo.svg'), '<svg/>')
 })
 afterAll(() => { rmSync(dist, { recursive: true, force: true }) })
@@ -99,6 +102,12 @@ describe('the form page', () => {
     expect(new URL(src, `https://relay.test/x/abcdefghijklmnop/f/${TOKEN}`).pathname).toBe('/x/abcdefghijklmnop/assets/form/assets/a.js')
   })
 
+  it('keeps the form app build\'s own ../assets/form/ URLs, at any depth', () => {
+    const shell = '<script type="module" src="../assets/form/form-abc.js"></script><link href="../assets/form/style.css">'
+    expect(rewriteShell(shell, '../')).toBe('<script type="module" src="../assets/form/form-abc.js"></script><link href="../assets/form/style.css">')
+    expect(rewriteShell(shell, '../../')).toContain('src="../../assets/form/form-abc.js"')
+  })
+
   it('serves the same shell for inbox links', async () => {
     const { req } = setup()
     const r = await req('GET', `/i/${TOKEN}`)
@@ -126,6 +135,7 @@ describe('the form page', () => {
     expect((await req('GET', '/assets/form/assets/index-abc.css')).headers.get('content-type')).toBe('text/css; charset=utf-8')
     expect((await req('GET', '/assets/form/assets/logo.svg')).headers.get('content-type')).toBe('image/svg+xml')
     expect((await req('GET', '/assets/form/index.html')).headers.get('cache-control')).toBe('no-store')
+    expect(await (await req('GET', '/assets/form/form-abc.js')).text()).toBe('console.log(2)')
     expect((await req('GET', '/assets/form/assets/missing.js')).status).toBe(404)
     expect((await req('GET', '/assets/form/..%2f..%2fetc%2fpasswd')).status).toBe(404)
     expect((await req('GET', '/assets/form/assets/%2e%2e/%2e%2e/secret')).status).toBe(404)

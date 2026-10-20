@@ -1,6 +1,7 @@
 // kernel.external (23 §3-6, D67-D69): links to external steps, the public form behind them,
 // extraction in the form, `external.invite`, and inbox links. Every public call takes the raw
 // token and answers a plain refusal for a bad one; nothing here throws at a participant.
+import { isDeepStrictEqual } from 'node:util';
 import type { DBOSClient } from '@dbos-inc/dbos-sdk';
 import {
   parseDuration, type ApprovalDecision, type CaseValue, type ChannelName, type Delivery, type ExternalComment, type ExternalDocument,
@@ -578,6 +579,11 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
         const label = participantLabel(link.participant);
         const now = new Date().toISOString();
         const provenance = input?.sources ? keptProvenance(link.suggestions ?? [], values, input.sources, label, now) : {};
+        // A value sent back unchanged (the form shows what the case has) keeps where it came from.
+        for (const [field, v] of Object.entries(values)) {
+          const had = current[field];
+          if (!provenance[field] && had?.provenance && Object.hasOwn(step.writes, field) && isDeepStrictEqual(had.value, v)) provenance[field] = had.provenance;
+        }
         const queued = await queueSubmission(db, deps.client, s, outcome, {
           stepRunId: at.stepRunId, by: `external:${link.id}`, at: now, values, external: { linkId: link.id, label },
           ...(Object.keys(provenance).length ? { provenance } : {}),

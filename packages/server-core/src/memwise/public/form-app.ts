@@ -74,9 +74,11 @@ const KEEP = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i
 export function rewriteShell(html: string, up: string): string {
   return html.replace(/\b(src|href)=(["'])([^"']*)\2/gi, (whole, attr: string, q: string, url: string) => {
     if (!url || KEEP.test(url)) return whole
-    let path = url.replace(/^\.\//, '')
+    // `../assets/form/x.js` (what apps/external-form builds) already means `/assets/form/x.js`.
+    let path = url.replace(/^(?:\.\.?\/)+/, '/')
+    if (!path.startsWith('/')) path = `/${path}`
     if (path.startsWith(FORM_ASSETS_PREFIX)) path = path.slice(FORM_ASSETS_PREFIX.length)
-    else if (path.startsWith('/')) path = path.slice(1)
+    else path = path.slice(1)
     return `${attr}=${q}${up}${FORM_ASSETS_PREFIX.slice(1)}${path}${q}`
   })
 }
@@ -110,20 +112,25 @@ export function formApp(dir: string | undefined): FormApp {
       let segments: string[]
       try { segments = parts.map((p) => decodeURIComponent(p)) } catch { return undefined }
       if (!segments.length || segments.some((s) => !s || s === '.' || s === '..' || /[\\\0]/.test(s) || s.includes('/'))) return undefined
-      const file = resolve(root, ...segments)
-      const rel = relative(root, file)
-      if (!rel || rel.startsWith('..') || isAbsolute(rel)) return undefined
-      try {
-        const real = realpathSync(file)
-        const realRel = relative(root, real)
-        if (!realRel || realRel.startsWith('..') || isAbsolute(realRel)) return undefined
-        if (!statSync(real).isFile()) return undefined
-        const buf = readFileSync(real)
-        return { data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, mime: mimeOf(real) }
-      } catch {
-        return undefined
-      }
+      // A build that writes its files under `assets/form/` (apps/external-form) is served from there.
+      return readAsset(root, segments) ?? readAsset(root, ['assets', 'form', ...segments])
     },
+  }
+}
+
+function readAsset(root: string, segments: string[]): { data: ArrayBuffer; mime: string } | undefined {
+  const file = resolve(root, ...segments)
+  const rel = relative(root, file)
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) return undefined
+  try {
+    const real = realpathSync(file)
+    const realRel = relative(root, real)
+    if (!realRel || realRel.startsWith('..') || isAbsolute(realRel)) return undefined
+    if (!statSync(real).isFile()) return undefined
+    const buf = readFileSync(real)
+    return { data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, mime: mimeOf(real) }
+  } catch {
+    return undefined
   }
 }
 

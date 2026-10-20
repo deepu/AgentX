@@ -194,7 +194,12 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     const runtime = await import('@memwise/runtime')
     // Scripted mode keeps the sample extractor (the scripted checker calls it with document
     // names); otherwise the kernel binds the quarantined reader on the extractor role.
-    const sampleOpts = { databaseUrl, ...(models.example ? {} : { stubExtractor: false }) } as Parameters<typeof runtime.sampleTools>[0]
+    // The stand-in reads what the scripted example says the documents show (its tool stub), so a
+    // form's extraction in scripted mode offers the same values the example's check reads.
+    const sampleOpts = {
+      databaseUrl,
+      ...(models.example ? { extracted: exampleExtracted(models.example.tools?.['intake.extract_fields']) } : { stubExtractor: false }),
+    } as Parameters<typeof runtime.sampleTools>[0]
     // Phase 4 (22 §3): the same sample implementations back plugin tools on `run: { builtin }`
     // routes. A project that binds plugins (it has domain/bindings/) gets them only that way, so
     // nothing is bound until a binding freezes; earlier projects keep them always bound.
@@ -410,4 +415,16 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     if (opts.throwOnError) throw e
     return null
   }
+}
+
+/** An example's `intake.extract_fields` stub as the sample extractor's per-document table. */
+function exampleExtracted(stub: unknown): Record<string, { name: string; value: string; confidence?: number }[]> | undefined {
+  const fields = (stub as { fields?: unknown } | undefined)?.fields
+  if (!Array.isArray(fields)) return undefined
+  const out: Record<string, { name: string; value: string; confidence?: number }[]> = {}
+  for (const f of fields as { name?: unknown; value?: unknown; document?: unknown; confidence?: unknown }[]) {
+    if (typeof f?.name !== 'string' || typeof f.document !== 'string' || f.value === undefined) continue
+    ;(out[f.document] ??= []).push({ name: f.name, value: String(f.value), ...(typeof f.confidence === 'number' ? { confidence: f.confidence } : {}) })
+  }
+  return Object.keys(out).length ? out : undefined
 }

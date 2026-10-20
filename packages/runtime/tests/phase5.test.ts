@@ -272,6 +272,8 @@ describe.skipIf(!pgAvailable)('Phase 5 kernel', () => {
     const form = open(await kernel.external.form(invite.token));
     expect(form.suggestions.map((s) => s.id).sort()).toEqual(r.suggestions.map((s) => s.id).sort());
     expect(form.fields.find((f) => f.name === 'client_name')?.value).toBe('Asha Rao');
+    // The draft's PAN (saved earlier) is what the document says, so it shows, and is sent, as read from it.
+    expect(form.fields.find((f) => f.name === 'pan')).toMatchObject({ value: 'AAACA1234A', source: { kind: 'extracted', suggestionId: by.pan!.id, document: 'pan-card.txt' } });
     // Documents not sent through this link can't be read through it.
     const other = await kernel.saveFile({ name: 'other.txt', mime: 'text/plain', data: new TextEncoder().encode('PAN ZZZZZ9999Z') }, { kind: 'system' });
     const none = await kernel.external.extract(invite.token, { documents: [other.id] });
@@ -319,7 +321,9 @@ describe.skipIf(!pgAvailable)('Phase 5 kernel', () => {
     expect(values.gstin!.value).toBe('29AAACA1234A1Z6');
     expect(values.documents!.value).toEqual([expect.objectContaining({ id: panDoc, name: 'pan-card.txt' })]);
     const tf = await db.pool.query(`select tainted_fields from mw.cases where id = $1`, [caseId]);
-    expect(tf.rows[0].tainted_fields).toEqual(expect.arrayContaining(['client_name', 'pan', 'gstin', 'documents']));
+    expect(tf.rows[0].tainted_fields).toEqual(expect.arrayContaining(['pan', 'gstin', 'documents']));
+    // The name was on the case already and came back unchanged: it keeps where it came from.
+    expect(values.client_name!.provenance.kind).not.toBe('external');
     const links = await kernel.external.links({ caseId });
     expect(Object.fromEntries(links.map((l) => [l.id, l.status]))).toEqual({ [invite.linkId]: 'used', [early.linkId]: 'closed' });
   }, 60_000);
