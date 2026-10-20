@@ -79,6 +79,12 @@ function entitiesKey(entities: Record<string, EntityTypeDef>): string {
   return JSON.stringify(Object.keys(entities).sort().map((name) => [name, entities[name]]));
 }
 
+/** Domains as last indexed (`domain.yaml`, without pages and views), for a kernel started without a project folder. */
+async function indexedDomains(pool: import('pg').Pool): Promise<Record<string, import('@memwise/defs').DomainDef>> {
+  const { rows } = await pool.query(`select distinct on (id) id, body from mw.definitions where kind = 'domain' order by id, indexed_at desc`);
+  return Object.fromEntries(rows.map((r) => [r.id, { pages: {}, views: {}, ...r.body }]));
+}
+
 /** Entity types as last indexed, for a kernel started without a project folder. */
 async function indexedEntities(pool: import('pg').Pool): Promise<Record<string, EntityTypeDef>> {
   const { rows } = await pool.query(
@@ -300,7 +306,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     pool, client,
     workflows: () => liveWorkflows(),
     entities: () => entities,
-    domains: async () => indexed?.project.domains ?? {},
+    domains: async () => indexed?.project.domains ?? (await indexedDomains(pool)),
     stormLimit: async () => indexed?.project.workspace?.stormLimit ?? DEFAULT_STORM_LIMIT,
     start: (input, opts) => start(input, true, opts),
     saveFile: (input, actor) => kernel.saveFile(input, actor),
