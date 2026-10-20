@@ -37,7 +37,7 @@ export function installIdOf(publicKey: string): string {
 }
 
 export async function generateIdentity(): Promise<RelayIdentity> {
-  const pair = await webcrypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']) as webcrypto.CryptoKeyPair
+  const pair = await webcrypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']) as unknown as webcrypto.CryptoKeyPair
   const jwk = await webcrypto.subtle.exportKey('jwk', pair.privateKey)
   const publicKey = String(jwk.x)
   return { installId: installIdOf(publicKey), publicKey, privateJwk: jwk as Record<string, unknown> }

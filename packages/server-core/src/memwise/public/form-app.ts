@@ -85,7 +85,7 @@ export interface FormApp {
   /** The shell for a page `depth` segments below the base, or the fallback when the app isn't built. */
   shell(depth: number): { html: string; built: boolean }
   /** A built file by its path under `/assets/form/`; undefined when it isn't there or isn't allowed. */
-  asset(path: string): { data: Uint8Array; mime: string } | undefined
+  asset(path: string): { data: ArrayBuffer; mime: string } | undefined
 }
 
 export function formApp(dir: string | undefined): FormApp {
@@ -118,7 +118,8 @@ export function formApp(dir: string | undefined): FormApp {
         const realRel = relative(root, real)
         if (!realRel || realRel.startsWith('..') || isAbsolute(realRel)) return undefined
         if (!statSync(real).isFile()) return undefined
-        return { data: new Uint8Array(readFileSync(real)), mime: mimeOf(real) }
+        const buf = readFileSync(real)
+        return { data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, mime: mimeOf(real) }
       } catch {
         return undefined
       }
