@@ -23,6 +23,8 @@ export { parseCaseFile, parseEntityFile, parseRolesFile } from './parse-types.ts
 export { parseWorkspaceFile, parseDomainFile, parsePageFile, parseViewFile, defaultDomainName } from './parse-domain.ts';
 export { defaultPageLayout, listTransition, PAGE_BLOCK_KINDS, LAYOUT_AREAS } from './parse-records.ts';
 export { parseTriggers, handoffArg } from './parse-handoffs.ts';
+export { checkCondition, entityConditionScope, kindOfType, type ConditionKind, type ConditionName, type ConditionScope, type ConditionCheckOptions, type ConditionProblem } from './condition-check.ts';
+export { relationshipInverse, handoffFields, callOutcomes, blockEvents, MESSAGE_FIELDS } from './check-domains.ts';
 export { entityToolNames, entityTools, ENTITY_TOOL_VERBS, ENTITY_TOOL_EFFECTS, type EntityToolVerb } from './entity-tools.ts';
 export { parsePolicyFile, policyToRaw, formatDuration } from './parse-policy.ts';
 export { sha256, type ParseResult } from './source.ts';
