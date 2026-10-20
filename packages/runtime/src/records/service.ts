@@ -66,7 +66,7 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
     async create(input, actor) {
       const def = defOf(input.entity);
       if (!mayWrite(deps, actor, domainOfEntity(def))) return forbidden(def);
-      const errors = fieldErrors(def, deps.entities(), input.values);
+      const errors = fieldErrors(def, deps.entities(), input.values, { creating: true });
       for (const [f, field] of Object.entries(def.fields)) {
         const v = input.values[f];
         if (field.required && (v === undefined || v === null || v === '')) (errors[f] ??= []).push('required');

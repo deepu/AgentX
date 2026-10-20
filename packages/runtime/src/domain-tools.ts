@@ -42,23 +42,27 @@ export interface EntityToolRuntime {
  * Fields a step (or a person) may not write: calculated, followed through a link, or owned by a
  * plugin (D10). Field -> why, in plain words.
  */
-export function readOnlyFields(def: EntityTypeDef, fields: string[]): Record<string, string> {
+export function readOnlyFields(def: EntityTypeDef, fields: string[], opts: { creating?: boolean } = {}): Record<string, string> {
   const out: Record<string, string> = {};
   const followed = new Map(Object.entries(def.links ?? {}).flatMap(([key, l]) => l.follow.map((f) => [f, l.target || key] as const)));
   for (const f of fields) {
     if (def.calculated?.[f]) out[f] = `${f} is calculated from other values, so it can't be written`;
     else if (followed.has(f)) out[f] = `${f} comes from ${followed.get(f)} through a link; change it there`;
-    else if (def.ownership?.[f] && def.ownership[f] !== 'domain') out[f] = `${f} is kept by the ${def.ownership[f]} plugin; change it there`;
+    else if (!opts.creating && def.ownership?.[f] && def.ownership[f] !== 'domain') out[f] = `${f} is kept by the ${def.ownership[f]} plugin; change it there`;
     else if (!(f in def.fields) && def.relationships[f]?.cardinality !== 'one') out[f] = `a ${def.entity} has no field ${f}`;
   }
   return out;
 }
 
-/** Problems with values for an entity's fields (types checked in its domain). */
-export function fieldErrors(def: EntityTypeDef, entities: Record<string, EntityTypeDef>, values: Record<string, unknown>): Record<string, string[]> {
+/**
+ * Problems with values for an entity's fields (types checked in its domain). Creating a record
+ * may give a plugin-owned field its first value (Phase 2/4 behaviour); changing one may not.
+ */
+export function fieldErrors(def: EntityTypeDef, entities: Record<string, EntityTypeDef>, values: Record<string, unknown>,
+  opts: { creating?: boolean } = {}): Record<string, string[]> {
   const scoped = scopedEntities(entities, domainOfEntity(def));
   const errors: Record<string, string[]> = {};
-  for (const [f, why] of Object.entries(readOnlyFields(def, Object.keys(values)))) errors[f] = [why];
+  for (const [f, why] of Object.entries(readOnlyFields(def, Object.keys(values), opts))) errors[f] = [why];
   for (const [f, v] of Object.entries(values)) {
     const field = def.fields[f];
     if (!field || errors[f] || v === null || v === undefined) continue;
@@ -116,7 +120,7 @@ export function domainTools(entities: Record<string, EntityTypeDef>, runtime?: (
       idempotent: true,
       source,
       async execute(args: Record<string, unknown>, ctx: ToolContext) {
-        const errors = fieldErrors(def, entities, args);
+        const errors = fieldErrors(def, entities, args, { creating: true });
         if (Object.keys(errors).length) throw new Error(`the ${label} can't be created: ${plainErrors(errors)}`);
         const id = await asStep(ctx.token, (c) => store.create(c, def, args, { idempotencyKey: ctx.idempotencyKey, stepRunId: ctx.token.stepRunId }));
         changed(def, id);

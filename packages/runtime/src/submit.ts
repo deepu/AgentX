@@ -8,8 +8,8 @@ import { domainOf, hasRole, scopedEntities, validateValue, type EntityTypeDef, t
 import type pg from 'pg';
 import { driverIdOf } from './ids.ts';
 import type { Submission, SubmissionMessage } from './driver.ts';
-import { checkSignature, writeSignature, type SigningDeps } from './regulated/signatures.ts';
-import type { SubmitResult, SubmitStepInput } from './types.ts';
+import { checkSignature, signingStep, writeSignature, type SigningDeps } from './regulated/signatures.ts';
+import { CHANGE_PLAYBOOK, type SubmitResult, type SubmitStepInput } from './types.ts';
 
 export interface SubmitDeps {
   withTransaction<T>(fn: (db: pg.PoolClient) => Promise<T>): Promise<T>;
@@ -152,9 +152,12 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput, opts:
     if (Object.keys(errors).length) return { applied: false, status: 'invalid', errors, message: 'some values need fixing' };
 
     // Phase 6: a signed step needs the person's password; checked before anything is queued.
-    if (step.sign) {
+    const signed = workflow.id === CHANGE_PLAYBOOK
+      ? signingStep(deps.signing, workflow, step, input.outcome, (await new PgCaseStore().get(db, s.case_id))?.values ?? {})
+      : step;
+    if (signed.sign) {
       if (!deps.signing) return { applied: false, status: 'forbidden', message: 'signing is not available here' };
-      const refused = await checkSignature(deps.signing, step, input.by, input.signature, input.stepRunId);
+      const refused = await checkSignature(deps.signing, signed, input.by, input.signature, input.stepRunId);
       if (refused) return refused;
     }
 
@@ -172,9 +175,9 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput, opts:
     if (!(await queueSubmission(db, deps.client, s, input.outcome, submission))) {
       return { applied: false, status: 'stale', message: 'this step was already answered' };
     }
-    if (step.sign && deps.signing) {
+    if (signed.sign && deps.signing) {
       const current = (await new PgCaseStore().get(db, s.case_id))?.values ?? {};
-      await writeSignature(db, deps.signing, { workflow, step, stepRunId: input.stepRunId, caseId: s.case_id, by: input.by, values: clean, caseValues: current });
+      await writeSignature(db, deps.signing, { workflow, step: signed, stepRunId: input.stepRunId, caseId: s.case_id, by: input.by, values: clean, caseValues: current });
     }
     // Staff answered it themselves: links sent to the client for it can't be used any more.
     if (step.performer === 'external') await closeStepLinks(db, s.run_id, s.step_id, 'answered');
