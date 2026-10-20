@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -146,6 +146,29 @@ describe('installing', () => {
     expect(loaded.diagnostics).toEqual([]);
     expect(loaded.plugin!.manifest).toEqual({ ...withTools, file: 'plugins/claude__sample-crm/0.2.0/memwise-plugin.yaml' });
     expect(loaded.plugin!.skills).toEqual([{ name: 'contacts', description: 'Look people up in the CRM.', file: 'plugins/claude__sample-crm/0.2.0/skills/contacts/SKILL.md', body: 'Use list_contacts, then get_contact.' }]);
+  });
+
+  test('a Claude plugin installed while its server was down can be installed again at the same version', async () => {
+    const root = makeProject();
+    const { manifest } = await importClaudePlugin(CRM);
+    // The first install found no tools (the server could not be reached).
+    expect(await installPlugin(root, CRM, { manifest })).toMatchObject({ created: true });
+    const dir = join(root, 'plugins/claude__sample-crm/0.2.0');
+    expect(Object.keys((await loadPlugin(dir, root)).plugin!.manifest.tools)).toEqual([]);
+    // Again with the tools found: the same source files, so the generated manifest is rewritten in place.
+    const withTools = withDiscoveredTools(manifest, 'crm', [{ name: 'ping', inputSchema: { type: 'object' } }]);
+    expect(await installPlugin(root, CRM, { manifest: withTools })).toMatchObject({ created: false, manifestUpdated: true });
+    expect(Object.keys((await loadPlugin(dir, root)).plugin!.manifest.tools)).toEqual(['crm.ping']);
+    expect(readdirSync(dir).filter((f) => f.startsWith('.memwise'))).toEqual([]);
+    // The same again changes nothing; keepManifest leaves it as it is.
+    expect(await installPlugin(root, CRM, { manifest: withTools })).toEqual(expect.objectContaining({ created: false }));
+    expect((await installPlugin(root, CRM, { manifest, keepManifest: true })).manifestUpdated).toBeUndefined();
+    expect(Object.keys((await loadPlugin(dir, root)).plugin!.manifest.tools)).toEqual(['crm.ping']);
+    // A changed source file is still a different copy.
+    const changed = temp();
+    cpSync(CRM, changed, { recursive: true });
+    writeFileSync(join(changed, 'server.mjs'), '// changed\n');
+    await expect(installPlugin(root, changed, { manifest: withTools })).rejects.toThrow(/already holds a different copy/);
   });
 
   test('loadPlugin reports missing workflow and skill folders; hashes are stable across copies', async () => {

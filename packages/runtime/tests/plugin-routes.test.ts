@@ -79,6 +79,17 @@ describe('the command route', () => {
       .toEqual({ word: 'HI', key: 'k9' });
   });
 
+  test("the subprocess gets a safe environment and the route's own, never the kernel's secrets", async () => {
+    process.env.MW_TEST_DATABASE_SECRET = 'postgres://secret@db/memwise';
+    try {
+      const script = 'process.stdout.write(JSON.stringify({ secret: process.env.MW_TEST_DATABASE_SECRET ?? null, key: process.env.MEMWISE_IDEMPOTENCY_KEY, path: !!process.env.PATH }))';
+      expect(await runCommandTool({ command: ['node', '-e', script], args: {}, root: TOOLS, idempotencyKey: 'k7', tool: 'env' }))
+        .toEqual({ secret: null, key: 'k7', path: true });
+    } finally {
+      delete process.env.MW_TEST_DATABASE_SECRET;
+    }
+  });
+
   test('a failing command and a slow one are errors', async () => {
     await expect(runCommandTool({ command: ['node', 'shout.mjs'], args: { word: 'boom' }, root: TOOLS, idempotencyKey: 'k', tool: 'tiny.shout' }))
       .rejects.toThrow('tiny.shout exited with 3: it exploded');
@@ -122,6 +133,15 @@ describe('plugin tools from bindings', () => {
     await expect(byName.get('tiny.missing')!.execute({}, ctx())).rejects.toThrow('runs the built-in tool tiny.nowhere, which this app does not have');
   });
 
+  test('a binding that loosens a declared class does not take effect; a stricter one does', () => {
+    const send = tiny.tools['email.send']!;
+    expect(toolClass(send, binding('test/tiny-tools', { 'email.send': { effect: 'read' } }))).toEqual({ effect: 'outbound', from: 'declared' });
+    expect(toolClass(send, binding('test/tiny-tools', { 'email.send': { effect: 'irreversible' } }))).toEqual({ effect: 'irreversible', from: 'binding' });
+    const loose = [bp(tiny, binding('test/tiny-tools', { 'tiny.shout': { effect: 'read' }, 'tiny.off': { effect: 'read' } }), 'plugins/tiny-tools')];
+    expect(pluginToolEnvironment(loose)['tiny.off']).toMatchObject({ effect: 'write' });
+    expect(pluginTools(loose, new Map(), deps).tools.find((t) => t.name === 'tiny.off')).toMatchObject({ effect: 'write' });
+  });
+
   test('environment and policy sources come from the binding, without connecting', () => {
     const env = pluginToolEnvironment(bound);
     expect(env['tiny.raw']).toMatchObject({ effect: 'write' });
@@ -131,6 +151,18 @@ describe('plugin tools from bindings', () => {
       bindingSource: 'domain/bindings/test__tiny-tools.yaml',
     })]);
     expect(pluginPolicies(bound)[0]!.tools).not.toContain('tiny.off');
+  });
+
+  test("a plugin's policy is renamed through its binding: capability aliases and roles", () => {
+    const intake = manifest('test/intake', [], {
+      requires: { capabilities: { email_send: { as: 'email.send' } }, entities: {}, roles: {} },
+      policy: { tools: { deny: ['email.send'], rules: { 'email.send': { rateLimit: { count: 5, perMs: 60_000 } } } }, approvals: { by: ['boss'] } } as PluginManifest['policy'],
+    });
+    const b = binding('test/intake', {}, { capabilities: { email_send: 'mail.send_message' }, roles: { boss: 'manager' } });
+    const [p] = pluginPolicies([bp(intake, b, 'plugins/test__intake/1.0.0')]);
+    expect(p!.policy).toEqual({ tools: { deny: ['mail.send_message'], rules: { 'mail.send_message': { rateLimit: { count: 5, perMs: 60_000 } } } }, approvals: { by: ['manager'] } });
+    // The manifest itself is untouched.
+    expect(intake.policy!.tools!.deny).toEqual(['email.send']);
   });
 
   test('boundPlugins pins the version the binding names', () => {

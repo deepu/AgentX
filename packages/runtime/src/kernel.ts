@@ -200,6 +200,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       `select workflow_id, version, hash from mw.workflow_versions where workflow_id = any($1::text[])`, [live.map((w) => w.id)]);
     const out: Diagnostic[] = [];
     for (const w of live) {
+      // A plugin workflow keeps the plugin's version while its hash covers the binding (22 §3): each
+      // freeze is a new hash under the same number, recorded above, and not a version left unbumped.
+      if (w.origin?.kind === 'plugin') continue;
       const reused = rows.find((r) => r.workflow_id === w.id && r.version === w.version && r.hash !== w.hash);
       if (!reused) continue;
       out.push({

@@ -1,8 +1,8 @@
 // Plugin tools (22 §2, §3): every tool of every frozen binding, not `off`, as a ToolDefinition
-// the gateway binds. Its class is the binding's, else the manifest's, else none (the gateway
+// the gateway binds. Its class is the stricter of the binding's and the manifest's, else none (the gateway
 // treats an unclassified tool as irreversible, D29). Its route decides how it runs.
 import {
-  PLUGIN_MANIFEST, pluginsDirOf, type BindingDef, type Diagnostic, type EffectClass, type InstalledPlugin, type PluginManifest, type PluginToolDef,
+  PLUGIN_MANIFEST, pluginsDirOf, resolvePluginPolicy, stricterClass, type BindingDef, type Diagnostic, type EffectClass, type InstalledPlugin, type PluginManifest, type PluginToolDef,
   type ProjectDefs,
 } from '@memwise/defs';
 import type { ToolDefinition } from '@memwise/gateway';
@@ -38,20 +38,27 @@ export function boundPlugins(project: Pick<ProjectDefs, 'plugins' | 'bindings' |
   return out;
 }
 
-/** A tool's class in this domain and where it came from (the binding's wins, D29). */
+/**
+ * A tool's class in this domain and where it came from: the binding's (D29), unless it would
+ * loosen the declared class (a hand-edited binding; `binding-loosens-class` says so), when the
+ * declared one stays.
+ */
 export function toolClass(tool: PluginToolDef, binding?: BindingDef): { effect?: EffectClass; from: 'declared' | 'annotations' | 'binding' | 'none'; off?: boolean } {
   const b = binding?.tools[tool.name];
-  if (b?.off) return { ...(b.effect ?? tool.effect ? { effect: b.effect ?? tool.effect } : {}), from: b.effect ? 'binding' : tool.effect ? 'declared' : 'none', off: true };
-  if (b?.effect) return { effect: b.effect, from: 'binding' };
-  if (tool.effect) return { effect: tool.effect, from: 'declared' };
-  return { from: 'none' };
+  const effect = stricterClass(b?.effect, tool.effect);
+  const from = !effect ? 'none' as const : b?.effect && effect === b.effect ? 'binding' as const : 'declared' as const;
+  return { ...(effect ? { effect } : {}), from, ...(b?.off ? { off: true } : {}) };
 }
 
-/** What each bound plugin contributes to policy layers (pluginLayers in @memwise/policy). */
+/**
+ * What each bound plugin contributes to policy layers (pluginLayers in @memwise/policy). The
+ * plugin's own policy is in its terms, so it is renamed through the binding like its workflows
+ * (`email.send` → the bound provider); the binding's policy is the domain's already.
+ */
 export function pluginPolicies(bound: BoundPlugin[]): PluginPolicy[] {
-  return bound.map(({ binding, manifest, dir }) => ({
+  return bound.map(({ binding, manifest, dir, plugin }) => ({
     plugin: manifest.id,
-    ...(manifest.policy ? { policy: manifest.policy, source: `${dir}/${manifest.file || PLUGIN_MANIFEST}` } : {}),
+    ...(manifest.policy ? { policy: resolvePluginPolicy(manifest.policy, plugin, binding), source: `${dir}/${manifest.file || PLUGIN_MANIFEST}` } : {}),
     ...(binding.policy ? { bindingPolicy: binding.policy, bindingSource: binding.file } : {}),
     tools: Object.values(manifest.tools).filter((t) => !binding.tools[t.name]?.off).map((t) => t.name).sort(),
   }));

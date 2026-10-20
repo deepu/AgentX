@@ -180,15 +180,21 @@ export function newestPlugins(plugins: InstalledPlugin[]): Record<string, Instal
  * gets `opts.manifest` (the import with its discovered tools) or its plain import written as
  * `memwise-plugin.yaml` in the copy; `opts.manifest` is ignored for a MemWise plugin. Installing
  * the same folder again does nothing (`created: false`); a different folder at the same version
- * is refused. Nothing live changes: the plugin is inert until a binding is frozen.
+ * is refused. For a Claude plugin only its own files are compared (the generated manifest is not
+ * part of the source): installing it again rewrites the manifest in place (`manifestUpdated`), so
+ * tools discovered now (a server that was down at the first install) are written in, unless
+ * `opts.keepManifest`. Nothing live changes: the plugin is inert until a binding is frozen.
  */
-export async function installPlugin(projectRoot: string, sourceDir: string, opts: { manifest?: PluginManifest } = {}): Promise<{ id: string; version: string; dir: string; created: boolean }> {
+export async function installPlugin(
+  projectRoot: string, sourceDir: string, opts: { manifest?: PluginManifest; keepManifest?: boolean } = {},
+): Promise<{ id: string; version: string; dir: string; created: boolean; manifestUpdated?: boolean }> {
   const root = resolve(projectRoot);
   const src = resolve(sourceDir);
   if (!(await isDir(src))) throw new Error(`${sourceDir} is not a folder`);
   const contents = await readAll(src);
 
   let manifest: PluginManifest;
+  const imported = !contents.has(PLUGIN_MANIFEST);
   if (contents.has(PLUGIN_MANIFEST)) {
     const r = parsePluginManifest(contents.get(PLUGIN_MANIFEST)!.toString('utf8'), PLUGIN_MANIFEST);
     const errors = r.diagnostics.filter((d) => d.severity === 'error');
@@ -210,7 +216,17 @@ export async function installPlugin(projectRoot: string, sourceDir: string, opts
   const target = join(root, PLUGINS_DIR, slug, manifest.version);
   const result = { id: manifest.id, version: manifest.version, dir: rel };
   if (existsSync(target)) {
-    if (folderHash(await readAll(target)) === folderHash(contents)) return { ...result, created: false };
+    const installed = await readAll(target);
+    if (folderHash(installed) === folderHash(contents)) return { ...result, created: false };
+    const sourceOnly = (files: Map<string, Buffer>) => { const c = new Map(files); c.delete(PLUGIN_MANIFEST); return folderHash(c); };
+    if (imported && sourceOnly(installed) === sourceOnly(contents)) {
+      if (opts.keepManifest) return { ...result, created: false };
+      // Written beside it, then renamed over it in one step.
+      const tmp = join(target, `.${PLUGIN_MANIFEST}.${randomBytes(4).toString('hex')}`);
+      await writeFile(tmp, contents.get(PLUGIN_MANIFEST)!);
+      await rename(tmp, join(target, PLUGIN_MANIFEST));
+      return { ...result, created: false, manifestUpdated: true };
+    }
     throw new Error(`${rel} already holds a different copy of ${manifest.id} ${manifest.version}; give the changed plugin a new version to install it beside this one`);
   }
 

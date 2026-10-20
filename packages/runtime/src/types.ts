@@ -461,7 +461,11 @@ export interface PluginsService {
 
 export interface IdentityService {
   resolve(input: { plugin: string; source?: string }): Promise<{ linked: number; candidates: number; unmatched: number; created: number }>;
-  candidates(filter?: { status?: IdentityCandidate['status'] }): Promise<IdentityCandidate[]>;
+  /**
+   * Identity candidates, with the outside records' values. With `actor`, only for someone who may
+   * decide identity matches (the bind-plugin owner role); anyone else gets none.
+   */
+  candidates(filter?: { status?: IdentityCandidate['status']; actor?: Actor }): Promise<IdentityCandidate[]>;
   decide(input: { candidateId: string; decision: 'confirm' | 'reject'; by: PersonActor }): Promise<{ applied: boolean; message?: string }>;
   links(entity: string, recordId: string): Promise<IdentityLink[]>;
 }

@@ -66,7 +66,7 @@ environment: { runtime: python@3.12 } # recorded only (built in Phase 7)
 
 ### Installing
 
-`installPlugin(projectRoot, sourceDir)` copies a plugin folder (a MemWise plugin, or a Claude plugin converted with its generated manifest) to `plugins/<slug>/<version>/`, refusing to overwrite a different folder at the same version. `memwise plugin install <project> <dir>` and `memwise:plugins:install` do this; for an imported plugin the kernel discovers the tools and writes them into the copied manifest. Installing changes nothing live. Several versions may sit side by side; a binding pins one.
+`installPlugin(projectRoot, sourceDir)` copies a plugin folder (a MemWise plugin, or a Claude plugin converted with its generated manifest) to `plugins/<slug>/<version>/`, refusing to overwrite a different folder at the same version. `memwise plugin install <project> <dir>` and `memwise:plugins:install` do this; for an imported plugin the kernel discovers the tools and writes them into the copied manifest. Installing changes nothing live. Several versions may sit side by side; a binding pins one. For an imported plugin only its own files are compared with the installed copy (the generated manifest is not part of the source): installing the same folder again rewrites the manifest in place, so tools found now (a server that was down the first time) come in; the manifest is kept when a server can't be reached now or a frozen binding pins that version.
 
 ## 3. Bindings (06 §4)
 
@@ -90,9 +90,10 @@ dry_run: { at: …, hash: …, passed: true, summary: … }
 ```
 
 - **Only frozen bindings bind.** A tool reaches a step only if it is shipped by a plugin, bound in the domain (not `off`), allowed by the workflow and picked by the step (06 §4). Tools passed to the kernel directly (`options.tools`, the Phase 1–3 sample set) stay bound as before, so existing projects keep working.
-- **Classification.** A binding's class for a tool wins over the manifest's; a tool with neither is irreversible. Loosening a declared class (declared `outbound`, bound as `read`) is a check error; classifying an unclassified tool is what binding is for.
+- **Classification.** A binding's class for a tool wins over the manifest's; a tool with neither is irreversible. Loosening a declared class (declared `outbound`, bound as `read`) is a check error, and never takes effect: the tool keeps the stricter of the two classes. Classifying an unclassified tool is what binding is for.
+- **The kernel's extractor.** The kernel's own quarantined `intake.extract_fields` stays bound in every domain (it is the kernel's extractor, not the plugin's), so a binding's class for it is ignored.
 - **Capabilities** (06 §8): `capabilities: { email_send: email.send }` names the bound tool that provides it, from any bound plugin whose `provides.capabilities` lists it. A required capability left unfilled is an error unless `optional`. Swapping vendors is a binding change only.
-- **Policy layers** (D30): platform → each relevant plugin's `policy` → the binding's `policy` → domain → workflow → step. A plugin layer applies to a step when the workflow comes from that plugin or the step allows one of its tools. Plugin layers are loaded from the indexed bindings at run time, like the domain policy.
+- **Policy layers** (D30): platform → each relevant plugin's `policy` → the binding's `policy` → domain → workflow → step. A plugin layer applies to a step when the workflow comes from that plugin or the step allows one of its tools. The plugin's `policy` is written in its terms and is renamed through the binding like its workflows (capability aliases such as `email.send` in `tools` rules, allow and deny become the bound provider; plugin roles in `approvals.by` the domain's). Plugin layers are loaded from the indexed bindings at run time, like the domain policy.
 - **Freezing** writes the file through a **binding draft** (draft kind `binding`, copying `domain/` only) and the Phase 3 draft machinery: edits are recorded, publishing refuses a stale or conflicting draft, and `mw.binding_versions` records who froze which content.
 - **Upgrades are proposals** (06 §5): installing a newer version changes nothing; binding it again starts from the current binding, and the dry run shows how each workflow changes (structural diff). The old binding, and the old plugin folder it pins, keep running until the new one freezes.
 
@@ -162,7 +163,7 @@ records:
 - **A fixed set of deterministic transforms**: `trim`, `lower`, `upper`, `digits`, `squash` (collapse spaces), `{ default: v }`, `{ map: { a: b } }`, `{ money: INR }`, `{ template: "{first} {last}" }`. No model runs when a mapping is used (P1). `compileMapping(binding) → (record) → MappedRecord` is pure and tested.
 - **Unmapped source fields are kept** under the plugin's namespace (`extra`), never dropped.
 - **Direction** defaults to `read`. `write` and `both` are declared and round-trip checked at dry run; writing back to the owner happens with linked entities in Phase 6.
-- **Links, not copies** (04 §5): the domain keeps identity links and the fields it owns. A field the entity's `ownership:` gives to the plugin is **read through** the link: `kernel.entityRecord(entity, id, actor)` returns the row, its links, and each linked record's mapped values read live through the source's `get` tool (a `read` through the gateway, under the actor). The app shows them with their source.
+- **Links, not copies** (04 §5): the domain keeps identity links and the fields it owns. A field the entity's `ownership:` gives to the plugin is **read through** the link: `kernel.entityRecord(entity, id, actor)` returns the row, its links, and each linked record's mapped values read live through the source's `get` tool (a `read` through the gateway, under the actor). The app shows them with their source. Field access holds through links: a field hidden from the actor is left out of a linked record's values, and its unmapped `extra` is shown only to someone who sees every field of the entity.
 
 ## 6. Identity resolution (04 §6, D65)
 
@@ -172,7 +173,7 @@ records:
 2. **Fuzzy second.** Name similarity (token-sorted Jaro–Winkler over normalised words, with legal suffixes such as Ltd, Limited, Pvt, Private, LLP, Inc removed), deterministic. At or above `auto`: `link`; at or above `review`: `review`; else `none`. A key present on both sides with different values caps the score below `auto` (never auto-linked).
 3. **No model in Phase 4.** A model for fuzzy matches (04 §6) waits until deterministic matching is shown to fall short.
 
-`kernel.identity.resolve({ plugin, source })` lists the source's records through its list tool, maps them and matches each against the entity's rows: `link` writes `mw.identity_links` (method `key` or `fuzzy`); `review` writes a pending `mw.identity_candidates` row, shown in the inbox to the binding's owner role as an **identity match** item (side by side, with reasons); `none` creates a domain record from the mapped fields when `create_missing` (method `created`), else stays unlinked. Already linked records and pairs a person rejected are never proposed again. `kernel.identity.decide({ candidateId, decision: 'confirm' | 'reject', by })` links (method `person`) or records the rejection; decisions are logged with who made them, so corrections improve the next run. Resolving again is idempotent.
+`kernel.identity.resolve({ plugin, source })` lists the source's records through its list tool, maps them and matches each against the entity's rows: `link` writes `mw.identity_links` (method `key` or `fuzzy`); `review` writes a pending `mw.identity_candidates` row, shown in the inbox to the binding's owner role as an **identity match** item (side by side, with reasons); `none` creates a domain record from the mapped fields when `create_missing` (method `created`), else stays unlinked. Already linked records and pairs a person rejected are never proposed again. Links are one to one per source: confirming a match settles the other pending candidates for the same outside record or the same domain record (status `settled`, not `rejected`, which is only a person's "different"), and a confirm that would give a domain record a second link from the same source, or link an outside record already linked, is refused and settled. `kernel.identity.decide({ candidateId, decision: 'confirm' | 'reject', by })` links (method `person`) or records the rejection; decisions are logged with who made them, so corrections improve the next run. Resolving again is idempotent.
 
 ## 7. Connectors as plugins (06 §9)
 
@@ -196,7 +197,7 @@ interface Kernel {
   };
   identity: {
     resolve(input: { plugin: string; source?: string }): Promise<{ linked: number; candidates: number; unmatched: number; created: number }>;
-    candidates(filter?: { status?: IdentityCandidate['status'] }): Promise<IdentityCandidate[]>;
+    candidates(filter?: { status?: IdentityCandidate['status']; actor?: Actor }): Promise<IdentityCandidate[]>;   // with actor: none unless they decide matches
     decide(input: { candidateId: string; decision: 'confirm' | 'reject'; by: PersonActor }): Promise<{ applied: boolean; message?: string }>;
     links(entity: string, recordId: string): Promise<IdentityLink[]>;
   };
@@ -206,7 +207,8 @@ interface Kernel {
 
 - The inbox gains `identity` items (pending candidates, for the bind-plugin playbook's owner role).
 - Kernel tools (plugin `memwise`): `plugins.install_check`, `plugins.propose_binding`, `plugins.classify_tools`, `plugins.dry_run`, `plugins.freeze` and `identity.resolve`, for the meta playbook's steps.
-- MCP connections are opened lazily, one per server, and closed at shutdown.
+- MCP connections are opened lazily, one per server, and closed at shutdown. A `{ source }` server is resolved (`resolveMcpSource`) when its connection opens and the connection is kept for the kernel's lifetime: a refreshed OAuth token of the connector is used once the server reconnects (a closed or failed connection is reopened on the next call).
+- `{ command }` tools run with the MCP SDK's safe default environment (`getDefaultEnvironment()`: PATH, HOME and the like) plus the route's own, never the kernel's (no database URL or API keys).
 
 ## 9. App API
 
@@ -216,7 +218,7 @@ interface Kernel {
 | `memwise:plugins:install` | `({ path })` → `MwPluginSummary` (a folder on the machine running the kernel; desktop and the owner only) |
 | `memwise:plugins:bind` | `(pluginId)` → `{ runId, caseId }` |
 | `memwise:bindings:get` | `({ pluginId, draftId? })` → `MwBindingView` (the binding, gaps, classes, the last report with mapped sample records) |
-| `memwise:identity:list` / `decide` | `({ status? })` → `MwIdentityCandidate[]` / `(MwDecideIdentityInput)` → `MwSubmitResult` |
+| `memwise:identity:list` / `decide` | `({ status? })` → `MwIdentityCandidate[]` (only for people who decide identity matches, the bind-plugin owner role; others get none) / `(MwDecideIdentityInput)` → `MwSubmitResult` |
 | `memwise:entities:record` | `({ entity, id })` → `MwEntityRecord` (values, links, read-through values with their source) |
 | `memwise:changed` | gains `{ kind: 'plugins' }` |
 

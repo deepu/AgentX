@@ -23,6 +23,17 @@ export interface BoundPluginTool {
 
 const rank = (c: EffectClass) => EFFECT_CLASSES.indexOf(c);
 
+/**
+ * A tool's class in a domain: the stricter of the binding's and the declared one. A binding may
+ * classify an unclassified tool or tighten a declared class; a hand-edited one that loosens it
+ * (declared `outbound`, bound `read`) is a check error and never takes effect.
+ */
+export function stricterClass(bound: EffectClass | undefined, declared: EffectClass | undefined): EffectClass | undefined {
+  if (!bound) return declared;
+  if (!declared) return bound;
+  return rank(bound) >= rank(declared) ? bound : declared;
+}
+
 /** The bindings in id order, each with the plugin version it pins (when installed and unchanged). */
 function bound(project: ProjectDefs): { binding: BindingDef; plugin: InstalledPlugin }[] {
   return Object.keys(project.bindings ?? {}).sort().flatMap((id) => {
@@ -35,7 +46,8 @@ function bound(project: ProjectDefs): { binding: BindingDef; plugin: InstalledPl
 /**
  * The tools frozen bindings bind, by name: every tool of each bound plugin except those the
  * binding turns `off`, with the binding's class (else the declared one). When two plugins bind
- * the same name the first (by plugin id) keeps it; `checkBindings` reports the clash.
+ * the same name the first (by plugin id) keeps it; `checkBindings` reports the clash. A binding
+ * that loosens a declared class does not take effect (`stricterClass`).
  */
 export function boundPluginTools(project: ProjectDefs): Record<string, BoundPluginTool> {
   const out: Record<string, BoundPluginTool> = {};
@@ -43,7 +55,7 @@ export function boundPluginTools(project: ProjectDefs): Record<string, BoundPlug
     for (const tool of Object.values(plugin.manifest.tools)) {
       const b = binding.tools[tool.name];
       if (b?.off || out[tool.name]) continue;
-      const effect = b?.effect ?? tool.effect;
+      const effect = stricterClass(b?.effect, tool.effect);
       out[tool.name] = { ...(effect ? { effect } : {}), inputSchema: tool.inputSchema, plugin: plugin.manifest.id, description: tool.description };
     }
   }

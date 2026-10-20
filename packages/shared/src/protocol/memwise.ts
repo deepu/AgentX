@@ -1115,7 +1115,8 @@ export interface MwIdentityCandidate {
   score: number
   reasons: string[]
   external: Record<string, unknown>
-  status: 'pending' | 'confirmed' | 'rejected'
+  /** `settled`: no longer asked, because one side was linked otherwise (not a person's rejection). */
+  status: 'pending' | 'confirmed' | 'rejected' | 'settled'
   decidedBy?: string
   decidedByName?: string
   decidedAt?: string

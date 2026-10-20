@@ -183,6 +183,8 @@ describe('bound tools and binding checks', () => {
     const loose = checkBindings((await loadProject(root)).project).find((d) => d.code === 'binding-loosens-class');
     expect(loose).toMatchObject({ file: 'domain/bindings/test__sample-email.yaml', path: 'tools.mail.send_message.effect', line: 7 });
     expect(loose!.message).toBe('mail.send_message is declared `outbound` by the plugin; the binding may make it stricter, not `read`');
+    // ... and the looser class never takes effect: the declared one stays.
+    expect(boundPluginTools((await loadProject(root)).project)['mail.send_message']!.effect).toBe('outbound');
   });
 
   test('unfilled and unbound capabilities, required fields, unmapped roles and entities', async () => {

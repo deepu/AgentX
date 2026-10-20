@@ -48,8 +48,20 @@ describe.skipIf(!postgresAvailable())('plugins, binding versions and identity (0
     expect(await store.decide(db.pool, pending[0]!.id, 'confirmed', 'person_1')).toBe(false);
     // A rejected pair is remembered: proposing it again adds nothing.
     expect(await store.propose(db.pool, c)).toBe(false);
+    // Settled, not rejected: the kernel's, not a person's "different".
     expect(await store.settleOthers(db.pool, pending[0]!, 'person_1')).toBe(1);
-    expect(await store.candidate(db.pool, pending[1]!.id)).toMatchObject({ status: 'rejected', decidedBy: 'person_1' });
+    expect(await store.candidate(db.pool, pending[1]!.id)).toMatchObject({ status: 'settled', decidedBy: 'person_1' });
+    // Links are one to one per source: other candidates for the same domain record are settled too.
+    const forCust9 = { ...base, recordId: 'cust_9', score: 0.8, reasons: [], external: {} };
+    await store.propose(db.pool, { ...forCust9, externalId: 'c5' });
+    await store.propose(db.pool, { ...forCust9, externalId: 'c6' });
+    await store.propose(db.pool, { ...forCust9, externalId: 'c6', source: 'lead' });
+    const [c5, c6, lead] = await store.candidates(db.pool, { status: 'pending' });
+    expect(await store.settleOthers(db.pool, c5!, 'person_1')).toBe(1);
+    expect((await store.candidate(db.pool, c6!.id))!.status).toBe('settled');
+    expect((await store.candidate(db.pool, lead!.id))!.status).toBe('pending');
+    expect(await store.linkOfRecord(db.pool, 'acme/crm', 'contact', 'Customer', 'cust_1')).toMatchObject({ externalId: 'c1' });
+    expect(await store.linkOfRecord(db.pool, 'acme/crm', 'lead', 'Customer', 'cust_1')).toBeUndefined();
   });
 
   test('people may read, not write', async () => {

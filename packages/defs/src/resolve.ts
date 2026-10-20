@@ -92,6 +92,26 @@ function sameLines<T extends object>(copy: T, original: object): T {
   return copy;
 }
 
+/** A policy written in a plugin's terms, renamed through its binding: tool names (capability aliases, domain tools) and roles. */
+function renamePolicyDoc(p: PolicyDoc, r: BindingRenames): PolicyDoc {
+  const out = structuredClone(p);
+  if (out.tools) {
+    for (const k of ['allow', 'deny', 'require'] as const) if (out.tools[k]) out.tools[k] = [...new Set(out.tools[k]!.map(r.tool))];
+    if (out.tools.rules) out.tools.rules = Object.fromEntries(Object.entries(out.tools.rules).map(([t, rule]) => [r.tool(t), rule]));
+  }
+  if (out.approvals?.by) out.approvals.by = [...new Set(out.approvals.by.map(r.role))];
+  return sameLines(out, p);
+}
+
+/**
+ * A plugin's own policy (its manifest's `policy`, a plugin layer, D30) in domain terms, renamed
+ * through its binding the same way its workflows are: `email.send` in `tools.rules` becomes the
+ * bound provider, plugin roles in `approvals.by` the domain's.
+ */
+export function resolvePluginPolicy(policy: PolicyDoc, plugin: InstalledPlugin, binding: BindingDef): PolicyDoc {
+  return renamePolicyDoc(policy, bindingRenames(plugin, binding));
+}
+
 /**
  * Resolves a plugin workflow through a binding (22 §3): entity types in case fields and record
  * types, `domain.<entity>.*` tools and their `map:` arguments (renamed by the field map; an
@@ -133,16 +153,7 @@ export function resolveWorkflow(workflow: WorkflowDef, plugin: InstalledPlugin, 
     const entity = r.toolEntity(tool);
     return entity && binding.entities[entity] ? entityKeys(entity, args, file, where) : args;
   };
-  const renamePolicy = (p: PolicyDoc | undefined): PolicyDoc | undefined => {
-    if (!p) return p;
-    const out = structuredClone(p);
-    if (out.tools) {
-      for (const k of ['allow', 'deny', 'require'] as const) if (out.tools[k]) out.tools[k] = renameTools(out.tools[k]!);
-      if (out.tools.rules) out.tools.rules = Object.fromEntries(Object.entries(out.tools.rules).map(([t, rule]) => [r.tool(t), rule]));
-    }
-    if (out.approvals?.by) out.approvals.by = [...new Set(out.approvals.by.map(r.role))];
-    return sameLines(out, p);
-  };
+  const renamePolicy = (p: PolicyDoc | undefined): PolicyDoc | undefined => (p ? renamePolicyDoc(p, r) : p);
   const renameField = (f: FieldDef): FieldDef => {
     const type = renameType(f.type, r, records);
     return { ...f, type, typeSource: formatValueType(type) === formatValueType(f.type) ? f.typeSource : formatValueType(type) };

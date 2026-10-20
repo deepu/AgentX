@@ -151,16 +151,22 @@ export class McpConnections {
   }
 }
 
-/** `{ command: [...] }`: one subprocess per call; the arguments as JSON on stdin, the result as JSON on stdout. */
-export function runCommandTool(input: {
+/**
+ * `{ command: [...] }`: one subprocess per call; the arguments as JSON on stdin, the result as JSON
+ * on stdout. Its environment is the MCP SDK's safe default set (PATH, HOME, ...) plus the route's
+ * own, never this process's: the kernel's database URL and API keys stay out of plugin code.
+ */
+export async function runCommandTool(input: {
   command: string[]; args: unknown; root: string; timeoutMs?: number; idempotencyKey: string; signal?: AbortSignal; tool: string;
 }): Promise<unknown> {
   const [first, ...rest] = input.command;
-  if (!first) return Promise.reject(new Error(`${input.tool}: the command route names no command`));
+  if (!first) throw new Error(`${input.tool}: the command route names no command`);
   const r = resolveCommand(first, rest, { MEMWISE_IDEMPOTENCY_KEY: input.idempotencyKey }, input.root);
   const timeoutMs = input.timeoutMs ?? 60_000;
+  const { getDefaultEnvironment } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+  const env = { ...getDefaultEnvironment(), ...r.env };
   return new Promise((resolve, reject) => {
-    const child = spawn(r.command, r.args, { cwd: input.root, env: { ...process.env, ...r.env }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(r.command, r.args, { cwd: input.root, env, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let done = false;

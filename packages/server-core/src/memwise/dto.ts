@@ -1045,7 +1045,13 @@ export function toEntityRecord(r: EntityRecordView, project: Pick<ProjectDefs, '
   const visible = Object.fromEntries(Object.entries(r.values).filter(([k]) => !hidden.has(k)))
   return {
     entity: r.entity, id: r.id, title: recordTitle(r.entity, r.id, visible), values, createdAt: r.createdAt,
-    links: r.links.map((l) => toIdentityLink(l, project, names)),
+    // Linked values follow the same field access: hidden fields left out, and `extra` (unmapped,
+    // possibly the same data) only when nothing on the record is hidden.
+    links: r.links.map(({ values: linked, extra, ...l }) => toIdentityLink({
+      ...l,
+      ...(linked ? { values: Object.fromEntries(Object.entries(linked).filter(([k]) => !hidden.has(k))) } : {}),
+      ...(extra && !hidden.size ? { extra } : {}),
+    }, project, names)),
     readThrough: Object.fromEntries(Object.entries(r.readThrough).filter(([k]) => !hidden.has(k)).map(([k, x]) => [k, {
       plugin: x.plugin, pluginTitle: pluginTitle(project, x.plugin), value: plain(x.value),
     }])),

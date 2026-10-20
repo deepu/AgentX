@@ -321,11 +321,13 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
       const plugin = versionsOf(project, pluginId)[0];
       if (!plugin) throw new Error(`${pluginId} is not installed`);
       const previous = project.bindings?.[pluginId];
-      const proposal = proposeBinding({ plugin, project, ...(previous ? { previous } : {}) });
       const runId = ctx.token.runId;
       const by = ctx.token.onBehalfOf ?? 'system';
-      // A retried propose step reuses the draft its run made.
+      // A retried propose step (or check → propose again after needs_person) reuses the draft its
+      // run made, and starts from what is in it now, so a person's edits there are kept.
       const existing = (await listDrafts(root)).find((d) => d.kind === 'binding' && d.status === 'open' && d.runId === runId && d.plugin?.id === pluginId);
+      const start = existing ? (await readDraftBinding(existing.id, pluginId)).binding : previous;
+      const proposal = proposeBinding({ plugin, project, ...(start ? { previous: start } : {}) });
       const meta = existing ?? await createBindingDraft(root, {
         pluginId, pluginVersion: plugin.manifest.version, title: `${previous ? 'Upgrade' : 'Bind'} ${plugin.manifest.title}`, createdBy: by, runId,
         binding: proposal.binding,
@@ -392,6 +394,21 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
         // Freezing again (a retried freeze step) finds the version it made.
         const made = await bindingVersions.byDraft(deps.pool, draft);
         if (made) return { outcome: 'frozen', version: made.version };
+        // A crash between publishing and recording: the live binding says this run froze it.
+        const pluginId = d.meta.plugin?.id;
+        const path = pluginId ? bindingFileOf(pluginId) : undefined;
+        const liveText = path && existsSync(join(root, path)) ? await readFile(join(root, path), 'utf8') : undefined;
+        const liveBinding = liveText !== undefined ? parseBindingFile(liveText, path!).value : undefined;
+        if (pluginId && liveBinding?.frozen?.runId === ctx.token.runId && liveBinding.version) {
+          await bindingVersions.record(deps.pool, {
+            pluginId, version: liveBinding.version, pluginVersion: liveBinding.pluginVersion, hash: liveBinding.hash,
+            frozenBy: liveBinding.frozen.by, runId: ctx.token.runId, draftId: draft,
+          });
+          await deps.index();
+          changed();
+          deps.emit({ kind: 'drafts', draftId: draft });
+          return { outcome: 'frozen', version: liveBinding.version };
+        }
         throw new Error(`draft ${draft} was already published`);
       }
       if (d.meta.status !== 'open') throw new Error(`draft ${draft} is ${d.meta.status}`);
@@ -567,6 +584,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
       if (!existsSync(src)) throw new Error(`${dir} does not exist`);
       let manifest: PluginManifest | undefined;
       const notes: string[] = [];
+      let keepManifest = false;
       if (!existsSync(join(src, PLUGIN_MANIFEST))) {
         const imported = await importClaudePlugin(src);
         manifest = imported.manifest;
@@ -578,11 +596,17 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
             manifest = withDiscoveredTools(manifest, name, tools);
             notes.push(`found ${plural(tools.length, 'tool')} on the MCP server ${name}`);
           } catch (e) {
+            // An install again keeps the manifest it has rather than one that knows fewer tools.
+            keepManifest = true;
             notes.push(`the MCP server ${name} could not be reached, so its tools are not known yet: ${(e as Error).message}`);
           }
         }
+        // The version a frozen binding pins keeps its manifest: rewriting it would change the hash the binding pins.
+        const pinning = (await live()).bindings?.[manifest.id];
+        if (pinning?.frozen && pinning.pluginVersion === manifest.version) keepManifest = true;
       }
-      const installed = await installPlugin(root, src, manifest ? { manifest } : {});
+      const installed = await installPlugin(root, src, manifest ? { manifest, ...(keepManifest ? { keepManifest } : {}) } : {});
+      if (installed.manifestUpdated) notes.push(`installed again: the tools found now were written into ${installed.dir}/${PLUGIN_MANIFEST}`);
       await deps.index();
       const project = await live();
       const p = project.pluginVersions?.[installed.id]?.[installed.version]
@@ -677,6 +701,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
     },
 
     async candidates(filter = {}) {
+      if (filter.actor && !mayDecide(filter.actor, await deciderRoles())) return [];
       return identityStore.candidates(deps.pool, filter.status ? { status: filter.status } : {});
     },
 
@@ -687,12 +712,20 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
         if (!c) return { applied: false, message: `there is no identity match ${candidateId}` };
         if (c.status !== 'pending') return { applied: false, message: `this match was already ${c.status}` };
         if (decision === 'confirm') {
+          // Links are one to one per source: a domain record already linked from this source
+          // takes no second one. The match can't be confirmed, so it is settled (not rejected:
+          // nobody said the two differ).
+          const has = await identityStore.linkOfRecord(db, c.plugin, c.source, c.entity, c.recordId);
+          if (has) {
+            await identityStore.decide(db, c.id, 'settled', by.personId);
+            return { applied: false, message: `this ${c.entity} is already linked to ${has.externalId} from ${c.source}` };
+          }
           const linked = await identityStore.link(db, {
             entity: c.entity, recordId: c.recordId, plugin: c.plugin, source: c.source, externalId: c.externalId, method: 'person',
             score: c.score, reasons: c.reasons, linkedBy: by.personId,
           });
           if (!linked) {
-            await identityStore.decide(db, c.id, 'rejected', by.personId);
+            await identityStore.decide(db, c.id, 'settled', by.personId);
             return { applied: false, message: 'this record was linked to another one meanwhile' };
           }
           await identityStore.decide(db, c.id, 'confirmed', by.personId);
@@ -719,7 +752,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
     const decided = await identityStore.candidates(deps.pool, { plugin: pluginId, source });
     const rejected = new Set(decided.filter((c) => c.status === 'rejected').map((c) => `${c.externalId}\0${c.recordId}`));
     // The entity's rows as the system sees them (every field), for matching.
-    const rows = (await entityStore.list(deps.pool, entity, { limit: 10_000 })).map((r) => ({ id: r.id, values: r.values }));
+    const rows = (await entityStore.list(deps.pool, entity, { limit: 10_000, unrestricted: true })).map((r) => ({ id: r.id, values: r.values }));
     const linkedRecords = new Set((await deps.pool.query(`select record_id from mw.identity_links where plugin = $1 and source = $2`, [pluginId, source])).rows.map((r) => r.record_id as string));
     for (const rec of mapped) {
       if (!rec.externalId) { counts.unmatched++; continue; }
@@ -781,8 +814,11 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
         const item = recordIn(result, source);
         if (!item) throw new Error(`${source.get.tool} returned no record`);
         const mapped = compileRecordMapping(rb, source, pluginNamespace(bp.manifest), def)(item);
-        out.values = mapped.values;
-        out.extra = mapped.extra;
+        // The actor's field access holds for linked values too: a field hidden on the row is left
+        // out, and the unmapped rest (`extra`, which may hold the same data) only for someone who
+        // sees every field of the entity.
+        out.values = Object.fromEntries(Object.entries(mapped.values).filter(([k]) => !row.hidden.includes(k)));
+        if (!row.hidden.length) out.extra = mapped.extra;
         const ns = pluginNamespace(bp.manifest);
         for (const [field, owner] of Object.entries(def.ownership ?? {})) {
           if (owner !== bp.manifest.id && owner !== ns && owner !== link.source) continue;

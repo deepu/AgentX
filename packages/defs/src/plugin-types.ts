@@ -322,7 +322,12 @@ export interface IdentityCandidate {
   reasons: string[];
   /** The record's mapped values, as seen when the candidate was made. */
   external: Record<string, unknown>;
-  status: 'pending' | 'confirmed' | 'rejected';
+  /**
+   * `rejected` is a person's "different" (the pair is never proposed again); `settled` is the
+   * kernel's: no longer asked because the outside record or the domain record got its link
+   * from this source otherwise.
+   */
+  status: 'pending' | 'confirmed' | 'rejected' | 'settled';
   decidedBy?: string;
   decidedAt?: string;
   createdAt: string;

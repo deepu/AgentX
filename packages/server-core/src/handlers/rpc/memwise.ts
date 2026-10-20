@@ -1202,8 +1202,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
 
     async listIdentityCandidates(ctx: RequestContext, filter: { status?: MwIdentityCandidate['status'] } = {}): Promise<MwIdentityCandidate[]> {
       const { svc, actor, c, d } = await begin(ctx)
-      const status = filter?.status && ['pending', 'confirmed', 'rejected'].includes(filter.status) ? filter.status : undefined
-      const [list, names] = await Promise.all([identityOf(svc).candidates(status ? { status } : undefined), peopleNames(svc)])
+      const status = filter?.status && ['pending', 'confirmed', 'rejected', 'settled'].includes(filter.status) ? filter.status : undefined
+      // Only people who decide identity matches see them (they carry the outside records' values).
+      const [list, names] = await Promise.all([identityOf(svc).candidates({ ...(status ? { status } : {}), actor }), peopleNames(svc)])
       const titles = new Map<string, Promise<Map<string, string>>>()
       const titleOf = (entity: string, id: string) => {
         if (!titles.has(entity)) {

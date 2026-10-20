@@ -164,21 +164,34 @@ export class PgIdentityStore {
     return rows.map(toCandidate);
   }
 
-  /** Decides a pending candidate; false when it was already decided. */
-  async decide(db: Queryable, id: string, status: 'confirmed' | 'rejected', by: string): Promise<boolean> {
+  /** Decides a pending candidate (`settled`: the kernel's, not a person's rejection); false when it was already decided. */
+  async decide(db: Queryable, id: string, status: 'confirmed' | 'rejected' | 'settled', by: string): Promise<boolean> {
     const r = await db.query(
       `update mw.identity_candidates set status = $2, decided_by = $3, decided_at = now() where id = $1 and status = 'pending'`,
       [id, status, by]);
     return (r.rowCount ?? 0) > 0;
   }
 
-  /** Other pending candidates for the same outside record, once it is linked: settled, no longer asked. */
-  async settleOthers(db: Queryable, c: Pick<IdentityCandidate, 'plugin' | 'source' | 'externalId' | 'id'>, by: string): Promise<number> {
+  /**
+   * Once a pair is linked, the other pending candidates of the same source for either side: the
+   * same outside record, or the same domain record (links are one to one per source). They are
+   * `settled`, no longer asked; not `rejected`, which is a person's "different" and stays so.
+   */
+  async settleOthers(db: Queryable, c: Pick<IdentityCandidate, 'plugin' | 'source' | 'externalId' | 'entity' | 'recordId' | 'id'>, by: string): Promise<number> {
     const r = await db.query(
-      `update mw.identity_candidates set status = 'rejected', decided_by = $5, decided_at = now()
-        where plugin = $1 and source = $2 and external_id = $3 and id <> $4 and status = 'pending'`,
-      [c.plugin, c.source, c.externalId, c.id, by]);
+      `update mw.identity_candidates set status = 'settled', decided_by = $7, decided_at = now()
+        where plugin = $1 and source = $2 and id <> $3 and status = 'pending'
+          and (external_id = $4 or (entity = $5 and record_id = $6))`,
+      [c.plugin, c.source, c.id, c.externalId, c.entity, c.recordId, by]);
     return r.rowCount ?? 0;
+  }
+
+  /** The link a domain record has from one source, if any. */
+  async linkOfRecord(db: Queryable, plugin: string, source: string, entity: string, recordId: string): Promise<IdentityLink | undefined> {
+    const { rows } = await db.query<LinkRow>(
+      `select * from mw.identity_links where plugin = $1 and source = $2 and entity = $3 and record_id = $4 order by at, id limit 1`,
+      [plugin, source, entity, recordId]);
+    return rows[0] && toLink(rows[0]);
   }
 }
 

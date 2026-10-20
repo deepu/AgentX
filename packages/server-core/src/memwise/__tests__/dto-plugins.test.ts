@@ -181,6 +181,21 @@ describe('identity', () => {
     expect(m.readThrough).toEqual({ email: { plugin: 'memwise/sample-crm', pluginTitle: 'Sample CRM', value: 'a@acme.example' } })
   })
 
+  it('record: a linked record shows no field hidden from the actor, and no unmapped extras then', () => {
+    const link = { id: 'link_1', entity: 'Customer', recordId: 'cus_1', plugin: 'memwise/sample-crm', source: 'contact', externalId: 'c7', method: 'key' as const, score: 1, reasons: [], at: '2026-10-21T03:05:00Z' }
+    const r: EntityRecordView = {
+      entity: 'Customer', id: 'cus_1', values: { name: 'Acme Traders' }, hidden: ['email'], createdAt: '2026-10-20T00:00:00Z',
+      links: [{ ...link, values: { name: 'Acme', email: 'a@acme.example' }, extra: { 'crm.email_2': 'b@acme.example' } }],
+      readThrough: {},
+    }
+    const m = toEntityRecord(r, project, names)
+    expect(m.links[0]!.values).toEqual({ name: 'Acme' })
+    expect(m.links[0]!.extra).toBeUndefined()
+    // Nothing hidden: everything shows.
+    const all = toEntityRecord({ ...r, hidden: [] }, project, names)
+    expect(all.links[0]).toMatchObject({ values: { name: 'Acme', email: 'a@acme.example' }, extra: { 'crm.email_2': 'b@acme.example' } })
+  })
+
   it('record title falls back to the entity and a short id', () => {
     expect(recordTitle('Customer', 'cus_0123456789', {})).toBe('Customer 456789')
   })

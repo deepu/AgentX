@@ -39,8 +39,8 @@ export { parsePluginManifest, pluginManifestToYaml, isSemver, compareSemver, SEM
 export { importClaudePlugin, withDiscoveredTools, slugifyName, singular, type DiscoveredTool } from './claude-import.ts';
 export { loadPlugin, loadInstalledPlugins, newestPlugins, installPlugin, pluginsDirOf, pluginFiles } from './plugins.ts';
 export { parseBindingFile, bindingToYaml, pluginSlug, pluginIdOfSlug, bindingPath, toTransform } from './binding-file.ts';
-export { resolveWorkflow, bindingRenames, snakeName, domainToolName, type BindingRenames } from './resolve.ts';
-export { boundPluginTools, checkBindings, RESERVED_TOOL_PREFIXES, type BoundPluginTool } from './binding-checks.ts';
+export { resolveWorkflow, resolvePluginPolicy, bindingRenames, snakeName, domainToolName, type BindingRenames } from './resolve.ts';
+export { boundPluginTools, checkBindings, RESERVED_TOOL_PREFIXES, stricterClass, type BoundPluginTool } from './binding-checks.ts';
 export { proposeBinding, matchField, type ProposeBindingInput } from './propose.ts';
 export { compileRecordMapping, applyTransform, mapField, roundTripProblem, valueAt, fillTemplate } from './mapping.ts';
 export { matchRecord, nameSimilarity, normaliseKey, jaroWinkler } from './identity.ts';

@@ -3,13 +3,15 @@
 // (a tiny stdio server). Install, bind through the bind-plugin playbook (scripted binder), tools
 // bound only after freeze, plugin policy layers, identity resolution and decisions, read-through.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PgEntityStore, type TestDatabase } from '@memwise/db';
-import { bindingPath, parseBindingFile, type ExampleOutcome } from '@memwise/defs';
-import { scriptedProvider, type ToolDefinition } from '@memwise/gateway';
+import { PgEntityStore, PgIdentityStore, type TestDatabase } from '@memwise/db';
+import { bindingPath, bindingToYaml, parseBindingFile, type ExampleOutcome } from '@memwise/defs';
+import { scriptedProvider, type ToolContext, type ToolDefinition } from '@memwise/gateway';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createKernel } from '../src/kernel.ts';
+import { McpConnections } from '../src/plugins/routes.ts';
+import { createPluginServices, type PluginServices } from '../src/plugins/service.ts';
 import { sampleTools } from '../src/sample-tools.ts';
 import type { Actor, Kernel, TestRunner } from '../src/types.ts';
 import { INTAKE_DIR } from './fixtures/exit-setup.ts';
@@ -20,6 +22,9 @@ type PersonActor = Extract<Actor, { kind: 'person' }>;
 const FIXTURES = join(import.meta.dir, 'fixtures', 'plugins');
 const PROJECT = mkdtempSync(join(tmpdir(), 'mw-p4-project-'));
 cpSync(INTAKE_DIR, PROJECT, { recursive: true });
+// Only managers and finance see a customer's email: staff must not see it through a link either.
+const CUSTOMER_FILE = join(PROJECT, 'domain', 'entities', 'customer.yaml');
+writeFileSync(CUSTOMER_FILE, readFileSync(CUSTOMER_FILE, 'utf8').replace(/^  email: +Email$/m, '  email:        { type: Email, access: [manager, finance] }'));
 // A playbook using a plugin tool: before tiny-tools is bound, its step can't call it.
 mkdirSync(join(PROJECT, 'workflows', 'shout-it', 'steps'), { recursive: true });
 writeFileSync(join(PROJECT, 'workflows', 'shout-it', 'workflow.yaml'), `workflow: shout-it
@@ -90,6 +95,26 @@ const stepRunOf = async (runId: string, state: string) => {
   }
   throw new Error(`${runId} never waited in ${state} (now ${JSON.stringify(await kernel.getRun(runId))})`);
 };
+/**
+ * A second plugin service over the same project and database, to call the bind-plugin operations
+ * directly (a retried step, as DBOS would after a crash), with a token for the given run.
+ */
+const directOps = async (): Promise<PluginServices> => {
+  const entities = (await kernel.project()).project.entities;
+  return createPluginServices({
+    projectDir: PROJECT, pool: kernel.pool, project: () => kernel.project(), index: () => kernel.index(),
+    startRun: (input) => kernel.startRun(input), getRun: (id) => kernel.getRun(id),
+    tools: () => { throw new Error('no gateway here'); }, entities: () => entities, testRunner: (req) => runner(req),
+    emit: () => undefined, builtins: () => new Map(), mcp: new McpConnections(), kernelToolEnvironment: () => ({}),
+  });
+};
+const ctxFor = (runId: string, onBehalfOf?: string): ToolContext => ({
+  idempotencyKey: `${runId}:test`, secrets: {},
+  token: {
+    runId, caseId: 'case_test', stepId: 'x', stepRunId: `${runId}/0/x`, workflowId: 'bind-plugin', workflowVersion: 1, agentRole: 'bind-plugin.x',
+    ...(onBehalfOf ? { onBehalfOf } : {}), issuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  },
+});
 const until = (runId: string, state: string, timeoutMs = 60_000) => kernel.waitForRun(runId, { until: (r) => r.state === state || r.status !== 'active', timeoutMs });
 
 describe.skipIf(!pgAvailable)('Phase 4 kernel', () => {
@@ -146,6 +171,8 @@ describe.skipIf(!pgAvailable)('Phase 4 kernel', () => {
     expect(record?.rationale).toContain('unknown tool "tiny.shout"');
   }, 60_000);
 
+  let tinyBind = { runId: '', draftId: '' };
+
   test('bind-plugin: all classified, dry run, review, freeze, link; the tools are bound after', async () => {
     const { runId, caseId } = await kernel.plugins.startBind('test/tiny-tools', manager);
     await expect(kernel.plugins.startBind('test/tiny-tools', manager)).rejects.toThrow('already being bound');
@@ -159,6 +186,7 @@ describe.skipIf(!pgAvailable)('Phase 4 kernel', () => {
     expect(view.binding).toMatchObject({ plugin: 'test/tiny-tools', pluginVersion: '1.0.0' });
     expect(view.report).toMatchObject({ outcome: 'passed', plugin: 'test/tiny-tools' });
     expect(view.pluginPolicy).toMatchObject({ tools: { rules: { 'tiny.shout': {} } } });
+    tinyBind = { runId, draftId: c.draft!.value as string };
     // Nothing live yet.
     expect(existsSync(join(PROJECT, bindingPath('test/tiny-tools')))).toBe(false);
 
@@ -180,6 +208,19 @@ describe.skipIf(!pgAvailable)('Phase 4 kernel', () => {
     expect(vocab.tools.find((t) => t.name === 'tiny.lookup')).toMatchObject({ plugin: 'test/tiny-tools' });
   }, 120_000);
 
+  test('a freeze retried after a crash between publishing and recording finds the version it made', async () => {
+    // The crash: the draft is published and the live binding written, but no binding-version row.
+    await kernel.pool.query(`delete from mw.binding_versions where run_id = $1`, [tinyBind.runId]);
+    const ops = (await directOps()).ops;
+    // Another run's retry is not this one.
+    await expect(ops.freeze({ draft: tinyBind.draftId, hash: 'h' }, ctxFor('run_other'))).rejects.toThrow('already published');
+    expect(await ops.freeze({ draft: tinyBind.draftId, hash: 'h' }, ctxFor(tinyBind.runId))).toEqual({ outcome: 'frozen', version: 1 });
+    const { rows } = await kernel.pool.query(`select plugin_id, version, plugin_version, frozen_by, run_id, draft_id from mw.binding_versions`);
+    expect(rows).toEqual([{ plugin_id: 'test/tiny-tools', version: 1, plugin_version: '1.0.0', frozen_by: manager.personId, run_id: tinyBind.runId, draft_id: tinyBind.draftId }]);
+    // And once more: the row is there now.
+    expect(await ops.freeze({ draft: tinyBind.draftId, hash: 'h' }, ctxFor(tinyBind.runId))).toEqual({ outcome: 'frozen', version: 1 });
+  }, 60_000);
+
   test('a bound plugin tool runs (command route) under its plugin layer', async () => {
     const policy = await kernel.effectivePolicy('shout-it', 'shout');
     expect(policy.effective.layers.map((l) => [l.kind, l.name])).toContainEqual(['plugin', 'test/tiny-tools']);
@@ -197,7 +238,11 @@ describe.skipIf(!pgAvailable)('Phase 4 kernel', () => {
     // Version 1.1.0 of tiny-tools, beside 1.0.0: installing it changes nothing live.
     const v2 = mkdtempSync(join(tmpdir(), 'mw-p4-tiny-v2-'));
     cpSync(join(FIXTURES, 'tiny-tools'), v2, { recursive: true });
-    writeFileSync(join(v2, 'memwise-plugin.yaml'), readFileSync(join(v2, 'memwise-plugin.yaml'), 'utf8').replace('version: 1.0.0', 'version: 1.1.0'));
+    writeFileSync(join(v2, 'memwise-plugin.yaml'), `${readFileSync(join(v2, 'memwise-plugin.yaml'), 'utf8').replace('version: 1.0.0', 'version: 1.1.0')}workflows: [tiny-echo]\n`);
+    // 1.1.0 ships a workflow of its own (shout-it's shape), live once the binding freezes.
+    cpSync(join(PROJECT, 'workflows', 'shout-it'), join(v2, 'workflows', 'tiny-echo'), { recursive: true });
+    const echoFile = join(v2, 'workflows', 'tiny-echo', 'workflow.yaml');
+    writeFileSync(echoFile, 'workflow: tiny-echo\nversion: 1\ntitle: Tiny echo\nowner: manager\ncase: ./case.yaml\nstart: shout\nsteps:\n  shout: { on: { done: end } }\n');
     expect(await kernel.plugins.install(v2, manager)).toMatchObject({ version: '1.1.0', versions: ['1.1.0', '1.0.0'], upgradeAvailable: true, binding: { status: 'bound', version: 1, pluginVersion: '1.0.0' } });
 
     const { runId, caseId } = await kernel.plugins.startBind('test/tiny-tools', manager);
@@ -231,6 +276,39 @@ describe.skipIf(!pgAvailable)('Phase 4 kernel', () => {
     expect((await kernel.plugins.list()).find((p) => p.id === 'test/tiny-tools')).toMatchObject({ binding: { status: 'bound', version: 2, pluginVersion: '1.1.0' } });
     expect((await kernel.plugins.list()).find((p) => p.id === 'test/tiny-tools')!.upgradeAvailable).toBeUndefined();
   }, 120_000);
+
+  test('binding again does not warn that a plugin workflow kept its version; the new hash is a version of its own', async () => {
+    expect(kernel.project).toBeDefined();
+    const echo = (await kernel.project()).project.workflows['tiny-echo'];
+    expect(echo?.origin).toMatchObject({ kind: 'plugin', plugin: 'test/tiny-tools', pluginVersion: '1.1.0', bindingVersion: 2 });
+    const before = await kernel.versions('tiny-echo');
+    // The binding changes (as a new freeze would); the plugin's workflow keeps its own version number.
+    const file = join(PROJECT, bindingPath('test/tiny-tools'));
+    const b = parseBindingFile(readFileSync(file, 'utf8'), bindingPath('test/tiny-tools')).value!;
+    writeFileSync(file, bindingToYaml({ ...b, tools: { ...b.tools, 'tiny.send': { effect: 'irreversible', reason: 'It leaves the building.' } } }));
+    const diagnostics = await kernel.index();
+    expect(diagnostics.filter((d) => d.code === 'version-not-bumped')).toEqual([]);
+    const after = await kernel.versions('tiny-echo');
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.filter((v) => v.live)).toHaveLength(1);
+    expect(after.find((v) => v.live)!.hash).toBe((await kernel.project()).project.workflows['tiny-echo']!.hash);
+  }, 60_000);
+
+  test('proposing again in the same run starts from its draft, keeping what a person changed there', async () => {
+    const ops = (await directOps()).ops;
+    const ctx = ctxFor('run_propose_again', manager.personId);
+    const first = await ops.propose('test/tiny-tools', ctx);
+    const view = (await kernel.plugins.binding('test/tiny-tools', { draftId: first.draft }))!;
+    // A person makes a tool stricter in the draft, then the case goes check → propose again.
+    const edited = { ...view.binding, tools: { ...view.binding.tools, 'tiny.lookup': { effect: 'write' as const, reason: 'A person says it writes.' } } };
+    await kernel.authoring!.write({ draftId: first.draft, files: [{ path: view.path, content: bindingToYaml(edited) }], summary: 'Stricter lookup', via: 'editor' }, staff);
+    const again = await ops.propose('test/tiny-tools', ctx);
+    expect(again.draft).toBe(first.draft);
+    const kept = (await kernel.plugins.binding('test/tiny-tools', { draftId: first.draft }))!;
+    expect(kept.binding.tools['tiny.lookup']).toEqual({ effect: 'write', reason: 'A person says it writes.' });
+    expect(again.summary).toContain('An upgrade from 1.1.0 (binding version 2)');
+    await kernel.authoring!.discardDraft(first.draft, manager);
+  }, 60_000);
 
   let acme = '', menon = '';
 
@@ -296,6 +374,46 @@ describe.skipIf(!pgAvailable)('Phase 4 kernel', () => {
     expect(await kernel.identity.candidates({ status: 'rejected' })).toEqual([expect.objectContaining({ recordId: zenith, decidedBy: manager.personId })]);
   }, 60_000);
 
+  test('candidates, with the outside records\' values, only for people who decide matches', async () => {
+    expect(await kernel.identity.candidates({ status: 'rejected', actor: manager })).toHaveLength(1);
+    expect(await kernel.identity.candidates({ status: 'rejected', actor: staff })).toEqual([]);
+    expect(await kernel.identity.candidates({ actor: staff })).toEqual([]);
+  });
+
+  test('a confirm that can\'t link is settled, never a rejection; links stay one to one per source', async () => {
+    const store = new PgIdentityStore();
+    const customer = (await kernel.project()).project.entities.Customer!;
+    const [zenith] = (await kernel.identity.candidates({ status: 'rejected' })).map((c) => c.recordId);
+    const base = { entity: 'Customer', plugin: 'claude/tiny-crm', source: 'contact', score: 0.8, reasons: ['name 0.80 similar'], external: {} };
+    const pendingFor = async (externalId: string, recordId: string) =>
+      (await kernel.identity.candidates({ status: 'pending' })).find((c) => c.externalId === externalId && c.recordId === recordId)!;
+
+    // c1 is linked to Acme already: confirming it for another record is settled, not rejected.
+    const lone = await new PgEntityStore().create(kernel.pool, customer, { name: 'Lone Traders' });
+    await store.propose(kernel.pool, { ...base, externalId: 'c1', recordId: lone });
+    const taken = await pendingFor('c1', lone);
+    expect(await kernel.identity.decide({ candidateId: taken.id, decision: 'confirm', by: manager })).toMatchObject({ applied: false });
+    expect((await store.candidate(kernel.pool, taken.id))!.status).toBe('settled');
+
+    // Acme has its contact link: a second contact for it is refused (and settled).
+    await store.propose(kernel.pool, { ...base, externalId: 'c9', recordId: acme });
+    const second = await pendingFor('c9', acme);
+    expect(await kernel.identity.decide({ candidateId: second.id, decision: 'confirm', by: manager }))
+      .toEqual({ applied: false, message: 'this Customer is already linked to c1 from contact' });
+    expect((await store.candidate(kernel.pool, second.id))!.status).toBe('settled');
+    expect(await kernel.identity.links('Customer', acme)).toHaveLength(1);
+
+    // Confirming one of two candidates for the same record settles the other.
+    await store.propose(kernel.pool, { ...base, externalId: 'c7', recordId: lone });
+    await store.propose(kernel.pool, { ...base, externalId: 'c8', recordId: lone });
+    const c7 = await pendingFor('c7', lone);
+    const c8 = await pendingFor('c8', lone);
+    expect(await kernel.identity.decide({ candidateId: c7.id, decision: 'confirm', by: manager })).toEqual({ applied: true });
+    expect((await store.candidate(kernel.pool, c8.id))!.status).toBe('settled');
+    // Only the person's own "different" is a rejection.
+    expect((await kernel.identity.candidates({ status: 'rejected' })).map((c) => c.recordId)).toEqual([zenith!]);
+  }, 60_000);
+
   test('a linked record shows its CRM values, read through the link; fields the CRM owns are read through', async () => {
     const rec = (await kernel.entityRecord('Customer', acme, manager))!;
     expect(rec.values).toMatchObject({ name: 'Acme Traders Pvt Ltd', gstin: '29AAACA1234A1Z5' });
@@ -304,5 +422,19 @@ describe.skipIf(!pgAvailable)('Phase 4 kernel', () => {
     // customer.yaml: `ownership: { email: crm }`, the plugin's namespace.
     expect(rec.readThrough).toEqual({ email: { plugin: 'claude/tiny-crm', value: 'accounts@acme-traders.example' } });
     expect(await kernel.entityRecord('Customer', 'cust_nope', manager)).toBeUndefined();
+  }, 60_000);
+
+  test('a linked record follows field access: no hidden field, and no unmapped extras unless every field shows', async () => {
+    // Staff can't see email: not on the row, not through the link.
+    const forStaff = (await kernel.entityRecord('Customer', acme, staff))!;
+    expect(forStaff.hidden).toEqual(expect.arrayContaining(['email', 'bank_account']));
+    expect(forStaff.links[0]!.values).toEqual({ name: 'Acme Traders Private Limited', gstin: '29AAACA1234A1Z5' });
+    expect(forStaff.links[0]!.extra).toBeUndefined();
+    expect(forStaff.readThrough).toEqual({});
+    // A manager sees email but not bank_account: the values, without extras.
+    expect((await kernel.entityRecord('Customer', acme, manager))!.links[0]!.extra).toBeUndefined();
+    // Someone who sees every field sees the extras too.
+    const both = await kernel.people.actorFor((await kernel.people.create({ name: 'fin', email: 'fin@acme.example', roles: ['manager', 'finance'] })).id);
+    expect((await kernel.entityRecord('Customer', acme, both))!.links[0]!.extra).toMatchObject({ 'crm.city': 'Bengaluru' });
   }, 60_000);
 });

@@ -424,6 +424,8 @@ describe.skipIf(!postgresAvailable())('Phase 4 exit: plugins and bindings', () =
     const pending = await api.call<MwIdentityCandidate[]>(manager, ch.IDENTITY_LIST, { status: 'pending' })
     expect(pending.map((c) => [c.externalId, c.recordId])).toEqual([['c-202', menonId]])
     expect(pending[0]!.recordTitle).toBe(MENON)
+    // The outside record's values are only for people who decide matches.
+    expect(await api.call<MwIdentityCandidate[]>(staff, ch.IDENTITY_LIST, { status: 'pending' })).toEqual([])
 
     expect(await api.call<any>(staff, ch.IDENTITY_DECIDE, { candidateId: item.candidateId, decision: 'confirm' })).toMatchObject({ applied: false })
     expect(await api.call<any>(manager, ch.IDENTITY_DECIDE, { candidateId: item.candidateId, decision: 'confirm' })).toEqual({ applied: true })
