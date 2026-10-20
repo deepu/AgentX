@@ -1,0 +1,27 @@
+name: waits-for-the-pack
+description: >
+  US-012's start-up pack misses the PI CV (nine of ten filed), so the case waits in "Collect the
+  start-up pack" until it is filed.
+records:
+  Sponsor:
+    - { id: spon_aster, name: Aster Bio }
+  Study:
+    - { id: stud_ast301, code: AST-301, sponsor: spon_aster }
+  Site:
+    - { id: site_us012, site_number: US-012, study: stud_ast301, status: activating }
+  ExpectedDocument:
+    - { id: expe_us012_protocol, site: site_us012, study: stud_ast301, artifact: Protocol signature page, phase: start_up, status: filed }
+    - { id: expe_us012_1572, site: site_us012, study: stud_ast301, artifact: FDA Form 1572, phase: start_up, status: filed }
+    - { id: expe_us012_gcp, site: site_us012, study: stud_ast301, artifact: GCP certificates, phase: start_up, status: filed }
+    - { id: expe_us012_fin, site: site_us012, study: stud_ast301, artifact: Financial disclosure, phase: start_up, status: filed }
+    - { id: expe_us012_lab_ranges, site: site_us012, study: stud_ast301, artifact: Lab normal ranges, phase: start_up, status: filed }
+    - { id: expe_us012_subi_cv, site: site_us012, study: stud_ast301, artifact: Sub-investigator CVs, phase: start_up, status: filed }
+    - { id: expe_us012_cta, site: site_us012, study: stud_ast301, artifact: Clinical trial agreement, phase: start_up, status: filed }
+    - { id: expe_us012_irb, site: site_us012, study: stud_ast301, artifact: IRB approval, phase: start_up, status: filed }
+    - { id: expe_us012_clia, site: site_us012, study: stud_ast301, artifact: Lab certification, phase: start_up, status: filed }
+    - { id: expe_us012_pi_cv, site: site_us012, study: stud_ast301, artifact: Investigator CV, phase: start_up, status: missing }
+case:
+  site: site_us012
+expect:
+  state: collect_pack
+  effects: { etmf.site.transition: 0 }

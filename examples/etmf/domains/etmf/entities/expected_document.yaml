@@ -1,0 +1,17 @@
+entity: ExpectedDocument
+title: "{artifact}"
+parent: site
+fields:
+  site:     { type: Ref<Site>, required: true }
+  study:    Ref<Study>
+  artifact: { type: Text, required: true, description: "The artifact the site must provide, like Investigator CV" }
+  phase:    Enum[start_up, conduct, close_out]
+relationships:
+  documents: { many: Document, via: fills }
+lifecycle:
+  initial: missing
+  states:
+    missing: { on: { filed: filed } }
+    filed:   {}
+  transitions:
+    filed: { by: [step] }

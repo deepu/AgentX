@@ -1,0 +1,14 @@
+case: tmf_document
+fields:
+  original:          { type: Document, required: true, description: The file exactly as it arrived }
+  sender:            Email
+  received_at:       DateTime
+  document:          { type: Ref<Document>, description: The Document record in the TMF }
+  expected_document: { type: Ref<ExpectedDocument>, description: The expected document it ticks off }
+  artifact:          { type: Text, description: "The artifact in the sponsor's TMF index, like Investigator CV" }
+  study:             Ref<Study>
+  site:              Ref<Site>
+  about:             { type: Ref<Person>, description: The person the document is about }
+  document_date:     Date
+  version:           Text
+  qc_comment:        { type: Text, description: "The specialist's note; goes to the site when it is sent back" }

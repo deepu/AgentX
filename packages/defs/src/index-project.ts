@@ -3,11 +3,17 @@
  * run snapshot (D36) and impact analysis ("what uses `client_intake.gstin`?", 08 §3).
  */
 import type { DefinitionRef, DefinitionStore, IndexedDefinition } from './contracts.ts';
+import { DEFAULT_DOMAIN } from './domain-types.ts';
+import { domainOf, keyOf, resolveEntity } from './domains.ts';
 import { sha256 } from './source.ts';
 import type { PolicyDoc, ProjectDefs, ValueType } from './types.ts';
 
-/** Policy rows: the domain layer is `domain`; a workflow's layer has the workflow's id. */
+/** Policy rows: the default domain's layer is `domain`; a workflow's layer has the workflow's id. */
 export const DOMAIN_POLICY_ID = 'domain';
+/** Phase 6: the workspace layer's policy row. */
+export const WORKSPACE_POLICY_ID = 'workspace';
+/** Phase 6: another domain's policy row, `domain:<id>` (the default domain keeps `domain`). */
+export const domainPolicyId = (domain: string): string => (domain === DEFAULT_DOMAIN ? DOMAIN_POLICY_ID : `domain:${domain}`);
 
 /** Stable JSON (sorted keys), so the same policy always hashes the same. */
 function stableJson(v: unknown): string {
@@ -21,11 +27,16 @@ function stableJson(v: unknown): string {
 
 const policyHash = (doc: PolicyDoc) => sha256(stableJson(doc));
 
-/** Entity types a value type points at: `Ref<Customer>`, or a named type that is an entity. */
-function entityTargets(type: ValueType, entities: ProjectDefs['entities']): string[] {
-  if (type.kind === 'list') return entityTargets(type.of, entities);
-  if (type.kind === 'ref') return [type.entity];
-  if (type.kind === 'named' && entities[type.name]) return [type.name];
+/**
+ * Entity types a value type points at, by entity key: `Ref<Customer>`, `Ref<Site>` in the etmf
+ * domain (`etmf.Site`), or a named type that is an entity. A name that resolves to nothing keeps
+ * the name as written.
+ */
+function entityTargets(type: ValueType, entities: ProjectDefs['entities'], domain: string): string[] {
+  if (type.kind === 'list') return entityTargets(type.of, entities, domain);
+  const key = (name: string) => { const def = resolveEntity(entities, domain, name); return def ? keyOf(def) : name; };
+  if (type.kind === 'ref') return [key(type.entity)];
+  if (type.kind === 'named' && resolveEntity(entities, domain, type.name)) return [key(type.name)];
   return [];
 }
 
@@ -39,18 +50,53 @@ export async function indexProject(project: ProjectDefs, store: DefinitionStore)
     const p = project.domainPolicy;
     addDef({ kind: 'policy', id: DOMAIN_POLICY_ID, hash: policyHash(p), path: p.file ?? 'domain/policy.yaml', body: p });
   }
+  // Phase 6: the workspace layer, and every other domain's layer as `domain:<id>`.
+  const workspacePolicy = project.workspace?.policy;
+  if (workspacePolicy) addDef({ kind: 'policy', id: WORKSPACE_POLICY_ID, hash: policyHash(workspacePolicy), path: workspacePolicy.file ?? 'workspace.yaml', body: workspacePolicy });
+  for (const domain of Object.values(project.domains ?? {})) {
+    if (domain.id !== DEFAULT_DOMAIN && domain.policy) {
+      addDef({ kind: 'policy', id: domainPolicyId(domain.id), hash: policyHash(domain.policy), path: domain.policy.file ?? `${domain.dir}/policy.yaml`, body: domain.policy });
+    }
+    // A domain with a domain.yaml, its free pages and its shared views (each `<domain>/<id>`).
+    const { pages, views, ...rest } = domain;
+    if (domain.file) {
+      const hash = sha256(stableJson(rest));
+      addDef({ kind: 'domain', id: domain.id, hash, path: domain.file, body: rest });
+      for (const key of domain.entities) addRef({ fromKind: 'domain', fromId: domain.id, fromHash: hash, toKind: 'entity_type', toId: key });
+    }
+    for (const [kind, defs] of [['page', pages], ['view', views]] as const) {
+      for (const def of Object.values(defs)) {
+        const id = `${domain.id}/${def.id}`;
+        const hash = sha256(stableJson(def));
+        addDef({ kind, id, hash, path: def.file ?? domain.dir, body: def });
+        const named = kind === 'view' ? [(def as typeof views[string]).entity] : pageEntities(def as typeof pages[string]);
+        for (const name of named) {
+          const target = resolveEntity(project.entities, domain.id, name);
+          addRef({ fromKind: kind, fromId: id, fromHash: hash, toKind: 'entity_type', toId: target ? keyOf(target) : name });
+        }
+      }
+    }
+  }
 
   for (const entity of Object.values(project.entities)) {
-    addDef({ kind: 'entity_type', id: entity.entity, hash: entity.hash, path: entity.file, body: entity });
-    const from = { fromKind: 'entity_type', fromId: entity.entity, fromHash: entity.hash } as const;
+    const id = keyOf(entity);
+    const domain = domainOf(entity);
+    addDef({ kind: 'entity_type', id, hash: entity.hash, path: entity.file, body: entity });
+    const from = { fromKind: 'entity_type', fromId: id, fromHash: entity.hash } as const;
     for (const field of Object.values(entity.fields)) {
-      for (const target of entityTargets(field.type, project.entities)) addRef({ ...from, toKind: 'entity_type', toId: target });
+      for (const target of entityTargets(field.type, project.entities, domain)) addRef({ ...from, toKind: 'entity_type', toId: target });
     }
-    for (const rel of Object.values(entity.relationships)) addRef({ ...from, toKind: 'entity_type', toId: rel.target });
+    for (const rel of Object.values(entity.relationships)) {
+      const target = resolveEntity(project.entities, domain, rel.target);
+      addRef({ ...from, toKind: 'entity_type', toId: target ? keyOf(target) : rel.target });
+    }
+    for (const key of Object.keys(entity.links ?? {})) addRef({ ...from, toKind: 'entity_type', toId: key });
   }
 
   for (const wf of Object.values(project.workflows)) {
     const fromWf = { fromKind: 'workflow', fromId: wf.id, fromHash: wf.hash } as const;
+    const domain = domainOf(wf);
+    const entityKey = (name: string) => { const def = resolveEntity(project.entities, domain, name); return def ? keyOf(def) : name; };
     addDef({ kind: 'workflow', id: wf.id, version: wf.version, hash: wf.hash, path: wf.dir, body: wf });
 
     const ct = wf.caseType;
@@ -59,7 +105,7 @@ export async function indexProject(project: ProjectDefs, store: DefinitionStore)
       addRef({ ...fromWf, toKind: 'case_type', toId: ct.id });
       const fromCase = { fromKind: 'case_type', fromId: ct.id, fromHash: ct.hash } as const;
       for (const field of [...Object.values(ct.fields), ...Object.values(ct.types).flatMap((r) => Object.values(r.fields))]) {
-        for (const target of entityTargets(field.type, project.entities)) addRef({ ...fromCase, toKind: 'entity_type', toId: target });
+        for (const target of entityTargets(field.type, project.entities, domain)) addRef({ ...fromCase, toKind: 'entity_type', toId: target });
       }
     }
 
@@ -67,8 +113,16 @@ export async function indexProject(project: ProjectDefs, store: DefinitionStore)
       addDef({ kind: 'policy', id: wf.id, version: wf.version, hash: policyHash(wf.policy), path: wf.policy.file ?? `${wf.dir}/policy.yaml`, body: wf.policy });
       addRef({ ...fromWf, toKind: 'policy', toId: wf.id });
     }
-    // Every workflow runs under the domain layer, so a domain policy change affects all of them.
-    if (project.domainPolicy) addRef({ ...fromWf, toKind: 'policy', toId: DOMAIN_POLICY_ID });
+    // Every workflow runs under its domain's layer (and the workspace's), so a change there affects all of them.
+    const domainPolicy = domain === DEFAULT_DOMAIN ? project.domainPolicy : project.domains?.[domain]?.policy;
+    if (domainPolicy) addRef({ ...fromWf, toKind: 'policy', toId: domainPolicyId(domain) });
+    if (workspacePolicy) addRef({ ...fromWf, toKind: 'policy', toId: WORKSPACE_POLICY_ID });
+    // Phase 6: what starts it, and the workflows its block states hand work to.
+    for (const t of wf.startsOn ?? []) if ('entity' in t) addRef({ ...fromWf, toKind: 'entity_type', toId: entityKey(t.entity) });
+    for (const state of Object.values(wf.states)) {
+      const b = state.block;
+      if (b && b.kind !== 'wait_until') addRef({ ...fromWf, toKind: 'workflow', toId: b.workflow });
+    }
 
     for (const [state, step] of Object.entries(wf.steps)) {
       const id = `${wf.id}/${state}`;
@@ -89,4 +143,16 @@ export async function indexProject(project: ProjectDefs, store: DefinitionStore)
 
   await store.upsert([...defs.values()], [...refs.values()]);
   return { definitions: defs.size, refs: refs.size };
+}
+
+/** Entity names a dashboard reads (as written). */
+function pageEntities(page: import('./domain-types.ts').FreePageDef): string[] {
+  const out = new Set<string>();
+  if (page.under) out.add(page.under.entity);
+  for (const b of page.blocks) {
+    if (b.kind === 'kpi') { const v = b.value; out.add('count' in v ? v.count : 'percent' in v ? v.percent : 'sum' in v ? v.sum : v.avg); }
+    else if (b.kind === 'heatmap') out.add(b.rows.entity);
+    else if ((b.kind === 'table' || b.kind === 'list') && typeof b.view !== 'string') out.add(b.view.entity);
+  }
+  return [...out];
 }

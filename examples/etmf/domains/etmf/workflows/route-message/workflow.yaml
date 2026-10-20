@@ -1,0 +1,33 @@
+workflow: route-message
+version: 1
+title: Sort an incoming message
+owner: study_manager
+start: triage
+starts_on:
+  - message: { address: etmf }           # anything emailed to the eTMF address
+    with:
+      sender:      message.from
+      subject:     message.subject
+      body:        message.text
+      documents:   message.attachments
+      received_at: message.receivedAt
+steps:
+  triage:                                # the agent says what the message is
+    on:
+      documents:    fan_out
+      question:     needs_person
+      other:        needs_person
+      needs_person: needs_person
+      failed:       needs_person
+  fan_out:                               # one "File a TMF document" case per attachment
+    for_each:
+      items: case.documents
+      as: document
+      start:
+        workflow: file-document
+        with: { original: item, sender: case.sender, received_at: case.received_at }
+    on: { started: end }
+  needs_person:                          # a question, or something that isn't for the TMF
+    assignee: tmf_specialist
+    on: { handled: end }
+    wait: { remind: 1d, timeout: 7d → end }
