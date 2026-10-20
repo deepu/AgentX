@@ -275,7 +275,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     return { runId, caseId };
   }
   const entityDef = (name: string): EntityTypeDef | undefined =>
-    entities[name] ?? Object.values(entities).find((e) => entityTableName(e.entity) === name || e.entity.toLowerCase() === name.toLowerCase());
+    entities[name] ?? Object.values(entities).find((e) => entityTableName(e) === name || entityTableName(e) === entityTableName(name) || e.entity.toLowerCase() === name.toLowerCase());
 
   // Phase 6 services (24 §12): placeholders until the pieces land; each method says it isn't built.
   const notBuilt = (what: string) => () => { throw new Error(`Phase 6: ${what} is not built yet`); };
