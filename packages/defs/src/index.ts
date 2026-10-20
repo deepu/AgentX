@@ -19,6 +19,11 @@ export { parseValueType, formatValueType, sameValueType, parseDuration, parseCou
 export { parseWorkflowFile, parseExampleFile, type WorkflowShape } from './parse-workflow.ts';
 export { parseStepFile, splitFrontMatter, argSource, DEFAULT_MIN_CONFIDENCE } from './parse-step.ts';
 export { parseCaseFile, parseEntityFile, parseRolesFile } from './parse-types.ts';
+// Phase 6: domains and records (docs/memwise/24-phase-6-interfaces.md).
+export { parseWorkspaceFile, parseDomainFile, parsePageFile, parseViewFile, defaultDomainName } from './parse-domain.ts';
+export { defaultPageLayout, listTransition, PAGE_BLOCK_KINDS, LAYOUT_AREAS } from './parse-records.ts';
+export { parseTriggers, handoffArg } from './parse-handoffs.ts';
+export { entityToolNames, entityTools, ENTITY_TOOL_VERBS, ENTITY_TOOL_EFFECTS, type EntityToolVerb } from './entity-tools.ts';
 export { parsePolicyFile, policyToRaw, formatDuration } from './parse-policy.ts';
 export { sha256, type ParseResult } from './source.ts';
 export { loadProject, loadWorkflow } from './load.ts';

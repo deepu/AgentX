@@ -63,7 +63,7 @@
                   },
                   {
                     "type": "string",
-                    "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w)\\s*)+$|^\\s*\\d+\\s*$"
+                    "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w|y)\\s*)+$|^\\s*\\d+\\s*$"
                   }
                 ],
                 "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."
@@ -78,11 +78,343 @@
           "assignee": {
             "description": "Role whose attention this state needs (for states without a step file).",
             "type": "string"
+          },
+          "start": {
+            "description": "Phase 6: start a case of another workflow and move on (event started).",
+            "type": "object",
+            "properties": {
+              "workflow": {
+                "type": "string"
+              },
+              "with": {
+                "description": "Start fields of the other workflow ← case.<path>, item, item.<path>, record, or a literal.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "returns": {
+                "description": "call: this case's field ← the child case's field, when the child ends.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "workflow"
+            ],
+            "additionalProperties": false
+          },
+          "call": {
+            "description": "Phase 6: run another workflow and wait; its outcome is this state's event.",
+            "type": "object",
+            "properties": {
+              "workflow": {
+                "type": "string"
+              },
+              "with": {
+                "description": "Start fields of the other workflow ← case.<path>, item, item.<path>, record, or a literal.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "returns": {
+                "description": "call: this case's field ← the child case's field, when the child ends.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "workflow"
+            ],
+            "additionalProperties": false
+          },
+          "for_each": {
+            "description": "Phase 6: start or call once per item of a List case field (events done, failed, started).",
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "string",
+                "pattern": "^case\\.[A-Za-z_][\\w.]*$"
+              },
+              "as": {
+                "type": "string"
+              },
+              "start": {
+                "type": "object",
+                "properties": {
+                  "workflow": {
+                    "type": "string"
+                  },
+                  "with": {
+                    "description": "Start fields of the other workflow ← case.<path>, item, item.<path>, record, or a literal.",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "returns": {
+                    "description": "call: this case's field ← the child case's field, when the child ends.",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "workflow"
+                ],
+                "additionalProperties": false
+              },
+              "call": {
+                "type": "object",
+                "properties": {
+                  "workflow": {
+                    "type": "string"
+                  },
+                  "with": {
+                    "description": "Start fields of the other workflow ← case.<path>, item, item.<path>, record, or a literal.",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "returns": {
+                    "description": "call: this case's field ← the child case's field, when the child ends.",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "workflow"
+                ],
+                "additionalProperties": false
+              },
+              "join": {
+                "description": "call: all (default), any, or a number.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "any"
+                    ]
+                  },
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                ]
+              }
+            },
+            "required": [
+              "items"
+            ],
+            "additionalProperties": false
+          },
+          "wait_until": {
+            "description": "Phase 6: wait until a condition on a record holds (event met).",
+            "type": "object",
+            "properties": {
+              "record": {
+                "type": "string",
+                "pattern": "^case\\.[A-Za-z_]\\w*$"
+              },
+              "condition": {
+                "type": "string",
+                "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+              }
+            },
+            "required": [
+              "record",
+              "condition"
+            ],
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
       },
       "description": "The states, by name. A state with a steps/<name>.md file runs that step."
+    },
+    "starts_on": {
+      "description": "Phase 6: what starts the workflow.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "entered": {
+            "description": "A record enters a lifecycle state.",
+            "type": "string",
+            "pattern": "^[A-Za-z_]\\w*(\\.[A-Za-z_]\\w*)?\\.[A-Za-z_]\\w*$"
+          },
+          "created": {
+            "description": "A record of this entity is created.",
+            "type": "string"
+          },
+          "changed": {
+            "description": "A record changes (optionally only these fields).",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "entity": {
+                    "type": "string"
+                  },
+                  "fields": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "entity"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "before": {
+            "description": "A date on a record, this long before it.",
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "pattern": "^[A-Za-z_]\\w*(\\.[A-Za-z_]\\w*)?\\.[A-Za-z_]\\w*$"
+              },
+              "by": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w|y)\\s*)+$|^\\s*\\d+\\s*$"
+                  }
+                ],
+                "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."
+              }
+            },
+            "required": [
+              "field",
+              "by"
+            ],
+            "additionalProperties": false
+          },
+          "after": {
+            "description": "A date on a record, this long after it.",
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "pattern": "^[A-Za-z_]\\w*(\\.[A-Za-z_]\\w*)?\\.[A-Za-z_]\\w*$"
+              },
+              "by": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w|y)\\s*)+$|^\\s*\\d+\\s*$"
+                  }
+                ],
+                "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."
+              }
+            },
+            "required": [
+              "field",
+              "by"
+            ],
+            "additionalProperties": false
+          },
+          "every": {
+            "description": "A schedule: 2w, 1d.",
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "string",
+                "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w|y)\\s*)+$|^\\s*\\d+\\s*$"
+              }
+            ]
+          },
+          "at": {
+            "type": "string",
+            "pattern": "^\\d{1,2}:\\d{2}$"
+          },
+          "on": {
+            "description": "every: a weekday (monday) or a day of the month (1).",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            ]
+          },
+          "message": {
+            "description": "An incoming message to the domain's intake address.",
+            "type": "object",
+            "properties": {
+              "address": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "address"
+            ],
+            "additionalProperties": false
+          },
+          "with": {
+            "description": "Case field ← record, message.<field>, or a literal.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "as": {
+            "description": "Role the case runs as (default the workflow's owner).",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "description": "What starts the workflow: entered, created, changed, before, after, every or message."
+      }
     }
   },
   "required": [
