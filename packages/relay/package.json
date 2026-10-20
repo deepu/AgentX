@@ -10,7 +10,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
-    "./protocol": "./src/protocol.ts"
+    "./protocol": "./src/protocol.ts",
+    "./hub": "./src/hub.ts",
+    "./identity-file": "./src/identity-file.ts",
+    "./bun": "./src/bun/serve.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -19,6 +22,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "miniflare": "4.20260730.0",
     "typescript": "^5.8.2",
     "@types/bun": "^1.4.2"
   }

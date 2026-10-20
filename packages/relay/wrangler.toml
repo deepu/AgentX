@@ -1,0 +1,33 @@
+# The MemWise relay on Cloudflare (see README.md). Deploy with `npx wrangler deploy` from
+# packages/relay. Change the names below to your own domain and bucket first.
+name = "memwise-relay"
+main = "src/cloudflare/worker.ts"
+compatibility_date = "2026-07-01"
+
+# The relay host and, for subdomain mode, every install under it.
+routes = [
+  { pattern = "relay.memwise.ai/*", zone_name = "memwise.ai" },
+  { pattern = "*.relay.memwise.ai/*", zone_name = "memwise.ai" },
+]
+
+# Installs are reached at https://<installId>.relay.memwise.ai (subdomain mode). Leave
+# BASE_DOMAIN empty to use path mode instead (https://relay.memwise.ai/x/<installId>/...).
+[vars]
+PUBLIC_URL = "https://relay.memwise.ai"
+BASE_DOMAIN = "relay.memwise.ai"
+# Extra https origins an OAuth returnTo may name (a web UI's own address), comma-separated.
+OAUTH_RETURN_ORIGINS = ""
+
+# One Durable Object per install holds the core's WebSocket (hibernating when idle).
+[[durable_objects.bindings]]
+name = "INSTALL_TUNNEL"
+class_name = "InstallTunnel"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["InstallTunnel"]
+
+# Shared pages (/p/). Remove this block to turn page sharing off.
+[[r2_buckets]]
+binding = "PAGES"
+bucket_name = "memwise-relay-pages"
