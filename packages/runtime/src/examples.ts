@@ -178,7 +178,7 @@ function reachesModelStep(workflow: WorkflowDef, example: ExampleCase): boolean 
     const step = stepIn(workflow, name);
     if (step?.performer === 'agent' && !isConversationStep(step)) return true;
     // A wait without an answer is where the run stops (timeouts don't fire within an example).
-    if (!runsItself(workflow, name) && !example.submit?.[name]) continue;
+    if (!runsItself(workflow, name) && !workflow.states[name]?.block && !example.submit?.[name]) continue;
     queue.push(...Object.values(workflow.states[name]?.on ?? {}));
   }
   return false;
@@ -243,6 +243,16 @@ async function settle(kernel: Kernel, runId: string, workflow: WorkflowDef, exam
       }
     }
     const run = (await kernel.getRun(runId))!;
+    // A block state (Phase 6: start, call, for_each, wait_until) moves on through the flow's
+    // dispatcher: let it catch up; still there afterwards, the run waits (on data or on other cases).
+    if (run.status === 'active' && workflow.states[run.state]?.block) {
+      await kernel.triggers.settle(Math.max(1000, Math.min(10_000, deadline - Date.now())));
+      // The block's event (met, started, a child's outcome) reaches the run just after the flow settles.
+      const after = await kernel.waitForRun(runId, { until: (x) => x.seq !== run.seq || x.status !== run.status, timeoutMs: 3000 })
+        .catch(async () => (await kernel.getRun(runId))!);
+      if (after.seq !== run.seq || after.status !== run.status) continue;
+      return run;
+    }
     // A step waiting on an approval the example doesn't answer waits for a person: the run settles there.
     if (unanswered && run.status === 'active' && runsItself(workflow, run.state)) {
       const waiting = (await kernel.pendingApprovals()).some((a) => a.stepRunId === `${runId}/${run.enteredSeq}/${run.state}`);

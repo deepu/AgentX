@@ -29,8 +29,12 @@ export function startFields(workflow: WorkflowDef): string[] {
   // Phase 6 (24 §6, §7): a single Ref no step writes is the record the case is about, given by
   // whoever starts it from that record (the record page's `start`, a trigger, an example case).
   const about = (name: string, t: ValueType) => t.kind === 'ref' && !machineWritten.has(name) && !personWritten.has(name);
+  // A field a step reads that no step writes can only come from the start (a hand-off's `with:`,
+  // a trigger, the file a router passes on), so it is a start field too.
+  const read = new Set(Object.values(workflow.steps).flatMap((s) => s.reads.map((r) => r.replace(/^case\./, '').split('.')[0]!)));
+  const input = (name: string) => read.has(name) && !machineWritten.has(name) && !personWritten.has(name);
   return Object.entries(workflow.caseType.fields)
-    .filter(([name, f]) => ((personWritten.size ? personWritten.has(name) : !machineWritten.has(name)) && !isRef(f.type)) || about(name, f.type))
+    .filter(([name, f]) => ((personWritten.size ? personWritten.has(name) : !machineWritten.has(name)) && !isRef(f.type)) || about(name, f.type) || input(name))
     .map(([name]) => name);
 }
 
