@@ -63,15 +63,15 @@ describe('bridge shim', () => {
 
   test('answers ready with init carrying the snapshot and no grants', () => {
     const { received, postToHost, flush } = runShim(buildClaudeArtifactHtml('<html><head></head></html>', PAGE, snapshot));
-    postToHost({ protocol: 'memwise-pages/v1', type: 'ready' });
+    postToHost({ protocol: 'craft-pages/v1', type: 'ready' });
     flush();
     expect(received).toEqual([{ type: 'init', payload: { page: { slug: 'weekly-sales', kind: 'live' }, nonce: 'claude-artifact', snapshot, grants: [] } }]);
   });
 
   test('declines source actions and grant requests (view-only copy)', () => {
     const { received, postToHost, flush } = runShim(buildClaudeArtifactHtml('<html><head></head></html>', PAGE, snapshot));
-    postToHost({ protocol: 'memwise-pages/v1', type: 'action', requestId: 'r1', nonce: 'claude-artifact' });
-    postToHost({ protocol: 'memwise-pages/v1', type: 'grant-request', requests: [] });
+    postToHost({ protocol: 'craft-pages/v1', type: 'action', requestId: 'r1', nonce: 'claude-artifact' });
+    postToHost({ protocol: 'craft-pages/v1', type: 'grant-request', requests: [] });
     postToHost({ protocol: 'other', type: 'ready' });
     flush();
     expect(received.map(r => r.type)).toEqual(['action-result', 'grants']);

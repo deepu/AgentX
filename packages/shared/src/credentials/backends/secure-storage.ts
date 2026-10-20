@@ -44,8 +44,8 @@ import { CONFIG_DIR, DEFAULT_CONFIG_DIR_NAME } from '../../config/paths.ts';
 // File location
 const CREDENTIALS_FILE = join(CONFIG_DIR, 'credentials.enc');
 
-// One-time migration: v0.13.5 always stored credentials in ~/.memwise even
-// when MEMWISE_CONFIG_DIR was set. Copy on first start so credentials survive.
+// One-time migration: v0.13.5 always stored credentials in the default config dir
+// even when the config dir env var was set. Copy on first start so credentials survive.
 const LEGACY_CREDENTIALS_FILE = join(homedir(), DEFAULT_CONFIG_DIR_NAME, 'credentials.enc');
 function migrateCredentialsIfNeeded(): void {
   if (CREDENTIALS_FILE === LEGACY_CREDENTIALS_FILE) return;
@@ -340,7 +340,7 @@ export class SecureStorageBackend implements CredentialBackend {
     // This is far more stable than hostname which can change with network/DHCP
     const stableMachineId = createHash('sha256')
       .update(getStableMachineId())
-      .update('memwise-v2') // Bumped version for new key derivation
+      .update('craft-agent-v2') // Key material, not branding: changing it makes existing credentials.enc undecryptable
       .digest();
 
     // Derive key using PBKDF2
@@ -358,7 +358,7 @@ export class SecureStorageBackend implements CredentialBackend {
       .update(hostname())
       .update(userInfo().username)
       .update(homedir())
-      .update('memwise-v1')
+      .update('craft-agent-v1') // Key material, not branding (see above)
       .digest();
 
     return pbkdf2Sync(legacyMachineId, salt, PBKDF2_ITERATIONS, KEY_SIZE, 'sha256');

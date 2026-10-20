@@ -14,7 +14,7 @@
  *      and the server-side PageActionBroker re-validates the lease, nonce,
  *      replay cache, and grant independently.
  *
- * Message flow (all envelopes carry `protocol: 'memwise-pages/v1'`):
+ * Message flow (all envelopes carry `protocol: 'craft-pages/v1'`):
  *
  *   host → page
  *     init          { page: {slug, kind}, nonce, snapshot, grants }  on load / 'ready'
@@ -50,7 +50,9 @@ import type {
 } from '@memwise/shared/pages/types'
 import { hasPathTraversal } from '@memwise/shared/pages/types'
 
-export const PAGE_BRIDGE_PROTOCOL = 'memwise-pages/v1'
+// Wire protocol kept from Craft Agents on purpose: pages already on disk send and
+// check this exact string, so renaming it would break every existing page.
+export const PAGE_BRIDGE_PROTOCOL = 'craft-pages/v1'
 
 // Bounded inputs: anything larger is dropped before further processing.
 const MAX_MESSAGE_JSON_CHARS = 256 * 1024

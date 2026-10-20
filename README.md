@@ -49,6 +49,13 @@ bun install
 bun run electron:start
 ```
 
+### Coming from Craft Agents
+
+- On first launch MemWise moves `~/.craft-agent` to `~/.memwise` and leaves a link at the old path. Workspaces, sessions and stored credentials carry over, and so do window preferences such as theme and language.
+- Environment variables are renamed from `CRAFT_*` to `MEMWISE_*`. That includes the ones passed to script automations, so scripts that read `CRAFT_*` need updating.
+- The `craftagents://` link scheme is now `memwise://`.
+- Auto-update, page sharing and session sharing are off by default, because they used Craft's hosted services. See `MEMWISE_UPDATE_URL`, `MEMWISE_FEATURE_PAGES_SHARING` and `MEMWISE_FEATURE_SESSION_SHARING`.
+
 ## Features
 
 - **Multi-Session Inbox**: Desktop app with session management, status workflow, and flagging
@@ -191,7 +198,7 @@ docker run -d \
   -p 9100:9100 \
   -e MEMWISE_SERVER_TOKEN=<token> \
   -e MEMWISE_RPC_HOST=0.0.0.0 \
-  -v craft-data:/root/.memwise \
+  -v memwise-data:/root/.memwise \
   memwise-server
 ```
 
@@ -205,7 +212,7 @@ docker run -d \
   -e MEMWISE_RPC_TLS_CERT=/certs/cert.pem \
   -e MEMWISE_RPC_TLS_KEY=/certs/key.pem \
   -v ./certs:/certs:ro \
-  -v craft-data:/root/.memwise \
+  -v memwise-data:/root/.memwise \
   memwise-server
 ```
 

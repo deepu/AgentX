@@ -12,6 +12,7 @@ import { run, timed, sleep, dirStats, mb, median, printTable, runtime, isWin } f
 const PORT = 54323;        // bundled Postgres (current)
 const PORT_OLD = 54326;    // previous major, side by side during the major-upgrade copy
 const PORT_SOCKET = 54327; // pglite-socket
+const SECTION_TIMEOUT_MS = 240_000;
 const MEMWISE_HOME = process.env.MEMWISE_HOME || path.join(os.homedir(), '.memwise');
 const ROOT = path.join(MEMWISE_HOME, 'spike-s3');
 const RESULTS_DIR = process.env.RESULTS_DIR || path.join(SPIKE_DIR, 'results');
@@ -28,12 +29,15 @@ let failed = false;
 const section = async (name, fn) => {
   console.error(`\n== ${name}`);
   const before = started.length;
-  try { R[name] = await fn(); }
+  // A hung step shows up as a named failure instead of a silent CI timeout.
+  let timer;
+  const watchdog = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${name} timed out after ${SECTION_TIMEOUT_MS / 1000} s`)), SECTION_TIMEOUT_MS); });
+  try { R[name] = await Promise.race([fn(), watchdog]); }
   catch (e) {
     failed = true; R[name] = { error: e.message }; console.error(`!! ${name} failed: ${e.stack}`);
     // Stop what this section started, so the next section can bind its port.
     for (const c of started.slice(before)) if (fs.existsSync(c.dataDir) && (await c.status().catch(() => false))) await c.stop().catch(() => {});
-  }
+  } finally { clearTimeout(timer); }
 };
 const cluster = (flavour, dir, port) => { const c = new LocalPostgres({ bin: binaries(flavour), dir: path.join(ROOT, dir), port }); started.push(c); return c; };
 const fingerprint = async (c) => (await c.query(FINGERPRINT_SQL)).rows[0];
@@ -148,7 +152,7 @@ await section('majorUpgrade', async () => {
 });
 
 await section('pglite', async () => {
-  const r = await run(process.execPath, [path.join(SPIKE_DIR, 'pglite-probe.mjs'), path.join(ROOT, 'pglite'), String(PORT_SOCKET)], { timeoutMs: 300_000 });
+  const r = await run(process.execPath, [path.join(SPIKE_DIR, 'pglite-probe.mjs'), path.join(ROOT, 'pglite'), String(PORT_SOCKET)], { timeoutMs: 230_000 });
   if (r.code !== 0) throw new Error(`probe exited ${r.code}: ${r.stderr.slice(-800)}`);
   return JSON.parse(r.stdout.trim().split('\n').pop());
 });

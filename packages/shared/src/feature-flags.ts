@@ -77,6 +77,20 @@ export function isPagesSharingEnabled(): boolean {
   return false;
 }
 
+/**
+ * Runtime-evaluated check for session sharing (upload to the web viewer).
+ *
+ * Defaults to DISABLED in MemWise: the inherited viewer is Craft's hosted
+ * service, so sharing would upload a whole session transcript to a third
+ * party. Gates share/update only; revoking an existing share stays available.
+ * Opt in with MEMWISE_FEATURE_SESSION_SHARING=1.
+ */
+export function isSessionSharingEnabled(): boolean {
+  const override = parseBooleanEnv(getEnv('MEMWISE_FEATURE_SESSION_SHARING'));
+  if (override !== undefined) return override;
+  return false;
+}
+
 export const FEATURE_FLAGS = {
   /** Enable Opus 4.7 fast mode (speed:"fast" + beta header). 6x pricing. */
   fastMode: false,
@@ -113,5 +127,14 @@ export const FEATURE_FLAGS = {
    */
   get pagesSharing(): boolean {
     return isPagesSharingEnabled();
+  },
+  /**
+   * Enable session sharing (upload to the web viewer).
+   *
+   * Defaults to DISABLED in MemWise (the inherited viewer is Craft's). Opt in
+   * with MEMWISE_FEATURE_SESSION_SHARING=1.
+   */
+  get sessionSharing(): boolean {
+    return isSessionSharingEnabled();
   },
 } as const;

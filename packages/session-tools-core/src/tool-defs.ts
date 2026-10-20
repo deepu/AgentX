@@ -654,7 +654,7 @@ The response includes absolute paths (contentPath, data.snapshotPath) — Read t
 
   create_page: `Create a new Page: a persistent, self-contained HTML document stored at pages/{slug}/ in the workspace, shown as a tile in the app's Pages section, and rendered in a sandboxed iframe.
 
-IMPORTANT — read ~/.memwise/docs/pages.md BEFORE authoring page HTML. Key rules: provide a FULL standalone HTML document with ALL CSS/JS inline (no external requests — shared copies get network egress blocked); to display data from the page's data store, listen for the 'memwise-pages/v1' bridge messages (init/data) documented there; kind 'live' pages receive replacement data snapshots automatically while open.
+IMPORTANT — read ~/.memwise/docs/pages.md BEFORE authoring page HTML. Key rules: provide a FULL standalone HTML document with ALL CSS/JS inline (no external requests — shared copies get network egress blocked); to display data from the page's data store, listen for the 'craft-pages/v1' bridge messages (init/data) documented there; kind 'live' pages receive replacement data snapshots automatically while open.
 
 Use Pages (instead of chat previews) when the user wants something persistent: a dashboard that an automation refreshes, a report they'll revisit or share, a tracker fed by write_page_data. Returns the created page details including the slug.`,
 

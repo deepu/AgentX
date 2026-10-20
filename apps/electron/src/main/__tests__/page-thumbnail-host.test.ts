@@ -38,10 +38,10 @@ describe('page-thumbnail-host', () => {
     expect(html).toContain('&lt;h1&gt;Hello &quot;world&quot;')
   })
 
-  it('delivers the data snapshot via the memwise-pages/v1 init message', () => {
+  it('delivers the data snapshot via the craft-pages/v1 init message', () => {
     const snapshot = { version: 1 as const, generatedAt: 5, kv: { total: 42 }, series: {} }
     const html = buildThumbnailHostHtml({ content: '<p>x</p>', slug: 's', kind: 'live', snapshot })
-    expect(html).toContain('memwise-pages/v1')
+    expect(html).toContain('craft-pages/v1')
     expect(html).toContain("type: 'init'")
     expect(html).toContain('"total":42')
   })

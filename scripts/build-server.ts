@@ -633,7 +633,7 @@ if [ "\${1:-}" = "--systemd" ]; then
     exit 1
   fi
 
-  SERVICE_USER="\${MEMWISE_USER:-\$(logname 2>/dev/null || echo craft)}"
+  SERVICE_USER="\${MEMWISE_USER:-\$(logname 2>/dev/null || echo memwise)}"
   SERVICE_FILE="/etc/systemd/system/memwise-server.service"
 
   cat > "$SERVICE_FILE" <<UNIT
@@ -735,13 +735,13 @@ services:
       # - MEMWISE_RPC_TLS_CERT=/certs/cert.pem
       # - MEMWISE_RPC_TLS_KEY=/certs/key.pem
     volumes:
-      - craft-data:/root/.memwise
+      - memwise-data:/root/.memwise
       # TLS — mount cert directory
       # - ./certs:/certs:ro
     restart: unless-stopped
 
 volumes:
-  craft-data:
+  memwise-data:
 `;
   writeFileSync(join(outputDir, 'docker-compose.yml'), dockerCompose);
 }

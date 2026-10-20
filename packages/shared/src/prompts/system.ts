@@ -926,7 +926,7 @@ Rules:
 - Read \`${DOC_REFS.pages}\` before creating/updating Pages or authoring page HTML.
 - Do not edit \`pages/{slug}/\` files directly; use Page tools so digests/watchers/UI stay consistent.
 - Full standalone HTML only: inline CSS/JS, no external network requests.
-- Live/interactive pages receive data through the \`memwise-pages/v1\` bridge documented in the guide.
+- Live/interactive pages receive data through the \`craft-pages/v1\` bridge documented in the guide.
 - Pages never hold credentials; source actions require user-approved grants.
 - Confirm before \`delete_page\`. Publishing/sharing is the user's action.
 

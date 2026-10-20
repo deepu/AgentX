@@ -73,13 +73,18 @@ export class LocalPostgres {
   async waitReady(timeoutMs = 60_000) {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const c = this.client();
-      try { await c.connect(); await c.query('SELECT 1'); return; }
+      const c = this.client({ connectionTimeoutMillis: 2000 });
+      let connected = false;
+      try { await c.connect(); connected = true; await c.query('SELECT 1'); return; }
       catch (e) {
         // ECONNREFUSED: not listening yet. 57P03: still starting up or in recovery.
-        const transient = e.code === 'ECONNREFUSED' || e.code === 'ECONNRESET' || e.code === '57P03';
+        const transient = e.code === 'ECONNREFUSED' || e.code === 'ECONNRESET' || e.code === '57P03' || /timeout/i.test(e.message);
         if (!transient || Date.now() > deadline) throw new Error(`Postgres not ready: ${e.message}; log tail:\n${this.logTail()}`);
-      } finally { await c.end().catch(() => {}); }
+      } finally {
+        // Don't wait on end() for a socket that never connected: it can wait
+        // for a close event that has already happened.
+        if (connected) await c.end().catch(() => {}); else c.end().catch(() => {});
+      }
       await sleep(100);
     }
   }
@@ -111,8 +116,8 @@ export class LocalPostgres {
     for (let i = 0; i < 50 && (await processTree(pid)).length; i++) await sleep(100);
   }
 
-  client(database = 'postgres') {
-    return new pg.Client({ host: '127.0.0.1', port: this.port, user: this.user, password: this.password, database });
+  client({ database = 'postgres', connectionTimeoutMillis = 10_000 } = {}) {
+    return new pg.Client({ host: '127.0.0.1', port: this.port, user: this.user, password: this.password, database, connectionTimeoutMillis });
   }
 
   async query(sql, params) {

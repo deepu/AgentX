@@ -5581,6 +5581,10 @@ export class SessionManager implements ISessionManager {
    * Uploads session data and returns shareable URL
    */
   async shareToViewer(sessionId: string): Promise<import('@memwise/shared/protocol').ShareResult> {
+    const { isSessionSharingEnabled } = await import('@memwise/shared/feature-flags')
+    if (!isSessionSharingEnabled()) {
+      return { success: false, error: 'Session sharing is turned off. Set MEMWISE_FEATURE_SESSION_SHARING=1 to enable it.' }
+    }
     const managed = this.sessions.get(sessionId)
     if (!managed) {
       return { success: false, error: 'Session not found' }
@@ -5642,6 +5646,10 @@ export class SessionManager implements ISessionManager {
    * Re-uploads session data to the same URL
    */
   async updateShare(sessionId: string): Promise<import('@memwise/shared/protocol').ShareResult> {
+    const { isSessionSharingEnabled } = await import('@memwise/shared/feature-flags')
+    if (!isSessionSharingEnabled()) {
+      return { success: false, error: 'Session sharing is turned off. Set MEMWISE_FEATURE_SESSION_SHARING=1 to enable it.' }
+    }
     const managed = this.sessions.get(sessionId)
     if (!managed) {
       return { success: false, error: 'Session not found' }

@@ -88,6 +88,7 @@ import { getCredentialManager } from '@memwise/shared/credentials'
 import { initModelRefreshService, getModelRefreshService, setFetcherPlatform } from '@memwise/server-core/model-fetchers'
 import { setSearchPlatform, setImageProcessor } from '@memwise/server-core/services'
 import { createApplicationMenu } from './menu'
+import { migrateLegacyUserData } from './user-data-migration'
 import { WindowManager } from './window-manager'
 import { loadWindowState, saveWindowState } from './window-state'
 import { getWorkspaces, getWorkspaceByNameOrId, loadStoredConfig, addWorkspace, saveConfig } from '@memwise/shared/config'
@@ -219,6 +220,9 @@ let pendingDeepLink: string | null = null
 // Set app name early (before app.whenReady) to ensure correct macOS menu bar title
 // Supports multi-instance dev: MEMWISE_APP_NAME env var (e.g., "MemWise [1]")
 app.setName(process.env.MEMWISE_APP_NAME || 'MemWise')
+
+// Carry renderer preferences over from Craft Agents (userData moved with the name)
+migrateLegacyUserData()
 
 // Register as default protocol client for memwise:// URLs
 // This must be done before app.whenReady() on some platforms

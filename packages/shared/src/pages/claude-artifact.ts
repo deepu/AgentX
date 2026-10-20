@@ -19,7 +19,7 @@
  *
  * The published copy is the page's index.html with a bridge shim injected as its
  * first script. On claude.ai there is no MemWise host to answer the
- * `memwise-pages/v1` bridge, so the shim plays that role: it answers `ready` with
+ * `craft-pages/v1` bridge, so the shim plays that role: it answers `ready` with
  * the page's `init` (the current data snapshot, no grants), declines source
  * actions like MemWise's public share does, and opens links in a new tab.
  *
@@ -85,7 +85,7 @@ export function buildClaudeArtifactHtml(
 ): string {
   const shim = `<script data-memwise-artifact-bridge>
 (function () {
-  var P = 'memwise-pages/v1';
+  var P = 'craft-pages/v1';
   var INIT = { page: ${scriptSafeJson({ slug: page.slug, kind: page.kind })}, nonce: 'claude-artifact', snapshot: ${scriptSafeJson(snapshot ?? null)}, grants: [] };
   function deliver(type, payload) {
     window.dispatchEvent(new MessageEvent('message', { data: { protocol: P, type: type, payload: payload } }));

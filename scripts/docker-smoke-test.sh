@@ -18,7 +18,7 @@ set -euo pipefail
 IMAGE="${1:?Usage: docker-smoke-test.sh <image:tag>}"
 TIMEOUT="${SMOKE_TEST_TIMEOUT:-30}"
 TOKEN="smoke-test-$(openssl rand -hex 16)"
-CONTAINER_NAME="craft-smoke-$$"
+CONTAINER_NAME="memwise-smoke-$$"
 PORT=9100
 
 cleanup() {
@@ -95,7 +95,7 @@ else
   # Use node/bun to test WebSocket connectivity
   node -e "
     const ws = new (require('ws'))('${SERVER_URL}', {
-      headers: { 'x-craft-token': '${TOKEN}' }
+      headers: { 'x-memwise-token': '${TOKEN}' }
     });
     const timer = setTimeout(() => { console.error('WebSocket timeout'); process.exit(1); }, 10000);
     ws.on('open', () => { clearTimeout(timer); console.log('  WebSocket connected successfully'); ws.close(); process.exit(0); });

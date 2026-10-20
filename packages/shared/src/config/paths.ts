@@ -22,7 +22,7 @@
  * The first load moves that folder here once (see `migrateLegacyConfigDir`).
  */
 
-import { existsSync, lstatSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, readFileSync, realpathSync, renameSync, statSync, symlinkSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 
@@ -45,26 +45,37 @@ export type LegacyConfigMigration = 'moved' | 'skipped';
 /**
  * One-time move of the pre-rename `~/.craft-agent` folder to `~/.memwise`.
  *
- * Runs only for the default location (no MEMWISE_CONFIG_DIR), only when the
- * new folder does not exist yet and the old one is a real folder. After the
- * move it leaves a link at the old path, so absolute paths stored inside
- * sessions and workspace files keep resolving, and rewrites the old folder's
- * paths in `config.json` (workspace roots). Never throws: on any failure the
- * app starts with whatever folder exists.
+ * Runs only for the default location (no MEMWISE_CONFIG_DIR) and only when the
+ * old folder exists (a symlinked one counts; the link itself is moved). If
+ * `~/.memwise` already exists it wins, unless it holds no `config.json` while
+ * the old folder does: that is the empty folder an earlier launch created after
+ * the move failed (e.g. Windows refused the rename while Craft Agents was
+ * open), so it is set aside and the move is retried.
+ *
+ * After the move it leaves a link at the old path, so absolute paths stored
+ * inside sessions and workspace files keep resolving, and rewrites paths under
+ * the old folder in `config.json` (workspace roots). Never throws: on any
+ * failure the app starts with whatever folder exists.
  */
 export function migrateLegacyConfigDir(
   env: NodeJS.ProcessEnv = process.env,
   home: string = homedir(),
+  platform: NodeJS.Platform = process.platform,
 ): LegacyConfigMigration {
+  const target = join(home, DEFAULT_CONFIG_DIR_NAME);
+  const legacy = join(home, LEGACY_CONFIG_DIR_NAME);
   try {
     if (env.MEMWISE_CONFIG_DIR?.trim()) return 'skipped';
-    const target = join(home, DEFAULT_CONFIG_DIR_NAME);
-    const legacy = join(home, LEGACY_CONFIG_DIR_NAME);
-    if (existsSync(target) || !existsSync(legacy) || !lstatSync(legacy).isDirectory()) return 'skipped';
+    if (!existsSync(legacy) || !statSync(legacy).isDirectory()) return 'skipped';
+    if (existsSync(target)) {
+      if (realpathSync(legacy) === realpathSync(target)) return 'skipped'; // already moved
+      if (existsSync(join(target, 'config.json')) || !existsSync(join(legacy, 'config.json'))) return 'skipped';
+      renameSync(target, `${target}.empty-${Date.now()}`);
+    }
 
     renameSync(legacy, target);
     try {
-      symlinkSync(target, legacy, process.platform === 'win32' ? 'junction' : 'dir');
+      symlinkSync(target, legacy, platform === 'win32' ? 'junction' : 'dir');
     } catch {
       // A missing link only affects absolute paths stored before the move.
     }
@@ -72,15 +83,42 @@ export function migrateLegacyConfigDir(
     const configFile = join(target, 'config.json');
     if (existsSync(configFile)) {
       const raw = readFileSync(configFile, 'utf-8');
-      const rewritten = raw
-        .split(legacy).join(target)
-        .split(`~/${LEGACY_CONFIG_DIR_NAME}`).join(`~/${DEFAULT_CONFIG_DIR_NAME}`);
-      if (rewritten !== raw) writeFileSync(configFile, rewritten, 'utf-8');
+      const rewritten = JSON.stringify(rewriteLegacyPaths(JSON.parse(raw), [
+        [legacy, target],
+        [`~/${LEGACY_CONFIG_DIR_NAME}`, `~/${DEFAULT_CONFIG_DIR_NAME}`],
+      ], platform), null, 2);
+      if (rewritten !== JSON.stringify(JSON.parse(raw), null, 2)) writeFileSync(configFile, rewritten, 'utf-8');
     }
     return 'moved';
-  } catch {
+  } catch (error) {
+    console.error(`[memwise] Could not move ${legacy} to ${target}; will retry on next launch:`, error);
     return 'skipped';
   }
+}
+
+/**
+ * Replace a leading `from` path with `to` in every string of a parsed JSON
+ * value. Separators are compared as `/`, and case-insensitively on Windows, so
+ * `C:\Users\me\.craft-agent\x` and `c:/users/me/.craft-agent/x` both match.
+ */
+function rewriteLegacyPaths(value: unknown, pairs: [string, string][], platform: NodeJS.Platform): unknown {
+  const key = (p: string) => {
+    const slashed = p.replace(/\\/g, '/');
+    return platform === 'win32' ? slashed.toLowerCase() : slashed;
+  };
+  if (typeof value === 'string') {
+    for (const [from, to] of pairs) {
+      const v = key(value);
+      const f = key(from);
+      if (v === f || v.startsWith(`${f}/`)) return to + value.slice(from.length);
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map((item) => rewriteLegacyPaths(item, pairs, platform));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, rewriteLegacyPaths(v, pairs, platform)]));
+  }
+  return value;
 }
 
 migrateLegacyConfigDir();

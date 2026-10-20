@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import {
@@ -64,6 +64,52 @@ describe('migrateLegacyConfigDir', () => {
     mkdirSync(join(home, DEFAULT_CONFIG_DIR_NAME));
     expect(migrateLegacyConfigDir({}, home)).toBe('skipped');
     expect(lstatSync(join(home, LEGACY_CONFIG_DIR_NAME)).isDirectory()).toBe(true);
+  });
+
+  it('keeps ~/.memwise when both folders hold a config', () => {
+    const home = makeHome();
+    mkdirSync(join(home, LEGACY_CONFIG_DIR_NAME));
+    mkdirSync(join(home, DEFAULT_CONFIG_DIR_NAME));
+    writeFileSync(join(home, LEGACY_CONFIG_DIR_NAME, 'config.json'), '{}');
+    writeFileSync(join(home, DEFAULT_CONFIG_DIR_NAME, 'config.json'), '{"new":true}');
+    expect(migrateLegacyConfigDir({}, home)).toBe('skipped');
+    expect(readFileSync(join(home, DEFAULT_CONFIG_DIR_NAME, 'config.json'), 'utf-8')).toBe('{"new":true}');
+  });
+
+  it('retries after an earlier failed move left an empty ~/.memwise', () => {
+    const home = makeHome();
+    mkdirSync(join(home, LEGACY_CONFIG_DIR_NAME));
+    writeFileSync(join(home, LEGACY_CONFIG_DIR_NAME, 'config.json'), '{"old":true}');
+    mkdirSync(join(home, DEFAULT_CONFIG_DIR_NAME, 'logs'), { recursive: true });
+
+    expect(migrateLegacyConfigDir({}, home)).toBe('moved');
+    expect(JSON.parse(readFileSync(join(home, DEFAULT_CONFIG_DIR_NAME, 'config.json'), 'utf-8'))).toEqual({ old: true });
+    expect(readdirSync(home).some((name) => name.startsWith(`${DEFAULT_CONFIG_DIR_NAME}.empty-`))).toBe(true);
+  });
+
+  it('moves a symlinked ~/.craft-agent by moving the link', () => {
+    const home = makeHome();
+    const real = join(home, 'synced', 'craft-state');
+    mkdirSync(real, { recursive: true });
+    writeFileSync(join(real, 'config.json'), '{}');
+    symlinkSync(real, join(home, LEGACY_CONFIG_DIR_NAME), 'dir');
+
+    expect(migrateLegacyConfigDir({}, home)).toBe('moved');
+    expect(lstatSync(join(home, DEFAULT_CONFIG_DIR_NAME)).isSymbolicLink()).toBe(true);
+    expect(existsSync(join(home, DEFAULT_CONFIG_DIR_NAME, 'config.json'))).toBe(true);
+    expect(existsSync(join(real, 'config.json'))).toBe(true);
+  });
+
+  it('rewrites Windows-style paths case-insensitively', () => {
+    const home = makeHome();
+    const legacy = join(home, LEGACY_CONFIG_DIR_NAME);
+    mkdirSync(legacy);
+    const windowsStyle = `${legacy.replace(/\//g, '\\').toUpperCase()}\\workspaces\\ws`;
+    writeFileSync(join(legacy, 'config.json'), JSON.stringify({ workspaces: [{ rootPath: windowsStyle }] }));
+
+    expect(migrateLegacyConfigDir({}, home, 'win32')).toBe('moved');
+    const config = JSON.parse(readFileSync(join(home, DEFAULT_CONFIG_DIR_NAME, 'config.json'), 'utf-8'));
+    expect(config.workspaces[0].rootPath).toBe(`${join(home, DEFAULT_CONFIG_DIR_NAME)}\\workspaces\\ws`);
   });
 
   it('does nothing when MEMWISE_CONFIG_DIR is set', () => {

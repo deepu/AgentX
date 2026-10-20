@@ -87,7 +87,7 @@ describe('parsePageBridgeMessage', () => {
     expect(parsePageBridgeMessage(null)).toBeNull()
     expect(parsePageBridgeMessage('hi')).toBeNull()
     expect(parsePageBridgeMessage({ type: 'ready' })).toBeNull()
-    expect(parsePageBridgeMessage({ protocol: 'memwise-pages/v0', type: 'ready' })).toBeNull()
+    expect(parsePageBridgeMessage({ protocol: 'craft-pages/v0', type: 'ready' })).toBeNull()
     expect(parsePageBridgeMessage({ protocol: PAGE_BRIDGE_PROTOCOL, type: 'eval' })).toBeNull()
   })
 

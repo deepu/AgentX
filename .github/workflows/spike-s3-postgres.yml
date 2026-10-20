@@ -41,6 +41,7 @@ jobs:
 
       - name: Measure under Node
         id: node
+        timeout-minutes: 8
         run: |
           set -o pipefail
           node measure.mjs | tee node.txt
@@ -48,6 +49,7 @@ jobs:
 
       - name: Measure under Bun
         if: always() && steps.node.conclusion != 'skipped'
+        timeout-minutes: 8
         run: |
           set -o pipefail
           SKIP_REGISTRY=1 bun measure.mjs | tee bun.txt

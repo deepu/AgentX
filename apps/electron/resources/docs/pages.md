@@ -76,7 +76,7 @@ Rules that make pages work everywhere (local sandbox AND published copies):
 
   window.addEventListener('message', (event) => {
     const msg = event.data;
-    if (!msg || msg.protocol !== 'memwise-pages/v1') return;
+    if (!msg || msg.protocol !== 'craft-pages/v1') return;
     if (msg.type === 'init') {           // { page: {slug, kind}, nonce, snapshot, grants }
       nonce = msg.payload.nonce;
       handleGrants(msg.payload.grants);  // [{ id, action, expiresAt }] — usable grants
@@ -91,7 +91,7 @@ Rules that make pages work everywhere (local sandbox AND published copies):
   });
 
   // Ask the host for init (also delivered automatically after load)
-  window.parent.postMessage({ protocol: 'memwise-pages/v1', type: 'ready' }, '*');
+  window.parent.postMessage({ protocol: 'craft-pages/v1', type: 'ready' }, '*');
 </script>
 ```
 
@@ -100,7 +100,7 @@ Rules that make pages work everywhere (local sandbox AND published copies):
 Sandboxed pages cannot navigate. Ask the host (only http/https URLs, requires a user gesture):
 
 ```js
-window.parent.postMessage({ protocol: 'memwise-pages/v1', type: 'open-url', nonce, url: 'https://example.com' }, '*');
+window.parent.postMessage({ protocol: 'craft-pages/v1', type: 'open-url', nonce, url: 'https://example.com' }, '*');
 ```
 
 ## Source actions (grants)
@@ -109,7 +109,7 @@ Interactive pages can trigger calls against the workspace's sources (e.g. a "Sen
 
 ```js
 window.parent.postMessage({
-  protocol: 'memwise-pages/v1',
+  protocol: 'craft-pages/v1',
   type: 'action',
   requestId: crypto.randomUUID(),
   nonce,                                   // from init — required
@@ -143,7 +143,7 @@ const NEEDS = [
 ];
 // After init: request anything still missing (max 8 entries per request).
 if (NEEDS.some(n => !grantFor(n.action))) {
-  window.parent.postMessage({ protocol: 'memwise-pages/v1', type: 'grant-request', nonce, requests: NEEDS }, '*');
+  window.parent.postMessage({ protocol: 'craft-pages/v1', type: 'grant-request', nonce, requests: NEEDS }, '*');
 }
 ```
 
@@ -172,7 +172,7 @@ A `script` grant lets a **local** page run a workspace-relative script on the ho
 //   { kind: 'script', script: 'pages/<slug>/build.sh', runtime: 'bun'|'node'|'python3'?, args?: string[] }
 // The invocation is a BARE TRIGGER — script/runtime/args all come from the grant:
 window.parent.postMessage({
-  protocol: 'memwise-pages/v1', type: 'action',
+  protocol: 'craft-pages/v1', type: 'action',
   requestId: crypto.randomUUID(), nonce,
   grantId: scriptGrant.id,
   invocation: { kind: 'script' }              // nothing else — the page cannot pass args
@@ -267,11 +267,11 @@ Users publish pages from the page's **Share** button (feature-flagged): password
 
   window.addEventListener('message', (event) => {
     const msg = event.data;
-    if (!msg || msg.protocol !== 'memwise-pages/v1') return;
+    if (!msg || msg.protocol !== 'craft-pages/v1') return;
     if (msg.type === 'init') { nonce = msg.payload.nonce; render(msg.payload.snapshot); }
     else if (msg.type === 'data') { render(msg.payload.snapshot); }
   });
-  window.parent.postMessage({ protocol: 'memwise-pages/v1', type: 'ready' }, '*');
+  window.parent.postMessage({ protocol: 'craft-pages/v1', type: 'ready' }, '*');
 </script>
 </body>
 </html>
