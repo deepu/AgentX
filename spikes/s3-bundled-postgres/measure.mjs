@@ -27,8 +27,13 @@ const started = [];
 let failed = false;
 const section = async (name, fn) => {
   console.error(`\n== ${name}`);
+  const before = started.length;
   try { R[name] = await fn(); }
-  catch (e) { failed = true; R[name] = { error: e.message }; console.error(`!! ${name} failed: ${e.stack}`); }
+  catch (e) {
+    failed = true; R[name] = { error: e.message }; console.error(`!! ${name} failed: ${e.stack}`);
+    // Stop what this section started, so the next section can bind its port.
+    for (const c of started.slice(before)) if (fs.existsSync(c.dataDir) && (await c.status().catch(() => false))) await c.stop().catch(() => {});
+  }
 };
 const cluster = (flavour, dir, port) => { const c = new LocalPostgres({ bin: binaries(flavour), dir: path.join(ROOT, dir), port }); started.push(c); return c; };
 const fingerprint = async (c) => (await c.query(FINGERPRINT_SQL)).rows[0];

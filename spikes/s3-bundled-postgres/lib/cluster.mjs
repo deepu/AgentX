@@ -59,6 +59,29 @@ export class LocalPostgres {
     // stdio ignored: the server's output goes to the log file (see util.run).
     const r = await run(this.bin.pg_ctl, ['start', '-D', this.dataDir, '-l', this.logFile, '-w', '-t', '60'], { stdio: 'ignore' });
     if (r.code !== 0) throw new Error(`pg_ctl start failed (${r.code}); log tail:\n${this.logTail()}`);
+    await this.waitReady();
+  }
+
+  /**
+   * `pg_ctl start -w` is not enough on its own. On Windows pg_ctl cannot match
+   * the postmaster's PID, so it accepts any postmaster.pid saying "ready" whose
+   * start time is within 2 s of its own; a pid file left by a server killed a
+   * moment earlier passes, and pg_ctl returns before the new server listens
+   * (seen in CI as ECONNREFUSED right after a crash restart). So we also wait
+   * until a real connection succeeds.
+   */
+  async waitReady(timeoutMs = 60_000) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const c = this.client();
+      try { await c.connect(); await c.query('SELECT 1'); return; }
+      catch (e) {
+        // ECONNREFUSED: not listening yet. 57P03: still starting up or in recovery.
+        const transient = e.code === 'ECONNREFUSED' || e.code === 'ECONNRESET' || e.code === '57P03';
+        if (!transient || Date.now() > deadline) throw new Error(`Postgres not ready: ${e.message}; log tail:\n${this.logTail()}`);
+      } finally { await c.end().catch(() => {}); }
+      await sleep(100);
+    }
   }
 
   /** What the app does on launch: adopt a server left running by a crashed app, else start it. */

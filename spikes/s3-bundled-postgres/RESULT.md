@@ -120,7 +120,7 @@ Every Postgres package contains only `initdb`, `pg_ctl` and `postgres`, plus lib
    - Keep the data in `~/.memwise/postgres/data`.
    - Start it from the host with a supervisor like `lib/cluster.mjs`:
      - `initdb` with the builtin locale and scram auth, the secret stored with mode 0600;
-     - `pg_ctl start -w`, adopting a server that is already running;
+     - `pg_ctl start -w`, adopting a server that is already running, then a connect-and-`SELECT 1` loop before reporting ready (on Windows `pg_ctl -w` can return early after a crash; see Caveats);
      - `pg_ctl stop -m fast` on quit;
      - loopback only, on a port chosen at first init and saved in `postgresql.auto.conf`. On macOS and Linux, prefer a Unix socket in `~/.memwise/postgres/run`.
 2. **Minor updates:** just ship new binaries. The data dir is compatible; tested 18.1 → 18.4.
@@ -172,6 +172,7 @@ Older builds come in as npm aliases in `optionalDependencies` (`pg-18-1-*` and `
 ## Caveats
 
 - **Only Linux measured.** macOS and Windows numbers wait on the CI run. The Windows-specific paths are untested: restricted token under an admin runner, `taskkill` hard kill, PowerShell memory probe, PGlite with backslash paths. So is macOS shared memory.
+- **`pg_ctl -w` is not a readiness check on Windows.** pg_ctl there can't match the postmaster's PID, so it accepts any `postmaster.pid` marked ready whose start time is within 2 s of its own. After a hard kill, the dead server's pid file passes and pg_ctl returns before the new server listens. The first Windows CI run hit this as `ECONNREFUSED` straight after the crash restart; `LocalPostgres.start()` now also waits for a real connection.
 - **Measured in a sandbox VM.** Desktop disks, antivirus (Windows Defender scanning the data dir) and cold file caches will make the first `initdb` slower.
 - **Memory is untuned.** Neither engine was tuned; for desktop, Postgres could use `shared_buffers=32MB` and `max_connections=40`. On macOS and Windows the script reports summed RSS or working set, which overcounts shared memory.
 - **The major-upgrade copy is a toy.** It moved one table of a few rows via `json_populate_recordset`. A real one has to copy every schema (including DBOS's) with COPY and reset sequences. It is quick, but the time grows with data size, so it needs a progress UI.
