@@ -103,6 +103,13 @@ export const stepFormat = z.strictObject({
   map: z.record(z.string(), z.record(z.string(), z.unknown())).optional().meta({
     description: 'System steps: arguments for each tool, in call order. `case.<field>` reads the case; anything else is a literal (or write { value: ... }).',
   }),
+  engine: z.enum(['step', 'open']).optional().meta({
+    description: 'Agent steps: `open` runs the step as a conversation in chat (needs strictness: open); default `step`.',
+  }),
+  outcomeFrom: z.strictObject({
+    tool: z.string().meta({ description: 'A tool in tools.required.' }),
+    field: z.string().meta({ description: 'Dotted path inside its last result.' }),
+  }).optional().meta({ description: 'System steps: the outcome is this field of this tool\'s last result (one of `outcomes`).' }),
 }).meta({ title: 'MemWise step', description: 'The front matter of workflows/<id>/steps/<state>.md.' });
 
 export const caseFormat = z.strictObject({

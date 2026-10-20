@@ -7,6 +7,9 @@
  *   record.start, then per tool: policy:<tool> → [approval.request/answer:<tool>] → tool:<tool>,
  *   record.finish
  *
+ * The outcome is the step's only one, or with `outcomeFrom: { tool, field }` (Phase 3) that field
+ * of that tool's result, which must be one of the step's outcomes.
+ *
  * The idempotency key of a call is `${stepRunId}:${tool}`, so a crash between the call and the
  * commit replays the call from the ledger instead of repeating its effect.
  */
@@ -67,8 +70,8 @@ export async function systemStepWorkflow(input: StepRunInput): Promise<StepResul
     stepHash: step.hash, performer: step.performer, token: input.token, startedAt: new Date(t0).toISOString(),
   }), { name: 'record.start' });
 
-  const finish = async (status: StepResultStatus, reason?: string, writes: Record<string, CaseValue> = {}): Promise<StepResult> => {
-    const outcome = status === 'completed' ? systemOutcome(step) : status;
+  const finish = async (status: StepResultStatus, reason?: string, writes: Record<string, CaseValue> = {}, chosen?: string): Promise<StepResult> => {
+    const outcome = status === 'completed' ? (chosen ?? systemOutcome(step)) : status;
     const usage = { tokens: 0, modelCalls: 0, toolCalls };
     const { durationMs } = await DBOS.runStep(async () => {
       const finishedAt = Date.now();
@@ -174,6 +177,26 @@ export async function systemStepWorkflow(input: StepRunInput): Promise<StepResul
     writes[field] = { value, provenance: { kind: 'tool', at, stepRunId: input.stepRunId, tool: w.from.tool, callId: hit!.callId, ...(hit!.tainted ? { tainted: true } : {}) } };
   }
   if (problems.length) return finish('needs_person', `the results could not be written: ${problems.join('; ')}`);
+  const outcome = outcomeOf(step, results);
+  if ('reason' in outcome) return finish('needs_person', outcome.reason);
   crashPoint('before-finish');
-  return finish('completed', undefined, writes);
+  return finish('completed', undefined, writes, outcome.outcome);
+}
+
+/**
+ * The outcome a system step finishes with: with `outcomeFrom`, that field of that tool's result
+ * (a name the step declares), else its only outcome. A result that names no declared outcome
+ * is not guessed at: the step goes to a person, saying what came back.
+ */
+export function outcomeOf(step: StepRunInput['step'], results: Record<string, { result: unknown }>): { outcome: string } | { reason: string } {
+  const from = step.outcomeFrom;
+  if (!from) return { outcome: systemOutcome(step) };
+  const hit = results[from.tool];
+  if (!hit) return { reason: `the outcome comes from ${from.tool}, which this step did not call` };
+  const value = valueAt(hit.result, from.field);
+  if (value === undefined || value === null) return { reason: `${from.tool} returned no ${from.field} to take the outcome from` };
+  if (typeof value !== 'string' || !step.outcomes.includes(value)) {
+    return { reason: `${from.tool} returned ${from.field} ${JSON.stringify(value)}, which is not one of this step's outcomes (${step.outcomes.join(', ')})` };
+  }
+  return { outcome: value };
 }
