@@ -4,6 +4,8 @@ import { exampleFormat, TIMEOUT_PATTERN, workflowFormat } from './formats.ts';
 import { asRecord, asString, compact, isRecord, readYaml, rememberLocator, Reporter, type ParseResult } from './source.ts';
 import { END_STATE, type ExampleCase, type ExampleSubmission, type ScriptedTurn, type StateDef, type WaitDef } from './types.ts';
 import { parseDuration } from './value-types.ts';
+import type { TriggerDef } from './domain-types.ts';
+import { parseBlock, parseTriggers } from './parse-handoffs.ts';
 
 /** What `workflow.yaml` holds on its own; `loadWorkflow` adds steps, case type, policy and examples. */
 export interface WorkflowShape {
@@ -20,6 +22,8 @@ export interface WorkflowShape {
   policy?: string;
   /** Phase 4: `forked_from: <plugin>@<version>`, a playbook copied from a plugin workflow and edited here. */
   forkedFrom?: string;
+  /** Phase 6: `starts_on:` (24 §7). */
+  startsOn?: TriggerDef[];
 }
 
 export function parseWorkflowFile(text: string, file: string): ParseResult<WorkflowShape> {
@@ -54,7 +58,7 @@ export function parseWorkflowFile(text: string, file: string): ParseResult<Workf
       }
       wait = compact({ remindMs, timeout });
     }
-    states[name] = compact({ name, on, wait, assignee: asString(s.assignee) });
+    states[name] = compact({ name, on, wait, assignee: asString(s.assignee), block: parseBlock(name, s, report) });
   }
 
   const value: WorkflowShape = compact({
@@ -67,6 +71,7 @@ export function parseWorkflowFile(text: string, file: string): ParseResult<Workf
     case: asString(data.case),
     policy: asString(data.policy),
     forkedFrom: asString(data.forked_from),
+    startsOn: parseTriggers(data.starts_on, report),
   });
   rememberLocator(value, src.locate);
   return { value, diagnostics: report.diagnostics };
@@ -122,6 +127,9 @@ export function parseExampleFile(text: string, file: string): ParseResult<Exampl
     case: asRecord(data.case),
     tools: isRecord(data.tools) ? data.tools : undefined,
     model,
+    records: isRecord(data.records)
+      ? Object.fromEntries(Object.entries(data.records).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).filter(isRecord)]))
+      : undefined,
     approvals: isRecord(data.approvals)
       ? Object.fromEntries(Object.entries(data.approvals).filter(([, v]) => v === 'approve' || v === 'reject')) as ExampleCase['approvals']
       : undefined,
