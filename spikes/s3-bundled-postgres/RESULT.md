@@ -1,6 +1,6 @@
 # Spike S3 · Bundled Postgres on desktop: result
 
-**Verdict: PARTIAL.** Linux and macOS (arm64, CI) pass every criterion under Node and Bun: start-up, size, upgrades, crash recovery. Windows passes under Node in CI; the Windows run under Bun has not finished cleanly yet (see Caveats), so S3 is not yet called PASS.
+**Verdict: PASS.** Linux, macOS (arm64) and Windows (x64) pass every criterion under Node and Bun: start-up, size, upgrades, crash recovery. macOS and Windows were measured in CI (`.github/workflows/spike-s3-postgres.yml`).
 
 **Recommendation:** ship real Postgres 18 on desktop, using the per-platform binary packages from `embedded-postgres` (`@embedded-postgres/<platform>`). Drive them with our own small supervisor (`lib/cluster.mjs`), not with the package's wrapper class. Keep PGlite only as a fallback. PGlite runs the same schema, but it is a single session shared by every caller. Its start-up is 3 to 25 times slower and it uses about 20 times more memory.
 
@@ -92,6 +92,23 @@ From the `measure (macos-latest)` job (macOS 26.6, Apple silicon), same script. 
 | PGlite process RSS after open | 833 MB | 1882 MB |
 
 Package sizes per platform from the registry: darwin-arm64 and darwin-x64 140.9 MB, windows-x64 104.3 MB, linux-x64 56.5 MB unpacked.
+
+## Measurements (Windows x64, CI)
+
+From the `measure (windows-latest)` job (Windows Server, build 26100), same script. Memory is summed working set, which overcounts shared memory.
+
+| | Node 22.23 | Bun 1.3.10 |
+|---|---|---|
+| Installed size (windows-x64) | 104.3 MB, 1502 files | same |
+| Cold init (`initdb`) | 1987 ms | 2154 ms |
+| First start | 335 ms | 428 ms |
+| Warm start ×3 | 319 / 318 / 333 ms | 334 / 311 / 336 ms |
+| Start after crash (recovery) | 374 ms, data intact | 358 ms, data intact |
+| Memory idle / with 10 connections | 119.4 / 270.0 MB | 120.0 / 270.7 MB |
+| Minor upgrade 18.1 → 18.4 | data intact | data intact |
+| Major 17 → 18 side-by-side copy | data intact, 239 ms | data intact, 122 ms |
+| PGlite cold init / warm open | 3290 ms / ~370 ms | 4089 ms / ~540 ms |
+| PGlite process RSS after open | 346 MB | 1196 MB |
 
 ## Findings
 
@@ -190,7 +207,7 @@ Older builds come in as npm aliases in `optionalDependencies` (`pg-18-1-*` and `
 
 ## Caveats
 
-- **Windows under Bun is unconfirmed.** Windows under Node passed in CI (restricted token, `taskkill` hard kill, PowerShell memory probe, PGlite with backslash paths). The Bun run after it stalled until the job timed out, without a log; each section now has a watchdog and connections a timeout, so the next run names the step.
+- **One Windows run under Bun stalled** until the job timed out, without a log, before connection timeouts and a per-section watchdog were added; every run since has passed. The supervisor should keep both (connect timeout, bounded waits).
 - **`pg_ctl -w` is not a readiness check on Windows.** pg_ctl there can't match the postmaster's PID, so it accepts any `postmaster.pid` marked ready whose start time is within 2 s of its own. After a hard kill, the dead server's pid file passes and pg_ctl returns before the new server listens. The first Windows CI run hit this as `ECONNREFUSED` straight after the crash restart; `LocalPostgres.start()` now also waits for a real connection.
 - **Measured in a sandbox VM.** Desktop disks, antivirus (Windows Defender scanning the data dir) and cold file caches will make the first `initdb` slower.
 - **Memory is untuned.** Neither engine was tuned; for desktop, Postgres could use `shared_buffers=32MB` and `max_connections=40`. On macOS and Windows the script reports summed RSS or working set, which overcounts shared memory.

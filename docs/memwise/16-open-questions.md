@@ -8,7 +8,7 @@ Items 1–5 were answered in Phase 0; the answers are D35–D39 in the [decision
 
 1. **DBOS under Bun:** yes (D35).
 2. **DBOS versioning:** runs stay on the version they started on; definition versions travel as inputs (D36).
-3. **Bundled Postgres on desktop:** yes on Linux; macOS and Windows numbers come from the spike's CI run (D37).
+3. **Bundled Postgres on desktop:** yes on Linux, macOS and Windows, under Node and Bun (D37).
 4. **The step engine on `pi-ai`:** yes (D38).
 5. **XState with DBOS:** yes (D39).
 
