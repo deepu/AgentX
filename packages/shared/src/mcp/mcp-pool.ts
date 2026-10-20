@@ -98,6 +98,44 @@ export interface McpPromptListing {
   truncated: boolean;
 }
 
+/** MemWise effect classes (docs/memwise/06-plugins-and-tools.md §3). */
+export type McpEffectClass = 'read' | 'draft' | 'write' | 'outbound' | 'irreversible';
+
+/** One MCP tool call, as recorded by an effect journal (07 §4: effect journaling at the pool). */
+export interface McpEffectJournalEntry {
+  /** Source slug. */
+  server: string;
+  /** The MCP tool's own name. */
+  tool: string;
+  effect: McpEffectClass;
+  /** False when the tool's annotations gave no class and `effect` defaulted to `irreversible`. */
+  classified: boolean;
+  args: Record<string, unknown>;
+  result?: string;
+  error?: string;
+  startedAt: string;
+  durationMs: number;
+}
+
+export interface McpEffectJournal {
+  record(entry: McpEffectJournalEntry): void | Promise<void>;
+}
+
+/**
+ * Seed an effect class from MCP tool annotations; only explicit hints count:
+ * destructiveHint -> irreversible, readOnlyHint -> read, openWorldHint -> outbound, else
+ * undefined (unclassified). Identical to `effectFromAnnotations` in `@memwise/gateway`
+ * (packages/gateway/src/effects.ts), copied because shared must not depend on kernel
+ * packages; change both together.
+ */
+export function effectFromAnnotations(a: Tool['annotations'] | undefined): McpEffectClass | undefined {
+  if (!a) return undefined;
+  if (a.destructiveHint === true) return 'irreversible';
+  if (a.readOnlyHint === true) return 'read';
+  if (a.openWorldHint === true) return 'outbound';
+  return undefined;
+}
+
 /** Pages read per list call: a server that keeps paginating must not stall the turn. */
 const MAX_LIST_PAGES = 10;
 
@@ -228,6 +266,9 @@ export class McpClientPool {
   /** Summarize callback for large response handling */
   private summarizeCallback?: (prompt: string) => Promise<string | null>;
 
+  /** Optional effect journal; when unset, tool calls are not classified or recorded */
+  private effectJournal?: McpEffectJournal;
+
   /** Called after sync() connects/disconnects sources, so clients can be notified */
   onToolsChanged?: () => void;
 
@@ -243,6 +284,11 @@ export class McpClientPool {
    */
   setSummarizeCallback(fn: (prompt: string) => Promise<string | null>): void {
     this.summarizeCallback = fn;
+  }
+
+  /** Record every tool call with its effect class (opt-in; pass undefined to stop). */
+  setEffectJournal(journal: McpEffectJournal | undefined): void {
+    this.effectJournal = journal;
   }
 
   private debug(msg: string): void {
@@ -578,6 +624,32 @@ export class McpClientPool {
    * Returns a result matching the subprocess protocol format.
    */
   async callTool(proxyName: string, args: Record<string, unknown>, options?: PoolCallToolOptions): Promise<McpToolResult> {
+    const journal = this.effectJournal;
+    const info = this.proxyTools.get(proxyName);
+    if (!journal || !info) return this.callToolDirect(proxyName, args, options);
+
+    const seeded = effectFromAnnotations(this.toolCache.get(info.slug)?.find(t => t.name === info.originalName)?.annotations);
+    const startedAt = new Date();
+    const result = await this.callToolDirect(proxyName, args, options);
+    try {
+      await journal.record({
+        server: info.slug,
+        tool: info.originalName,
+        effect: seeded ?? 'irreversible',
+        classified: seeded !== undefined,
+        args,
+        ...(result.isError ? { error: result.content } : { result: result.content }),
+        startedAt: startedAt.toISOString(),
+        durationMs: Date.now() - startedAt.getTime(),
+      });
+    } catch (err) {
+      // The call already ran; a journal failure must not turn its result into an error.
+      this.debug(`Effect journal failed for ${proxyName}: ${errorMessage(err)}`);
+    }
+    return result;
+  }
+
+  private async callToolDirect(proxyName: string, args: Record<string, unknown>, options?: PoolCallToolOptions): Promise<McpToolResult> {
     const info = this.proxyTools.get(proxyName);
     if (!info) {
       return {

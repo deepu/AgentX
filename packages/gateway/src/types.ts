@@ -62,6 +62,8 @@ export interface ToolCallRequest {
   /** D38: `${workflowID}:${stepID}` of the DBOS step that executes the call. */
   idempotencyKey: string;
   token: StepToken;
+  /** Passed to the tool as `ctx.signal`, e.g. the DBOS step's cancel signal. */
+  signal?: AbortSignal;
 }
 
 /** Policy and classification for one call. Pure given its inputs, so the step engine journals it. */
