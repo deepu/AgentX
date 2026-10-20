@@ -36,6 +36,7 @@ function provenanceLabel(p: Provenance): string {
     case 'judgement': return `judgement in ${p.stepRunId}`;
     case 'person': return `entered by ${p.by}`;
     case 'system': return 'system';
+    case 'external': return `entered by ${p.by} through a link (untrusted)`;
   }
 }
 

@@ -468,6 +468,18 @@ export const RPC_CHANNELS = {
     IDENTITY_LIST: 'memwise:identity:list',
     IDENTITY_DECIDE: 'memwise:identity:decide',
     ENTITIES_RECORD: 'memwise:entities:record',
+    // Phase 5 (23): external links, the relay, channels
+    EXTERNAL_LINKS: 'memwise:external:links',
+    EXTERNAL_ISSUE: 'memwise:external:issue',
+    EXTERNAL_REVOKE: 'memwise:external:revoke',
+    EXTERNAL_PREVIEW_RESEND: 'memwise:external:previewResend',
+    EXTERNAL_RESEND: 'memwise:external:resend',
+    EXTERNAL_EXTRACT: 'memwise:external:extract',
+    RELAY_STATUS: 'memwise:relay:status',
+    RELAY_CONFIGURE: 'memwise:relay:configure',
+    CHANNELS_AVAILABLE: 'memwise:channels:available',
+    NOTIFY_GET: 'memwise:notify:get',
+    NOTIFY_SET: 'memwise:notify:set',
   },
   pages: {
     GET: 'pages:get',

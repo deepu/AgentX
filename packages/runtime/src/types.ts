@@ -9,7 +9,7 @@ import type { RunEvent } from './machine.ts';
 /** Runs one agent step. Registered as the DBOS workflow `memwise.step.agent`; tests swap in a fake. */
 export type StepExecutor = (input: StepRunInput) => Promise<StepResult>;
 
-export interface KernelOptions {
+export interface KernelOptions extends PhaseFiveKernelOptions {
   databaseUrl: string;
   /** Project folder `index()` loads. */
   projectDir?: string;
@@ -118,7 +118,7 @@ export interface StartRunInput {
   by?: string;
 }
 
-export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4 {
+export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4, KernelPhase5 {
   /** Load the project folder and index it; returns the loader's diagnostics. */
   index(): Promise<Diagnostic[]>;
   startRun(input: StartRunInput): Promise<{ runId: string; caseId: string }>;
@@ -475,4 +475,87 @@ export interface KernelPhase4 {
   readonly identity: IdentityService;
   /** A domain record with its identity links and the fields read through them (22 §5). */
   entityRecord(entity: string, id: string, actor: Actor): Promise<EntityRecordView | undefined>;
+}
+
+// ================================================================ Phase 5 (docs/memwise/23-phase-5-interfaces.md)
+// PHASE 5 CONTRACT. `@memwise/server-core` codes against these; change only additively.
+
+import type {
+  ChannelName, Delivery, ExternalFormAnswer, ExternalLinkSummary, ExternalParticipant, ExternalSubmitInput,
+  ExternalSubmitResult, ExtractResult, InboundEvent, InboxLinkAnswer, InboxLinkDecision, InboxLinkResult, LinkRefusal,
+  NotifySettings, WebhookSummary,
+} from '@memwise/defs';
+
+/** The kernel tool that issues and sends a link to an external step (23 §3). */
+export const EXTERNAL_INVITE_TOOL = 'external.invite';
+
+/** What the public handler knows about the request, for rate limits and the link's record. */
+export interface PublicRequestInfo { ip?: string; userAgent?: string }
+
+export interface PhaseFiveKernelOptions {
+  /**
+   * The public base URL links are made from (the relay's `publicUrl`, or a server's own
+   * `MEMWISE_PUBLIC_URL`), read at each use; undefined means none, and `external.invite` fails
+   * with "connect a public address".
+   */
+  publicUrl?: () => string | undefined;
+  /** Shown to participants as who is asking; default `MEMWISE_BUSINESS_NAME`, else the owner's name. */
+  businessName?: string | (() => string | undefined);
+}
+
+export interface ExternalService {
+  /**
+   * Issue a link to an external step of a run, for staff to send themselves ("Copy link", `via:
+   * 'copy'`) or for `external.invite`. The token is returned once, with the URL when there is a
+   * public address. The person must hold the step's assignee role or the workflow owner's.
+   */
+  issueLink(input: {
+    runId: string; stepId: string; participant: ExternalParticipant; note?: string; expiresInMs?: number; by: PersonActor;
+  }): Promise<{ link: ExternalLinkSummary; token: string; url?: string }>;
+  links(filter: { caseId?: string; runId?: string; personId?: string }): Promise<ExternalLinkSummary[]>;
+  revoke(linkId: string, by: PersonActor): Promise<{ applied: boolean; message?: string }>;
+  /**
+   * Send an open step link again by its channel (or `via`), after the person saw the preview:
+   * recorded as their approval of that delivery.
+   */
+  resend(input: { linkId: string; via?: ChannelName; by: PersonActor }): Promise<{ applied: boolean; delivery?: Delivery; message?: string }>;
+  /** The preview `resend` would send. */
+  previewResend(input: { linkId: string; via?: ChannelName }): Promise<{ to: string; via: ChannelName; subject?: string; body: string } | { message: string }>;
+
+  // ---- the public form (23 §4-5): every call takes the raw token and never throws for a bad one
+  form(token: string, info?: PublicRequestInfo): Promise<ExternalFormAnswer>;
+  saveDraft(token: string, values: Record<string, unknown>, info?: PublicRequestInfo): Promise<{ savedAt: string } | LinkRefusal>;
+  upload(token: string, file: { name: string; mime: string; data: Uint8Array }, info?: PublicRequestInfo):
+    Promise<{ document: import('@memwise/defs').ExternalDocument } | LinkRefusal | { status: 'invalid'; message: string }>;
+  extract(token: string, input: { documents: string[] }, info?: PublicRequestInfo): Promise<ExtractResult | LinkRefusal>;
+  submit(token: string, input: ExternalSubmitInput, info?: PublicRequestInfo): Promise<ExternalSubmitResult>;
+
+  /** Staff filling a person or external step in the app: the same extraction, as that person (23 §5). */
+  extractForStep(input: { stepRunId: string; documents: string[]; by: PersonActor }): Promise<ExtractResult>;
+
+  // ---- inbox links (23 §6)
+  inboxItem(token: string, info?: PublicRequestInfo): Promise<InboxLinkAnswer>;
+  decideInboxItem(token: string, decision: InboxLinkDecision, info?: PublicRequestInfo): Promise<InboxLinkResult>;
+}
+
+export interface ChannelService {
+  /** Channel tools bound now (`email.send`, `whatsapp.send`), by channel. */
+  available(): Promise<Record<ChannelName, { tool: string; plugin?: string } | undefined>>;
+  deliveries(filter: { caseId?: string; linkId?: string; personId?: string; limit?: number }): Promise<Delivery[]>;
+  notifySettings(personId: string): Promise<NotifySettings>;
+  setNotifySettings(personId: string, settings: NotifySettings, by: PersonActor): Promise<NotifySettings>;
+  /** Webhooks (23 §7): the secret is returned once. */
+  createWebhook(input: { purpose: string; plugin?: string; scheme: WebhookSummary['scheme']; verifyToken?: string }, by: Actor):
+    Promise<{ hook: WebhookSummary; secret: string }>;
+  webhooks(): Promise<WebhookSummary[]>;
+  /** The public handler passes a webhook request here; answers what to send back. */
+  receiveWebhook(hookId: string, req: { method: string; query: Record<string, string>; headers: Record<string, string>; body: Uint8Array }):
+    Promise<{ status: number; body?: string; contentType?: string }>;
+  inbound(filter: { hookId?: string; limit?: number }): Promise<InboundEvent[]>;
+  onInbound(listener: (event: InboundEvent) => void): () => void;
+}
+
+export interface KernelPhase5 {
+  readonly external: ExternalService;
+  readonly channels: ChannelService;
 }

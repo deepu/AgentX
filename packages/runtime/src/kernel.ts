@@ -45,6 +45,11 @@ import type { Actor, Authoring, EntityRow, Explanation, InboxItem, Kernel, Kerne
 import { approverRoles, DefinitionCache, getCaseView, inbox, listCases, liveCounts, mayApprove } from './views.ts';
 
 export const DEFAULT_ENGINE_VERSION = 'memwise-kernel-1';
+
+/** Phase 5 contract placeholder: every method says it isn't built yet. */
+function notBuilt<T>(service: string): T {
+  return new Proxy({}, { get: (_t, name) => async () => { throw new Error(`kernel.${service}.${String(name)} is not built yet`); } }) as T;
+}
 /** Schema of the DBOS data source's commit records (spike S5). */
 const TX_SCHEMA = 'dbos_tx';
 
@@ -447,6 +452,11 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     get plugins() { return pluginServices?.plugins ?? withoutProject.plugins; },
     get identity() { return pluginServices?.identity ?? withoutProject.identity; },
     entityRecord: (entity, id, actor) => needPlugins().entityRecord(entity, id, actor),
+
+    // ---------------------------------------------------------------- Phase 5 (23)
+
+    external: notBuilt<Kernel['external']>('external'),
+    channels: notBuilt<Kernel['channels']>('channels'),
 
     async shutdown() {
       await mcp.closeAll();
