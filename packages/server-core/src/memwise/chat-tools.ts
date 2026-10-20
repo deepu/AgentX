@@ -67,6 +67,8 @@ export function reportForChat(r: DraftReport): Record<string, unknown> {
 
 export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): MemwiseToolCallbacks {
   const { sessionId } = opts
+  /** Step runs this chat finished: the step's record catches up a moment later. */
+  const finished = new Set<string>()
 
   async function ctx(): Promise<{ svc: MemwiseService; actor: PersonActor; s: ConversationState }> {
     const svc = getMemwiseService()
@@ -103,7 +105,7 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
   }
 
   function requireWaiting(s: ConversationState): void {
-    if (s.status !== 'waiting') throw new Error('This step is no longer waiting on the chat (it was finished, or the case moved on).')
+    if (s.status !== 'waiting' || finished.has(s.stepRunId)) throw new Error('This step is no longer waiting on the chat (it was finished, or the case moved on).')
   }
 
   return {
@@ -187,14 +189,21 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
       }
       const writes = step ? new Set(Object.values(step.writes).map((w) => w.field)) : new Set(Object.keys(candidate))
       const values = Object.fromEntries(Object.entries(candidate).filter(([k]) => writes.has(k)))
-      const r = await svc.kernel.submitStep({
-        stepRunId: s.stepRunId, outcome, values, by: actor,
-        via: { chatId: sessionId, ...(input.rationale ? { rationale: input.rationale } : { rationale: input.summary }) },
-      })
+      let r: Awaited<ReturnType<typeof svc.kernel.submitStep>>
+      try {
+        r = await svc.kernel.submitStep({
+          stepRunId: s.stepRunId, outcome, values, by: actor,
+          via: { chatId: sessionId, ...(input.rationale ? { rationale: input.rationale } : { rationale: input.summary }) },
+        })
+      } catch (e) {
+        opts.log?.(`[memwise] chat ${sessionId}: finishing ${s.stepRunId} failed: ${e instanceof Error ? e.message : String(e)}`)
+        return { applied: false, message: 'The step could not be finished just now; try again in a moment.' }
+      }
       if (!r.applied) {
         const why = r.errors ? Object.entries(r.errors).map(([k, v]) => `${k}: ${v.join(', ')}`).join('; ') : undefined
         return { applied: false, message: r.message ?? why ?? `The step could not be finished (${r.status}).`, status: r.status }
       }
+      finished.add(s.stepRunId)
       emitMemwiseChange({ kind: 'drafts', id: draft.id })
       return {
         applied: true,

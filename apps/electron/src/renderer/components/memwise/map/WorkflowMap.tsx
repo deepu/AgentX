@@ -264,6 +264,7 @@ function MapNodeCard({
       {...(onSelect ? { type: 'button' as const, onClick: onSelect } : {})}
       title={unreachable && change !== 'removed' ? t('memwise.map.unreachable') : undefined}
       aria-current={current ? 'step' : undefined}
+      data-state={node.id}
       data-change={change}
       className={cn(
         'absolute flex flex-col items-start justify-start gap-1.5 overflow-visible rounded-lg border bg-raised px-2.5 py-2 text-left shadow-elev-1 transition-colors',

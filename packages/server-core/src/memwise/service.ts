@@ -222,7 +222,13 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     const unsubscribe = k.onChange((c) => {
       if (c.kind === 'run') emitMemwiseChange({ kind: 'run', id: c.runId, caseId: c.caseId, workflowId: c.workflowId })
       else if (c.kind === 'drafts') emitMemwiseChange({ kind: 'drafts', id: c.draftId })
-      else emitMemwiseChange({ kind: c.kind })
+      else if (c.kind === 'definitions') {
+        // The kernel re-indexed (a publish, or a reindex): the app's view follows it.
+        void refreshContext().then(() => {
+          setMemwiseHostStatus({ diagnostics: diagnosticsOf() })
+          emitMemwiseChange({ kind: 'definitions' })
+        }, () => emitMemwiseChange({ kind: 'definitions' }))
+      } else emitMemwiseChange({ kind: c.kind })
     })
 
     const diagnosticsOf = () => indexed.diagnostics.map(toDiagnostic)
@@ -230,7 +236,6 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       const diagnostics = await k.index()
       await refreshContext()
       setMemwiseHostStatus({ diagnostics: diagnosticsOf() })
-      emitMemwiseChange({ kind: 'definitions' })
       return diagnostics
     }
 
@@ -276,6 +281,8 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       status: getMemwiseHostStatus,
       async context() {
         const { valueTypeToJsonSchema } = await import('@memwise/defs')
+        // Always the kernel's current index: a publish re-indexes inside the kernel.
+        indexed = await k.project()
         return { project: indexed.project as ProjectDefs, diagnostics: indexed.diagnostics, tools: tools2, jsonSchema: valueTypeToJsonSchema }
       },
       personFor,

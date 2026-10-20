@@ -1,0 +1,10 @@
+policy: domain
+effects:
+  outbound: approve        # a person sees every message before it goes
+  irreversible: deny
+tools:
+  deny: [payments.transfer]
+budgets:
+  tokens: 200000
+  modelCalls: 60
+modelRoles: [checker, verifier, extractor, explainer, drafter]

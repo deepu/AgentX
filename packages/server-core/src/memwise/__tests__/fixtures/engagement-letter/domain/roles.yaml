@@ -1,0 +1,5 @@
+roles:
+  staff:   { title: Staff, description: Runs intakes and fills forms for clients }
+  manager: { title: Manager, description: Approves onboarding }
+  finance: { title: Finance, description: Sees bank details }
+  partner: { title: Partner, description: Signs off engagement letters }

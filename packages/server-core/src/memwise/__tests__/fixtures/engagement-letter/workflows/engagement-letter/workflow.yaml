@@ -1,0 +1,20 @@
+workflow: engagement-letter
+version: 1
+title: Engagement letter
+owner: partner                 # stopped letters and letters that need a person go to a partner
+case: ./case.yaml
+start: request
+steps:
+  request:
+    on: { submitted: draft_letter }
+    wait: { remind: 2d, timeout: 7d → needs_person }
+  draft_letter:
+    on: { drafted: partner_review }
+  partner_review:
+    on: { approved: record, sent_back: draft_letter }
+    wait: { remind: 2d, timeout: 7d → needs_person }
+  record: { on: { done: end } }
+  needs_person:
+    on: { resolved: draft_letter }
+    assignee: partner
+    wait: { timeout: 7d → end }
