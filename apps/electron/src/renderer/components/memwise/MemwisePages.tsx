@@ -18,6 +18,7 @@ import { navigate, routes } from '@/lib/navigate'
 import { sessionMetaMapAtom } from '@/atoms/sessions'
 import {
   memwiseDraftOpenTabAtom,
+  memwiseDraftsAtom,
   memwiseInboxAtom,
   memwisePeopleAtom,
   memwisePeopleOnlyAtom,
@@ -111,6 +112,15 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
   // A playbook change's review whose card does not name its draft: read it from the case.
   const needsCase = item?.kind === 'decision' && isMetaPlaybook(item.workflowId) && typeof item.context.draft?.value !== 'string'
   const { data: reviewCase } = useMemwiseCase(needsCase ? item!.caseId : null)
+  // A change's review names its playbook by title: live playbooks, and new ones by their draft's title.
+  const playbooks = useAtomValue(memwisePlaybooksAtom)
+  const drafts = useAtomValue(memwiseDraftsAtom)
+  const playbookTitles = React.useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const d of drafts ?? []) if (d.playbookTitle) out[d.workflowId] = d.playbookTitle
+    for (const p of playbooks ?? []) out[p.id] = p.title
+    return out
+  }, [playbooks, drafts])
 
   const actions = React.useMemo<InboxActions>(() => {
     const api = getMemwiseApi()
@@ -152,7 +162,7 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
   return (
     <Info_Page loading={inbox === null} empty={inbox !== null && !item ? t('memwise.inbox.itemGone') : undefined}>
       <Info_Page.Header title={t('memwise.nav.inbox')} />
-      {item && <InboxItemView key={item.id} item={item} actions={actions} people={people} roles={roles} reviewDraftId={caseDraftId(reviewCase)} />}
+      {item && <InboxItemView key={item.id} item={item} actions={actions} people={people} roles={roles} reviewDraftId={caseDraftId(reviewCase)} playbookTitles={playbookTitles} />}
     </Info_Page>
   )
 }

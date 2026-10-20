@@ -107,6 +107,23 @@ describe('draft screen', () => {
     expect(html).toContain('data-action="submit"')
   })
 
+  test('a draft still in its chat is finished there: Send for review is off and says so', () => {
+    const inChat: MwDraft = {
+      ...sampleDraft,
+      stage: 'checked',
+      inChat: true,
+      edits: sampleDraft.edits.map(e => (e.status === 'pending' ? { ...e, status: 'kept' as const } : e)),
+      pendingEdits: 0,
+      report: { ...sampleDraft.report!, outcome: 'passed' },
+    }
+    const html = render(<DraftView draft={inChat} live={sampleLivePlaybook} actions={actions} now={NOW} />)
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-action="submit"/)
+    expect(html).toContain('data-in-chat')
+    expect(text(html)).toContain('Finish it in the chat')
+    expect(html).toContain('data-action="open-chat"')
+    expect(html).not.toContain('memwise.')
+  })
+
   test('checks: what was found, example cases, recent cases tried and the impact', () => {
     const html = render(<DraftView draft={sampleDraft} live={sampleLivePlaybook} actions={actions} tab="checks" now={NOW} />)
     const out = text(html)
@@ -120,6 +137,12 @@ describe('draft screen', () => {
     expect(out).toContain('Sunrise Foods')
     expect(html).toContain('data-impact')
     expect(out).toContain('4 cases, which stay on their version')
+    // Tools and other playbooks in words, translated: no ids
+    expect(out).toContain('“Screen for sanctions” must use Screen sanctions')
+    expect(out).toContain('Engagement letter uses Customer and the Manager role')
+    const impact = text(html.slice(html.indexOf('data-impact')))
+    expect(impact).not.toContain('sanctions.screen')
+    expect(impact).not.toContain('role manager')
     expect(html).not.toContain('data-report-stale')
     expect(html).not.toContain('memwise.')
   })
@@ -244,6 +267,11 @@ describe('inbox: building and changing playbooks', () => {
     expect(out).toContain('Ask for changes')
     // The draft id is a link, not a detail to read
     expect(out).not.toContain('drf_sanctions')
+    // The playbook by its title, not its id (in words when the title isn't known)
+    expect(html).toMatch(/data-field="playbook"[\s\S]*?Client intake/)
+    expect(out).not.toContain('client-intake')
+    expect(text(render(<InboxItemView item={sampleReviewItem} actions={inboxActions} playbookTitles={{ 'client-intake': 'New client intake' }} now={NOW} />)))
+      .toContain('New client intake')
     expect(html).not.toContain('memwise.')
   })
 })
@@ -287,5 +315,8 @@ describe('playbook versions and drafts', () => {
     const out = text(html)
     expect(out).toContain('Building playbooks')
     expect(out.indexOf('Client intake')).toBeLessThan(out.indexOf('Building playbooks'))
+    // A draft's stage badge sits right after its subtitle, which keeps the rest of the line
+    // (not the half of it EntityRow keeps for label chips).
+    expect(html).not.toContain('w-[55%]')
   })
 })

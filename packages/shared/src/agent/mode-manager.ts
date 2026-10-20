@@ -2075,6 +2075,15 @@ export function shouldAllowToolInMode(
         return { allowed: true };
       }
 
+      // MemWise playbook tools: only playbook_finish is blocked here. Say what it does in the
+      // person's words, so the chat asks them to switch instead of talking about sources.
+      if (toolName.startsWith('mcp__session__playbook_')) {
+        return {
+          allowed: false,
+          reason: `The draft can't be sent for review in ${config.displayName} mode. Ask the person to switch to Ask mode (${config.shortcutHint}) to send the draft for review; they will be asked once before it is sent.`
+        };
+      }
+
       // Write/auth/admin session tools - blocked in Explore mode
       return {
         allowed: false,

@@ -8,7 +8,7 @@ import {
   draftDir, DraftStaleError, exampleToYaml, listDrafts, loadDraft, loadWorkflow, readDraft, SCALAR_TYPES, setDraftEditStatus,
   updateDraftMeta, WORKFLOW_ID_PATTERN, writeDraftFiles, writeDraftReport,
   type CheckEnvironment, type Diagnostic, type DraftReport, type ExampleCase, type ExampleOutcome, type Impact,
-  type ImpactTool, type PastCaseOutcome, type ProjectDefs, type StructuralDiff, type WorkflowDef,
+  type DiffNameKind, type ImpactTool, type PastCaseOutcome, type ProjectDefs, type StructuralDiff, type WorkflowDef,
 } from '@memwise/defs';
 import type { ToolGateway } from '@memwise/gateway';
 import { compilePolicy, decide, layersFor, violationsToDiagnostics } from '@memwise/policy';
@@ -19,6 +19,7 @@ import type pg from 'pg';
 import { domainTools } from './domain-tools.ts';
 import { PUBLISH_DRAFT_TOOL } from './authoring-tools.ts';
 import { newRunId } from './ids.ts';
+import { exampleNameFor } from './replay.ts';
 import { getTransitions, latestWorkflowDef } from './runs.ts';
 import {
   CHANGE_PLAYBOOK, CREATE_PLAYBOOK, type Actor, type Authoring, type KernelChange, type RunRecord, type StartRunInput, type TestRunner,
@@ -70,6 +71,47 @@ async function listFiles(dir: string, prefix = ''): Promise<string[]> {
     else if (e.isFile()) out.push(rel);
   }
   return out.sort();
+}
+
+/** `client_name` → "Client name". */
+const inWords = (id: string) => {
+  const w = id.replace(/[_.-]+/g, ' ').trim();
+  return w ? w[0]!.toUpperCase() + w.slice(1) : id;
+};
+
+/** A tool by what it does: `intake.extract_fields` → "Extract fields", `domain.customer.create` → "Create customer". */
+function toolInWords(tool: string): string {
+  const parts = tool.split('.');
+  const last = parts.at(-1) ?? tool;
+  if (parts.length === 3 && parts[0] === 'domain') return inWords(`${last} ${parts[1]}`);
+  if (parts.length === 2 && !/[_-]/.test(last)) return inWords(`${last} ${parts[0]}`);
+  return inWords(last);
+}
+
+/**
+ * Names for a review card's summary (people read it, not the CLI): steps by their titles,
+ * everything else in words, in quotes; no ids in code formatting.
+ */
+function namesInWords(...workflows: (WorkflowDef | undefined)[]): (kind: DiffNameKind, id: string) => string {
+  return (kind, id) => {
+    if (kind === 'tool') return `“${toolInWords(id)}”`;
+    if (kind === 'state') {
+      if (id === 'end') return '“End”';
+      const title = workflows.map((w) => w?.steps[id]?.title).find(Boolean);
+      return `“${title ?? inWords(id)}”`;
+    }
+    if (kind === 'playbook') return `“${workflows.map((w) => w?.title).find(Boolean) ?? inWords(id)}”`;
+    return `“${inWords(id)}”`;
+  };
+}
+
+/**
+ * An example case's file name from its name: lower case, words joined by hyphens
+ * (`Unreadable GST certificate` → `unreadable-gst-certificate`). Empty when nothing is left.
+ */
+export function exampleFileSlug(name: string): string {
+  return name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 64).replace(/-+$/, '');
 }
 
 /** Tools a step uses: allowed, required, and those its writes come from. */
@@ -161,12 +203,17 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     return project.workflows[workflowId] ?? (await latestWorkflowDef(deps.pool, workflowId));
   }
 
-  /** Recent finished cases of the live version, replayed as examples on the draft. */
+  /**
+   * Recent finished cases of the playbook, replayed as examples on the draft: the live version's
+   * first, then cases that finished on earlier versions (a case started before the last change
+   * finishes on its own version, and is still the best evidence of what the playbook is for).
+   */
   async function pastCaseExamples(live: WorkflowDef | undefined, n: number): Promise<{ caseId: string; title: string; livePath: string[]; example: ExampleCase }[]> {
     if (!live || n <= 0) return [];
     const { rows } = await deps.pool.query(
       `select r.id, r.case_id, c.values from mw.runs r join mw.cases c on c.id = r.case_id
-        where r.workflow_id = $1 and r.workflow_hash = $2 and r.status = 'done' order by r.updated_at desc, r.id desc limit $3`,
+        where r.workflow_id = $1 and r.status = 'done'
+        order by (r.workflow_hash = $2) desc, r.updated_at desc, r.id desc limit $3`,
       [live.id, live.hash, n]);
     const out = [];
     for (const r of rows) {
@@ -236,11 +283,10 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     const otherPlaybooks: Impact['otherPlaybooks'] = [];
     for (const wf of Object.values(liveProject.workflows)) {
       if (wf.id === after.id) continue;
-      const uses = [
-        ...[...entitiesOf(wf, liveProject.entities)].filter((e) => changedEntities.has(e)),
-        ...[...rolesOf(wf)].filter((r) => changedRoles.has(r)).map((r) => `role ${r}`),
-      ];
-      if (uses.length) otherPlaybooks.push({ id: wf.id, uses });
+      const entities = [...entitiesOf(wf, liveProject.entities)].filter((e) => changedEntities.has(e));
+      const roles = [...rolesOf(wf)].filter((r) => changedRoles.has(r));
+      const uses = [...entities, ...roles.map((r) => `role ${r}`)];
+      if (uses.length) otherPlaybooks.push({ id: wf.id, uses, entities, roles });
     }
 
     const summary = [...describeStructuralDiff(structure)];
@@ -485,7 +531,11 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       if (meta.status !== 'open') throw new Error(`draft ${draftId} is ${meta.status}`);
       const diff = await diffDraft(root, draftId).catch(() => undefined);
       const said = edits.filter((e) => e.status !== 'discarded').map((e) => e.summary).filter(Boolean);
-      const summary = (diff?.structure ? describeStructuralDiff(diff.structure) : said).join(' ') || meta.title;
+      // The reviewer reads this on the review card: steps by their titles, no ids.
+      const named = diff?.structure
+        ? namesInWords((await loadDraft(root, draftId).catch(() => undefined))?.workflow, meta.kind === 'change' ? await liveWorkflow(meta.workflowId) : undefined)
+        : undefined;
+      const summary = (diff?.structure ? describeStructuralDiff(diff.structure, named ? { name: named } : {}) : said).join(' ') || meta.title;
       const runId = newRunId();
       await updateDraftMeta(root, draftId, { runId });
       const started = await deps.startRun({
@@ -516,7 +566,12 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         const meta = await createDraft(root, { workflowId, title: `Example case “${example.name}”`, kind: 'change', createdBy: byLabel(by) });
         draftId = meta.id;
       }
-      const path = `workflows/${workflowId}/examples/${example.name}.yaml`;
+      // The file is named for the example, as a slug unique in the folder; the name as typed stays inside it.
+      const examplesDir = join(draftDir(root, draftId), 'workflows', workflowId, 'examples');
+      const base = exampleFileSlug(example.name) || exampleFileSlug(exampleNameFor(input.caseId));
+      let file = base;
+      for (let n = 2; existsSync(join(examplesDir, `${file}.yaml`)) || existsSync(join(examplesDir, `${file}.yml`)); n++) file = `${base}-${n}`;
+      const path = `workflows/${workflowId}/examples/${file}.yaml`;
       const { file: _file, ...doc } = example;
       await writeDraftFiles(root, draftId, [{ path, content: exampleToYaml(doc) }], {
         by: byLabel(by), via: 'editor', summary: input.correction ? `Example case ${example.name} from a correction` : `Example case ${example.name} from a past case`,

@@ -328,6 +328,14 @@ html.dark[data-scenic] .fullscreen-overlay-background {
   line-height: var(--lh-label) !important;
 }
 
+/* Beside an action button a toast title has little room: it wraps to 2 lines rather than being cut */
+[data-sonner-toast]:has([data-button]) [data-title] {
+  white-space: normal !important;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+}
+
 /* Description wraps up to 2 lines, then truncates */
 [data-sonner-toast] [data-description] {
   color: var(--text-secondary) !important;

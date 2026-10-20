@@ -186,7 +186,7 @@ export const sampleReport: MwDraftReport = {
     newTools: [{ name: 'sanctions.screen', bound: true, effect: 'read', treatment: 'allow', plugin: 'sanctions' }],
     newRequiredTools: [{ step: 'screen', tool: 'sanctions.screen' }],
     caseFields: { added: ['sanctions_hit'], removed: [], changed: [] },
-    otherPlaybooks: [],
+    otherPlaybooks: [{ id: 'engagement-letter', title: 'Engagement letter', uses: ['customer', 'role manager'], entities: ['customer'], roles: ['manager'] }],
     summary: [
       '4 open cases stay on version 2 and finish there.',
       '1 case is at "Email the welcome pack", which this change removes; it finishes on version 2.',
@@ -376,6 +376,7 @@ export const sampleReviewItem: Extract<MwInboxItem, { kind: 'decision' }> = {
   context: {
     draft: { value: 'drf_sanctions', provenance: { kind: 'system', at: T3 } },
     summary: { value: 'Adds a sanctions screening step after the check.', provenance: { kind: 'judgement', at: T3, stepRunId: 'sr_edit_7' } },
+    playbook: { value: 'client-intake', provenance: { kind: 'judgement', at: T3, stepRunId: 'sr_edit_7' } },
   },
   since: T3,
 }

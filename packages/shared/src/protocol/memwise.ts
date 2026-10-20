@@ -545,6 +545,8 @@ export interface MwDraftSummary {
   /** The create-playbook / change-playbook run, and its case. */
   runId?: string
   caseId?: string
+  /** The run is still at its chat step: the draft is finished (and sent for review) from that chat. */
+  inChat?: boolean
 }
 
 export interface MwDraftEdit {
@@ -611,7 +613,11 @@ export interface MwImpact {
   newTools: { name: string; bound: boolean; effect?: MwEffectClass; treatment?: MwTreatment; plugin?: string }[]
   newRequiredTools: { step: string; tool: string }[]
   caseFields: { added: string[]; removed: string[]; changed: string[] }
-  otherPlaybooks: { id: string; uses: string[] }[]
+  /**
+   * Other live playbooks that use what changed. `uses` is in English (the CLI's words); the app
+   * shows `title`, `entities` and `roles`.
+   */
+  otherPlaybooks: { id: string; uses: string[]; title?: string; entities?: string[]; roles?: string[] }[]
   /** Plain sentences for the review card. */
   summary: string[]
 }

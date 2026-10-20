@@ -166,10 +166,12 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
     return () => { stale = true }
   }, [workspaceId, setWorkspaceId, setAvailable, setStatus, setInbox, setCases, setPlaybooks, setDrafts, loadStatus, loadInbox, loadCases, loadPlaybooks, loadDrafts])
 
-  // While the kernel starts, poll the status until it's ready (pushes may not flow yet).
+  // While the kernel starts, poll the status until it's ready (pushes may not flow yet). With no
+  // answer at all yet (the first request was lost, e.g. while the connection moved to the workspace
+  // right after onboarding), ask again too, or the app shows "Starting" until it is reloaded.
   const status = useAtomValue(memwiseStatusAtom)
   useEffect(() => {
-    if (!workspaceId || !status || status.ready) return
+    if (!workspaceId || status?.ready) return
     const api = getMemwiseApi()
     if (!api) return
     const timer = setTimeout(async () => {

@@ -110,7 +110,11 @@ describe('draft model', () => {
     expect(texts).toContain('New step “Screen for sanctions”')
     expect(texts).toContain('Step “Email the welcome pack” removed')
     expect(texts).toContain("Step “Check the client's answers”: instructions and what it may use changed")
-    expect(texts).toContain('“Screen for sanctions” must now use sanctions.screen')
+    // Tools by what they do, never their ids
+    expect(texts).toContain('“Screen for sanctions” must now use Screen sanctions')
+    expect(texts).toContain('Uses something new: Screen sanctions')
+    expect(texts).toContain('No longer uses: Send welcome and Similar cases')
+    expect(texts.join('\n')).not.toMatch(/\b[a-z]+\.[a-z_]+\b|`/)
     expect(texts).toContain("After “Check the client's answers”, checked now goes to “Screen for sanctions”")
     expect(texts).toContain('New example cases: “Sanctions hit”')
     expect(texts.join('\n')).not.toMatch(/workflow|yaml|API/i)

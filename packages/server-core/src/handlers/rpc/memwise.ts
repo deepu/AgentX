@@ -119,6 +119,11 @@ const META_PLAYBOOKS = ['create-playbook', 'change-playbook']
 /** Larger files are left out of `MwDraft.fileTexts` (the diff still shows them). */
 const FILE_TEXT_MAX = 256_000
 
+/** A meta playbook state that is its chat (conversation step): drafts there are finished from the chat. */
+function inChatState(c: DtoContext, state: string): boolean {
+  return META_PLAYBOOKS.some((id) => isConversationStep(c.project.workflows[id]?.steps[state]))
+}
+
 function clientOf(ctx: RequestContext): ClientIdentity {
   return { clientId: ctx.clientId, personId: ctx.personId ?? null }
 }
@@ -400,7 +405,10 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     const name = changing
       ? `Changing: ${(playbookId && c.project.workflows[playbookId]?.title) || (typeof v.title === 'string' && v.title) || playbookId || 'a playbook'}`
       : `Building: ${(typeof v.title === 'string' && v.title.trim()) || (typeof v.request === 'string' && v.request.trim().slice(0, 60)) || 'a new playbook'}`
-    const session = await deps.sessionManager.createSession(workspaceId, { name })
+    // Ask mode whatever the workspace default: drafting runs without prompts (draft writes are
+    // allowed, D29), and the person is asked once before playbook_finish sends the draft for review.
+    // Explore would refuse to finish; Execute would send it without asking.
+    const session = await deps.sessionManager.createSession(workspaceId, { name, permissionMode: 'ask' })
     await store.set(svc.kernel.pool, { chatId: session.id, anchorKind: 'step', anchorId: s.stepRunId, personId: actor.personId })
     const who = (await personName(svc, actor.personId)) ?? 'the person in this chat'
     deps.sessionManager.setMemwiseContext(session.id, {
@@ -441,15 +449,19 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     async function runOf(meta: DraftMeta): Promise<DraftFacts['run']> {
       if (meta.runId) {
         const run = await svc.kernel.getRun(meta.runId).catch(() => undefined)
-        if (run && run.status === 'active') return { runId: run.id, caseId: run.caseId, state: run.state, status: run.status }
+        if (run && run.status === 'active') return withChat({ runId: run.id, caseId: run.caseId, state: run.state, status: run.status })
       }
       const found = (await activeMetaRuns()).find((r) => r.draft === meta.id)
-      if (found) return { runId: found.runId, caseId: found.caseId, state: found.state, status: found.status }
+      if (found) return withChat({ runId: found.runId, caseId: found.caseId, state: found.state, status: found.status })
       if (meta.runId) {
         const run = await svc.kernel.getRun(meta.runId).catch(() => undefined)
-        if (run) return { runId: run.id, caseId: run.caseId, state: run.state, status: run.status }
+        if (run) return withChat({ runId: run.id, caseId: run.caseId, state: run.state, status: run.status })
       }
       return undefined
+    }
+    /** An active change run still at its chat (the meta playbook's conversation step). */
+    function withChat(run: NonNullable<DraftFacts['run']>): NonNullable<DraftFacts['run']> {
+      return run.status === 'active' && inChatState(c, run.state) ? { ...run, inChat: true } : run
     }
     return {
       async facts(meta: DraftMeta, pre: { got?: Awaited<ReturnType<typeof authoring.getDraft>>; diff?: DraftDiff } = {}): Promise<DraftFacts> {
@@ -774,7 +786,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         files: (diff?.files ?? []).map((f) => d.toFileChange(f, pending)),
         ...(diff?.structure ? { structure: d.toStructuralDiff(diff.structure) } : {}),
         conflicts: [...(diff?.conflicts ?? [])],
-        ...(got.report ? { report: d.toDraftReport(got.report) } : {}),
+        ...(got.report ? { report: d.toDraftReport(got.report, c) } : {}),
         reportStale: !!got.report && got.report.hash !== got.contentHash,
         ...(playbook ? { playbook } : {}),
         diagnostics: diagnostics.map(d.toDiagnostic),
@@ -860,13 +872,13 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     },
 
     async checkDraft(ctx: RequestContext, input: MwCheckDraftInput): Promise<MwDraftReport> {
-      const { svc, d } = await begin(ctx)
+      const { svc, c, d } = await begin(ctx)
       const authoring = authoringOf(svc)
       const got = await authoring.getDraft(input?.draftId)
       if (!got) throw new Error(DRAFT_MESSAGES.missing)
       const report = await authoring.check(input.draftId, { ...(typeof input.pastCases === 'number' ? { pastCases: input.pastCases } : {}) })
       emitMemwiseChange({ kind: 'drafts', id: input.draftId })
-      return d.toDraftReport(report)
+      return d.toDraftReport(report, c)
     },
 
     async submitDraft(ctx: RequestContext, draftId: string): Promise<MwSubmitDraftResult> {
@@ -878,9 +890,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const facts = await draftLookup(svc, actor, c).facts(got.meta, { got })
       if (facts.run?.status === 'active') {
         // Still in its chat (the meta playbook's conversation step), or past it on the way to review.
-        const state = facts.run.state
-        const inChat = META_PLAYBOOKS.some((id) => isConversationStep(c.project.workflows[id]?.steps[state]))
-        return inChat
+        return facts.run.inChat
           ? { applied: false, code: 'draft.in_chat', message: DRAFT_MESSAGES.in_chat, runId: facts.run.runId, caseId: facts.run.caseId }
           : { applied: false, code: 'draft.in_review', message: DRAFT_MESSAGES.in_review, runId: facts.run.runId, caseId: facts.run.caseId }
       }

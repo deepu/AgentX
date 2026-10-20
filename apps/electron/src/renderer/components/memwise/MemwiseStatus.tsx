@@ -17,7 +17,7 @@ import {
   StyledDropdownMenuItem,
 } from '@/components/ui/styled-dropdown'
 import { cn } from '@/lib/utils'
-import { memwiseAvailableAtom, memwisePeopleAtom, memwiseRolesAtom, memwiseStatusAtom } from '@/atoms/memwise'
+import { memwiseAvailableAtom, memwisePeopleAtom, memwiseRolesAtom, memwiseStatusAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { useMemwiseActAs } from '@/hooks/useMemwise'
 import { roleTitle } from './format'
 
@@ -36,7 +36,9 @@ function useStatusText(): { problem: StatusProblem; title: string; description?:
   const { t } = useTranslation()
   const status = useAtomValue(memwiseStatusAtom)
   const available = useAtomValue(memwiseAvailableAtom)
-  const problem = statusProblem(status, available)
+  const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
+  // No workspace open (yet): nothing is starting, so say nothing.
+  const problem = workspaceId ? statusProblem(status, available) : null
   switch (problem) {
     case 'unavailable':
       return { problem, title: t('memwise.status.unavailable'), description: t('memwise.status.unavailableDescription') }

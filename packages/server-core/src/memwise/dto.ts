@@ -16,6 +16,7 @@ import type {
   MwTransition, MwDraftStage, MwDraftSummary, MwDraftEdit, MwFileChange, MwStructuralDiff, MwImpact, MwDraftReport, MwVersion,
   MwTreatment,
 } from '@memwise/shared/protocol'
+import { isConversationStep } from './conversation'
 
 type JsonSchemaFn = (type: FieldDef['type'], recordTypes?: Record<string, { fields: Record<string, FieldDef> }>) => Record<string, unknown>
 
@@ -84,6 +85,12 @@ export function waitingOn(wf: WorkflowDef | undefined, state: string, status: st
   if (status !== 'active' || !wf) return undefined
   const step = wf.steps[state]
   if (step) {
+    // A conversation step (building or changing a playbook by chat) waits for its person to
+    // answer in the chat, not for the agent.
+    if (isConversationStep(step)) {
+      const role = step.assignee ?? wf.states[state]?.assignee ?? wf.owner
+      return { kind: 'role', ...(role ? { role } : {}) }
+    }
     if (step.performer === 'agent') return { kind: 'agent' }
     if (step.performer === 'system') return { kind: 'system' }
     return { kind: 'role', ...(step.assignee ? { role: step.assignee } : {}) }
@@ -540,8 +547,8 @@ export interface DraftFacts {
   edits: DraftEdit[]
   report?: DraftReport
   contentHash: string
-  /** The change run (create-playbook / change-playbook) and where it is. */
-  run?: { runId: string; caseId: string; state: string; status: string }
+  /** The change run (create-playbook / change-playbook) and where it is; `inChat` while it waits at its conversation step. */
+  run?: { runId: string; caseId: string; state: string; status: string; inChat?: boolean }
   changedFiles: number
   playbookTitle: string
   names: Map<string, string>
@@ -576,6 +583,7 @@ export function toDraftSummary(f: DraftFacts): MwDraftSummary {
     ...(m.baseVersion !== undefined ? { baseVersion: m.baseVersion } : {}),
     ...(m.publishedVersion !== undefined ? { publishedVersion: m.publishedVersion } : {}),
     ...(f.run ? { runId: f.run.runId, caseId: f.run.caseId } : m.runId ? { runId: m.runId } : {}),
+    ...(m.status === 'open' && f.run?.status === 'active' && f.run.inChat ? { inChat: true } : {}),
   }
 }
 
@@ -624,7 +632,7 @@ export function toStructuralDiff(s: StructuralDiff): MwStructuralDiff {
   }
 }
 
-export function toImpact(i: Impact): MwImpact {
+export function toImpact(i: Impact, ctx?: Pick<DtoContext, 'project'>): MwImpact {
   return {
     ...(i.liveVersion !== undefined ? { liveVersion: i.liveVersion } : {}),
     newVersion: i.newVersion,
@@ -637,19 +645,26 @@ export function toImpact(i: Impact): MwImpact {
     })),
     newRequiredTools: i.newRequiredTools.map((t) => ({ ...t })),
     caseFields: { added: [...i.caseFields.added], removed: [...i.caseFields.removed], changed: [...i.caseFields.changed] },
-    otherPlaybooks: i.otherPlaybooks.map((p) => ({ id: p.id, uses: [...p.uses] })),
+    otherPlaybooks: i.otherPlaybooks.map((p) => {
+      const title = ctx?.project.workflows[p.id]?.title
+      return {
+        id: p.id, uses: [...p.uses], ...(title ? { title } : {}),
+        ...(p.entities ? { entities: [...p.entities] } : {}), ...(p.roles ? { roles: [...p.roles] } : {}),
+      }
+    }),
     summary: [...i.summary],
   }
 }
 
-export function toDraftReport(r: DraftReport): MwDraftReport {
+/** `ctx` names the other playbooks in the impact by their titles. */
+export function toDraftReport(r: DraftReport, ctx?: Pick<DtoContext, 'project'>): MwDraftReport {
   return {
     hash: r.hash, at: r.at,
     diagnostics: r.diagnostics.map(toDiagnostic),
     errors: r.errors, warnings: r.warnings,
     examples: r.examples.map((e) => ({ name: e.name, status: e.status, differences: [...e.differences], ...(e.reason ? { reason: e.reason } : {}) })),
     pastCases: r.pastCases.map((p) => ({ caseId: p.caseId, title: p.title, status: p.status, differences: [...p.differences], livePath: [...p.livePath], draftPath: [...p.draftPath] })),
-    ...(r.impact ? { impact: toImpact(r.impact) } : {}),
+    ...(r.impact ? { impact: toImpact(r.impact, ctx) } : {}),
     outcome: r.outcome, summary: r.summary,
   }
 }

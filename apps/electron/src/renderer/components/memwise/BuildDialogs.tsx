@@ -193,7 +193,8 @@ export function SaveAsExampleDialog({ open, onOpenChange, kase, playbook, save }
       const draftId = result.draftId
       toast.success(t('memwise.example.saved'), {
         description: t('memwise.example.savedDescription'),
-        ...(draftId ? { action: { label: t('memwise.example.openDraft'), onClick: () => navigate(routes.view.draft(draftId)) } } : {}),
+        // A short action label: the toast is as narrow as the list pane, and its title must still fit.
+        ...(draftId ? { action: { label: t('common.open'), onClick: () => navigate(routes.view.draft(draftId)) } } : {}),
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

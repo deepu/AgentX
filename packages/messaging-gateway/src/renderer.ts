@@ -35,6 +35,7 @@ import type {
   InlineButton,
   ResponseMode,
 } from './types'
+import { getPlainToolLabel } from '@memwise/shared/utils/toolNames'
 
 /**
  * Build the per-call options bag from a binding. Currently only `threadId`
@@ -879,9 +880,10 @@ function extractErrorMessage(err: unknown): string {
 
 function formatPermissionText(request: PermissionRequest): string {
   const lines = ['⚡ Permission required']
-  lines.push(`Tool: ${request.toolName}`)
-  if (request.command) lines.push(`Command: ${request.command}`)
-  if (request.description) lines.push(request.description)
+  const plainLabel = getPlainToolLabel(request.toolName)
+  lines.push(`Tool: ${plainLabel ?? request.toolName}`)
+  if (request.command && !(plainLabel && request.command === request.toolName)) lines.push(`Command: ${request.command}`)
+  if (request.description && request.description !== plainLabel) lines.push(request.description)
   return lines.join('\n')
 }
 
