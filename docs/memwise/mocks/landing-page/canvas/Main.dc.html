@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MemWise home page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0D12}
+a{color:#E8ECF1;text-decoration:none}a:hover{color:#FFFFFF}
+pre{margin:0}
+</style>
+</helmet>
+<div style="background: #0A0D12; color: #E8ECF1; font-family: 'Geist', system-ui, sans-serif; min-width: 0; overflow-x: hidden">
+
+<header style="border-bottom: 1px solid #1E2630; padding: 0 24px">
+<nav style="max-width: 1200px; margin: 0 auto; min-height: 72px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; box-sizing: border-box" aria-label="Main">
+<a href="#top" style="display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 19px; letter-spacing: -0.01em">
+<svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="23" height="23" rx="6" stroke="{{accent}}" stroke-width="2"></rect><circle cx="8" cy="13" r="2.5" fill="{{accent}}"></circle><circle cx="18" cy="8" r="2.5" fill="#E8ECF1"></circle><circle cx="18" cy="18" r="2.5" fill="#E8ECF1"></circle><path d="M10.3 12 L15.7 9 M10.3 14 L15.7 17" stroke="#E8ECF1" stroke-width="1.5"></path></svg>
+<span>MemWise</span>
+</a>
+<div style="display: flex; flex-wrap: wrap; gap: 28px; font-size: 15px; color: #A3AEBB">
+<a href="#platform" style="color: #A3AEBB">Platform</a>
+<a href="#workflows" style="color: #A3AEBB">Workflows</a>
+<a href="#governance" style="color: #A3AEBB">Governance</a>
+<a href="#docs" style="color: #A3AEBB">Docs</a>
+<a href="#pricing" style="color: #A3AEBB">Pricing</a>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<a href="#github" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #C9D1DA; border: 1px solid #2A3340; border-radius: 10px; padding: 0 14px; min-height: 44px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"></path></svg>
+Star on GitHub · [STARS]
+</a>
+<a href="#start" style="display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #0A0D12; background: {{accent}}; border-radius: 10px; padding: 0 16px; min-height: 44px">Start building</a>
+</div>
+</nav>
+</header>
+
+<section id="top" style="padding: 96px 24px 72px">
+<div style="max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; text-align: center">
+<a href="#oss" style="display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; font-family: 'Geist Mono', monospace; font-size: 13px; color: #C9D1DA; border: 1px solid #2A3340; border-radius: 999px; padding: 8px 16px; background: #11161D">
+<span style="color: {{accent}}">Open source</span><span style="color: #5F6B78">/</span><span>Apache-2.0</span><span style="color: #5F6B78">/</span><span>Runs on Postgres</span>
+</a>
+<h1 style="margin: 32px 0 0; font-size: clamp(42px, 6.4vw, 84px); line-height: 1.02; letter-spacing: -0.035em; font-weight: 700; color: #F4F6F9; max-width: 1000px">Agent workflows you can trust in production.</h1>
+<p style="margin: 28px 0 0; font-size: clamp(18px, 1.6vw, 21px); line-height: 1.6; color: #A3AEBB; max-width: 760px">MemWise is the open-source platform for governed agent work. Write a workflow as files, run it durably on Postgres, and let policy decide what every agent may touch. People approve what matters, and every decision leaves a record.</p>
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 40px">
+<a href="#start" style="display: flex; align-items: center; font-size: 16px; font-weight: 600; color: #0A0D12; background: {{accent}}; border-radius: 12px; padding: 0 24px; min-height: 52px">Start your project</a>
+<a href="#docs" style="display: flex; align-items: center; font-size: 16px; font-weight: 500; color: #E8ECF1; background: #161C25; border: 1px solid #2A3340; border-radius: 12px; padding: 0 24px; min-height: 52px">Read the docs</a>
+</div>
+<div style="margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; font-family: 'Geist Mono', monospace; font-size: 14px; color: #A3AEBB">
+<span><span style="color: #7D8896">$</span> npx memwise init client-intake</span>
+<button type="button" aria-label="Copy install command" style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: transparent; border: 1px solid #2A3340; border-radius: 10px; color: #A3AEBB; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+</button>
+</div>
+</div>
+
+<div style="max-width: 1200px; margin: 72px auto 0; background: #0E131A; border: 1px solid #222A35; border-radius: 18px; overflow: hidden; text-align: left">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #1E2630; font-size: 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<span style="font-weight: 600; color: #F2F5F8">Client intake</span>
+<span style="font-family: 'Geist Mono', monospace; color: #7D8896">run #1042 · case Northwind Ltd</span>
+</div>
+<span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #0A0D12; background: #6CB6FF; border-radius: 999px; padding: 4px 10px">Waiting on a person</span>
+</div>
+<div style="display: flex; flex-wrap: wrap">
+<div style="flex: 999 1 520px; min-width: 0; padding: 28px 24px; display: flex; flex-direction: column; gap: 14px; border-right: 1px solid #1E2630">
+<div style="font-family: 'Geist Mono', monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #7D8896">Steps</div>
+<div style="display: flex; align-items: center; gap: 14px; background: #11161D; border: 1px solid #222A35; border-radius: 12px; padding: 14px 16px">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5FD4A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M8 12.5l2.5 2.5L16 9.5"></path></svg>
+<div style="flex: 1; min-width: 0"><div style="font-weight: 500">Intake form</div><div style="font-size: 13px; color: #7D8896">Client filled in the form and dropped 3 files</div></div>
+<span style="font-size: 12px; color: #A3AEBB; border: 1px solid #2A3340; border-radius: 6px; padding: 3px 8px">client</span>
+</div>
+<div style="display: flex; align-items: center; gap: 14px; background: #11161D; border: 1px solid #222A35; border-radius: 12px; padding: 14px 16px">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5FD4A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M8 12.5l2.5 2.5L16 9.5"></path></svg>
+<div style="flex: 1; min-width: 0"><div style="font-weight: 500">Extract fields</div><div style="font-size: 13px; color: #7D8896">14 fields prefilled, each with its source and confidence</div></div>
+<span style="font-size: 12px; color: #A3AEBB; border: 1px solid #2A3340; border-radius: 6px; padding: 3px 8px">agent</span>
+</div>
+<div style="display: flex; align-items: center; gap: 14px; background: #11161D; border: 1px solid #222A35; border-radius: 12px; padding: 14px 16px">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F5B43C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 7v6M12 16.5v.5"></path></svg>
+<div style="flex: 1; min-width: 0"><div style="font-weight: 500">Check client</div><div style="font-size: 13px; color: #7D8896">Outcome: flagged · director name doesn't match certificate</div></div>
+<span style="font-size: 12px; color: #A3AEBB; border: 1px solid #2A3340; border-radius: 6px; padding: 3px 8px">agent</span>
+</div>
+<div style="display: flex; align-items: center; gap: 14px; background: #131B26; border: 1px solid {{accent}}; border-radius: 12px; padding: 14px 16px">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6CB6FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 7v5l3 2"></path></svg>
+<div style="flex: 1; min-width: 0"><div style="font-weight: 500">Approve client</div><div style="font-size: 13px; color: #A3AEBB">In Priya's inbox · times out in 3 days</div></div>
+<span style="font-size: 12px; color: #A3AEBB; border: 1px solid #2A3340; border-radius: 6px; padding: 3px 8px">person</span>
+</div>
+<div style="display: flex; align-items: center; gap: 14px; border: 1px dashed #2A3340; border-radius: 12px; padding: 14px 16px; color: #7D8896">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5F6B78" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle></svg>
+<div style="flex: 1; min-width: 0"><div style="font-weight: 500; color: #A3AEBB">Send welcome pack</div><div style="font-size: 13px">Not started</div></div>
+<span style="font-size: 12px; border: 1px solid #2A3340; border-radius: 6px; padding: 3px 8px">system</span>
+</div>
+</div>
+<div style="flex: 1 1 380px; min-width: 0; padding: 28px 24px; background: #0B0F15">
+<div style="font-family: 'Geist Mono', monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #7D8896; margin-bottom: 14px">Tool gateway</div>
+<div style="display: flex; flex-direction: column; gap: 10px; font-family: 'Geist Mono', monospace; font-size: 13px; line-height: 1.5">
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline"><span style="color: #0A0D12; background: #8FA3B8; border-radius: 4px; padding: 1px 6px; font-size: 11px">read</span><span style="color: #E8ECF1">registry.lookup</span><span style="color: #5FD4A0">allowed</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline"><span style="color: #0A0D12; background: #8FA3B8; border-radius: 4px; padding: 1px 6px; font-size: 11px">read</span><span style="color: #E8ECF1">sanctions.search ×2</span><span style="color: #5FD4A0">allowed</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline"><span style="color: #0A0D12; background: #F5B43C; border-radius: 4px; padding: 1px 6px; font-size: 11px">write</span><span style="color: #E8ECF1">client.risk_flags</span><span style="color: #5FD4A0">allowed</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline"><span style="color: #0A0D12; background: #6CB6FF; border-radius: 4px; padding: 1px 6px; font-size: 11px">draft</span><span style="color: #E8ECF1">email.draft</span><span style="color: #5FD4A0">allowed</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline"><span style="color: #0A0D12; background: #FF8A4C; border-radius: 4px; padding: 1px 6px; font-size: 11px">outbound</span><span style="color: #E8ECF1">email.send</span><span style="color: #F5B43C">held for approval</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline"><span style="color: #0A0D12; background: #FF7A7A; border-radius: 4px; padding: 1px 6px; font-size: 11px">irreversible</span><span style="color: #E8ECF1">billing.charge</span><span style="color: #FF7A7A">denied</span></div>
+</div>
+<div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid #1E2630; font-size: 13px; line-height: 1.6; color: #A3AEBB">
+<span style="color: #7D8896">Why held?</span> Rule <span style="font-family: 'Geist Mono', monospace; color: #E8ECF1">outbound → needs approval</span> from the email plugin, kept by the client-intake workflow.
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding: 40px 24px; border-top: 1px solid #1E2630; border-bottom: 1px solid #1E2630">
+<div style="max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px 48px">
+<span style="font-size: 14px; color: #7D8896">Built on open foundations</span>
+<span style="font-size: 18px; font-weight: 600; color: #C9D1DA">PostgreSQL</span>
+<span style="font-size: 18px; font-weight: 600; color: #C9D1DA">Model Context Protocol</span>
+<span style="font-size: 18px; font-weight: 600; color: #C9D1DA">DBOS</span>
+<span style="font-size: 18px; font-weight: 600; color: #C9D1DA">TypeScript</span>
+<span style="font-size: 18px; font-weight: 600; color: #C9D1DA">Any model provider</span>
+</div>
+</section>
+
+<section id="why" style="padding: 120px 24px">
+<div style="max-width: 1200px; margin: 0 auto">
+<p style="font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: {{accent}}; margin: 0 0 16px">Why MemWise</p>
+<h2 style="margin: 0; font-size: clamp(32px, 4vw, 52px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 600; color: #F2F5F8; max-width: 880px">App backends assume a developer wrote every path. Agents don't work that way.</h2>
+<p style="margin: 20px 0 0; font-size: 19px; line-height: 1.6; color: #A3AEBB; max-width: 700px">A database API was the right backbone for apps. Agent work needs a different one: a runtime that remembers, checks, and asks before it acts.</p>
+<div style="margin-top: 56px; overflow-x: auto; border: 1px solid #222A35; border-radius: 16px">
+<div style="min-width: 760px">
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; font-family: 'Geist Mono', monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #7D8896; background: #11161D; border-bottom: 1px solid #222A35">
+<div style="padding: 16px 24px">An app backend assumes</div>
+<div style="padding: 16px 24px">Agent work is actually</div>
+<div style="padding: 16px 24px; color: {{accent}}">So MemWise gives you</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); font-size: 16px; line-height: 1.5; border-bottom: 1px solid #1E2630">
+<div style="padding: 20px 24px; color: #7D8896">A developer wrote every path</div>
+<div style="padding: 20px 24px; color: #C9D1DA">The agent picks its path as it goes</div>
+<div style="padding: 20px 24px; color: #F2F5F8; font-weight: 500">Checkpoints and policy around every step</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); font-size: 16px; line-height: 1.5; border-bottom: 1px solid #1E2630">
+<div style="padding: 20px 24px; color: #7D8896">Requests last milliseconds</div>
+<div style="padding: 20px 24px; color: #C9D1DA">A step takes minutes and a person takes days</div>
+<div style="padding: 20px 24px; color: #F2F5F8; font-weight: 500">Durable runs that journal every call</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); font-size: 16px; line-height: 1.5; border-bottom: 1px solid #1E2630">
+<div style="padding: 20px 24px; color: #7D8896">Inputs come from trusted code</div>
+<div style="padding: 20px 24px; color: #C9D1DA">Emails and uploads can carry hidden instructions</div>
+<div style="padding: 20px 24px; color: #F2F5F8; font-weight: 500">A trust boundary that tracks tainted content</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); font-size: 16px; line-height: 1.5; border-bottom: 1px solid #1E2630">
+<div style="padding: 20px 24px; color: #7D8896">The user is the actor</div>
+<div style="padding: 20px 24px; color: #C9D1DA">The agent acts for someone who is away</div>
+<div style="padding: 20px 24px; color: #F2F5F8; font-weight: 500">Step tokens and on-behalf-of identity</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); font-size: 16px; line-height: 1.5">
+<div style="padding: 20px 24px; color: #7D8896">Logs are enough to debug</div>
+<div style="padding: 20px 24px; color: #C9D1DA">People need to know why it decided</div>
+<div style="padding: 20px 24px; color: #F2F5F8; font-weight: 500">Step records you can ask questions</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="platform" style="padding: 120px 24px; border-top: 1px solid #1E2630">
+<div style="max-width: 1200px; margin: 0 auto">
+<p style="font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: {{accent}}; margin: 0 0 16px">The platform</p>
+<h2 style="margin: 0; font-size: clamp(32px, 4vw, 52px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 600; color: #F2F5F8; max-width: 880px">Everything an agent workflow needs, in one package.</h2>
+<p style="margin: 20px 0 0; font-size: 19px; line-height: 1.6; color: #A3AEBB; max-width: 700px">Start with one workflow. Each building block works on its own and fits with the rest.</p>
+<div style="margin-top: 56px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px">
+
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="2.5"></circle><circle cx="19" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M7.5 6h9M6.5 8.2l4 7.6M17.5 8.2l-4 7.6"></path></svg>
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">Workflows</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">A statechart of steps your team recognises, written as plain files. Chat, the app and the CLI all edit the same files.</p>
+<span style="margin-top: auto; font-family: 'Geist Mono', monospace; font-size: 12px; color: #7D8896">workflow.yaml · steps/*.md</span>
+</div>
+
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path><path d="M12 8v4l3 2"></path></svg>
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">Durable runs</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">Runs survive restarts and can wait days for a person. Every model and tool call is journaled, so a resumed run never repeats a side effect.</p>
+<span style="margin-top: auto; font-family: 'Geist Mono', monospace; font-size: 12px; color: #7D8896">resumed · 14 journaled calls skipped</span>
+</div>
+
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path><circle cx="9" cy="7" r="1.6" fill="{{accent}}"></circle><circle cx="15" cy="12" r="1.6" fill="{{accent}}"></circle><circle cx="7" cy="17" r="1.6" fill="{{accent}}"></circle></svg>
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">Effect gateway</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">Every tool call passes one gateway. Each tool declares its effect, so policy can say "drafts are fine, sending needs a person".</p>
+<span style="margin-top: auto; font-family: 'Geist Mono', monospace; font-size: 12px; color: #7D8896">read · draft · write · outbound · irreversible</span>
+</div>
+
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">Policy that only tightens</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">Rules layer from plugin to domain to workflow to step, and a lower layer can never loosen a higher one. Every effective rule shows where it came from.</p>
+<span style="margin-top: auto; font-family: 'Geist Mono', monospace; font-size: 12px; color: #7D8896">plugin → domain → workflow → step</span>
+</div>
+
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13l2.5-7h11L20 13v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M4 13h5l1 2h4l1-2h5"></path></svg>
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">People and inbox</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">People are steps too. Approvals, send-backs and handoffs land in one inbox with the case in view. Clients join by link, no account needed.</p>
+<span style="margin-top: auto; font-family: 'Geist Mono', monospace; font-size: 12px; color: #7D8896">approve · send back · hand off</span>
+</div>
+
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"></path><path d="M14 3v5h5M9 12h7M9 16h5"></path></svg>
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">Step records</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">Each step keeps its inputs, instruction version, tool calls, rules and reasoning. Ask a step why it decided, and the answer comes from the record.</p>
+<span style="margin-top: auto; font-family: 'Geist Mono', monospace; font-size: 12px; color: #7D8896">inputs · calls · rationale · outcome</span>
+</div>
+
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.5"></ellipse><path d="M4.5 5.5v13c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-13"></path><path d="M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"></path></svg>
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">Domain on Postgres</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">Your own entities, cases and history in Postgres, mapped once onto the tools you already use. Row-level security governs agents and people alike.</p>
+<span style="margin-top: auto; font-family: 'Geist Mono', monospace; font-size: 12px; color: #7D8896">entities · cases · mappings · RLS</span>
+</div>
+
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"></path><path d="M8 10h8"></path></svg>
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">Anchored chat</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">Chat with a workflow, a case, a step or a record. The anchor sets what the agent sees and what it may do, and it acts as you through the same gateway.</p>
+<span style="margin-top: auto; font-family: 'Geist Mono', monospace; font-size: 12px; color: #7D8896">workspace · workflow · case · step</span>
+</div>
+
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6v4h4v6h-4v-2h-2v6h2v-2h4v6H9v-4H5v-6h4v2h2V9H9v2H5V5h4z"></path></svg>
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">Plugins</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">One package brings tools, workflows, UI and default policies. Skills and MCP servers from Claude plugins import as they are.</p>
+<span style="margin-top: auto; font-family: 'Geist Mono', monospace; font-size: 12px; color: #7D8896">memwise.plugin.yaml</span>
+</div>
+
+</div>
+</div>
+</section>
+
+<section id="workflows" style="padding: 120px 24px; border-top: 1px solid #1E2630">
+<div style="max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 56px; align-items: flex-start">
+<div style="flex: 1 1 380px; min-width: 0">
+<p style="font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: {{accent}}; margin: 0 0 16px">Workflows as files</p>
+<h2 style="margin: 0; font-size: clamp(32px, 3.6vw, 48px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 600; color: #F2F5F8">Your process, in files you can read.</h2>
+<p style="margin: 20px 0 0; font-size: 18px; line-height: 1.6; color: #A3AEBB">A workflow is a short shape file plus one Markdown file per step. Front matter says who performs the step, how strict it is, what it may read and write, and which tools it may call. The prose is the instructions.</p>
+<div style="margin-top: 32px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; gap: 14px; align-items: flex-start">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+<div><div style="font-weight: 600; color: #F2F5F8">Build it by talking</div><div style="font-size: 15px; line-height: 1.6; color: #A3AEBB">Describe the process in chat. Changes land as a highlighted draft you keep or discard.</div></div>
+</div>
+<div style="display: flex; gap: 14px; align-items: flex-start">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+<div><div style="font-weight: 600; color: #F2F5F8">Review it like code</div><div style="font-size: 15px; line-height: 1.6; color: #A3AEBB">Diff it, version it in git, roll it out with change control.</div></div>
+</div>
+<div style="display: flex; gap: 14px; align-items: flex-start">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+<div><div style="font-weight: 600; color: #F2F5F8">Checked before it runs</div><div style="font-size: 15px; line-height: 1.6; color: #A3AEBB">Every state reachable, every wait has a timeout, every outcome goes somewhere.</div></div>
+</div>
+</div>
+</div>
+<div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<div style="background: #0E131A; border: 1px solid #222A35; border-radius: 14px; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid #1E2630; font-family: 'Geist Mono', monospace; font-size: 13px; color: #A3AEBB"><span>workflows/client-intake/workflow.yaml</span><span style="color: #5F6B78">shape</span></div>
+<pre style="padding: 20px 18px; overflow-x: auto; font-family: 'Geist Mono', monospace; font-size: 13.5px; line-height: 1.7; color: #C9D1DA"><span style="color: #6CB6FF">workflow</span>: client-intake
+<span style="color: #6CB6FF">case</span>: client
+<span style="color: #6CB6FF">start</span>: intake_form
+<span style="color: #6CB6FF">states</span>:
+  <span style="color: #F2F5F8">intake_form</span>:  { performer: client,  on: { submitted: extract } }
+  <span style="color: #F2F5F8">extract</span>:      { performer: agent,   on: { done: check } }
+  <span style="color: #F2F5F8">check</span>:        { performer: agent,   on: { clear: approve, flagged: approve } }
+  <span style="color: #F2F5F8">approve</span>:
+    performer: role:account-manager
+    timeout: 3d
+    on: { approved: welcome, sent_back: intake_form }
+  <span style="color: #F2F5F8">welcome</span>:      { performer: system }</pre>
+</div>
+<div style="background: #0E131A; border: 1px solid #222A35; border-radius: 14px; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid #1E2630; font-family: 'Geist Mono', monospace; font-size: 13px; color: #A3AEBB"><span>workflows/client-intake/steps/check.md</span><span style="color: #5F6B78">step</span></div>
+<pre style="padding: 20px 18px; overflow-x: auto; font-family: 'Geist Mono', monospace; font-size: 13.5px; line-height: 1.7; color: #C9D1DA"><span style="color: #5F6B78">---</span>
+<span style="color: #6CB6FF">performer</span>: agent
+<span style="color: #6CB6FF">strictness</span>: guided
+<span style="color: #6CB6FF">reads</span>: [client, documents]
+<span style="color: #6CB6FF">writes</span>: [client.risk_flags]
+<span style="color: #6CB6FF">tools</span>:
+  allowed:  [registry.lookup, sanctions.search]
+  required: [sanctions.search]
+<span style="color: #6CB6FF">outcomes</span>: [clear, flagged]
+<span style="color: #5F6B78">---</span>
+<span style="color: #E8ECF1">Check the client's details against the documents they
+uploaded. Search the sanctions list for every director.
+Flag anything that doesn't match, and say which document
+you relied on.</span></pre>
+</div>
+</div>
+</div>
+</section>
+
+<section id="governance" style="padding: 120px 24px; border-top: 1px solid #1E2630">
+<div style="max-width: 1200px; margin: 0 auto">
+<p style="font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: {{accent}}; margin: 0 0 16px">Governance built in</p>
+<h2 style="margin: 0; font-size: clamp(32px, 4vw, 52px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 600; color: #F2F5F8; max-width: 900px">Agents can reach any tool. Policy decides which calls go through.</h2>
+<p style="margin: 20px 0 0; font-size: 19px; line-height: 1.6; color: #A3AEBB; max-width: 720px">Rules are compiled into the tool gateway and the database itself, so they hold even when the agent is wrong, confused, or reading something it shouldn't trust.</p>
+<div style="margin-top: 56px; display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch">
+
+<div style="flex: 1 1 480px; min-width: 0; background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">Every tool declares its effect</h3>
+<p style="margin: 8px 0 24px; font-size: 15px; line-height: 1.6; color: #A3AEBB">One line beside the schema. Tools with no declared effect count as irreversible until you classify them.</p>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; background: #0E131A; border: 1px solid #1E2630; border-radius: 10px">
+<span style="width: 108px; text-align: center; font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; color: #0A0D12; background: #8FA3B8; border-radius: 6px; padding: 4px 0">read</span>
+<span style="flex: 1 1 160px; font-size: 15px; color: #E8ECF1">Look something up</span>
+<span style="font-family: 'Geist Mono', monospace; font-size: 13px; color: #7D8896">crm.get_contact</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; background: #0E131A; border: 1px solid #1E2630; border-radius: 10px">
+<span style="width: 108px; text-align: center; font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; color: #0A0D12; background: #6CB6FF; border-radius: 6px; padding: 4px 0">draft</span>
+<span style="flex: 1 1 160px; font-size: 15px; color: #E8ECF1">Prepare without sending</span>
+<span style="font-family: 'Geist Mono', monospace; font-size: 13px; color: #7D8896">email.draft</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; background: #0E131A; border: 1px solid #1E2630; border-radius: 10px">
+<span style="width: 108px; text-align: center; font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; color: #0A0D12; background: #F5B43C; border-radius: 6px; padding: 4px 0">write</span>
+<span style="flex: 1 1 160px; font-size: 15px; color: #E8ECF1">Change your own records</span>
+<span style="font-family: 'Geist Mono', monospace; font-size: 13px; color: #7D8896">crm.update_contact</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; background: #0E131A; border: 1px solid #1E2630; border-radius: 10px">
+<span style="width: 108px; text-align: center; font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; color: #0A0D12; background: #FF8A4C; border-radius: 6px; padding: 4px 0">outbound</span>
+<span style="flex: 1 1 160px; font-size: 15px; color: #E8ECF1">Reach someone outside</span>
+<span style="font-family: 'Geist Mono', monospace; font-size: 13px; color: #7D8896">email.send</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; background: #0E131A; border: 1px solid #1E2630; border-radius: 10px">
+<span style="width: 108px; text-align: center; font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; color: #0A0D12; background: #FF7A7A; border-radius: 6px; padding: 4px 0">irreversible</span>
+<span style="flex: 1 1 160px; font-size: 15px; color: #E8ECF1">Can't be undone</span>
+<span style="font-family: 'Geist Mono', monospace; font-size: 13px; color: #7D8896">billing.charge</span>
+</div>
+</div>
+</div>
+
+<div style="flex: 1 1 480px; min-width: 0; background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column">
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #F2F5F8">Policy layers that only tighten</h3>
+<p style="margin: 8px 0 24px; font-size: 15px; line-height: 1.6; color: #A3AEBB">Each layer can add limits, never remove them. The step sees the sum, with the origin of every rule.</p>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; padding: 14px 16px; background: #0E131A; border: 1px solid #1E2630; border-radius: 10px">
+<span style="width: 84px; font-family: 'Geist Mono', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #7D8896">Plugin</span>
+<span style="flex: 1 1 200px; font-family: 'Geist Mono', monospace; font-size: 14px; color: #E8ECF1">outbound → needs approval</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; padding: 14px 16px; margin-left: 16px; background: #0E131A; border: 1px solid #1E2630; border-radius: 10px">
+<span style="width: 84px; font-family: 'Geist Mono', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #7D8896">Domain</span>
+<span style="flex: 1 1 200px; font-family: 'Geist Mono', monospace; font-size: 14px; color: #E8ECF1">no outbound outside business hours</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; padding: 14px 16px; margin-left: 32px; background: #0E131A; border: 1px solid #1E2630; border-radius: 10px">
+<span style="width: 84px; font-family: 'Geist Mono', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #7D8896">Workflow</span>
+<span style="flex: 1 1 200px; font-family: 'Geist Mono', monospace; font-size: 14px; color: #E8ECF1">irreversible → never</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; padding: 14px 16px; margin-left: 48px; background: #131B26; border: 1px solid {{accent}}; border-radius: 10px">
+<span style="width: 84px; font-family: 'Geist Mono', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: {{accent}}">Step</span>
+<span style="flex: 1 1 200px; font-family: 'Geist Mono', monospace; font-size: 14px; color: #E8ECF1">read only, plus client.risk_flags</span>
+</div>
+</div>
+<div style="margin-top: auto; padding-top: 24px; font-size: 14px; line-height: 1.6; color: #A3AEBB">Agents run with a short-lived step token, so Postgres row-level security applies to them just as it does to people.</div>
+</div>
+
+</div>
+</div>
+</section>
+
+<section style="padding: 120px 24px; border-top: 1px solid #1E2630">
+<div style="max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 56px; align-items: center">
+<div style="flex: 1 1 380px; min-width: 0">
+<p style="font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: {{accent}}; margin: 0 0 16px">People in the loop</p>
+<h2 style="margin: 0; font-size: clamp(32px, 3.6vw, 48px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 600; color: #F2F5F8">People are steps, not interruptions.</h2>
+<p style="margin: 20px 0 0; font-size: 18px; line-height: 1.6; color: #A3AEBB">A person's approval is part of the workflow, with a role, a timeout and outcomes, just like an agent's step. The run waits durably, and picks up the moment they decide.</p>
+<p style="margin: 16px 0 0; font-size: 18px; line-height: 1.6; color: #A3AEBB">Clients and partners take part through a link, without an account.</p>
+</div>
+<div style="flex: 999 1 560px; min-width: 0; background: #11161D; border: 1px solid #222A35; border-radius: 16px; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #1E2630">
+<span style="font-weight: 600; color: #F2F5F8">Inbox</span>
+<span style="font-size: 13px; color: #7D8896">3 waiting on you</span>
+</div>
+<div style="padding: 20px; border-bottom: 1px solid #1E2630; background: #131B26">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px"><span style="font-weight: 600; color: #F2F5F8">Approve client · Northwind Ltd</span><span style="font-size: 13px; color: #A3AEBB">due in 3 days</span></div>
+<div style="margin-top: 6px; font-size: 14px; line-height: 1.6; color: #A3AEBB">From Check client · 1 flag: director name on the form doesn't match the certificate.</div>
+<div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px">
+<button type="button" style="min-height: 44px; padding: 0 18px; font-family: inherit; font-size: 14px; font-weight: 600; color: #0A0D12; background: {{accent}}; border: 0; border-radius: 10px; cursor: pointer">Approve</button>
+<button type="button" style="min-height: 44px; padding: 0 18px; font-family: inherit; font-size: 14px; font-weight: 500; color: #E8ECF1; background: #161C25; border: 1px solid #2A3340; border-radius: 10px; cursor: pointer">Send back</button>
+<button type="button" style="min-height: 44px; padding: 0 18px; font-family: inherit; font-size: 14px; font-weight: 500; color: #E8ECF1; background: transparent; border: 1px solid #2A3340; border-radius: 10px; cursor: pointer">Ask why</button>
+</div>
+</div>
+<div style="padding: 18px 20px; border-bottom: 1px solid #1E2630">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px"><span style="font-weight: 500; color: #E8ECF1">Review extraction · Halvorsen &amp; Co</span><span style="font-size: 13px; color: #7D8896">today</span></div>
+<div style="margin-top: 4px; font-size: 14px; color: #7D8896">3 fields below the confidence threshold</div>
+</div>
+<div style="padding: 18px 20px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px"><span style="font-weight: 500; color: #E8ECF1">Sign off welcome email · Oakridge Partners</span><span style="font-size: 13px; color: #7D8896">yesterday</span></div>
+<div style="margin-top: 4px; font-size: 14px; color: #7D8896">Outbound email held by policy, draft ready</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding: 120px 24px; border-top: 1px solid #1E2630">
+<div style="max-width: 1200px; margin: 0 auto">
+<p style="font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: {{accent}}; margin: 0 0 16px">Explainable by default</p>
+<h2 style="margin: 0; font-size: clamp(32px, 4vw, 52px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 600; color: #F2F5F8; max-width: 880px">Ask any step why it did what it did.</h2>
+<p style="margin: 20px 0 0; font-size: 19px; line-height: 1.6; color: #A3AEBB; max-width: 700px">Every step leaves a record of what it saw, what it called and why it chose its outcome. Chat with that record to understand a decision, correct it, or try a what-if in a sandbox.</p>
+<div style="margin-top: 56px; display: flex; flex-wrap: wrap; gap: 24px">
+<div style="flex: 1 1 420px; min-width: 0; background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 20px"><span style="font-weight: 600; color: #F2F5F8">Step record · Check client</span><span style="font-family: 'Geist Mono', monospace; font-size: 13px; color: #7D8896">run #1042</span></div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 18px 24px; font-size: 14px; line-height: 1.5">
+<div><div style="font-family: 'Geist Mono', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #7D8896">Inputs</div><div style="color: #E8ECF1; margin-top: 4px">Case snapshot v12, 3 documents</div></div>
+<div><div style="font-family: 'Geist Mono', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #7D8896">Instructions</div><div style="color: #E8ECF1; margin-top: 4px">steps/check.md, version 3</div></div>
+<div><div style="font-family: 'Geist Mono', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #7D8896">Tool calls</div><div style="color: #E8ECF1; margin-top: 4px">registry.lookup, sanctions.search ×2</div></div>
+<div><div style="font-family: 'Geist Mono', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #7D8896">Outcome</div><div style="color: #F5B43C; margin-top: 4px">flagged</div></div>
+</div>
+<div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid #1E2630; font-size: 14px; line-height: 1.6; color: #A3AEBB"><span style="color: #7D8896">Rationale at decision time:</span> the director named on the form doesn't match the certificate of incorporation.</div>
+</div>
+<div style="flex: 1 1 420px; min-width: 0; background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 16px">
+<div style="align-self: flex-end; max-width: 85%; background: #1C2430; border-radius: 14px 14px 4px 14px; padding: 12px 16px; font-size: 15px; line-height: 1.5; color: #E8ECF1">Why was Northwind flagged?</div>
+<div style="max-width: 92%; background: #0E131A; border: 1px solid #1E2630; border-radius: 14px 14px 14px 4px; padding: 14px 16px; font-size: 15px; line-height: 1.6; color: #C9D1DA">The form lists the director as <strong style="color: #F2F5F8">Dana Okafor</strong>, but page 2 of the certificate uploaded on 14 October names <strong style="color: #F2F5F8">Dana Okoro</strong>. The sanctions search was clear for both names. Everything else matched.</div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<button type="button" style="min-height: 44px; padding: 0 16px; font-family: inherit; font-size: 14px; color: #E8ECF1; background: #161C25; border: 1px solid #2A3340; border-radius: 999px; cursor: pointer">Mark as a typo and re-run from Check</button>
+<button type="button" style="min-height: 44px; padding: 0 16px; font-family: inherit; font-size: 14px; color: #E8ECF1; background: #161C25; border: 1px solid #2A3340; border-radius: 999px; cursor: pointer">Open the certificate</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="docs" style="padding: 120px 24px; border-top: 1px solid #1E2630">
+<div style="max-width: 1200px; margin: 0 auto">
+<p style="font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: {{accent}}; margin: 0 0 16px">Under the hood</p>
+<h2 style="margin: 0; font-size: clamp(32px, 4vw, 52px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 600; color: #F2F5F8; max-width: 880px">An operating system for agent work.</h2>
+<p style="margin: 20px 0 0; font-size: 19px; line-height: 1.6; color: #A3AEBB; max-width: 700px">Four planes, one Postgres. The agent runtime sits at the centre, not the data API.</p>
+<div style="margin-top: 56px; display: flex; flex-wrap: wrap; gap: 16px">
+<div style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 24px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 16px"><span style="font-weight: 600; color: #F2F5F8">Work plane</span><span style="font-size: 14px; color: #7D8896">what your team sees and builds</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 14px">
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Domain</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Workflows and cases</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Inbox</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Pages</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Plugins</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Chat</span>
+</div>
+</div>
+<div style="background: #131B26; border: 1px solid {{accent}}; border-radius: 16px; padding: 24px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 16px"><span style="font-weight: 600; color: #F2F5F8">Agent runtime</span><span style="font-size: 14px; color: #A3AEBB">the kernel</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 14px">
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #2A3340; border-radius: 8px">Engines</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #2A3340; border-radius: 8px">Durable journal</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #2A3340; border-radius: 8px">Context and recall</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #2A3340; border-radius: 8px">Effect gateway</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #2A3340; border-radius: 8px">Model gateway</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #2A3340; border-radius: 8px">Trust boundary</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #2A3340; border-radius: 8px">Sandboxes</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #2A3340; border-radius: 8px">Checkpoints</span>
+</div>
+</div>
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 24px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 16px"><span style="font-weight: 600; color: #F2F5F8">State plane</span><span style="font-size: 14px; color: #7D8896">one source of truth</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 14px">
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Postgres</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Object store</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Event log</span>
+</div>
+</div>
+</div>
+<div style="flex: 1 1 240px; min-width: 0; background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 24px">
+<div style="font-weight: 600; color: #F2F5F8">Control rail</div>
+<div style="margin: 4px 0 16px; font-size: 14px; color: #7D8896">across every plane</div>
+<div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Identity and delegation</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Policy</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Change control</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Metering and budgets</span>
+<span style="padding: 8px 12px; background: #0E131A; border: 1px solid #1E2630; border-radius: 8px">Traces</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="pricing" style="padding: 120px 24px; border-top: 1px solid #1E2630">
+<div id="oss" style="max-width: 1200px; margin: 0 auto">
+<p style="font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: {{accent}}; margin: 0 0 16px">Open source core</p>
+<h2 style="margin: 0; font-size: clamp(32px, 4vw, 52px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 600; color: #F2F5F8; max-width: 880px">Run it on your laptop, your cloud, or ours.</h2>
+<p style="margin: 20px 0 0; font-size: 19px; line-height: 1.6; color: #A3AEBB; max-width: 700px">The same workflows and plugins run everywhere. Move from desktop to self-hosted to cloud without rewriting anything.</p>
+<div style="margin-top: 56px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px">
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 32px; display: flex; flex-direction: column; gap: 14px">
+<h3 style="margin: 0; font-size: 22px; font-weight: 600; color: #F2F5F8">Desktop</h3>
+<div style="font-size: 32px; font-weight: 700; letter-spacing: -0.02em; color: #F2F5F8">Free</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">The whole platform on your machine, with Postgres bundled. For building and trying workflows.</p>
+<a href="#download" style="margin-top: auto; display: flex; align-items: center; justify-content: center; min-height: 48px; font-weight: 600; color: #E8ECF1; background: #161C25; border: 1px solid #2A3340; border-radius: 10px">Download for Mac, Windows, Linux</a>
+</div>
+<div style="background: #11161D; border: 1px solid #222A35; border-radius: 16px; padding: 32px; display: flex; flex-direction: column; gap: 14px">
+<h3 style="margin: 0; font-size: 22px; font-weight: 600; color: #F2F5F8">Self-hosted</h3>
+<div style="font-size: 32px; font-weight: 700; letter-spacing: -0.02em; color: #F2F5F8">Free <span style="font-size: 15px; font-weight: 500; color: #7D8896">Apache-2.0</span></div>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">One binary and your own Postgres. Your cloud, your model keys, your data.</p>
+<a href="#github" style="margin-top: auto; display: flex; align-items: center; justify-content: center; min-height: 48px; font-weight: 600; color: #E8ECF1; background: #161C25; border: 1px solid #2A3340; border-radius: 10px">View on GitHub</a>
+</div>
+<div style="background: #131B26; border: 1px solid {{accent}}; border-radius: 16px; padding: 32px; display: flex; flex-direction: column; gap: 14px">
+<h3 style="margin: 0; font-size: 22px; font-weight: 600; color: #F2F5F8">MemWise Cloud</h3>
+<div style="font-size: 32px; font-weight: 700; letter-spacing: -0.02em; color: #F2F5F8">[YOUR PRICE]</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A3AEBB">Managed Postgres and runs, a shared team inbox, external participant links, SSO and audit export.</p>
+<a href="#start" style="margin-top: auto; display: flex; align-items: center; justify-content: center; min-height: 48px; font-weight: 600; color: #0A0D12; background: {{accent}}; border-radius: 10px">Start your project</a>
+</div>
+</div>
+</div>
+</section>
+
+<section id="start" style="padding: 120px 24px; border-top: 1px solid #1E2630">
+<div style="max-width: 900px; margin: 0 auto; text-align: center; display: flex; flex-direction: column; align-items: center">
+<h2 style="margin: 0; font-size: clamp(36px, 5vw, 64px); line-height: 1.04; letter-spacing: -0.03em; font-weight: 700; color: #F4F6F9">Turn your first process into a workflow.</h2>
+<p style="margin: 24px 0 0; font-size: 19px; line-height: 1.6; color: #A3AEBB; max-width: 620px">Describe it in chat, or start from the client intake example and change it to fit.</p>
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 36px">
+<a href="#start" style="display: flex; align-items: center; font-size: 16px; font-weight: 600; color: #0A0D12; background: {{accent}}; border-radius: 12px; padding: 0 24px; min-height: 52px">Start your project</a>
+<a href="#examples" style="display: flex; align-items: center; font-size: 16px; font-weight: 500; color: #E8ECF1; background: #161C25; border: 1px solid #2A3340; border-radius: 12px; padding: 0 24px; min-height: 52px">Browse example workflows</a>
+</div>
+</div>
+</section>
+
+<footer style="padding: 64px 24px 48px; border-top: 1px solid #1E2630">
+<div style="max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 48px; justify-content: space-between">
+<div style="flex: 1 1 240px; min-width: 0">
+<div style="font-weight: 600; font-size: 18px; color: #F2F5F8">MemWise</div>
+<p style="margin: 10px 0 0; font-size: 14px; line-height: 1.6; color: #7D8896; max-width: 280px">The open-source platform for governed agent workflows.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 32px; flex: 2 1 480px; min-width: 0; font-size: 14px">
+<div style="display: flex; flex-direction: column; gap: 10px"><span style="font-weight: 600; color: #C9D1DA">Product</span><a href="#platform" style="color: #A3AEBB">Platform</a><a href="#workflows" style="color: #A3AEBB">Workflows</a><a href="#governance" style="color: #A3AEBB">Governance</a><a href="#pricing" style="color: #A3AEBB">Pricing</a></div>
+<div style="display: flex; flex-direction: column; gap: 10px"><span style="font-weight: 600; color: #C9D1DA">Developers</span><a href="#docs" style="color: #A3AEBB">Docs</a><a href="#plugins" style="color: #A3AEBB">Plugin format</a><a href="#github" style="color: #A3AEBB">GitHub</a><a href="#changelog" style="color: #A3AEBB">Changelog</a></div>
+<div style="display: flex; flex-direction: column; gap: 10px"><span style="font-weight: 600; color: #C9D1DA">Community</span><a href="#community" style="color: #A3AEBB">[COMMUNITY CHAT]</a><a href="#blog" style="color: #A3AEBB">Blog</a><a href="#security" style="color: #A3AEBB">Security</a></div>
+</div>
+</div>
+<div style="max-width: 1200px; margin: 48px auto 0; padding-top: 24px; border-top: 1px solid #1E2630; font-size: 13px; color: #7D8896">© 2026 MemWise</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F5B43C","options":["#F5B43C","#5FD4A0","#6CB6FF","#FF8A4C"]},"$preview":{"width":1440,"height":8800}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#F5B43C' };
+}
+}
+</script>
+</body>
+</html>
