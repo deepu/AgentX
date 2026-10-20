@@ -1,0 +1,9 @@
+entity: Site
+title: "{site_number} · {name}"
+fields:
+  site_number:            { type: Text, required: true, description: "Like US-012" }
+  name:                   Text
+  address:                Address
+  principal_investigator: PersonName
+  country:                Text
+lifecycle: [planned, active, closed]

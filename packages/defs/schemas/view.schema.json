@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "view": {
+      "description": "The view id; default the file name.",
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "entity": {
+      "type": "string",
+      "description": "The entity type, bare in this domain or by key."
+    },
+    "filter": {
+      "type": "string",
+      "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+    },
+    "sort": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "description": "A field; `-field` sorts descending."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "desc": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "field"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "description": "Sort order: [-received_at] or [{ field: received_at, desc: true }]."
+    },
+    "group": {
+      "description": "A field to group by (a board groups by status by default).",
+      "type": "string"
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "layout": {
+      "description": "Default table.",
+      "type": "string",
+      "enum": [
+        "table",
+        "board"
+      ]
+    }
+  },
+  "required": [
+    "entity"
+  ],
+  "additionalProperties": false,
+  "title": "MemWise view",
+  "description": "domains/<id>/views/<id>.yaml: a shared, saved query on one entity type."
+}

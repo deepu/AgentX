@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "page": {
+      "description": "The page id; default the file name.",
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "under": {
+      "description": "Hang the page under each record of this entity type in the page tree.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "entity": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "entity"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "params": {
+      "description": "Parameters, e.g. study: Ref<Study>, bound from the record it hangs under.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "description": "A value type: Text, Money, Identifier(GSTIN), Quantity(kg), Enum[a, b], List<T>, Ref<Entity>, or a record type name."
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {},
+        "description": "kpi: { label, value: { count | percent | sum | avg: <Entity>, where, field, of }, target }, table: { title, view }, list: { title, view }, heatmap: { rows, columns }, text: markdown."
+      }
+    }
+  },
+  "required": [
+    "title",
+    "blocks"
+  ],
+  "additionalProperties": false,
+  "title": "MemWise page",
+  "description": "domains/<id>/pages/<id>.yaml: a dashboard."
+}

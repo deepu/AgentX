@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "domain": {
+      "description": "The domain id, the folder name.",
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "owner": {
+      "description": "Role that gets flags and held triggers, and owns triggered cases by default.",
+      "type": "string"
+    },
+    "regulated": {
+      "description": "Regulated mode: e-signatures, required reasons, audit export.",
+      "type": "boolean"
+    },
+    "retention": {
+      "description": "How long records are kept, e.g. 25y.",
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w|y)\\s*)+$|^\\s*\\d+\\s*$"
+        }
+      ]
+    },
+    "accepts_from": {
+      "description": "Domains whose workflows may start or call this domain's workflows.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "intake": {
+      "description": "Incoming messages to this address start the domain's message triggers.",
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "address"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "title": "MemWise domain",
+  "description": "domains/<id>/domain.yaml (or domain/domain.yaml for the default domain)."
+}

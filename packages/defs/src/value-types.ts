@@ -10,7 +10,7 @@ const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Words that only mean something with their parameter, so a bare `List` is a mistake, not a record type. */
 const RESERVED = new Set(['Identifier', 'Quantity', 'Enum', 'List', 'Ref']);
 
-/** `Money`, `Identifier(GSTIN)`, `Quantity(kg)`, `Enum[a, b]`, `List<Flag>`, `Ref<Customer>`, or a record type name. */
+/** `Money`, `Identifier(GSTIN)`, `Quantity(kg)`, `Enum[a, b]`, `List<Flag>`, `Ref<Customer>`, `Ref<edc.Site>`, or a record type name. */
 export function parseValueType(src: string): ValueType | undefined {
   if (typeof src !== 'string') return undefined;
   const s = src.trim();
@@ -35,7 +35,8 @@ export function parseValueType(src: string): ValueType | undefined {
     return of && { kind: 'list', of };
   }
 
-  m = /^Ref\s*<\s*([A-Za-z_][A-Za-z0-9_]*)\s*>$/.exec(s);
+  // Phase 6: another domain's entity is named by its key, `Ref<edc.Site>` (24 §2).
+  m = /^Ref\s*<\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\s*>$/.exec(s);
   if (m) return { kind: 'ref', entity: m[1]! };
 
   if (NAME.test(s) && !RESERVED.has(s)) return { kind: 'named', name: s };
@@ -74,16 +75,18 @@ export function sameValueType(a: ValueType, b: ValueType): boolean {
 
 const UNIT_MS: Record<string, number> = {
   ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000,
+  // Phase 6: retention is written in years (`25y`); a year is 365 days.
+  y: 31_536_000_000,
 };
-export const DURATION_PATTERN = '^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w)\\s*)+$|^\\s*\\d+\\s*$';
+export const DURATION_PATTERN = '^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w|y)\\s*)+$|^\\s*\\d+\\s*$';
 
-/** `30s`, `10m`, `3d`, `1h30m` → milliseconds. Numbers (and digit-only strings) are already milliseconds. */
+/** `30s`, `10m`, `3d`, `1h30m`, `25y` → milliseconds. Numbers (and digit-only strings) are already milliseconds. */
 export function parseDuration(src: string | number): DurationMs | undefined {
   if (typeof src === 'number') return Number.isFinite(src) && src >= 0 ? src : undefined;
   if (typeof src !== 'string' || !new RegExp(DURATION_PATTERN).test(src)) return undefined;
   if (/^\s*\d+\s*$/.test(src)) return Number(src);
   let total = 0;
-  for (const part of src.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)/g)) total += Number(part[1]) * UNIT_MS[part[2]!]!;
+  for (const part of src.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w|y)/g)) total += Number(part[1]) * UNIT_MS[part[2]!]!;
   return Math.round(total);
 }
 
