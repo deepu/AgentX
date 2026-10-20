@@ -1,7 +1,7 @@
 /**
  * Building the layer stack a step runs under (08 §2): platform → plugins → domain → workflow → step.
  */
-import type { PolicyDoc, StepDef, WorkflowDef } from '@memwise/defs';
+import type { EffectClass, PolicyDoc, StepDef, Treatment, WorkflowDef } from '@memwise/defs';
 import { compareRate, lowerMoney, stricter } from './order.ts';
 import type { PolicyLayer } from './types.ts';
 
@@ -67,9 +67,10 @@ export function mergeStricter(a: PolicyDoc, b: PolicyDoc): PolicyDoc {
   const out: PolicyDoc = { ...a, ...b };
 
   if (a.effects || b.effects) {
-    const effects = { ...a.effects };
-    for (const [cls, t] of Object.entries(b.effects ?? {}) as [keyof typeof effects, NonNullable<typeof t>][]) {
-      effects[cls] = effects[cls] ? stricter(effects[cls]!, t) : t;
+    const effects: NonNullable<PolicyDoc['effects']> = { ...a.effects };
+    for (const [cls, t] of Object.entries(b.effects ?? {}) as [EffectClass, Treatment][]) {
+      const cur = effects[cls];
+      effects[cls] = cur ? stricter(cur, t) : t;
     }
     out.effects = effects;
   }
