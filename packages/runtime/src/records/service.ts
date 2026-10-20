@@ -3,20 +3,19 @@
 // a reason for controlled fields in a regulated domain; everything runs under the actor, so row
 // rules and field access apply. Pages, the tree and dashboards are in page.ts and browse.ts.
 import {
-  ConditionCompileError, evaluateCondition, mentionTokens, PgEntityEvents, PgEntityStore, PgFlagStore, PgMentionStore, PgNoteStore, PgViewStore,
+  ConditionCompileError, evaluateCondition, PgEntityEvents, PgEntityStore, PgFlagStore, PgNoteStore, PgViewStore,
   RecordWriteError, withActor, withRecordContext, withTransaction,
 } from '@memwise/db';
 import { keyOf, rolesIn, type EntityTypeDef, type ViewDef } from '@memwise/defs';
 import { fieldErrors } from '../domain-tools.ts';
 import type { Actor, RecordFlag, RecordQueryResult, RecordsService, RecordWriteResult } from '../types.ts';
 import { buildDashboard, buildTree, columnsOf, queryRecords } from './browse.ts';
-import { domainOfEntity, entityByName, isControlled, recordTitle, type RecordsDeps } from './context.ts';
+import { domainOfEntity, entityByName, isControlled, recordTitle, storeMentions, type RecordsDeps } from './context.ts';
 import { checkTransition } from './lifecycle.ts';
 import { buildPage } from './page.ts';
 
 const entityStore = new PgEntityStore();
 const notes = new PgNoteStore();
-const mentions = new PgMentionStore();
 const flags = new PgFlagStore();
 const views = new PgViewStore();
 const events = new PgEntityEvents();
@@ -160,12 +159,8 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
         const v = await notes.save(db, key, input.id, input.body, by, input.reason?.trim() ? { reason: input.reason.trim() } : {});
         return { version: v, label: `Notes on ${recordTitle(def, input.id, (await entityStore.get(db, def, input.id))?.values ?? {})}` };
       });
-      // `[[etmf.Site:site_…]]` tokens are mentions of those records, from this note. Written by
-      // the kernel itself: the app role may insert and delete mentions but not update them, which
-      // the store's upsert needs.
-      const targets = mentionTokens(input.body).filter((t) => entityByName(deps.entities(), t.entity));
-      await withTransaction(deps.pool, (db) => mentions.replaceForSource(db, 'note', `${key}:${input.id}`,
-        targets.map((t) => ({ entity: keyOf(entityByName(deps.entities(), t.entity)!), id: t.id, label }))));
+      // `[[etmf.Site:site_…]]` tokens are mentions of those records, from this note.
+      await withTransaction(deps.pool, (db) => storeMentions(db, deps.entities(), { kind: 'note', id: `${key}:${input.id}`, label }, input.body));
       changed(def, input.id);
       return { applied: true, status: 'applied', id: input.id, version };
     },

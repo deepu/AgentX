@@ -8,6 +8,7 @@ import { domainOf, hasRole, scopedEntities, validateValue, type EntityTypeDef, t
 import type pg from 'pg';
 import { driverIdOf } from './ids.ts';
 import type { Submission, SubmissionMessage } from './driver.ts';
+import { storeMentions } from './records/context.ts';
 import { checkSignature, signingStep, writeSignature, type SigningDeps } from './regulated/signatures.ts';
 import { CHANGE_PLAYBOOK, type SubmitResult, type SubmitStepInput } from './types.ts';
 
@@ -178,6 +179,10 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput, opts:
     if (signed.sign && deps.signing) {
       const current = (await new PgCaseStore().get(db, s.case_id))?.values ?? {};
       await writeSignature(db, deps.signing, { workflow, step: signed, stepRunId: input.stepRunId, caseId: s.case_id, by: input.by, values: clean, caseValues: current });
+    }
+    // Phase 6: records the comment mentions (`[[qa.Report:repo_…]]`) are "mentioned in" it.
+    if (submission.comment?.includes('[[')) {
+      await storeMentions(db, deps.entities() as Record<string, EntityTypeDef>, { kind: 'comment', id: input.stepRunId, label: `${step.title ?? step.id} (${workflow.title ?? workflow.id})`, caseId: s.case_id }, submission.comment);
     }
     // Staff answered it themselves: links sent to the client for it can't be used any more.
     if (step.performer === 'external') await closeStepLinks(db, s.run_id, s.step_id, 'answered');

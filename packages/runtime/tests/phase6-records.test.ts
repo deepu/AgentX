@@ -244,7 +244,10 @@ describe.skipIf(!pgAvailable)('Phase 6 records', () => {
     const events = await kernel.pool.query(`select kind from mw.auth_events where person_id = $1 order by at, id`, [lead2.personId]);
     expect(events.rows.map((r) => r.kind)).toEqual([...Array(SIGN_FAILURES_BEFORE_LOCK).fill('signature-failed'), 'locked']);
 
-    expect(await kernel.submitStep({ ...answer, by: lead, signature: { password: PASSWORD } })).toEqual({ applied: true, status: 'applied' });
+    expect(await kernel.submitStep({ ...answer, comment: `Same as [[qa.Batch:${batch}]].`, by: lead, signature: { password: PASSWORD } }))
+      .toEqual({ applied: true, status: 'applied' });
+    expect((await kernel.records.page('qa.Batch', batch, lead))!.mentions)
+      .toEqual([expect.objectContaining({ sourceKind: 'comment', sourceId: review, caseId, label: 'Review and sign (Review a test report)' })]);
     const done = await kernel.waitForRun(runId, { until: (r) => r.status !== 'active', timeoutMs: 30_000 });
     expect(done).toMatchObject({ state: 'end', status: 'done' });
 
