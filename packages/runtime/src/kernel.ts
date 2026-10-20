@@ -78,12 +78,6 @@ function entitiesKey(entities: Record<string, EntityTypeDef>): string {
   return JSON.stringify(Object.keys(entities).sort().map((name) => [name, entities[name]]));
 }
 
-/** The latest indexed bodies of one definition kind, by id (Phase 6: domains, the workspace). */
-async function indexedBodies<T = any>(pool: import('pg').Pool, kind: string): Promise<Record<string, T>> {
-  const { rows } = await pool.query(`select distinct on (id) id, body from mw.definitions where kind = $1 order by id, indexed_at desc`, [kind]);
-  return Object.fromEntries(rows.map((r) => [r.id, r.body]));
-}
-
 /** Entity types as last indexed, for a kernel started without a project folder. */
 async function indexedEntities(pool: import('pg').Pool): Promise<Record<string, EntityTypeDef>> {
   const { rows } = await pool.query(
@@ -301,8 +295,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     pool, client,
     workflows: () => liveWorkflows(),
     entities: () => entities,
-    domains: async () => indexed?.project.domains ?? (await indexedBodies(pool, 'domain')),
-    stormLimit: async () => indexed?.project.workspace?.stormLimit ?? (await indexedBodies<{ stormLimit?: number }>(pool, 'workspace')).workspace?.stormLimit ?? DEFAULT_STORM_LIMIT,
+    domains: async () => indexed?.project.domains ?? {},
+    stormLimit: async () => indexed?.project.workspace?.stormLimit ?? DEFAULT_STORM_LIMIT,
     start: (input, opts) => start(input, true, opts),
     saveFile: (input, actor) => kernel.saveFile(input, actor),
     evaluate: (key, id, condition) => {

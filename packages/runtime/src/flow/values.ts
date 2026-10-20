@@ -43,6 +43,7 @@ export function literal(src: string): unknown {
   if (s === 'true' || s === 'false') return s === 'true';
   if (s === 'null') return null;
   if (/^(['"]).*\1$/.test(s)) return s.slice(1, -1);
+  if (/^[[{]/.test(s)) { try { return JSON.parse(s); } catch { /* text */ } }
   return s;
 }
 
