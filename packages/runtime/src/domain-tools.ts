@@ -95,9 +95,12 @@ export function domainTools(entities: Record<string, EntityTypeDef>, runtime?: (
   }
   const changed = (def: EntityTypeDef, recordId?: string) => rt().emit?.({ kind: 'records', entity: keyOf(def), ...(recordId ? { recordId } : {}) });
 
-  /** The person a step acts for, with their roles and grants now (for `by: role:<x>`). */
+  /**
+   * The person a step acts for, with their roles and grants now (for `by: role:<x>`). A triggered
+   * case's steps act for a role (`actsFor`, 24 §7): they count as a person holding just that role.
+   */
   async function personOf(token: StepToken): Promise<PersonActor | undefined> {
-    if (!token.onBehalfOf) return undefined;
+    if (!token.onBehalfOf) return token.actsFor ? { kind: 'person', personId: `role:${token.actsFor}`, roles: [token.actsFor] } : undefined;
     return rt().people.actorFor(token.onBehalfOf).catch(() => undefined) as Promise<PersonActor | undefined>;
   }
 

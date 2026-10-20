@@ -11,6 +11,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createKernel } from '../src/kernel.ts';
+import { tokenFor } from '../src/prepare.ts';
+import { loadRunRow } from '../src/runs.ts';
 import type { Kernel, PersonActor, RunRecord } from '../src/types.ts';
 import { flowProject } from './fixtures/flow-project.ts';
 import { kernelDatabase, pgAvailable } from './helpers.ts';
@@ -97,6 +99,11 @@ describe.skipIf(!pgAvailable)('Phase 6 flow', () => {
     expect(firings[0]!.runId).toBe(activation);
     const c = await kernel.getCase(runs[0].case_id);
     expect(c!.values.site).toMatchObject({ value: siteId, provenance: { kind: 'input', by: 'trigger:activate-site#0' } });
+    // Its steps' tokens say whom they act for, so `role:` rules treat them as that role.
+    const row = await loadRunRow(db.pool, activation);
+    expect(row.actsFor).toBe('study_manager');
+    const wf = (await kernel.project()).project.workflows['activate-site']!;
+    expect(tokenFor(row, wf, `${activation}/0/collect_pack`, Date.now(), 60_000).actsFor).toBe('study_manager');
   });
 
   test('the same event delivered again (ledger and cursor lost) starts nothing new', async () => {
