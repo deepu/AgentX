@@ -209,6 +209,25 @@ describe('the example plugins', () => {
     expect(m.tools['email.send']).toMatchObject({ effect: 'outbound', idempotent: true, run: { builtin: 'email.send' } })
   })
 
+  it('email-smtp and whatsapp-cloud provide the channel tools by their fixed names (Phase 5)', async () => {
+    const { parsePluginManifest } = await import('@memwise/defs')
+    const { channelTools, EMAIL_SMTP_BUILTIN, WHATSAPP_CLOUD_BUILTIN } = await import('../channels')
+    const builtins = new Set(channelTools().map((t) => t.name))
+    const cases = [
+      { dir: 'email-smtp', id: 'memwise/email-smtp', cap: 'email_send', tool: 'email.send', builtin: EMAIL_SMTP_BUILTIN },
+      { dir: 'whatsapp-cloud', id: 'memwise/whatsapp-cloud', cap: 'whatsapp_send', tool: 'whatsapp.send', builtin: WHATSAPP_CLOUD_BUILTIN },
+    ]
+    for (const c of cases) {
+      const file = join(PLUGINS, c.dir, 'memwise-plugin.yaml')
+      const r = parsePluginManifest(readFileSync(file, 'utf8'), file)
+      expect(r.diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+      expect(r.value).toMatchObject({ id: c.id, version: '1.0.0', trust: 'first-party', provides: { capabilities: { [c.cap]: { tool: c.tool } } } })
+      expect(r.value!.tools[c.tool]).toMatchObject({ effect: 'outbound', idempotent: true, capability: c.cap, run: { builtin: c.builtin } })
+      expect(builtins.has(c.builtin)).toBe(true)
+      expect(readFileSync(join(PLUGINS, c.dir, 'README.md'), 'utf8')).toContain(c.tool)
+    }
+  })
+
   it('sample-crm is a Claude plugin and connectors ships the setup guide as a skill', () => {
     expect(existsSync(join(PLUGINS, 'sample-crm', 'memwise-plugin.yaml'))).toBe(false)
     expect(JSON.parse(readFileSync(join(PLUGINS, 'sample-crm/.claude-plugin/plugin.json'), 'utf8'))).toMatchObject({ name: 'sample-crm', version: '1.0.0' })
@@ -225,7 +244,7 @@ describe('the example plugins', () => {
   it('are found next to the example project', () => {
     const found = findExamplePlugins([REPO])
     expect(found).toBe(PLUGINS)
-    expect(listExamplePlugins(found).map((p) => p.name)).toEqual(['client-intake', 'connectors', 'sample-crm', 'sample-email'])
+    expect(listExamplePlugins(found).map((p) => p.name)).toEqual(['client-intake', 'connectors', 'email-smtp', 'sample-crm', 'sample-email', 'whatsapp-cloud'])
     expect(findExamplePlugins([tempDir('none-')])).toBe(PLUGINS) // walks up from cwd in the repo
     expect(listExamplePlugins(undefined)).toEqual([])
   })
