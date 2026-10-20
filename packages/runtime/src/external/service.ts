@@ -49,6 +49,11 @@ export interface ExternalDeps {
   inbox: (actor: Actor) => Promise<InboxItem[]>;
   submitStep: (input: SubmitStepInput, opts: { channel?: string }) => Promise<SubmitResult>;
   decideApproval: (decision: ApprovalDecision, by: Actor) => Promise<{ applied: boolean; status: string }>;
+  /**
+   * The workflow as loaded from its files, when that is the version asked for: the stored one
+   * comes back from jsonb with its keys reordered, and the form lists fields in the file's order.
+   */
+  sourceWorkflow?: (id: string, hash: string) => WorkflowDef | undefined;
 }
 
 interface RunInfo { id: string; case_id: string; state: string; status: string; entered_seq: number; workflow_id: string; workflow_hash: string }
@@ -108,6 +113,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
   const business = () => businessName(pool, deps.businessName);
   const linksKey = () => kernelKey(pool, 'links');
   const publicBase = () => deps.publicUrl()?.replace(/\/+$/, '') || undefined;
+  const workflowOf = async (id: string, hash: string) => deps.sourceWorkflow?.(id, hash) ?? defs.workflow(id, hash);
 
   async function runInfo(db: Queryable, runId: string): Promise<RunInfo | undefined> {
     const { rows } = await db.query(
@@ -125,7 +131,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
   async function resolve(db: Queryable, link: LinkRow): Promise<Resolved | LinkRefusal['status']> {
     const run = await runInfo(db, link.run_id);
     if (!run || run.status !== 'active' || !link.step_id) return 'closed';
-    const workflow = await defs.workflow(run.workflow_id, run.workflow_hash);
+    const workflow = await workflowOf(run.workflow_id, run.workflow_hash);
     const step = workflow.steps[link.step_id];
     if (!step || step.performer !== 'external') return 'closed';
     if (run.state !== link.step_id) return link.step_run_id ? 'closed' : 'not_yet';
@@ -216,7 +222,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
   async function inviteParts(args: InviteArgs, runId: string) {
     const run = await runInfo(pool, runId);
     if (!run) throw new Error(`no run ${runId}`);
-    const workflow = await defs.workflow(run.workflow_id, run.workflow_hash);
+    const workflow = await workflowOf(run.workflow_id, run.workflow_hash);
     const target = workflow.steps[args.step];
     if (!target || target.performer !== 'external') throw new Error(`${args.step} is not a step for someone outside the business in ${workflow.id}`);
     const to = args.via === 'email' ? args.email?.trim() : args.phone?.trim();
@@ -272,7 +278,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
     const to = channel === 'email' ? link.participant.email : link.participant.phone;
     if (!to) return { message: `There is no ${channel === 'email' ? 'email address' : 'phone number'} for ${participantLabel(link.participant)}.` };
     const run = await runInfo(pool, link.run_id);
-    const workflow = await defs.workflow(run!.workflow_id, run!.workflow_hash);
+    const workflow = await workflowOf(run!.workflow_id, run!.workflow_hash);
     const step = workflow.steps[link.step_id!]!;
     const token = tokenOf(await linksKey(), link)!;
     return {
@@ -289,7 +295,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
     if (!link || link.kind !== 'step') return { message: `no link ${linkId}` };
     const run = await runInfo(pool, link.run_id);
     if (!run) return { message: `no run ${link.run_id}` };
-    const workflow = await defs.workflow(run.workflow_id, run.workflow_hash);
+    const workflow = await workflowOf(run.workflow_id, run.workflow_hash);
     const forbidden = mayManage(by, workflow, link.step_id!);
     return forbidden ? { message: forbidden } : { link, workflow };
   }
@@ -300,7 +306,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
     if (item.kind === 'identity') return 'Confirm a record match';
     const wf = await defs.latest(item.workflowId);
     const run = await runInfo(pool, item.runId);
-    const workflow = run ? await defs.workflow(run.workflow_id, run.workflow_hash) : wf;
+    const workflow = run ? await workflowOf(run.workflow_id, run.workflow_hash) : wf;
     const cTitle = workflow ? await caseTitle(workflow, item.caseId) : item.caseId;
     switch (item.kind) {
       case 'approval': return `approve ${item.approval.preview.summary} (${cTitle})`;
@@ -363,7 +369,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
       return { ...base, kind: 'attention', title: await itemTitle(item), caseTitle: '', fields: [], openInApp };
     }
     const run = (await runInfo(pool, item.runId))!;
-    const workflow = await defs.workflow(run.workflow_id, run.workflow_hash);
+    const workflow = await workflowOf(run.workflow_id, run.workflow_hash);
     const cTitle = await caseTitle(workflow, item.caseId);
     const values = await caseValues(pool, item.caseId);
     const stepId = item.kind === 'attention' ? undefined : item.stepId;
@@ -404,7 +410,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
     async issueLink({ runId, stepId, participant, note, expiresInMs, by }) {
       const run = await runInfo(pool, runId);
       if (!run || run.status !== 'active') throw new Error('this case is not open, so no link can be sent for it');
-      const workflow = await defs.workflow(run.workflow_id, run.workflow_hash);
+      const workflow = await workflowOf(run.workflow_id, run.workflow_hash);
       const step = workflow.steps[stepId];
       if (!step || step.performer !== 'external') throw new Error(`${stepId} is not a step for someone outside the business`);
       const forbidden = mayManage(by, workflow, stepId);
@@ -588,7 +594,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
         `select s.id, s.status, s.step_id, s.workflow_id, s.workflow_hash, s.run_id, s.case_id from mw.step_runs s where s.id = $1`, [stepRunId]);
       const s = rows[0];
       if (!s || s.status !== 'waiting') throw new Error('this step is no longer waiting for an answer');
-      const workflow = await defs.workflow(s.workflow_id, s.workflow_hash);
+      const workflow = await workflowOf(s.workflow_id, s.workflow_hash);
       const step = workflow.steps[s.step_id];
       if (!step?.extract || (step.performer !== 'person' && step.performer !== 'external')) throw new Error(`${s.step_id} doesn't read documents`);
       if (step.assignee && !by.roles.includes(step.assignee)) {

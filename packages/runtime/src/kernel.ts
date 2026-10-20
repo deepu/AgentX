@@ -483,6 +483,10 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     inbox: (actor) => kernel.inbox(actor),
     submitStep: (input, opts) => submitStep(submitDeps, input, opts),
     decideApproval: (decision, by) => kernel.decideApproval(decision, by),
+    sourceWorkflow: (id, hash) => {
+      const w = indexed?.project.workflows[id];
+      return w?.hash === hash ? w : undefined;
+    },
   });
   const channels = createChannelService({
     pool, tools: () => gateway, people, external, inbox: (actor) => kernel.inbox(actor), subscribe: (l) => feed.subscribe(l),
