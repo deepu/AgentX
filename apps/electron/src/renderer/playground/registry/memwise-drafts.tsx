@@ -191,6 +191,7 @@ export const memwiseDraftsComponents: ComponentEntry[] = [
     description: 'A playbook\'s version line, the versions with their running cases, and its drafts in progress.',
     component: VersionsDemo,
     layout: 'top',
+    props: [],
   },
   {
     id: 'memwise-building-inbox',
@@ -208,6 +209,7 @@ export const memwiseDraftsComponents: ComponentEntry[] = [
     description: 'What should it do? Starts building it in a chat.',
     component: NewPlaybookDemo,
     layout: 'top',
+    props: [],
   },
   {
     id: 'memwise-playbooks-list-drafts',
@@ -216,5 +218,6 @@ export const memwiseDraftsComponents: ComponentEntry[] = [
     description: 'Drafts first, then the playbooks, then the playbooks that build playbooks.',
     component: PlaybooksListDemo,
     layout: 'top',
+    props: [],
   },
 ]
