@@ -15,7 +15,7 @@ import {
   createModelGateway, createToolGateway, quarantinedRead, type ToolDefinition, type ToolGateway,
 } from '@memwise/gateway';
 import {
-  AGENT_STEP_WORKFLOW, agentStepWorkflow, approvalTopic, configureStepEngine, recallTools, SYSTEM_STEP_WORKFLOW, systemStepWorkflow,
+  AGENT_STEP_WORKFLOW, agentStepWorkflow, approvalTopic, configureStepEngine, recallTools, SYSTEM_STEP_WORKFLOW, systemStepWorkflow, type StepRunInput,
 } from '@memwise/step-engine';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -123,8 +123,11 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     runMigrations: false, // done above, once, before launch (D35)
   });
   const dataSource = new NodePostgresDataSource('memwise', { connectionString: url, max: 5 }, TX_SCHEMA);
-  const stepWorkflow = DBOS.registerWorkflow(options.stepExecutor ?? agentStepWorkflow, { name: AGENT_STEP_WORKFLOW });
-  const systemWorkflow = DBOS.registerWorkflow(systemStepWorkflow, { name: SYSTEM_STEP_WORKFLOW });
+  // DBOS marks a function object as registered and keeps the mark after deregistering, so a
+  // second kernel in the same process registers fresh wrappers, never the shared bodies themselves.
+  const agentBody = options.stepExecutor ?? agentStepWorkflow;
+  const stepWorkflow = DBOS.registerWorkflow((input: StepRunInput) => agentBody(input), { name: AGENT_STEP_WORKFLOW });
+  const systemWorkflow = DBOS.registerWorkflow((input: StepRunInput) => systemStepWorkflow(input), { name: SYSTEM_STEP_WORKFLOW });
   const { driver } = registerRunDriver({ pool, dataSource, stepWorkflow, systemWorkflow });
   await DBOS.launch(); // also recovers this executor's pending drivers and steps
   // startRun commits the run before it starts the driver; a crash in between leaves an active run
