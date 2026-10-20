@@ -343,6 +343,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         out.push(d.toIdentityInboxItem(item, c.project, await recordValues(item.candidate.entity, item.candidate.recordId)))
         continue
       }
+      // Phase 6 kinds are drawn by their own screens (24 §14).
+      if (item.kind === 'flag' || item.kind === 'trigger-hold') continue
       const v = await view(item.caseId)
       const caseTitle = titleOf(v, item.caseId)
       const wf = c.project.workflows[item.workflowId]
@@ -761,7 +763,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         title: wf.title ?? d.humanize(wf.id),
         stepCount: Object.keys(wf.steps).length,
         open: cases.filter((s) => s.workflowId === wf.id && s.status === 'active').length,
-        waitingOnMe: inbox.filter((i) => i.kind !== 'identity' && i.kind !== 'reminder' && i.workflowId === wf.id).length,
+        waitingOnMe: inbox.filter((i) => i.kind !== 'identity' && i.kind !== 'reminder' && i.kind !== 'flag' && i.workflowId === wf.id).length,
         done: cases.filter((s) => s.workflowId === wf.id && s.status === 'done').length,
         ...(wf.origin ? { origin: d.toWorkflowOrigin(c.project, wf.origin) } : {}),
       }))

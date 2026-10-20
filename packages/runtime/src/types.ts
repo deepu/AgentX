@@ -118,7 +118,7 @@ export interface StartRunInput {
   by?: string;
 }
 
-export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4, KernelPhase5 {
+export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4, KernelPhase5, KernelPhase6 {
   /** Load the project folder and index it; returns the loader's diagnostics. */
   index(): Promise<Diagnostic[]>;
   startRun(input: StartRunInput): Promise<{ runId: string; caseId: string }>;
@@ -152,11 +152,12 @@ export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4, Kernel
 
 /** Who is acting (19 §2). `withActor` in `@memwise/db` turns it into Postgres settings RLS reads. */
 export type Actor =
-  | { kind: 'person'; personId: string; roles: string[] }
+  /** Phase 6: `roles` are workspace-wide; `grants` are roles in one domain (24 §2). */
+  | { kind: 'person'; personId: string; roles: string[]; grants?: import('@memwise/defs').Grant[] }
   | { kind: 'step'; token: import('@memwise/defs').StepToken }
   | { kind: 'system' };
 
-export interface Person { id: string; name: string; email: string; roles: string[]; disabled?: boolean; createdAt: string }
+export interface Person { id: string; name: string; email: string; roles: string[]; disabled?: boolean; createdAt: string; /** Phase 6 */ grants?: import('@memwise/defs').Grant[]; /** Phase 6: locked after failed signatures until then. */ lockedUntil?: string }
 export interface Role { id: string; title: string; description?: string }
 
 export interface PeopleService {
@@ -196,12 +197,17 @@ export interface SubmitStepInput {
    * (`extractForStep`). A value still equal to its suggestion keeps the tool's provenance.
    */
   sources?: Record<string, string>;
+  /** Phase 6 (24 §9): a step with `sign:` needs the person to re-authenticate. */
+  signature?: SignatureInput;
 }
 
 export interface SubmitResult {
   applied: boolean;
-  /** `forbidden`: the person lacks the role; `invalid`: values failed validation; `stale`: the step is no longer waiting. */
-  status: 'applied' | 'forbidden' | 'invalid' | 'stale' | 'missing' | 'unknown-outcome';
+  /**
+   * `forbidden`: the person lacks the role; `invalid`: values failed validation; `stale`: the step is no longer waiting.
+   * Phase 6: `signature-required` (no signature given), `signature-failed` (wrong password), `locked` (too many failures).
+   */
+  status: 'applied' | 'forbidden' | 'invalid' | 'stale' | 'missing' | 'unknown-outcome' | 'signature-required' | 'signature-failed' | 'locked';
   errors?: Record<string, string[]>;
   message?: string;
 }
@@ -210,7 +216,11 @@ export type InboxItem =
   | { kind: 'input' | 'decision'; id: string; stepRunId: string; runId: string; caseId: string; workflowId: string;
       stepId: string; assignee?: string; since: string; dueAt?: string;
       /** Phase 5: the step's form can read its documents (`extract:`, 23 §5): `kernel.external.extractForStep`. */
-      extract?: { documentsField: string; fields: string[]; minConfidence: number } }
+      extract?: { documentsField: string; fields: string[]; minConfidence: number };
+      /** Phase 6: the workflow's domain, how the step is reviewed (24 §11) and the signature it needs. */
+      domain?: string;
+      review?: { kind: 'document'; entity: string; recordId?: string } | { kind: 'table'; items: string } | { kind: 'diff' } | { kind: 'form' };
+      sign?: { meaning: string } }
   | { kind: 'approval'; id: string; approval: ApprovalRequest; runId: string; caseId: string; workflowId: string; stepId: string;
       since: string }
   | { kind: 'attention'; id: string; runId: string; caseId: string; workflowId: string; state: string; reason: string;
@@ -221,7 +231,11 @@ export type InboxItem =
   | { kind: 'conversation'; id: string; stepRunId: string; runId: string; caseId: string; workflowId: string; stepId: string;
       assignee?: string; since: string }
   /** Phase 4: an uncertain identity match waiting for a person (22 §6). */
-  | { kind: 'identity'; id: string; candidate: import('@memwise/defs').IdentityCandidate; since: string };
+  | { kind: 'identity'; id: string; candidate: import('@memwise/defs').IdentityCandidate; since: string }
+  /** Phase 6: a broken invariant on a record, for the domain owner (24 §4). */
+  | { kind: 'flag'; id: string; flag: RecordFlag; domain: string; title: string; since: string }
+  /** Phase 6: firings held by the storm guard, for the workflow's owner (24 §7). */
+  | { kind: 'trigger-hold'; id: string; triggerId: string; workflowId: string; held: number; description: string; since: string };
 
 export interface CaseSummary {
   caseId: string; runId: string; workflowId: string; workflowVersion: number; workflowHash: string;
@@ -238,6 +252,12 @@ export interface CaseView {
   transitions: TransitionRecord[];
   /** States entered, in order, starting with the first. */
   path: string[];
+  /** Phase 6: parent, called and started cases (24 §8). */
+  links?: CaseLinkView[];
+  /** Phase 6: the condition a `wait_until` state waits on, with its current values. */
+  waiting?: WaitingCondition;
+  /** Phase 6: the workflow's domain. */
+  domain?: string;
 }
 
 export interface StepRunSummary {
@@ -266,7 +286,11 @@ export type KernelChange =
   /** Phase 4: a plugin was installed, or a binding or identity link changed. */
   | { kind: 'plugins' }
   /** Phase 5: a link or a delivery of a case changed (sent, opened, draft saved, used). */
-  | { kind: 'external'; caseId?: string };
+  | { kind: 'external'; caseId?: string }
+  /** Phase 6: a record changed (version written, transition, note, flag). */
+  | { kind: 'records'; entity: string; recordId?: string }
+  /** Phase 6: a trigger fired or firings were held or released. */
+  | { kind: 'triggers' };
 
 export interface KernelPhase2 {
   readonly people: PeopleService;
@@ -572,3 +596,330 @@ export interface KernelPhase5 {
   readonly external: ExternalService;
   readonly channels: ChannelService;
 }
+
+// ================================================================ Phase 6 (docs/memwise/24-phase-6-interfaces.md)
+// PHASE 6 CONTRACT. `@memwise/server-core` codes against these; change only additively.
+
+import type {
+  CheckResult, DashboardBlock, EntityEvent, FreePageDef, Grant, InboundMessageBody, PageLayoutDef, TriggerDef, ViewDef,
+} from '@memwise/defs';
+
+/** Where a field's value on a record page comes from (24 §6). */
+export type RecordFieldSource =
+  | { kind: 'domain' }
+  | { kind: 'plugin'; plugin: string }
+  | { kind: 'link'; domain: string; entity: string; recordId?: string }
+  | { kind: 'calculated' }
+  /** The version that last changed it was written by this step run, person or source. */
+  | { kind: 'step'; stepRunId: string; workflowId?: string }
+  | { kind: 'person'; personId: string; name?: string }
+  | { kind: 'source'; source: string };
+
+export interface RecordField {
+  name: string;
+  /** Type expression as written (`Ref<Study>`, `Percentage`); `Lifecycle` for status. */
+  type: string;
+  value: unknown;
+  /** The viewer may not see it (value null). */
+  hidden?: boolean;
+  /** `Ref` values: the referenced record's title and entity key. */
+  ref?: { entity: string; id: string; title: string };
+  source: RecordFieldSource;
+  /** The viewer may edit it in place (domain-owned, not calculated or followed, they have the right). */
+  editable: boolean;
+  calculated?: boolean;
+  followed?: boolean;
+  required?: boolean;
+  description?: string;
+  /** Regulated domain: a change needs a reason. */
+  controlled?: boolean;
+}
+
+export interface RecordRef { entity: string; id: string; title: string; status?: string }
+
+export interface RecordTransitionOption {
+  name: string;
+  to: string;
+  /** The viewer may make it now (role, guard and signature all met). */
+  allowed: boolean;
+  /** Why not, in plain words. */
+  reason?: string;
+  guard?: { condition: string; holds: boolean };
+  signed?: boolean;
+}
+
+export interface RecordFlag {
+  id: string;
+  entity: string;
+  recordId: string;
+  invariant: string;
+  message: string;
+  raisedAt: string;
+  closedAt?: string;
+}
+
+export interface SignatureView {
+  id: string;
+  stepRunId: string;
+  caseId: string;
+  personId: string;
+  name: string;
+  meaning: string;
+  at: string;
+  entity: string;
+  recordId: string;
+  contentHash: string;
+  /** The record's content now hashes differently: "changed since signed". */
+  changedSince: boolean;
+}
+
+export interface RecordVersionSummary {
+  version: number;
+  at: string;
+  by: string;
+  /** A readable name for `by` (person's name, step title, source). */
+  byLabel?: string;
+  via?: string;
+  reason?: string;
+  changed: string[];
+  hash: string;
+}
+
+export interface MentionView { sourceKind: 'note' | 'chat' | 'step' | 'comment' | 'page'; sourceId: string; label: string; at: string; caseId?: string }
+
+/** Review mode of a record page (24 §11). */
+export interface RecordReview {
+  stepRunId: string;
+  runId: string;
+  caseId: string;
+  workflowId: string;
+  stepId: string;
+  title: string;
+  instructions?: string;
+  /** The values the step writes, as proposed (from the case), with where each came from. */
+  proposed: {
+    field: string;
+    type: string;
+    value: unknown;
+    provenance?: import('@memwise/defs').Provenance;
+    confidence?: number;
+    page?: number;
+    quote?: string;
+    document?: string;
+    required?: boolean;
+  }[];
+  /** The checks of the agent step(s) that prepared it, with evidence. */
+  checks: (CheckResult & { stepRunId: string })[];
+  outcomes: string[];
+  /** The e-signature submitting needs (24 §9). */
+  sign?: { meaning: string; as: { personId: string; name: string; roles: string[] } };
+  returnedComments?: { by: string; comment: string; at: string }[];
+}
+
+export interface RecordPage {
+  /** Entity key. */
+  entity: string;
+  domain: string;
+  entityName: string;
+  regulated: boolean;
+  id: string;
+  title: string;
+  status?: string;
+  layout: PageLayoutDef;
+  /** Every field the viewer may see (and hidden ones marked), in definition order, then calculated, then followed. */
+  fields: RecordField[];
+  /** Breadcrumbs: the parent chain, root first. */
+  parents: RecordRef[];
+  related: Record<string, { entity: string; total: number; rows: (RecordRef & { values: Record<string, unknown> })[] }>;
+  cases: { caseId: string; runId: string; workflowId: string; title: string; state: string; status: RunStatus; updatedAt: string; waitingOn?: string }[];
+  lifecycle?: { states: string[]; current?: string; transitions: RecordTransitionOption[] };
+  flags: RecordFlag[];
+  signatures: SignatureView[];
+  notes?: { body: string; version: number; by: string; at: string };
+  mentions: MentionView[];
+  /** Workflows that can start from this record. */
+  start: { workflowId: string; title: string }[];
+  /** `viewer` blocks: the document each one shows. */
+  documents: Record<string, DocumentValue | null>;
+  history: RecordVersionSummary[];
+  review?: RecordReview;
+}
+
+export interface RecordWriteResult {
+  applied: boolean;
+  status: 'applied' | 'forbidden' | 'invalid' | 'guard' | 'reason-required' | 'signature-required' | 'missing' | 'stale';
+  message?: string;
+  errors?: Record<string, string[]>;
+  id?: string;
+  version?: number;
+}
+
+export interface RecordQuery {
+  /** Entity key, or bare within `domain`. */
+  entity: string;
+  domain?: string;
+  filter?: string;
+  sort?: { field: string; desc?: boolean }[];
+  group?: string;
+  columns?: string[];
+  limit?: number;
+  offset?: number;
+}
+
+export interface RecordQueryResult {
+  entity: string;
+  columns: { name: string; type: string; calculated?: boolean; followed?: boolean }[];
+  rows: (RecordRef & { values: Record<string, unknown>; hidden: string[] })[];
+  total: number;
+  /** With `group`: the groups in order, with counts. */
+  groups?: { key: string | null; count: number }[];
+}
+
+export type TreeNode =
+  | { kind: 'record'; entity: string; id: string; title: string; status?: string; hasChildren: boolean }
+  | { kind: 'group'; entity: string; parent?: { entity: string; id: string }; title: string; count: number; viewFilter?: string }
+  | { kind: 'page'; pageId: string; title: string; params: Record<string, string> };
+
+export interface DashboardData {
+  pageId: string;
+  title: string;
+  description?: string;
+  params: Record<string, string>;
+  computedAt: string;
+  blocks: (
+    | { kind: 'kpi'; label: string; value: number | null; target?: number; format?: 'number' | 'percent'; detail?: string }
+    | { kind: 'table' | 'list'; title?: string; result: RecordQueryResult }
+    | { kind: 'heatmap'; title?: string; columns: string[]; rows: { record: RecordRef; values: (number | null)[] }[] }
+    | { kind: 'text'; markdown: string }
+  )[];
+}
+
+export interface DomainSummary {
+  id: string;
+  name: string;
+  description?: string;
+  regulated: boolean;
+  owner?: string;
+  retentionMs?: number;
+  entities: { key: string; entity: string; title?: string; count: number; parent?: string; lifecycle?: string[] }[];
+  workflows: string[];
+  pages: { id: string; title: string; under?: { entity: string } }[];
+  views: { id: string; title: string; entity: string }[];
+  /** Open flags and waiting items in this domain, for the sidebar. */
+  flags: number;
+}
+
+export interface DomainsService {
+  list(actor: Actor): Promise<DomainSummary[]>;
+  workspace(): Promise<{ name: string; stormLimit: number; regulated: boolean }>;
+  grants(personId: string): Promise<Grant[]>;
+  setGrants(personId: string, grants: Grant[], by: Actor): Promise<Grant[]>;
+}
+
+export interface RecordsService {
+  page(entity: string, id: string, actor: Actor, opts?: { review?: { stepRunId: string } }): Promise<RecordPage | undefined>;
+  /** Create a record as a person or the system (seeding, the app's "New"); steps use the entity tools. */
+  create(input: { entity: string; values: Record<string, unknown>; status?: string; reason?: string; id?: string }, actor: Actor): Promise<RecordWriteResult>;
+  update(input: { entity: string; id: string; values: Record<string, unknown>; reason?: string }, actor: Actor): Promise<RecordWriteResult>;
+  transition(input: { entity: string; id: string; transition: string; reason?: string }, actor: Actor): Promise<RecordWriteResult>;
+  query(query: RecordQuery, actor: Actor): Promise<RecordQueryResult>;
+  tree(domain: string, actor: Actor, opts?: { parent?: { entity: string; id: string } }): Promise<TreeNode[]>;
+  dashboard(domain: string, pageId: string, params: Record<string, string>, actor: Actor): Promise<DashboardData>;
+  views(domain: string, actor: Actor, opts?: { entity?: string }): Promise<(ViewDef & { personal: boolean; domain: string })[]>;
+  saveView(domain: string, view: ViewDef, actor: Actor): Promise<ViewDef>;
+  saveNote(input: { entity: string; id: string; body: string; reason?: string }, actor: Actor): Promise<RecordWriteResult>;
+  flags(filter: { domain?: string; entity?: string; recordId?: string; open?: boolean }): Promise<RecordFlag[]>;
+  /** Entity events after `afterSeq` (tests, the dispatcher's view). */
+  events(filter: { entity?: string; recordId?: string; afterSeq?: number; limit?: number }): Promise<EntityEvent[]>;
+  /** Evaluate a condition on one record now (guards, wait_until, the app's "why"). */
+  evaluate(entity: string, id: string, condition: string, actor: Actor): Promise<{ holds: boolean; values: Record<string, unknown> }>;
+}
+
+export interface TriggerSummary {
+  /** `<workflowId>#<index>` */
+  id: string;
+  workflowId: string;
+  domain: string;
+  def: TriggerDef;
+  /** Plain words: "When a Site enters Activating", "30 days before a Person's CV expires". */
+  description: string;
+  lastFiredAt?: string;
+  /** Schedules and date triggers: the next firing (date triggers: the earliest due record, with it). */
+  nextDue?: { at: string; record?: RecordRef };
+  firings: number;
+  held: number;
+}
+
+export interface TriggerFiring {
+  key: string;
+  triggerId: string;
+  workflowId: string;
+  kind: TriggerDef['kind'];
+  record?: string;
+  runId?: string;
+  caseId?: string;
+  status: 'started' | 'held' | 'discarded' | 'failed';
+  at: string;
+  message?: string;
+}
+
+export interface TriggersService {
+  list(): Promise<TriggerSummary[]>;
+  firings(filter: { triggerId?: string; status?: TriggerFiring['status']; limit?: number }): Promise<TriggerFiring[]>;
+  /** Start or discard the held firings of a trigger (storm guard). */
+  release(triggerId: string, decision: 'start' | 'discard', by: PersonActor): Promise<{ applied: boolean; started: number; message?: string }>;
+  /** An incoming message to a domain's intake address (the email inbound hook ends here). */
+  receiveMessage(domain: string, body: InboundMessageBody): Promise<{ messageId: string; duplicate: boolean; firings: TriggerFiring[] }>;
+  /** Fire whatever date and schedule triggers are due at `now` (default the clock); the kernel calls it every minute. */
+  sweep(now?: Date): Promise<TriggerFiring[]>;
+  /** Wait until the dispatcher has handled every entity event committed so far (tests). */
+  settle(timeoutMs?: number): Promise<void>;
+}
+
+export interface AuditTrail {
+  entity: string;
+  id: string;
+  title: string;
+  domain: string;
+  regulated: boolean;
+  retentionMs?: number;
+  values: Record<string, unknown>;
+  versions: (RecordVersionSummary & { values: Record<string, unknown>; prevHash: string })[];
+  chain: { ok: boolean; brokenAt?: number; message?: string };
+  signatures: SignatureView[];
+  cases: { caseId: string; workflowId: string; title: string; stepRuns: { stepRunId: string; stepId: string; performer: string; outcome?: string; decidedBy?: string; at: string }[] }[];
+  flags: RecordFlag[];
+  exportedAt: string;
+}
+
+export interface AuditService {
+  trail(entity: string, id: string, actor: Actor): Promise<AuditTrail | undefined>;
+  verifyChain(entity: string, id: string): Promise<{ ok: boolean; brokenAt?: number; message?: string }>;
+  export(entity: string, id: string, format: 'json' | 'pdf', actor: Actor): Promise<{ name: string; mime: string; data: Uint8Array } | undefined>;
+}
+
+export interface KernelPhase6 {
+  readonly domains: DomainsService;
+  readonly records: RecordsService;
+  readonly triggers: TriggersService;
+  readonly audit: AuditService;
+}
+
+/** Phase 6 additions to existing shapes (24 §12), declared here so the pieces agree. */
+export interface SignatureInput { password: string }
+
+/** A hand-off link shown on a case (24 §8). */
+export interface CaseLinkView {
+  kind: 'started' | 'called' | 'started_by' | 'called_by';
+  caseId: string;
+  runId: string;
+  workflowId: string;
+  title: string;
+  state: string;
+  status: RunStatus;
+}
+
+/** A run waiting in a `wait_until` state, for the case view. */
+export interface WaitingCondition { record: RecordRef; condition: string; holds: boolean; values: Record<string, unknown> }
+
+export type { DashboardBlock as _DashboardBlock, FreePageDef as _FreePageDef };

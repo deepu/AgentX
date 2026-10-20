@@ -314,6 +314,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
 
   async function itemTitle(item: InboxItem): Promise<string> {
     if (item.kind === 'identity') return 'Confirm a record match';
+    if (item.kind === 'flag' || item.kind === 'trigger-hold') return item.kind === 'flag' ? item.title : item.description;
     const wf = await defs.latest(item.workflowId);
     const run = await runInfo(pool, item.runId);
     const workflow = run ? await workflowOf(run.workflow_id, run.workflow_hash) : wf;
@@ -375,7 +376,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
       status: 'open', business: await business(), person: firstName(name), expiresAt: iso(link.expires_at),
     };
     const openInApp = `memwise://inbox/item/${encodeURIComponent(item.id)}`;
-    if (item.kind === 'identity' || item.kind === 'reminder' || item.kind === 'conversation') {
+    if (item.kind === 'identity' || item.kind === 'reminder' || item.kind === 'conversation' || item.kind === 'flag' || item.kind === 'trigger-hold') {
       return { ...base, kind: 'attention', title: await itemTitle(item), caseTitle: '', fields: [], openInApp };
     }
     const run = (await runInfo(pool, item.runId))!;
@@ -651,7 +652,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
 
     async issueInboxLink({ personId, item, via, idemKey }) {
       const base = publicBase();
-      if (!base || item.kind === 'identity') return undefined;
+      if (!base || item.kind === 'identity' || item.kind === 'flag' || item.kind === 'trigger-hold') return undefined;
       const { row, token } = await insertLink(pool, await linksKey(), {
         kind: 'inbox', idemKey: idemKey ?? randomLinkKey(`inbox:${personId}:${item.id}`), runId: item.runId, caseId: item.caseId, personId, itemId: item.id,
         ...('stepRunId' in item && item.stepRunId ? { stepRunId: item.stepRunId } : item.kind === 'approval' ? { stepRunId: item.approval.stepRunId } : {}),

@@ -108,6 +108,8 @@ const KIND_ICON: Record<MwInboxItem['kind'], React.ReactNode> = {
   reminder: <Bell />,
   conversation: <MessagesSquare />,
   identity: <Link2 />,
+  flag: <AlertTriangle />,
+  'trigger-hold': <Bell />,
 }
 
 /** The draft a playbook change's decision is about: the case value `draft`. */
@@ -199,7 +201,7 @@ export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId
                 ? <button type="button" className="font-medium text-foreground hover:underline" onClick={() => actions.openPlugin!(item.plugin)}>{item.caseTitle}</button>
                 : <span className="font-medium text-foreground">{item.caseTitle}</span>
             ) : (
-              <button type="button" className="font-medium text-foreground hover:underline" onClick={() => actions.openCase(item.caseId)}>
+              <button type="button" className="font-medium text-foreground hover:underline" onClick={() => item.caseId && actions.openCase(item.caseId)}>
                 {item.caseTitle}
               </button>
             )}

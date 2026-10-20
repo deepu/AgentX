@@ -49,6 +49,8 @@ const KIND_ICON: Record<MwInboxItem['kind'], React.ComponentType<{ className?: s
   reminder: Bell,
   conversation: MessagesSquare,
   identity: Link2,
+  flag: AlertTriangle,
+  'trigger-hold': Bell,
 }
 
 function ListSkeleton() {

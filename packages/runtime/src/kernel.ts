@@ -270,9 +270,24 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const entityDef = (name: string): EntityTypeDef | undefined =>
     entities[name] ?? Object.values(entities).find((e) => entityTableName(e.entity) === name || e.entity.toLowerCase() === name.toLowerCase());
 
+  // Phase 6 services (24 §12): placeholders until the pieces land; each method says it isn't built.
+  const notBuilt = (what: string) => () => { throw new Error(`Phase 6: ${what} is not built yet`); };
+  const phase6 = {
+    domains: { list: notBuilt('domains.list'), workspace: notBuilt('domains.workspace'), grants: notBuilt('domains.grants'), setGrants: notBuilt('domains.setGrants') },
+    records: {
+      page: notBuilt('records.page'), create: notBuilt('records.create'), update: notBuilt('records.update'), transition: notBuilt('records.transition'),
+      query: notBuilt('records.query'), tree: notBuilt('records.tree'), dashboard: notBuilt('records.dashboard'), views: notBuilt('records.views'),
+      saveView: notBuilt('records.saveView'), saveNote: notBuilt('records.saveNote'), flags: notBuilt('records.flags'), events: notBuilt('records.events'),
+      evaluate: notBuilt('records.evaluate'),
+    },
+    triggers: { list: notBuilt('triggers.list'), firings: notBuilt('triggers.firings'), release: notBuilt('triggers.release'), receiveMessage: notBuilt('triggers.receiveMessage'), sweep: notBuilt('triggers.sweep'), settle: notBuilt('triggers.settle') },
+    audit: { trail: notBuilt('audit.trail'), verifyChain: notBuilt('audit.verifyChain'), export: notBuilt('audit.export') },
+  } as unknown as import('./types.ts').KernelPhase6;
+
   const kernel: Kernel = {
     pool,
     people,
+    ...phase6,
 
     async index() {
       if (!options.projectDir) throw new Error('createKernel({ projectDir }) is needed to index');
@@ -491,7 +506,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const channels = createChannelService({
     pool, tools: () => gateway, people, external, inbox: (actor) => kernel.inbox(actor), subscribe: (l) => feed.subscribe(l),
     async policyFor(item) {
-      if (item.kind === 'identity') return undefined;
+      if (item.kind === 'identity' || item.kind === 'flag') return undefined;
       // The playbook's policy without a step layer, as for an invite (a step's allow list is for its own calls).
       const wf = await defs.latest(item.workflowId);
       return wf ? (await defs.policy(wf)).effective : undefined;

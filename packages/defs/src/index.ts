@@ -10,6 +10,9 @@ export * from './contracts.ts';
 export * from './draft-types.ts';
 export * from './plugin-types.ts';
 export type * from './external-types.ts';
+export * from './domain-types.ts';
+export { parseCondition, conditionNames, CONDITION_FUNCTIONS } from './condition.ts';
+export { entityKey, keyOf, splitEntityKey, domainOf, scopedEntities, resolveEntity, domainEntities, hasRole, rolesIn } from './domains.ts';
 export { crashPoint } from './testing.ts';
 
 export { parseValueType, formatValueType, sameValueType, parseDuration, parseCount, parseRate } from './value-types.ts';
