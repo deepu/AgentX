@@ -38,6 +38,7 @@ import {
   isCasesNavigation,
   isPlaybooksNavigation,
   isPluginsNavigation,
+  isDomainsNavigation,
 } from '@/contexts/NavigationContext'
 import { useSessionSelection, useIsMultiSelectActive, useSelectedIds, useSelectionCount } from '@/hooks/useSession'
 import { sourceSelection, skillSelection, automationSelection } from '@/hooks/useEntitySelection'
@@ -52,6 +53,7 @@ import { KanbanBoardContainer } from './kanban/KanbanBoardContainer'
 import { PagesHome } from '../pages/PagesHome'
 import { PageView } from '../pages/PageView'
 import { InboxDetailPage, CasePage, PlaybookPage, DraftPage, PluginPage, RecordsPage } from '../memwise'
+import { DomainsPage } from '../memwise/domains/DomainsPages'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -396,6 +398,15 @@ export function MainContentPanel({
         ) : (
           <PluginPage pluginId={navState.details?.type === 'plugin' ? navState.details.pluginId : null} />
         )}
+      </Panel>
+    )
+  }
+
+  // MemWise domains (Phase 6): record pages, entities, dashboards, automations, a domain's page
+  if (isDomainsNavigation(navState)) {
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        <DomainsPage details={navState.details} />
       </Panel>
     )
   }

@@ -22,10 +22,13 @@ import {
   memwiseDraftsAtom,
   memwiseInboxAtom,
   memwisePlaybooksAtom,
+  memwiseReviewQueueAtom,
   memwiseRolesAtom,
   memwiseStartCaseDialogAtom,
 } from '@/atoms/memwise'
 import { MemwiseStatusBanner } from './MemwiseStatus'
+import { DomainFilterRow, inboxItemDomain, useDomainFilter, useInboxDomains } from './domains/DomainFilter'
+import { firstDocumentReview } from './records/record-model'
 import { originLabel } from './plugins/plugin-model'
 import { useNow } from './use-now'
 import { isMetaPlaybook, isOpenDraft, sortDrafts, stageLabel, stageTone } from './draft/draft-model'
@@ -135,11 +138,34 @@ export function InboxList({ items, selectedId, onSelect, now: fixedNow, classNam
 }
 
 export function InboxListPanel({ selectedId, onSelect }: { selectedId?: string | null; onSelect: (id: string) => void }) {
+  const { t } = useTranslation()
   const items = useAtomValue(memwiseInboxAtom)
+  const playbooks = useAtomValue(memwisePlaybooksAtom)
+  const filter = useDomainFilter(useInboxDomains(items))
+  const setQueue = useSetAtom(memwiseReviewQueueAtom)
+  const shown = React.useMemo(() => (items && filter.value ? items.filter(i => filter.matches(inboxItemDomain(i, playbooks))) : items), [items, filter, playbooks])
+  // Phase 6: "Review in a row" opens the first document review, then the next of the same kind after each decision
+  const first = shown ? firstDocumentReview(shown) : undefined
+  const reviews = first ? (shown ?? []).filter(i => (i.kind === 'input' || i.kind === 'decision') && i.review?.kind === 'document').length : 0
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <MemwiseStatusBanner className="mx-3 mt-1 mb-2" />
-      <InboxList items={items} selectedId={selectedId} onSelect={onSelect} />
+      <DomainFilterRow filter={filter} />
+      {first && (
+        <div className="px-3 pb-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full"
+            onClick={() => { setQueue({ active: true, workflowId: first.workflowId, stepTitle: first.stepTitle }); onSelect(first.id) }}
+            data-action="review-in-a-row"
+          >
+            <ClipboardCheck />
+            {t('memwise.review.inARow', { count: reviews })}
+          </Button>
+        </div>
+      )}
+      <InboxList items={shown} selectedId={selectedId} onSelect={id => { setQueue(q => (q.active ? { active: false } : q)); onSelect(id) }} />
     </div>
   )
 }
@@ -227,12 +253,14 @@ export function CasesListPanel({ selectedId, onSelect }: { selectedId?: string |
   const roles = useAtomValue(memwiseRolesAtom)
   const [filter, setFilter] = useAtom(memwiseCaseFilterAtom)
   const setStartCase = useSetAtom(memwiseStartCaseDialogAtom)
-  const filtered = React.useMemo(() => (cases ? filterCases(cases, filter) : null), [cases, filter])
-  const filtering = !!(filter.workflowId || filter.status)
+  const domainFilter = useDomainFilter(React.useMemo(() => (cases ?? []).map(c => c.domain), [cases]))
+  const filtered = React.useMemo(() => (cases ? filterCases(cases, filter).filter(c => domainFilter.matches(c.domain)) : null), [cases, filter, domainFilter])
+  const filtering = !!(filter.workflowId || filter.status || domainFilter.value)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <MemwiseStatusBanner className="mx-3 mt-1 mb-2" />
+      <DomainFilterRow filter={domainFilter} />
       <div className="flex gap-2 px-3 pb-2">
         <Select value={filter.workflowId ?? ALL} onValueChange={v => setFilter(f => ({ ...f, workflowId: v === ALL ? undefined : v }))}>
           <SelectTrigger className="h-control text-label-sm" aria-label={t('memwise.cases.filterPlaybook')}>
@@ -390,11 +418,15 @@ export function PlaybooksListPanel({ selectedId, selectedDraftId, onSelect, onSe
 }) {
   const playbooks = useAtomValue(memwisePlaybooksAtom)
   const drafts = useAtomValue(memwiseDraftsAtom)
+  // Phase 6: the domain filter (the playbooks that build playbooks belong to no one domain and always show)
+  const domainFilter = useDomainFilter(React.useMemo(() => (playbooks ?? []).filter(p => !isMetaPlaybook(p.id)).map(p => p.domain), [playbooks]))
+  const shown = React.useMemo(() => (playbooks && domainFilter.value ? playbooks.filter(p => isMetaPlaybook(p.id) || p.id === 'bind-plugin' || domainFilter.matches(p.domain)) : playbooks), [playbooks, domainFilter])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <MemwiseStatusBanner className="mx-3 mt-1 mb-2" />
+      <DomainFilterRow filter={domainFilter} />
       <PlaybooksList
-        playbooks={playbooks}
+        playbooks={shown}
         drafts={drafts}
         selectedId={selectedId}
         selectedDraftId={selectedDraftId}

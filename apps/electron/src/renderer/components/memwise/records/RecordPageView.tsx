@@ -1,0 +1,204 @@
+/**
+ * A record's page, drawn from its layout (24 §6): breadcrumbs from its parents, the header
+ * (title, status, the header fields, the moves it can make), its flags, then the layout's
+ * areas (single, split or sidebar; the columns stack when the panel is narrow) and `below`.
+ *
+ * In review mode (`page.review`, 24 §11) the same page puts the document beside the review:
+ * the proposed values, the checks, a comment and "Approve and sign". Presentational.
+ */
+
+import * as React from 'react'
+import { useTranslation } from 'react-i18next'
+import { AlertTriangle, ChevronRight, Database, MessageSquare, ShieldCheck } from 'lucide-react'
+import type { MwPageBlock, MwRecordPage, MwTransitionOption } from '@memwise/shared/protocol'
+import { Info_Alert } from '@/components/info/Info_Alert'
+import { Info_Badge } from '@/components/info/Info_Badge'
+import { Info_Page } from '@/components/info/Info_Page'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { absoluteTime } from '../format'
+import { DocumentViewer, type ViewerQuote } from './DocumentViewer'
+import { ReviewPanel, type ReviewPanelProps } from './DocumentReview'
+import {
+  CasesBlock,
+  ChartBlock,
+  ChecksBlock,
+  FieldRows,
+  HistoryBlock,
+  LifecycleBlock,
+  MentionsBlock,
+  NotesBlock,
+  ReasonBox,
+  RelatedBlock,
+  StartBlock,
+  StatusPill,
+  TransitionButtons,
+  useReasonedWrite,
+  writeResultMessage,
+  type RecordPageActions,
+} from './RecordBlocks'
+import { Info_Section } from '@/components/info/Info_Section'
+import { areaBlocks, blockFields, detailFields, formatFieldValue, headerFields, layoutColumns, type AreaName } from './record-model'
+
+export interface ViewerFile { data?: Uint8Array | null; loading?: boolean; error?: string | null }
+
+export interface RecordPageViewProps {
+  page: MwRecordPage
+  actions?: RecordPageActions & { openChat?: () => void }
+  /** The viewer blocks' bytes, by field (loaded by the container). */
+  files?: Record<string, ViewerFile>
+  /** Review mode: how to submit the review step, and what happens after. */
+  review?: Omit<ReviewPanelProps, 'review' | 'activeField' | 'onPick'>
+  /** Shown found/missing quotes in tests and the playground (the viewer works them out from the PDF). */
+  missingQuotes?: number[]
+  now?: number
+}
+
+const LAYOUT_GRID: Record<MwRecordPage['layout']['layout'], string> = {
+  single: '',
+  split: '@3xl/record:grid-cols-2',
+  sidebar: '@3xl/record:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]',
+}
+
+export function RecordPageView({ page, actions, files = {}, review, missingQuotes, now }: RecordPageViewProps) {
+  const { t, i18n } = useTranslation()
+  const [activeField, setActiveField] = React.useState<string | null>(null)
+  const move = useReasonedWrite(page.regulated)
+  const reviewing = !!page.review && !!review
+  const { columns, below } = layoutColumns(page.layout)
+
+  React.useEffect(() => { setActiveField(null) }, [page.id, page.review?.stepRunId])
+
+  const quotes = React.useMemo<ViewerQuote[]>(() => (page.review?.proposed ?? [])
+    .filter(p => p.quote)
+    .map(p => ({ quote: p.quote!, page: p.page, label: p.label })), [page.review])
+  const quoteFields = React.useMemo(() => (page.review?.proposed ?? []).filter(p => p.quote).map(p => p.field), [page.review])
+  const activeQuote = activeField ? quoteFields.indexOf(activeField) : -1
+
+  const onTransition = actions?.transition ? (tr: MwTransitionOption) => move.write(reason => actions.transition!(tr.name, reason)) : undefined
+  const transitions = page.lifecycle?.transitions ?? []
+  const openFlags = page.flags.filter(f => !f.closedAt)
+
+  const renderBlock = (block: MwPageBlock, key: string): React.ReactNode => {
+    switch (block.kind) {
+      case 'fields':
+        return (
+          <Info_Section key={key} title={t('memwise.record.fields')}>
+            <FieldRows fields={blockFields(page, block.fields)} regulated={page.regulated} actions={actions} />
+          </Info_Section>
+        )
+      case 'details': {
+        const rest = detailFields(page)
+        if (rest.length === 0) return null
+        return (
+          <Info_Section key={key} title={t('memwise.record.details')} count={rest.length}>
+            <FieldRows fields={rest} regulated={page.regulated} actions={actions} />
+          </Info_Section>
+        )
+      }
+      case 'viewer': {
+        const f = files[block.field] ?? {}
+        return (
+          <DocumentViewer
+            key={key}
+            document={page.documents[block.field] ?? null}
+            data={f.data}
+            loading={f.loading}
+            error={f.error}
+            quotes={quotes}
+            active={activeQuote >= 0 ? activeQuote : null}
+            missing={missingQuotes}
+          />
+        )
+      }
+      case 'related': return <RelatedBlock key={key} page={page} names={block.relationships} actions={actions} />
+      case 'cases': return <CasesBlock key={key} page={page} actions={actions} now={now} />
+      case 'lifecycle': return <LifecycleBlock key={key} page={page} onTransition={onTransition} busy={move.busy} />
+      case 'chart': return <ChartBlock key={key} page={page} block={block} />
+      case 'checks': return <ChecksBlock key={key} page={page} />
+      case 'notes': return <NotesBlock key={key} page={page} actions={actions} now={now} />
+      case 'mentions': return <MentionsBlock key={key} page={page} actions={actions} now={now} />
+      case 'start': return <StartBlock key={key} page={page} actions={actions} />
+      case 'history': return <HistoryBlock key={key} page={page} actions={actions} now={now} />
+    }
+  }
+
+  const area = (name: AreaName) => areaBlocks(page.layout, name).map((b, i) => renderBlock(b, `${name}:${i}:${b.kind}`))
+
+  // Review mode: the document (the layout's viewer blocks) on one side, the review on the other.
+  const viewerBlocks = Object.values(page.layout.areas).flat().filter((b): b is Extract<MwPageBlock, { kind: 'viewer' }> => b?.kind === 'viewer')
+
+  return (
+    <Info_Page.Content wide={page.layout.layout !== 'single' || reviewing}>
+      <div className="@container/record space-y-6" data-record-page={`${page.entity}:${page.id}`} data-layout={page.layout.layout} data-mode={reviewing ? 'review' : 'page'}>
+        <nav className="flex flex-wrap items-center gap-1 text-label-sm text-tertiary" aria-label={t('memwise.record.breadcrumbs')} data-breadcrumbs>
+          <span>{page.domainName}</span>
+          {page.parents.map(p => (
+            <React.Fragment key={`${p.entity}:${p.id}`}>
+              <ChevronRight className="size-3" />
+              {actions?.openRecord
+                ? <button type="button" className="hover:text-foreground hover:underline" onClick={() => actions.openRecord!(p.entity, p.id)}>{p.title}</button>
+                : <span>{p.title}</span>}
+            </React.Fragment>
+          ))}
+          <ChevronRight className="size-3" />
+          <span className="text-secondary">{page.entityName}</span>
+        </nav>
+
+        <Info_Page.Hero
+          className="mt-0"
+          avatar={<div className="grid size-full place-items-center bg-fill-hover text-secondary"><Database className="size-4" /></div>}
+          title={page.title}
+          meta={
+            <>
+              <StatusPill status={page.status} />
+              {page.regulated && <Info_Badge color="muted" icon={<ShieldCheck className="size-3" />} data-regulated>{t('memwise.domains.regulated')}</Info_Badge>}
+              {headerFields(page).map(f => (
+                <span key={f.name} data-header-field={f.name}>{t('memwise.record.headerField', { label: f.label, value: formatFieldValue(f, t, i18n.language) })}</span>
+              ))}
+            </>
+          }
+          actions={actions?.openChat ? (
+            <Button variant="secondary" size="sm" onClick={actions.openChat}><MessageSquare />{t('memwise.record.askInChat')}</Button>
+          ) : undefined}
+        />
+
+        {!reviewing && transitions.length > 0 && (
+          <div className="space-y-2">
+            <TransitionButtons transitions={transitions} onTransition={onTransition} busy={move.busy} />
+            {move.asking && <ReasonBox onConfirm={move.asking} onCancel={move.cancel} busy={move.busy} label={t('memwise.record.reasonForMove')} />}
+            {move.result && !move.result.applied && (
+              <Info_Alert variant="error" inline icon={<AlertTriangle />}>
+                <Info_Alert.Title data-write-status={move.result.status}>{writeResultMessage(move.result, t)}</Info_Alert.Title>
+              </Info_Alert>
+            )}
+          </div>
+        )}
+
+        {openFlags.map(f => (
+          <Info_Alert key={f.id} variant="error" icon={<AlertTriangle />} data-flag={f.id}>
+            <Info_Alert.Title>{f.message}</Info_Alert.Title>
+            <Info_Alert.Description>{t('memwise.record.flagRaised', { time: absoluteTime(f.raisedAt, i18n.language) })}</Info_Alert.Description>
+          </Info_Alert>
+        ))}
+
+        {reviewing ? (
+          <div className={cn('grid items-start gap-6', viewerBlocks.length > 0 && '@3xl/record:grid-cols-2')}>
+            {viewerBlocks.length > 0 && <div className="min-w-0 space-y-6 @3xl/record:sticky @3xl/record:top-0">{viewerBlocks.map((b, i) => renderBlock(b, `review-viewer:${i}`))}</div>}
+            <div className="min-w-0 space-y-6">
+              <ReviewPanel review={page.review!} activeField={activeField} onPick={setActiveField} {...review!} />
+              <ChecksBlock page={page} />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className={cn('grid items-start gap-6', LAYOUT_GRID[page.layout.layout])} data-columns={columns.join(' ')}>
+              {columns.map(c => <div key={c} className="min-w-0 space-y-6" data-area={c}>{area(c)}</div>)}
+            </div>
+            {below && <div className="space-y-6" data-area="below">{area('below')}</div>}
+          </>
+        )}
+      </div>
+    </Info_Page.Content>
+  )
+}

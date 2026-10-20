@@ -803,6 +803,23 @@ export interface ElectronAPI {
   memwiseChannelsAvailable(workspaceId: string): Promise<import('@memwise/shared/protocol').MwChannelsAvailable>
   memwiseGetNotifySettings(workspaceId: string): Promise<import('@memwise/shared/protocol').MwNotifySettings>
   memwiseSetNotifySettings(workspaceId: string, settings: import('@memwise/shared/protocol').MwNotifySettings): Promise<import('@memwise/shared/protocol').MwNotifySettings>
+  // Phase 6: domains, records, pages, views, automations, audit (docs/memwise/24-phase-6-interfaces.md §13)
+  memwiseListDomains(workspaceId: string): Promise<import('@memwise/shared/protocol').MwDomain[]>
+  memwiseGetRecordPage(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordPageInput): Promise<import('@memwise/shared/protocol').MwRecordPage | null>
+  memwiseCreateRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordCreateInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
+  memwiseUpdateRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordUpdateInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
+  memwiseTransitionRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordTransitionInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
+  memwiseQueryRecords(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordQueryInput): Promise<import('@memwise/shared/protocol').MwRecordQueryResult>
+  memwiseRecordTree(workspaceId: string, input: import('@memwise/shared/protocol').MwTreeInput): Promise<import('@memwise/shared/protocol').MwTreeNode[]>
+  memwiseSaveNote(workspaceId: string, input: import('@memwise/shared/protocol').MwSaveNoteInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
+  memwiseGetDashboard(workspaceId: string, input: import('@memwise/shared/protocol').MwDashboardInput): Promise<import('@memwise/shared/protocol').MwDashboard>
+  memwiseListViews(workspaceId: string, input: { domain: string; entity?: string }): Promise<import('@memwise/shared/protocol').MwView[]>
+  memwiseSaveView(workspaceId: string, input: import('@memwise/shared/protocol').MwSaveViewInput): Promise<import('@memwise/shared/protocol').MwView>
+  memwiseListTriggers(workspaceId: string): Promise<import('@memwise/shared/protocol').MwTrigger[]>
+  memwiseReleaseTrigger(workspaceId: string, input: import('@memwise/shared/protocol').MwReleaseTriggerInput): Promise<import('@memwise/shared/protocol').MwSubmitResult & { started?: number }>
+  memwiseGetAuditTrail(workspaceId: string, input: { entity: string; id: string }): Promise<import('@memwise/shared/protocol').MwAuditTrail | null>
+  memwiseExportAuditTrail(workspaceId: string, input: import('@memwise/shared/protocol').MwAuditExportInput): Promise<import('@memwise/shared/protocol').MwAuditExport>
+  memwiseReadFile(workspaceId: string, fileId: string): Promise<import('@memwise/shared/protocol').MwFileData>
   onMemwiseChanged(callback: (change: import('@memwise/shared/protocol').MwChange) => void): () => void
 
   // Automations
@@ -953,6 +970,8 @@ export type SessionFilter =
  */
 export type { SettingsSubpage } from './settings-registry'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
+import { domainsRoute, unpackDomainsDetail } from './domains-route'
+export type { DomainsDetails } from './domains-route'
 
 /**
  * Sessions navigation state
@@ -1084,6 +1103,17 @@ export interface PluginsNavigationState {
 }
 
 /**
+ * MemWise domains (Phase 6, docs/memwise/24-phase-6-interfaces.md §14): a record page, a
+ * domain's entities, a dashboard, the automations or a domain page. No middle list (like
+ * `pages`): the sidebar's Domains section is the navigator. Bare `domains` is the Pages overview.
+ */
+export interface DomainsNavigationState {
+  navigator: 'domains'
+  details: import('./domains-route').DomainsDetails | null
+  rightSidebar?: RightSidebarPanel
+}
+
+/**
  * Unified navigation state
  */
 export type NavigationState =
@@ -1098,6 +1128,7 @@ export type NavigationState =
   | CasesNavigationState
   | PlaybooksNavigationState
   | PluginsNavigationState
+  | DomainsNavigationState
 
 export const isSessionsNavigation = (
   state: NavigationState
@@ -1142,6 +1173,10 @@ export const isPlaybooksNavigation = (
 export const isPluginsNavigation = (
   state: NavigationState
 ): state is PluginsNavigationState => state.navigator === 'plugins'
+
+export const isDomainsNavigation = (
+  state: NavigationState
+): state is DomainsNavigationState => state.navigator === 'domains'
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
@@ -1194,6 +1229,7 @@ export const getNavigationStateKey = (state: NavigationState): string => {
     if (state.details?.type === 'records') return `plugins/records/${state.details.entity}`
     return state.details ? `plugins/plugin/${state.details.pluginId}` : 'plugins'
   }
+  if (state.navigator === 'domains') return domainsRoute(state.details)
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
     return `settings:${state.subpage}`
@@ -1290,6 +1326,15 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
   if (key.startsWith('plugins/records/')) {
     const entity = key.slice(16)
     return { navigator: 'plugins', details: entity ? { type: 'records', entity } : null }
+  }
+
+  // Handle MemWise domains (Phase 6)
+  if (key === 'domains') return { navigator: 'domains', details: null }
+  if (key.startsWith('domains/')) {
+    const [, type, packed] = key.split('/')
+    let id: string | null = null
+    try { id = packed ? decodeURIComponent(packed) : null } catch { id = null }
+    return { navigator: 'domains', details: type && id ? unpackDomainsDetail(type, id) : null }
   }
 
   // Handle settings
