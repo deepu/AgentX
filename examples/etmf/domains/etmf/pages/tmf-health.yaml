@@ -1,0 +1,26 @@
+title: TMF health
+description: How complete the study's TMF is, site by site, and what is waiting.
+under: Study                   # one page under every study
+params:
+  study: Ref<Study>
+blocks:
+  - kpi:
+      label: Complete
+      value: { percent: ExpectedDocument, of: "study = params.study", where: "status = 'filed'" }
+      target: 95
+  - kpi:
+      label: Documents in QC
+      value: { count: Document, where: "status = 'in_qc' and study = params.study" }
+  - kpi:
+      label: Expiring CVs this month
+      value: { count: Person, where: "cv_expires <= today + 30d" }
+  - heatmap:
+      title: Completeness by site
+      rows: { entity: Site, where: "study = params.study", label: "{site_number} · {name}" }
+      columns:
+        - { label: Start-up, value: start_up_pack_complete }
+  - table:
+      title: Missing documents
+      view: missing-documents
+  - text: |
+      Percent of expected documents filed. A site below 70% needs a chase: ask in chat why it is behind.

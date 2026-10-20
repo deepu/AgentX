@@ -1,0 +1,4 @@
+case: rejected_document
+fields:
+  document: { type: Ref<Document>, required: true, description: The document QC sent back }
+  note:     { type: Text, description: "What QC found, for the site" }

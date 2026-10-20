@@ -1,0 +1,8 @@
+case: incoming_message
+fields:
+  sender:      { type: Email, description: Who sent it }
+  subject:     Text
+  body:        Text
+  documents:   { type: List<Document>, description: "The attachments, exactly as they arrived" }
+  received_at: DateTime
+  kind:        { type: "Enum[documents, question, other]", description: What the message is }
