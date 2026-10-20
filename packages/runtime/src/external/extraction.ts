@@ -132,7 +132,7 @@ export function keptProvenance(
     if (!s || !Object.hasOwn(values, field) || !isDeepStrictEqual(values[field], s.value)) continue;
     out[field] = {
       kind: 'tool', at, stepRunId: s.stepRunId, tool: s.tool, callId: s.callId, tainted: true,
-      document: s.document, confidence: s.confidence, confirmedBy,
+      document: s.document, confidence: s.confidence, confirmedBy, ...(s.quote ? { quote: s.quote } : {}),
     };
   }
   return out;

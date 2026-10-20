@@ -146,13 +146,16 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   /** Identifies what the bound plugins bind: rebuilt when a binding or the version it pins changes. */
   const boundKey = (b: BoundPlugin[]) => JSON.stringify(b.map((x) => [x.binding.plugin, x.binding.hash, x.plugin.hash]));
 
+  // Phase 6: what the entity tools need at run time (24 §3).
+  const entityToolRuntime = { pool, project: () => indexed?.project, defs, people, emit: (c: import('./types.ts').KernelChange) => feed.emit(c) };
+
   // Rebuilt when indexing changes the entity types or the bindings; the step engine always calls the current one.
   // Precedence: the caller's tools, the kernel's, then plugin tools (a clash is not bound). The
   // extractor bound under its name is the caller's builtin when it gives one (the stub, scripted),
   // so a plugin tool routed to that builtin runs the same code whether or not a plugin binds it.
   const boundExtractor = builtins.get(extractor.name) ?? extractor;
   const buildTools = () => {
-    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools]);
+    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => entityToolRuntime), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools]);
     const taken = new Map(base.map((t) => [t.name, t]));
     const fromPlugins = options.projectDir
       ? pluginTools(bound, taken, { root: options.projectDir, builtins, mcp })
@@ -205,6 +208,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     client,
     sourcedProvenance: (db: import('pg').PoolClient, stepRunId: string, values: Record<string, unknown>, sources: Record<string, string>, by: string) =>
       external!.sourcedProvenance(db, stepRunId, values, sources, by),
+    signing: { people, entities: () => entities },
   };
   const versionStore = new PgVersionStore();
 

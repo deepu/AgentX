@@ -8,6 +8,7 @@ import { domainOf, hasRole, scopedEntities, validateValue, type EntityTypeDef, t
 import type pg from 'pg';
 import { driverIdOf } from './ids.ts';
 import type { Submission, SubmissionMessage } from './driver.ts';
+import { checkSignature, writeSignature, type SigningDeps } from './regulated/signatures.ts';
 import type { SubmitResult, SubmitStepInput } from './types.ts';
 
 export interface SubmitDeps {
@@ -21,6 +22,8 @@ export interface SubmitDeps {
    */
   sourcedProvenance?(db: pg.PoolClient, stepRunId: string, values: Record<string, unknown>, sources: Record<string, string>, by: string):
     Promise<Record<string, Provenance>>;
+  /** Phase 6: e-signatures for steps with `sign:` (24 §9); absent: such a step can't be answered. */
+  signing?: SigningDeps;
 }
 
 /** The waiting step run and its run, locked for the answer. */
@@ -148,6 +151,13 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput, opts:
     const errors = await answerErrors(db, step, s.case_id, values, recordTypesFor(deps.entities(), workflow));
     if (Object.keys(errors).length) return { applied: false, status: 'invalid', errors, message: 'some values need fixing' };
 
+    // Phase 6: a signed step needs the person's password; checked before anything is queued.
+    if (step.sign) {
+      if (!deps.signing) return { applied: false, status: 'forbidden', message: 'signing is not available here' };
+      const refused = await checkSignature(deps.signing, step, input.by, input.signature, input.stepRunId);
+      if (refused) return refused;
+    }
+
     const clean = cleanValues(values);
     const provenance = input.sources && Object.keys(input.sources).length && deps.sourcedProvenance
       ? await deps.sourcedProvenance(db, input.stepRunId, clean, input.sources, input.by.personId)
@@ -161,6 +171,10 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput, opts:
     };
     if (!(await queueSubmission(db, deps.client, s, input.outcome, submission))) {
       return { applied: false, status: 'stale', message: 'this step was already answered' };
+    }
+    if (step.sign && deps.signing) {
+      const current = (await new PgCaseStore().get(db, s.case_id))?.values ?? {};
+      await writeSignature(db, deps.signing, { workflow, step, stepRunId: input.stepRunId, caseId: s.case_id, by: input.by, values: clean, caseValues: current });
     }
     // Staff answered it themselves: links sent to the client for it can't be used any more.
     if (step.performer === 'external') await closeStepLinks(db, s.run_id, s.step_id, 'answered');
