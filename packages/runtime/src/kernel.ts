@@ -22,13 +22,14 @@ import { join } from 'node:path';
 import { initialTransition } from 'xstate';
 import { ChangeFeed } from './changes.ts';
 import { domainTools } from './domain-tools.ts';
-import { applyTimerActions, registerRunDriver } from './driver.ts';
+import { applyTimerActions, outsideEventRefusal, registerRunDriver } from './driver.ts';
 import { EXPLAINER_ROLE, explainStep } from './explain.ts';
 import { EXTRACTOR_ROLE, quarantinedExtractTool } from './extract.ts';
 import { driverIdOf, newCaseId, newRunId } from './ids.ts';
 import { compileMachine, type RunEvent } from './machine.ts';
 import { getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef } from './runs.ts';
 import { ensureSandbox, SAMPLE_PLUGIN } from './sample-tools.ts';
+import { startValueErrors, StartRunError } from './start.ts';
 import { submitStep } from './submit.ts';
 import type { Actor, EntityRow, Explanation, Kernel, KernelOptions, RunRecord } from './types.ts';
 import { approverRoles, DefinitionCache, getCaseView, inbox, listCases, liveCounts, mayApprove } from './views.ts';
@@ -55,6 +56,11 @@ function uniqueTools(tools: ToolDefinition[]): ToolDefinition[] {
 /** The default object store for uploads (19 §5). */
 export function defaultFilesDir(): string {
   return process.env.MEMWISE_FILES_DIR ?? join(homedir(), '.memwise', 'files');
+}
+
+/** Identifies a set of entity definitions: names and content, so any edit changes it. */
+function entitiesKey(entities: Record<string, EntityTypeDef>): string {
+  return JSON.stringify(Object.keys(entities).sort().map((name) => [name, entities[name]]));
 }
 
 /** Entity types as last indexed, for a kernel started without a project folder. */
@@ -98,7 +104,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     },
   });
 
-  // Rebuilt when indexing adds entity types; the step engine always calls the current one.
+  // Rebuilt when indexing changes the entity types; the step engine always calls the current one.
   const buildTools = () => createToolGateway({
     tools: uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), extractor]),
     ledger: new PgEffectLedger(pool),
@@ -154,9 +160,11 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       const notes = await applyDomainSchema(pool, project.entities, { creators: domainCreators(project.entities, project.workflows) });
       const diagnostics = [...loaded.diagnostics, ...notes.map((message): Diagnostic => ({ severity: 'warning', code: 'domain-column-type', message }))];
       indexed = { project, diagnostics };
-      const added = Object.keys(project.entities).some((e) => !entities[e]);
+      // The domain tools capture each entity's definition (its fields, the create tool's schema):
+      // rebuild them when any entity type is added, removed or changed, not only added.
+      const changed = entitiesKey(project.entities) !== entitiesKey(entities);
       entities = project.entities;
-      if (added) gateway = buildTools();
+      if (changed) gateway = buildTools();
       feed.emit({ kind: 'definitions' });
       return diagnostics;
     },
@@ -166,6 +174,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         ? await loadWorkflowDef(pool, input.workflowId, input.workflowHash)
         : await latestWorkflowDef(pool, input.workflowId);
       if (!workflow) throw new Error(`workflow ${input.workflowId} is not indexed`);
+      const errors = startValueErrors(workflow, input.case, { ...entities, ...workflow.caseType.types }, input.startAt);
+      if (Object.keys(errors).length) throw new StartRunError(errors);
       const runId = input.runId ?? newRunId();
       const caseId = await withTransaction(pool, async (db) => {
         const existing = await db.query('select case_id from mw.runs where id = $1', [runId]);
@@ -174,6 +184,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         const at = new Date().toISOString();
         const values: Record<string, CaseValue> = {};
         for (const [k, v] of Object.entries(input.case)) {
+          if (v === null || v === undefined) continue;
           values[k] = { value: v, provenance: { kind: 'input', at, ...(input.by ? { by: input.by } : {}) } };
         }
         await cases.create(db, { id, caseType: workflow.caseType.id, workflowId: workflow.id, workflowHash: workflow.hash, values });
@@ -193,14 +204,20 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       return { runId, caseId };
     },
 
-    async sendEvent(runId, event, { idemKey, forSeq }) {
+    async sendEvent(runId, event, { idemKey, forSeq, by }) {
       const ev: RunEvent = typeof event === 'string' ? { type: event } : { ...event };
       return withTransaction(pool, async (db) => {
         // Every outside event names the state entry it answers; by default the one current now,
         // so an event queued while the driver is busy can never move a later state too.
-        const run = await db.query('select entered_seq from mw.runs where id = $1 for update', [runId]);
-        if (!run.rows[0]) throw new Error(`no run ${runId}`);
-        ev.for = forSeq ?? (run.rows[0].entered_seq as number);
+        const run = await db.query('select entered_seq, state, workflow_id, workflow_hash from mw.runs where id = $1 for update', [runId]);
+        const r = run.rows[0];
+        if (!r) throw new Error(`no run ${runId}`);
+        // Checked against the state now, under the run's lock: a person step only through submitStep.
+        const refused = outsideEventRefusal(await defs.workflow(r.workflow_id, r.workflow_hash), r.state, by);
+        if (refused) return { sent: false, ...refused };
+        // The sender, never what the caller wrote in the event: the transition row records who decided.
+        if (by?.kind === 'person') ev.by = by.personId;
+        ev.for = forSeq ?? (r.entered_seq as number);
         const ins = await db.query(
           `insert into mw.inbox (run_id, idem_key, event, for_seq) values ($1, $2, $3, $4) on conflict do nothing`,
           [runId, idemKey, JSON.stringify(ev), ev.for]);

@@ -7,7 +7,7 @@ import {
   AGENT_STEP_WORKFLOW, agentStepWorkflow, configureStepEngine, mapArgs, structuralChecks, systemStepWorkflow, SYSTEM_STEP_WORKFLOW,
   type StepEngineDeps, type StepResult, type StepRunInput,
 } from '../src/index.ts';
-import { MemoryLedger, MemoryRecorder, createDatabase, example, intakeTools, launchDbos, stepInput } from './helpers.ts';
+import { MemoryLedger, MemoryRecorder, createDatabase, example, intakeTools, launchDbos, realGateways, stepInput } from './helpers.ts';
 
 // Registered per file and deregistered after it, so other files in the same process (a kernel) can use the names.
 let agentStep: (input: StepRunInput) => Promise<StepResult>;
@@ -165,5 +165,70 @@ describe('taint on writes', () => {
     expect(r.passed).toBe(true);
     expect((r.writes.gstin_ok!.provenance as { tainted?: boolean }).tainted).toBeUndefined();
     expect(r.writes.flags!.provenance).toMatchObject({ kind: 'judgement', tainted: true });
+  });
+});
+
+// ---------------------------------------------------------------- taint from the case (review finding)
+
+describe('taint carried in from the case', () => {
+  // Outbound allowed on its own, denied once tainted: what the call gets shows which rule applied.
+  const taintPolicy = (input: StepRunInput, tainted: boolean): StepRunInput => {
+    const origin = { layer: 'domain', name: 'test' } as const;
+    return {
+      ...input,
+      ...(tainted ? { tainted: true, taintedReads: ['client_email'] } : {}),
+      policy: {
+        ...input.policy,
+        effects: { ...input.policy.effects, outbound: { value: 'allow', origin } },
+        taint: { enabled: { value: true, origin }, outboundWhenTainted: { value: 'deny', origin } },
+      },
+    };
+  };
+
+  test('an agent step reading a tainted field gets the taint treatment on its first outbound call', async () => {
+    const script = {
+      checker: [
+        { toolCalls: [{ name: 'email.send', args: { to: 'asha@acme-traders.example' } }] },
+        { toolCalls: [{ name: 'step.finish', args: { outcome: 'needs_info', writes: { flags: [] }, rationale: 'asked the client' } }] },
+      ],
+    };
+    const change = (s: StepDef): StepDef => ({ ...s, tools: { allowed: ['email.send'], required: [] }, checkpoint: [], writes: { flags: s.writes.flags! } });
+    const results: Record<string, { result: StepResult; recorder: MemoryRecorder; calls: number }> = {};
+    for (const tainted of [false, true]) {
+      const id = `agent-taint-${tainted}`;
+      const recorder = new MemoryRecorder();
+      const g = realGateways({ ...clean, tools: { ...clean.tools, 'email.send': { message_id: 'm-1' } } }, { script });
+      const input = taintPolicy(stepInput(id, clean, change), tainted);
+      const result = await run(agentStep, input, { ...g, recorder, maxRepairs: 0 });
+      results[id] = { result, recorder, calls: g.calls['email.send'] ?? 0 };
+      const policy = recorder.journals.get(input.stepRunId)!.find((e) => e.kind === 'policy')!;
+      expect((policy.request as { tainted: boolean }).tainted).toBe(tainted);
+      expect((policy.response as { decision: { verdict: string } }).decision.verdict).toBe(tainted ? 'deny' : 'allow');
+    }
+    expect(results['agent-taint-false']!.calls).toBe(1);
+    expect(results['agent-taint-true']!.calls).toBe(0);
+    const t = results['agent-taint-true']!.result;
+    expect(t.tainted).toBe(true);
+    // Its judgement carries the taint on.
+    expect(t.writes.flags!.provenance).toMatchObject({ kind: 'judgement', tainted: true });
+    expect((results['agent-taint-false']!.result.writes.flags!.provenance as { tainted?: boolean }).tainted).toBeUndefined();
+  });
+
+  test('a system step mapping a tainted field into an outbound call gets the taint treatment', async () => {
+    const sent: unknown[] = [];
+    const mail: ToolDefinition = {
+      name: 'mail.send', description: 'Send mail.', effect: 'outbound', idempotent: true,
+      inputSchema: { type: 'object', properties: { to: { type: 'string' } }, additionalProperties: false },
+      async execute(args) { sent.push(args); return { ok: true }; },
+    };
+    const change = (s: StepDef): StepDef => ({
+      ...s, tools: { allowed: ['mail.send'], required: ['mail.send'] }, map: { 'mail.send': { to: { case: 'client_email' } } }, writes: {},
+    });
+    const ok = await run(systemStep, taintPolicy(onboard('sys-mail-clean', change), false), systemDeps([mail]));
+    expect(ok).toMatchObject({ status: 'completed', tainted: false });
+    const refused = await run(systemStep, taintPolicy(onboard('sys-mail-tainted', change), true), systemDeps([mail]));
+    expect(refused).toMatchObject({ status: 'needs_person', tainted: true });
+    expect(refused.reason).toContain('a tainted session');
+    expect(sent).toHaveLength(1);
   });
 });

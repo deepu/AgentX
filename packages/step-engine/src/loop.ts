@@ -142,6 +142,8 @@ class StepRun {
 
   constructor(readonly input: StepRunInput, readonly deps: StepEngineDeps) {
     this.messages = [{ role: 'user', content: `Begin the step: ${input.step.title}.`, timestamp: input.startedAt }];
+    // Untrusted content read from the case counts like content read in this session (07 §6).
+    this.tainted = input.tainted === true;
     this.budget = stepBudget(input);
     this.runBudget = runBudget(input);
     this.required = requiredTools(input);

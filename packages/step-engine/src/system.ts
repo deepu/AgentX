@@ -57,7 +57,8 @@ export async function systemStepWorkflow(input: StepRunInput): Promise<StepResul
   const journal = (entry: Omit<JournalEntry, 'stepRunId'>) => deps.recorder.journal({ stepRunId: input.stepRunId, ...entry });
   let toolCalls = 0;
   let activeMs = 0;
-  let tainted = false;
+  // Arguments mapped from tainted case values make the calls tainted (07 §6).
+  let tainted = input.tainted === true;
   const results: Record<string, { result: unknown; callId: string; tainted: boolean }> = {};
 
   await DBOS.runStep(() => deps.recorder.start({

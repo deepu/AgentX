@@ -9,6 +9,8 @@ import type { StepExecutor } from '../../src/types.ts';
 
 export type Script = (input: StepRunInput) => {
   status?: StepResult['status']; outcome: string; writes?: Record<string, unknown>; reason?: string; usage?: StepResult['usage'];
+  /** Writes marked as read from untrusted content. */
+  tainted?: boolean;
 };
 
 /** Default script: the first attempt asks for more information, the next one passes. */
@@ -37,7 +39,9 @@ export function fakeStep(databaseUrl: string, script: Script = needsInfoThenChec
     const r = script(input);
     const at = new Date(input.startedAt).toISOString();
     const writes: Record<string, CaseValue> = {};
-    for (const [k, v] of Object.entries(r.writes ?? {})) writes[k] = { value: v, provenance: { kind: 'judgement', at, stepRunId: input.stepRunId } };
+    for (const [k, v] of Object.entries(r.writes ?? {})) {
+      writes[k] = { value: v, provenance: { kind: 'judgement', at, stepRunId: input.stepRunId, ...(r.tainted ? { tainted: true } : {}) } };
+    }
     const result: StepResult = {
       stepRunId: input.stepRunId, status: r.status ?? 'completed', outcome: r.outcome, writes, checkpoint: [],
       usage: r.usage ?? { tokens: 0, modelCalls: 0, toolCalls: 0, durationMs: 0 }, tainted: false, ...(r.reason ? { reason: r.reason } : {}),

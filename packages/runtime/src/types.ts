@@ -66,9 +66,36 @@ export interface TransitionRecord {
   at: string;
 }
 
+export interface SendEventOptions {
+  idemKey: string;
+  forSeq?: number;
+  /**
+   * Who sends it (Phase 2). A person must hold the state's assignee role (assigneeOf) or the
+   * workflow owner's role, else the event is refused with `forbidden`; their id is recorded as
+   * the event's `by` (in the transition row). Without `by` (timers, CLI, tests) only the
+   * person-step rule applies.
+   */
+  by?: Actor;
+}
+
+export interface SendEventResult {
+  sent: boolean;
+  /**
+   * Why nothing was sent, when it was refused (absent for a repeated `idemKey`):
+   * `use_submit` the state is a person or external step, answer it with submitStep;
+   * `forbidden` the person lacks the state's role.
+   */
+  reason?: 'use_submit' | 'forbidden';
+  message?: string;
+}
+
 export interface StartRunInput {
   workflowId: string;
-  /** Plain values; stored with provenance `input`. */
+  /**
+   * Plain values; stored with provenance `input`. Each must be a field of the case with a value
+   * of its type; started at the workflow's `start`, only the fields a person enters at the start
+   * (`startFields`). Otherwise startRun throws a `StartRunError` (field -> problems).
+   */
   case: Record<string, unknown>;
   /** State to start in; default the workflow's `start`. */
   startAt?: string;
@@ -86,8 +113,10 @@ export interface Kernel extends KernelPhase2 {
   /**
    * An outside event. A repeated `idemKey` sends nothing; `forSeq` names the state entry it
    * answers, by default the run's current one, so an answer never applies to a later state.
+   * A person or external step is never decided this way (refused with `use_submit`): submitStep
+   * answers it and checks the assignee. With a person `by`, see SendEventOptions.
    */
-  sendEvent(runId: string, event: string | RunEvent, opts: { idemKey: string; forSeq?: number }): Promise<{ sent: boolean }>;
+  sendEvent(runId: string, event: string | RunEvent, opts: SendEventOptions): Promise<SendEventResult>;
   /**
    * Decide a pending approval and wake the waiting step. Deciding twice changes nothing; an
    * approval whose step run is no longer waiting is refused with status `expired`. With `by`, a

@@ -20,6 +20,7 @@ import { compileMachine, REMIND_EVENT, stateKind, type RunEvent } from './machin
 import { openWaitingStep, prepareAgentStep, type PreparedStep } from './prepare.ts';
 import { PgCaseStore, PgNotificationStore } from '@memwise/db';
 import { loadRunRow, loadWorkflowDef, type Queryable, type RunRow } from './runs.ts';
+import type { Actor, SendEventResult } from './types.ts';
 
 export interface Commit {
   runId: string;
@@ -278,6 +279,25 @@ export function assigneeOf(workflow: WorkflowDef, state: string): string | undef
   const def = workflow.states[state];
   const step = def ? workflow.steps[def.step ?? state] : undefined;
   return step?.assignee ?? def?.assignee ?? workflow.owner;
+}
+
+/**
+ * Why an outside event may not decide `state` (kernel.sendEvent). A person or external step is
+ * answered only through submitStep, which checks its assignee, so the step run records who
+ * decided. Any other state, sent by a person: they must hold its assignee role or the owner's.
+ */
+export function outsideEventRefusal(workflow: WorkflowDef, state: string, by?: Actor): Omit<SendEventResult, 'sent'> | undefined {
+  if (state === END_STATE || !workflow.states[state]) return undefined;
+  const kind = stateKind(workflow, state);
+  if (kind === 'person-step' || kind === 'external-step') {
+    return { reason: 'use_submit', message: `${state} is answered through its step, not by an outside event` };
+  }
+  if (by?.kind !== 'person') return undefined;
+  const roles = [...new Set([assigneeOf(workflow, state), workflow.owner].filter((r): r is string => !!r))];
+  if (roles.length && !roles.some((r) => by.roles.includes(r))) {
+    return { reason: 'forbidden', message: `only someone with the ${roles.join(' or ')} role can decide this` };
+  }
+  return undefined;
 }
 
 /** A fired `remind` timer: a reminder in the inbox of the role the state waits on (idempotent per timer). */

@@ -109,7 +109,7 @@ export function structuralChecks(
 
   const declared = new Map(agentWrites(step));
   // Judgement after reading untrusted content may carry it (07 §6): mark it like the content.
-  const sessionTainted = evidence.some((e) => e.tainted);
+  const sessionTainted = input.tainted === true || evidence.some((e) => e.tainted);
   for (const field of Object.keys(args.writes).sort()) {
     if (!declared.has(field)) {
       const why = step.writes[field] ? 'is entered by a person, not by this step' : `is not one of the step's writes (${[...declared.keys()].join(', ') || 'none'})`;

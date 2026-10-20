@@ -59,6 +59,11 @@ export function createToolGateway({ tools, ledger, secrets, rates, rateScope = '
    * Counts the call against the rate limit journaled with the decision. Runs only where the
    * call is really about to happen (inside the executed step, after the ledger claimed the
    * key), so a replay that returns a recorded result never counts again.
+   *
+   * A crash after counting but before the result is recorded (the DBOS step never finished)
+   * makes the replay count the same call again. That over-count is accepted: counting must
+   * happen before the effect, so a limit is never run past, and erring on the side of refusing
+   * a call costs a retry while erring the other way breaks the limit.
    */
   async function overLimit(tool: ToolDefinition, decision: GatewayDecision): Promise<string | undefined> {
     if (!rates || !decision.rateLimit) return undefined;

@@ -1,6 +1,6 @@
 // Everything a step run needs, read and fixed once inside a journaled DBOS step, so a replay
 // after a crash hands the step workflow byte-identical input (D38, D39).
-import type { StepToken, WorkflowDef } from '@memwise/defs';
+import type { CaseSnapshot, StepDef, StepToken, WorkflowDef } from '@memwise/defs';
 import { compilePolicy, layersFor } from '@memwise/policy';
 import type { StepRunInput } from '@memwise/step-engine';
 import { PgCaseStore } from '@memwise/db';
@@ -19,6 +19,7 @@ export async function prepareAgentStep(db: Queryable, run: RunRow, workflow: Wor
   }
   const snapshot = await new PgCaseStore().get(db, run.caseId);
   if (!snapshot) throw new Error(`no case ${run.caseId}`);
+  const taintedReads = await taintedFieldsRead(db, step, snapshot);
   const prev = await db.query(
     `select attempt, status, outcome, rationale, started_at from mw.step_runs
       where run_id = $1 and step_id = $2 and id <> $3 order by started_at, id`, [run.id, run.state, stepRunId]);
@@ -59,12 +60,34 @@ export async function prepareAgentStep(db: Queryable, run: RunRow, workflow: Wor
         })),
       ],
       startedAt: now,
+      ...(taintedReads.length ? { tainted: true, taintedReads } : {}),
       runSpent: {
         tokens: Number(s.tokens), modelCalls: Number(s.model_calls), elapsedMs: Number(s.duration_ms),
         ...(money.rows.length === 1 ? { money: { amount: Number(money.rows[0].amount), currency: money.rows[0].currency } } : {}),
       },
     },
   };
+}
+
+/** The case fields a step reads: its `reads` and, for a system step, what its `map` passes to tools. */
+export function stepReadFields(step: StepDef): string[] {
+  const head = (path: string) => (path.startsWith('case.') ? path.slice(5) : path).split('.')[0]!;
+  const fields = new Set(step.reads.map(head));
+  for (const args of Object.values(step.map ?? {})) {
+    for (const src of Object.values(args)) if ('case' in src) fields.add(head(src.case));
+  }
+  return [...fields].sort();
+}
+
+/**
+ * Which of those hold untrusted content: in mw.cases.tainted_fields (kept by the commit) or
+ * marked in the value's provenance. Taint follows the value into every later step (D21).
+ */
+async function taintedFieldsRead(db: Queryable, step: StepDef, snapshot: CaseSnapshot): Promise<string[]> {
+  const { rows } = await db.query('select tainted_fields from mw.cases where id = $1', [snapshot.id]);
+  const tainted = new Set<string>(rows[0]?.tainted_fields ?? []);
+  for (const [field, v] of Object.entries(snapshot.values)) if ((v.provenance as { tainted?: boolean }).tainted) tainted.add(field);
+  return stepReadFields(step).filter((f) => tainted.has(f) && snapshot.values[f] !== undefined);
 }
 
 export function tokenFor(run: RunRow, workflow: WorkflowDef, stepRunId: string, now: number, ttlMs: number): StepToken {

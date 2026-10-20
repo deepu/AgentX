@@ -33,6 +33,14 @@ export interface StepRunInput {
    * Budgets set by the step layer apply to this step run alone.
    */
   runSpent?: { tokens: number; modelCalls: number; elapsedMs: number; /** Money spent, when every earlier call was priced in one currency. */ money?: Money };
+  /**
+   * The step starts tainted (Phase 2, D21): a case value it reads (its `reads`, and a system
+   * step's `map`) came from untrusted content in an earlier step. Policy's taint rules then
+   * apply from its first call, and its judgement writes are marked tainted too.
+   */
+  tainted?: boolean;
+  /** Which of the fields it reads are tainted, for the record. */
+  taintedReads?: string[];
 }
 
 export type StepResultStatus = 'completed' | 'needs_person' | 'failed';

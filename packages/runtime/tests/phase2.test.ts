@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { NOT_RECORDED } from '../src/explain.ts';
 import { createKernel } from '../src/kernel.ts';
 import { sampleTools } from '../src/sample-tools.ts';
+import { StartRunError, startFields } from '../src/start.ts';
 import type { Actor, Kernel, KernelChange } from '../src/types.ts';
 import { INTAKE_DIR } from './fixtures/exit-setup.ts';
 import { step, workflow } from './fixtures/workflows.ts';
@@ -258,4 +259,75 @@ describe.skipIf(!pgAvailable)('Phase 2 kernel API', () => {
     expect(policy.violations).toEqual([]);
     expect(policy.effective.effects.irreversible.value).toBe('deny');
   });
+  // ---------------------------------------------------------------- review findings
+
+  test('an outside event cannot decide a person step; a wait state needs its role or the owner\'s', async () => {
+    const wf = {
+      ...workflow('gate', 'ask', {
+        ask: { on: { approved: 'held' }, step: 'ask' },
+        held: { on: { resolved: 'end' }, assignee: 'manager' },
+      }, [step('ask', 'person', { outcomes: ['approved'], assignee: 'manager' })]),
+      owner: 'finance',
+    };
+    await putWorkflow(db, wf);
+    const { runId } = await kernel.startRun({ workflowId: 'gate', case: {} });
+    const ask = await waitingStep(runId, 'ask');
+    // Staff sending `approved` must not skip the manager, and neither may anyone else, nor an internal caller.
+    for (const [key, by] of [['e1', staff], ['e2', manager], ['e3', undefined]] as const) {
+      expect(await kernel.sendEvent(runId, 'approved', { idemKey: key, ...(by ? { by } : {}) }))
+        .toEqual({ sent: false, reason: 'use_submit', message: expect.any(String) });
+    }
+    expect((await kernel.getRun(runId))!).toMatchObject({ state: 'ask', seq: 0 });
+    expect(await kernel.submitStep({ stepRunId: ask, outcome: 'approved', by: manager })).toMatchObject({ applied: true });
+    await kernel.waitForRun(runId, { until: (r) => r.state === 'held', timeoutMs: 15_000 });
+
+    expect(await kernel.sendEvent(runId, 'resolved', { idemKey: 'r1', by: staff })).toMatchObject({ sent: false, reason: 'forbidden' });
+    // The owner's role may decide too; the sender is recorded, whatever the event claims.
+    expect(await kernel.sendEvent(runId, { type: 'resolved', by: 'someone-else' }, { idemKey: 'r2', by: finance })).toEqual({ sent: true });
+    await kernel.waitForRun(runId, { until: (r) => r.status === 'done', timeoutMs: 15_000 });
+    expect((await kernel.getTransitions(runId)).at(-1)).toMatchObject({ from: 'held', to: 'end', accepted: true, event: { type: 'resolved', by: finance.personId } });
+  }, 60_000);
+
+  test('startRun takes only the fields a person enters at the start, each of its type', async () => {
+    expect(startFields(intake)).toEqual(['client_name', 'client_email', 'pan', 'gstin', 'annual_turnover', 'documents']);
+    const before = (await kernel.pool.query('select count(*)::int as n from mw.runs')).rows[0].n;
+    const err = await kernel.startRun({
+      workflowId: 'client-intake', by: staff.personId,
+      case: { client_name: 'Asha Rao', pan: 'nope', colour: 'red', flags: [], gstin_ok: true, customer: 'cus_1', bank_account: '1' },
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(StartRunError);
+    expect(err.status).toBe('invalid');
+    expect(Object.keys(err.errors).sort()).toEqual(['bank_account', 'colour', 'customer', 'flags', 'gstin_ok', 'pan']);
+    expect(err.errors.colour).toEqual(['not a field of this case']);
+    expect(err.errors.flags).toEqual(['filled in by a step, not when the case starts']);
+    expect((await kernel.pool.query('select count(*)::int as n from mw.runs')).rows[0].n).toBe(before);
+
+    const { caseId } = await kernel.startRun({ workflowId: 'client-intake', case: { client_name: 'Asha Rao', pan: 'AAACA1234A', gstin: null }, by: staff.personId });
+    const values = (await kernel.getCase(caseId))!.values;
+    expect(Object.keys(values).sort()).toEqual(['client_name', 'pan']);
+    expect(values.pan).toMatchObject({ value: 'AAACA1234A', provenance: { kind: 'input', by: staff.personId } });
+  }, 60_000);
+
+  // Last: it edits the project's definitions.
+  test('re-indexing a changed entity type rebuilds its domain tools', async () => {
+    const edit = (rel: string, from: string, to: string) => {
+      const file = join(PROJECT, rel);
+      const text = readFileSync(file, 'utf8');
+      if (!text.includes(from)) throw new Error(`${rel} has no ${from}`);
+      writeFileSync(file, text.replace(from, to));
+    };
+    edit('domain/entities/customer.yaml', '  credit_limit:', '  phone:        Phone\n  credit_limit:');
+    edit('workflows/client-intake/case.yaml', 'types:', '  client_phone:    Phone\ntypes:');
+    edit('workflows/client-intake/steps/onboard.md', '    pan:   case.pan', '    pan:   case.pan\n    phone: case.client_phone');
+    expect((await kernel.index()).filter((d) => d.severity === 'error')).toEqual([]);
+    const { runId, caseId } = await kernel.startRun({
+      workflowId: 'client-intake', startAt: 'onboard',
+      case: { client_name: 'Nina Shah', client_email: 'nina@shah.example', pan: 'AAACS1234S', gstin: '27AAACS1234S1Z5', client_phone: '+91 98200 12345' },
+    });
+    const done = await kernel.waitForRun(runId, { until: (r) => r.status !== 'active', timeoutMs: 30_000 });
+    expect(done, done.stopReason).toMatchObject({ status: 'done', state: 'end' });
+    const customerId = (await kernel.getCase(caseId))!.values.customer!.value;
+    const row = (await kernel.listEntities('Customer', finance)).find((r) => r.id === customerId);
+    expect(row!.values).toMatchObject({ name: 'Nina Shah', phone: '+91 98200 12345' });
+  }, 120_000);
 });
