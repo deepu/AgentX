@@ -125,6 +125,7 @@ const EXPECTED_CHANNELS: string[] = [
   'memwise:entities:types',
   'memwise:files:upload',
   'memwise:inbox:decideApproval',
+  'memwise:inbox:dismiss',
   'memwise:inbox:list',
   'memwise:inbox:sendEvent',
   'memwise:inbox:submit',

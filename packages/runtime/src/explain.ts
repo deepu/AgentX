@@ -43,6 +43,10 @@ const SYSTEM = [
 ].join('\n');
 
 const MAX = 1_500;
+/** The journal's share of the digest; past it entries are listed by key only, so they stay citable. */
+const JOURNAL_BUDGET = 16_000;
+/** The whole digest, whatever the record holds. */
+export const DIGEST_MAX_CHARS = 32_000;
 const clip = (v: unknown) => {
   const s = typeof v === 'string' ? v : JSON.stringify(v) ?? '';
   return s.length > MAX ? `${s.slice(0, MAX)}… (${s.length - MAX} more characters)` : s;
@@ -50,11 +54,31 @@ const clip = (v: unknown) => {
 
 type Record_ = StepRecord & { journal: JournalEntry[]; decidedBy?: string; comment?: string };
 
-/** The step record as text, with the refs a citation may use. Hidden case fields are left out. */
+/**
+ * Restricted case fields the step touches (reads, writes, was given or recorded) that the actor
+ * may not see. Its model prompts and tool calls may carry them, so their bodies stay out.
+ */
+export function hiddenFieldsOf(record: Pick<Record_, 'stepId' | 'outputs' | 'context'>, workflow: WorkflowDef | undefined, actor: Actor): string[] {
+  const fields = workflow?.caseType.fields ?? {};
+  const step = workflow?.steps[record.stepId];
+  const touched = new Set<string>([
+    ...(step?.reads ?? []).map((r) => r.replace(/^case\./, '').split('.')[0]!),
+    ...Object.values(step?.writes ?? {}).map((w) => w.field),
+    ...Object.keys(record.outputs ?? {}),
+    ...Object.keys(record.context?.pushed ?? {}),
+  ]);
+  return [...touched].filter((k) => k && !maySee(actor, fields[k]));
+}
+
+/**
+ * The step record as text, with the refs a citation may use. Hidden case fields are left out,
+ * and so are the journal bodies (and earlier attempts) of a step that handles any of them.
+ */
 export function stepDigest(record: Record_, workflow: WorkflowDef | undefined, actor: Actor): { text: string; refs: Set<string> } {
   const fields = workflow?.caseType.fields ?? {};
   const step = workflow?.steps[record.stepId];
   const refs = new Set<string>(['context']);
+  const restricted = hiddenFieldsOf(record, workflow, actor).length > 0;
   const out: string[] = [
     `# Step record ${record.stepRunId}`,
     `step: ${step?.title ?? record.stepId} (${record.stepId}), performer ${record.performer}, attempt ${record.attempt}`,
@@ -67,14 +91,23 @@ export function stepDigest(record: Record_, workflow: WorkflowDef | undefined, a
     const c = record.context;
     out.push('', '## What the step was given (context)');
     for (const [k, v] of Object.entries(c.pushed)) if (maySee(actor, fields[k])) out.push(`- ${k} (${v.provenance.kind}): ${clip(v.value)}`);
-    if (c.priorAttempts.length) out.push(`- earlier attempts: ${clip(c.priorAttempts)}`);
+    if (c.priorAttempts.length && !restricted) out.push(`- earlier attempts: ${clip(c.priorAttempts)}`);
     out.push(`- tools: ${c.tools.map((t) => t.tool).join(', ')}`);
   }
   out.push('', '## Journal (cite by key)');
+  if (restricted) out.push('(Requests and responses are not shown: this step handles fields the person asking may not see.)');
+  let used = 0;
+  let skipped = 0;
   for (const j of record.journal) {
+    const short = `- [${j.journalKey}] ${j.kind} ${j.name}${restricted && j.error ? ' (failed)' : ''}`;
+    const full = restricted ? short : `${short}: request ${clip(j.request)}${j.response !== undefined ? `; response ${clip(j.response)}` : ''}${j.error ? `; error ${clip(j.error)}` : ''}`;
+    const line = used + full.length <= JOURNAL_BUDGET ? full : short;
+    if (used + line.length > JOURNAL_BUDGET * 1.25) { skipped++; continue; }
+    used += line.length + 1;
     refs.add(j.journalKey);
-    out.push(`- [${j.journalKey}] ${j.kind} ${j.name}: request ${clip(j.request)}${j.response !== undefined ? `; response ${clip(j.response)}` : ''}${j.error ? `; error ${j.error}` : ''}`);
+    out.push(line);
   }
+  if (skipped) out.push(`- … ${skipped} more entries not shown`);
   out.push('', '## Outputs (cite by field)');
   for (const [k, v] of Object.entries(record.outputs)) {
     if (!maySee(actor, fields[k])) continue;
@@ -90,7 +123,9 @@ export function stepDigest(record: Record_, workflow: WorkflowDef | undefined, a
       out.push(`${i + 1}. ${c.rule}: ${c.passed ? 'passed' : 'failed'}${c.reason ? ` (${c.reason})` : ''}`);
     });
   }
-  return { text: out.join('\n'), refs };
+  let text = out.join('\n');
+  if (text.length > DIGEST_MAX_CHARS) text = `${text.slice(0, DIGEST_MAX_CHARS)}\n… (shortened)`;
+  return { text, refs };
 }
 
 export interface ExplainResult extends Omit<Explanation, 'id' | 'at'> { model?: unknown }

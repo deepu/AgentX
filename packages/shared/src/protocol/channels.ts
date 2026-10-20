@@ -439,6 +439,7 @@ export const RPC_CHANNELS = {
     INBOX_SUBMIT: 'memwise:inbox:submit',
     INBOX_DECIDE_APPROVAL: 'memwise:inbox:decideApproval',
     INBOX_SEND_EVENT: 'memwise:inbox:sendEvent',
+    INBOX_DISMISS: 'memwise:inbox:dismiss',
     ENTITIES_LIST: 'memwise:entities:list',
     ENTITIES_TYPES: 'memwise:entities:types',
     FILES_UPLOAD: 'memwise:files:upload',

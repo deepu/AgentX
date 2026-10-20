@@ -7,14 +7,14 @@ import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import type {
   MwCase, MwCaseSummary, MwDecideApprovalInput, MwDocument, MwEntityRow, MwEntityType, MwExplainInput, MwExplanation,
   MwInboxItem, MwReturnedNote, MwLiveCounts, MwOpenChatInput, MwPerson, MwPlaybook, MwPlaybookSummary, MwRole, MwRunStatus,
-  MwSendEventInput, MwStartCaseInput, MwStatus, MwStepRecord, MwSubmitResult, MwSubmitStepInput,
+  MwSendEventInput, MwStartCaseInput, MwStartCaseRefusal, MwStatus, MwStepRecord, MwSubmitResult, MwSubmitStepInput,
 } from '@memwise/shared/protocol'
 import type { ApprovalDecision } from '@memwise/defs'
 import type { CompiledPolicy } from '@memwise/policy'
 import type { Actor, CaseView, InboxItem } from '@memwise/runtime'
 import { pushTyped, type RequestContext, type RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
-import { getMemwiseHostStatus, getMemwiseService, onMemwiseChange } from '../../memwise/host'
+import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange } from '../../memwise/host'
 import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../memwise/service'
 import type { DtoContext } from '../../memwise/dto'
 
@@ -36,6 +36,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.INBOX_SUBMIT,
   RPC_CHANNELS.memwise.INBOX_DECIDE_APPROVAL,
   RPC_CHANNELS.memwise.INBOX_SEND_EVENT,
+  RPC_CHANNELS.memwise.INBOX_DISMISS,
   RPC_CHANNELS.memwise.ENTITIES_LIST,
   RPC_CHANNELS.memwise.ENTITIES_TYPES,
   RPC_CHANNELS.memwise.FILES_UPLOAD,
@@ -46,8 +47,35 @@ export const HANDLED_CHANNELS = [
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 /** Cap on the hidden case digest an anchored chat starts with. */
 const DIGEST_MAX_CHARS = 16_000
+/** Of that, the share a step's journal may take. */
+const DIGEST_JOURNAL_CHARS = 9_000
 
 const dto = () => import('../../memwise/dto')
+
+// Refusals carry a code the screens translate (`memwise.result.<code>`); the English is the fallback.
+const SUBMIT_MESSAGES: Record<string, string> = {
+  forbidden: 'This step is for someone with a different role.',
+  invalid: 'Some answers need fixing.',
+  stale: 'This step was already answered or has moved on.',
+  missing: 'That step was not found.',
+  'unknown-outcome': 'That is not one of the choices for this step.',
+}
+const APPROVAL_MESSAGES: Record<string, string> = {
+  forbidden: 'You are not one of the people who can decide this.',
+  expired: 'This request is no longer waiting; the step has moved on.',
+  missing: 'That request was not found.',
+  approved: 'It was already approved.',
+  rejected: 'It was already turned down.',
+}
+const EVENT_MESSAGES: Record<string, string> = {
+  missing: 'That case was not found.',
+  finished: 'This case has finished.',
+  not_accepted: 'That is not something this step accepts now.',
+  use_submit: 'This step is answered from its form in the inbox.',
+  forbidden: 'This needs someone with a different role.',
+  already: 'This was already answered.',
+}
+const refusal = (code: string, message: string): MwSubmitResult => ({ applied: false, code, message })
 
 function clientOf(ctx: RequestContext): ClientIdentity {
   return { clientId: ctx.clientId, personId: ctx.personId ?? null }
@@ -84,6 +112,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       ...(host.message ? { message: host.message } : {}),
       ...(me ? { me: toPerson(me) } : {}),
       canActAs: svc.canActAs(clientOf(ctx)),
+      ...(ctx.personId ? { signedIn: true } : {}),
       ...base,
       modelConfigured: svc.modelConfigured,
       projectDir: svc.projectDir,
@@ -165,16 +194,21 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           })
           break
         }
-        case 'attention':
+        case 'attention': {
+          const stopped = /^stopped(: )?/.exec(item.reason)
+          const stopReason = stopped ? item.reason.slice(stopped[0].length).trim() : ''
           out.push({
             kind: 'attention', id: item.id, caseId: item.caseId, runId: item.runId, caseTitle, workflowId: item.workflowId,
-            state: item.state, reason: item.reason, events: [...item.events], since: item.since,
+            state: item.state, reason: item.reason, reasonCode: stopped ? 'stopped' : 'waiting',
+            ...(stopReason ? { stopReason } : {}), events: [...item.events], since: item.since,
           })
           break
+        }
         case 'reminder':
           out.push({
             kind: 'reminder', id: item.id, caseId: item.caseId, runId: item.runId, caseTitle, workflowId: item.workflowId,
-            stepTitle: d.stateTitle(wf, item.stepId), text: item.text, since: item.since,
+            stepTitle: d.stateTitle(wf, item.stepId), text: item.text,
+            ...(/^Reminder: .* is still waiting\.$/.test(item.text) ? { code: 'still_waiting' as const } : {}), since: item.since,
           })
           break
       }
@@ -211,12 +245,25 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       ...mw.timeline.map((t) => `- ${t.title} [${t.stepRunId}] attempt ${t.attempt}: ${t.status}${t.outcome ? ` → ${t.outcome}` : ''}${t.decidedBy ? ` by ${t.decidedBy}` : ''}${t.comment ? ` ("${clip(t.comment, 300)}")` : ''}${t.rationale ? `; why: ${clip(t.rationale, 400)}` : ''}`),
     ]
     if (stepRecord) {
-      lines.push(`Step record ${stepRecord.stepRunId} (${d.stateTitle(c.project.workflows[stepRecord.workflowId], stepRecord.stepId)}):`)
-      lines.push(`- outputs: ${clip(Object.fromEntries(Object.entries(stepRecord.outputs).map(([k, x]) => [k, x.value])), 1500)}`)
-      for (const cp of stepRecord.checkpoint) lines.push(`- checkpoint "${cp.rule}": ${cp.passed ? 'passed' : 'failed'}${cp.reason ? ` (${cp.reason})` : ''}`)
-      for (const j of stepRecord.journal) {
-        lines.push(`- [${j.journalKey}] ${j.kind} ${j.name}: ${clip(j.request, 300)}${j.response !== undefined ? ` → ${clip(j.response, 400)}` : ''}${j.error ? ` (error: ${clip(j.error, 200)})` : ''}`)
+      // The same view of the record the person gets on screen: fields they may not see are left
+      // out, and so are the journal bodies of a step that handles them.
+      const rec = d.toStepRecord(c.project, stepRecord, v.stepRuns.find((s) => s.stepRunId === stepRecord!.stepRunId), actor)
+      lines.push(`Step record ${rec.stepRunId} (${rec.title}):`)
+      const outputs = Object.fromEntries(Object.entries(rec.outputs).filter(([, x]) => !x.hidden).map(([k, x]) => [k, x.value]))
+      lines.push(`- outputs: ${clip(outputs, 1500)}`)
+      for (const cp of rec.checkpoint) lines.push(`- checkpoint "${cp.rule}": ${cp.passed ? 'passed' : 'failed'}${cp.reason ? ` (${cp.reason})` : ''}`)
+      if (rec.restricted) lines.push('- (details of the calls below are not shown: the step handles fields this person may not see)')
+      // Journal under its own budget, so a long one can't crowd out the rest; past it, names only
+      let used = 0
+      let skipped = 0
+      for (const j of rec.journal) {
+        const full = `- [${j.key}] ${j.kind} ${j.name}${j.redacted ? (j.failed ? ' (failed)' : '') : `: ${clip(j.request, 300)}${j.response !== undefined ? ` → ${clip(j.response, 400)}` : ''}${j.error ? ` (error: ${clip(j.error, 200)})` : ''}`}`
+        const line = used + full.length <= DIGEST_JOURNAL_CHARS ? full : `- [${j.key}] ${j.kind} ${j.name}`
+        if (used + line.length > DIGEST_JOURNAL_CHARS) { skipped++; continue }
+        used += line.length + 1
+        lines.push(line)
       }
+      if (skipped) lines.push(`- … ${skipped} more journal entries not shown`)
     }
     let digest = lines.join('\n')
     if (digest.length > DIGEST_MAX_CHARS) digest = `${digest.slice(0, DIGEST_MAX_CHARS)}\n… (shortened)`
@@ -270,7 +317,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (!wf) throw new Error('That playbook was not found.')
       const policies: Record<string, CompiledPolicy | undefined> = {}
       for (const stepId of Object.keys(wf.steps)) policies[stepId] = await policyFor(svc, wf.id, stepId)
-      return d.toPlaybook(c, wf, policies)
+      const { startFields } = await import('@memwise/runtime')
+      return { ...d.toPlaybook(c, wf, policies), startFields: startFields(wf) }
     },
 
     async getLiveCounts(ctx: RequestContext, id: string): Promise<MwLiveCounts> {
@@ -295,10 +343,20 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       return d.toCase(c, v)
     },
 
-    async startCase(ctx: RequestContext, input: MwStartCaseInput): Promise<MwCaseSummary> {
+    async startCase(ctx: RequestContext, input: MwStartCaseInput): Promise<MwCaseSummary | MwStartCaseRefusal> {
       const { svc, actor, c, d } = await begin(ctx)
       if (!c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
-      const { caseId } = await svc.kernel.startRun({ workflowId: input.workflowId, case: input.values ?? {}, by: actor.personId })
+      let caseId: string
+      try {
+        ({ caseId } = await svc.kernel.startRun({ workflowId: input.workflowId, case: input.values ?? {}, by: actor.personId }))
+      } catch (e) {
+        // StartRunError: values that need fixing, reported per field like submitStep's
+        const errors = (e as { status?: string; errors?: Record<string, string[]> })
+        if (errors?.status === 'invalid' && errors.errors) {
+          return { applied: false, errors: errors.errors, code: 'start.invalid', message: 'Some values need fixing.' }
+        }
+        throw e
+      }
       const v = await svc.kernel.getCaseView(caseId, actor)
       if (!v) throw new Error('The case was started but could not be read back.')
       return d.toCaseSummary(c.project, v.summary)
@@ -310,7 +368,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (!r) throw new Error('That step was not found.')
       const v = await svc.kernel.getCaseView(r.caseId, actor)
       if (!v) throw new Error('That case was not found.')
-      return d.toStepRecord(c.project, r, v.stepRuns.find((s) => s.stepRunId === stepRunId))
+      return d.toStepRecord(c.project, r, v.stepRuns.find((s) => s.stepRunId === stepRunId), actor)
     },
 
     async explainStep(ctx: RequestContext, input: MwExplainInput): Promise<MwExplanation> {
@@ -334,15 +392,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         ...(input.values ? { values: input.values } : {}), ...(input.comment ? { comment: input.comment } : {}),
         by: actor,
       })
-      const fallback: Record<string, string> = {
-        forbidden: 'This step is for someone with a different role.',
-        invalid: 'Some answers need fixing.',
-        stale: 'This step was already answered or has moved on.',
-        missing: 'That step was not found.',
-        'unknown-outcome': 'That is not one of the choices for this step.',
-      }
-      const message = r.message ?? (r.applied ? undefined : fallback[r.status])
-      return { applied: r.applied, ...(r.errors ? { errors: r.errors } : {}), ...(message ? { message } : {}) }
+      const message = r.message ?? (r.applied ? undefined : SUBMIT_MESSAGES[r.status])
+      const code = r.applied || !SUBMIT_MESSAGES[r.status] ? undefined : `submit.${r.status}`
+      return { applied: r.applied, ...(r.errors ? { errors: r.errors } : {}), ...(message ? { message } : {}), ...(code ? { code } : {}) }
     },
 
     async decideApproval(ctx: RequestContext, input: MwDecideApprovalInput): Promise<MwSubmitResult> {
@@ -353,32 +405,41 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         ...(input.comment ? { comment: input.comment } : {}), at: new Date().toISOString(),
       }, actor)
       const status = r.status as string
-      const messages: Record<string, string> = {
-        forbidden: 'You are not one of the people who can decide this.',
-        expired: 'This request is no longer waiting; the step has moved on.',
-        missing: 'That request was not found.',
-        approved: 'It was already approved.',
-        rejected: 'It was already turned down.',
-      }
-      return { applied: r.applied, ...(!r.applied && messages[status] ? { message: messages[status] } : {}) }
+      return r.applied || !APPROVAL_MESSAGES[status] ? { applied: r.applied } : refusal(`approval.${status}`, APPROVAL_MESSAGES[status]!)
     },
 
     async sendEvent(ctx: RequestContext, input: MwSendEventInput): Promise<MwSubmitResult> {
       const { svc, actor, c } = await begin(ctx)
       const run = await svc.kernel.getRun(input.runId)
-      if (!run) return { applied: false, message: 'That case was not found.' }
-      if (run.status !== 'active') return { applied: false, message: 'This case has finished.' }
-      const wf = c.project.workflows[run.workflowId]
-      const state = wf?.states[run.state]
-      if (!state?.on[input.event]) return { applied: false, message: `"${input.event}" is not something this step accepts now.` }
-      const role = state.assignee ?? (wf?.steps[run.state] ? undefined : wf?.owner)
-      if (role && !actor.roles.includes(role) && actor.personId !== svc.owner.id) {
-        return { applied: false, message: `This needs someone with the ${role} role.` }
-      }
-      const { sent } = await svc.kernel.sendEvent(run.id, {
+      if (!run) return refusal('event.missing', EVENT_MESSAGES.missing!)
+      if (run.status !== 'active') return refusal('event.finished', EVENT_MESSAGES.finished!)
+      const state = c.project.workflows[run.workflowId]?.states[run.state]
+      if (!state?.on[input.event]) return refusal('event.not_accepted', EVENT_MESSAGES.not_accepted!)
+      // The kernel decides who may send it (the state's role; a person step only through
+      // submitStep). The owner's own connection (desktop, or the server's admin token) acts for
+      // the install; a person's sign-in always goes through the role check.
+      const by: Actor = !ctx.personId && actor.personId === svc.owner.id ? { kind: 'system' } : actor
+      const r = await svc.kernel.sendEvent(run.id, {
         type: input.event, by: actor.personId, ...(input.comment ? { comment: input.comment } : {}),
-      }, { idemKey: `app:${run.enteredSeq}:${input.event}`, forSeq: run.enteredSeq })
-      return sent ? { applied: true } : { applied: false, message: 'This was already answered.' }
+      }, { idemKey: `app:${run.enteredSeq}:${input.event}`, forSeq: run.enteredSeq, by })
+      if (r.sent) return { applied: true }
+      const reason = r.reason ?? 'already'
+      return refusal(`event.${reason}`, r.message ?? EVENT_MESSAGES[reason] ?? EVENT_MESSAGES.already!)
+    },
+
+    /** Mark a reminder read: it was for this person or one of their roles. */
+    async dismissInboxItem(ctx: RequestContext, itemId: string): Promise<MwSubmitResult> {
+      const { svc, actor } = await begin(ctx)
+      const id = typeof itemId === 'string' && itemId.startsWith('reminder:') ? itemId.slice('reminder:'.length) : null
+      if (!id) return refusal('dismiss.unsupported', 'Only reminders can be marked as read.')
+      const { PgNotificationStore } = await import('@memwise/db')
+      const store = new PgNotificationStore()
+      const note = await store.get(svc.kernel.pool, id)
+      const mine = !!note && (note.personId === actor.personId || (!!note.role && actor.roles.includes(note.role)) || (!note.personId && !note.role))
+      if (!note || !mine) return refusal('dismiss.missing', 'That reminder was not found.')
+      await store.markRead(svc.kernel.pool, id)
+      emitMemwiseChange({ kind: 'inbox' })
+      return { applied: true }
     },
 
     async listEntities(ctx: RequestContext, entity: string): Promise<MwEntityRow[]> {
@@ -451,6 +512,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.INBOX_SUBMIT, (ctx, _ws: string, input) => api.submitStep(ctx, input))
   server.handle(ch.INBOX_DECIDE_APPROVAL, (ctx, _ws: string, input) => api.decideApproval(ctx, input))
   server.handle(ch.INBOX_SEND_EVENT, (ctx, _ws: string, input) => api.sendEvent(ctx, input))
+  server.handle(ch.INBOX_DISMISS, (ctx, _ws: string, itemId: string) => api.dismissInboxItem(ctx, itemId))
   server.handle(ch.ENTITIES_LIST, (ctx, _ws: string, entity: string) => api.listEntities(ctx, entity))
   server.handle(ch.ENTITIES_TYPES, (ctx) => api.listEntityTypes(ctx))
   server.handle(ch.FILES_UPLOAD, (ctx, _ws: string, input) => api.uploadFile(ctx, input))

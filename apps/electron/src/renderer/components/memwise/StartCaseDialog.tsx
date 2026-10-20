@@ -18,11 +18,16 @@ import { GeneratedForm } from './GeneratedForm'
 import { buildSubmission, initialFormValues, type FormError, type FormValues } from './form-model'
 
 /**
- * Case fields a person would enter at the start: those a person or client step writes (so
- * bookkeeping fields no step fills, like a status, stay out); without such steps, every field
- * agent or system steps don't write.
+ * Case fields a person would enter at the start: the server's list (the same rule the kernel
+ * enforces) when it sends one; else those a person or client step writes (so bookkeeping
+ * fields no step fills, like a status, stay out), and without such steps every field agent or
+ * system steps don't write.
  */
 export function startFields(playbook: MwPlaybook): MwField[] {
+  if (playbook.startFields) {
+    const allowed = new Set(playbook.startFields)
+    return playbook.caseFields.filter(f => allowed.has(f.name)).map(f => ({ ...f, required: false }))
+  }
   const machineWritten = new Set<string>()
   const personWritten = new Set<string>()
   for (const step of Object.values(playbook.steps)) {
@@ -47,6 +52,7 @@ export function StartCaseDialog() {
   const [errors, setErrors] = React.useState<Record<string, FormError[]>>({})
   const [busy, setBusy] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
+  const [serverErrors, setServerErrors] = React.useState<Record<string, string[]> | undefined>()
 
   // Reset on open, preselecting the playbook it was opened from (or the only one).
   React.useEffect(() => {
@@ -54,6 +60,7 @@ export function StartCaseDialog() {
     setWorkflowId(state.workflowId ?? (playbooks?.length === 1 ? playbooks[0]!.id : undefined))
     setValues({})
     setErrors({})
+    setServerErrors(undefined)
     setMessage(null)
   }, [state.open, state.workflowId, playbooks])
 
@@ -83,8 +90,19 @@ export function StartCaseDialog() {
     if (!s.valid) return
     setBusy(true)
     setMessage(null)
+    setServerErrors(undefined)
     try {
       const created = await api.memwiseStartCase(workspaceId, { workflowId, values: Object.keys(s.values).length ? s.values : undefined })
+      if ('errors' in created) {
+        // Refused values: shown on their fields; any the form doesn't show are listed below it
+        setServerErrors(created.errors)
+        const shown = new Set(fields.map(f => f.name))
+        const other = Object.entries(created.errors).filter(([name]) => !shown.has(name))
+        setMessage(other.length
+          ? other.map(([name, errs]) => `${name}: ${errs.join('; ')}`).join('\n')
+          : t('memwise.inbox.fixErrors'))
+        return
+      }
       toast.success(t('memwise.cases.started', { title: created.title }))
       close()
       void refresh()
@@ -123,8 +141,12 @@ export function StartCaseDialog() {
                   <GeneratedForm
                     fields={fields}
                     values={values}
-                    onChange={(name, v) => setValues(prev => ({ ...prev, [name]: v }))}
+                    onChange={(name, v) => {
+                      setValues(prev => ({ ...prev, [name]: v }))
+                      if (serverErrors?.[name]) setServerErrors(prev => { const next = { ...prev }; delete next[name]; return next })
+                    }}
                     errors={errors}
+                    serverErrors={serverErrors}
                     onUpload={upload}
                     disabled={busy}
                   />
@@ -132,7 +154,7 @@ export function StartCaseDialog() {
               </div>
             </div>
           )}
-          {message && <p className="text-label-sm text-destructive" role="alert">{message}</p>}
+          {message && <p className="text-label-sm text-destructive whitespace-pre-line" role="alert">{message}</p>}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={close}>{t('common.cancel')}</Button>

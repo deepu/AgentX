@@ -393,24 +393,88 @@ export function toCase(ctx: DtoContext, view: CaseView): MwCase {
   }
 }
 
-export function toJournalEntry(j: JournalEntry): MwJournalEntry {
+/** `redacted`: the bodies (request, response, error text) are left out; names, kinds and timings stay. */
+export function toJournalEntry(j: JournalEntry, redacted = false): MwJournalEntry {
   return {
     key: j.journalKey,
     kind: j.kind,
     name: j.name,
     ...(j.callId ? { callId: j.callId } : {}),
-    request: j.request,
-    ...(j.response !== undefined ? { response: j.response } : {}),
-    ...(j.error ? { error: j.error } : {}),
+    ...(redacted ? { redacted: true } : {
+      request: j.request,
+      ...(j.response !== undefined ? { response: j.response } : {}),
+      ...(j.error ? { error: j.error } : {}),
+    }),
+    ...(redacted && j.error ? { failed: true } : {}),
     ...(j.effect ? { effect: j.effect } : {}),
     startedAt: j.startedAt,
     ...(j.durationMs !== undefined ? { durationMs: j.durationMs } : {}),
   }
 }
 
-export function toStepRecord(project: ProjectDefs, r: StepRecord & { journal: JournalEntry[] }, summary?: StepRunSummary): MwStepRecord {
+// ---------------------------------------------------------------- restricted fields (19 §3)
+
+/** Who reads a record: a person's roles. Fields with `access:` show only to those roles. */
+export interface Viewer { roles: readonly string[] }
+
+export function maySee(viewer: Viewer, field: { access?: readonly string[] } | undefined): boolean {
+  return !field?.access?.length || field.access.some((r) => viewer.roles.includes(r))
+}
+
+/** Values for this viewer: a field they may not see keeps its provenance, its value is nulled and marked hidden. */
+export function visibleCaseValues(
+  values: Record<string, Parameters<typeof toCaseValue>[0]>,
+  fields: Record<string, FieldDef>,
+  viewer: Viewer,
+): Record<string, MwCaseValue> {
+  const out: Record<string, MwCaseValue> = {}
+  for (const [k, raw] of Object.entries(values)) {
+    if (!raw) continue
+    const v = maySee(viewer, fields[k]) ? raw : { ...raw, hidden: true }
+    const mapped = toCaseValue(v)
+    if (mapped) out[k] = mapped
+  }
+  return out
+}
+
+/**
+ * Restricted case fields a step touches (reads, writes, was given or recorded) that this viewer
+ * may not see. When there are any, the step's model prompts and tool calls may carry them, so
+ * the journal bodies are left out for this viewer.
+ */
+export function hiddenStepFields(wf: WorkflowDef | undefined, r: Pick<StepRecord, 'stepId' | 'outputs' | 'context'>, viewer: Viewer): string[] {
+  const fields = wf?.caseType.fields ?? {}
+  const step = wf?.steps[r.stepId]
+  const touched = new Set<string>([
+    ...(step ? readFields(step) : []),
+    ...(step ? Object.values(step.writes).map((w) => w.field) : []),
+    ...Object.keys(r.outputs ?? {}),
+    ...Object.keys(r.context?.pushed ?? {}),
+  ])
+  return [...touched].filter((k) => !maySee(viewer, fields[k]))
+}
+
+/**
+ * The journal as the screens list it. Each model call is journaled twice, once before it is sent
+ * (`<key>#<attempt>`, kept so a call cut off mid-request leaves a trace) and once with its answer
+ * (`<key>`); the first is dropped when the answer is there, so the list counts calls like usage does.
+ */
+export function visibleJournal(journal: JournalEntry[], redacted: boolean): MwJournalEntry[] {
+  const keys = new Set(journal.map((j) => j.journalKey))
+  return journal
+    .filter((j) => {
+      if (j.kind !== 'model') return true
+      const m = /^(.*)#\d+$/.exec(j.journalKey)
+      return !(m && keys.has(m[1]!))
+    })
+    .map((j) => toJournalEntry(j, redacted))
+}
+
+export function toStepRecord(project: ProjectDefs, r: StepRecord & { journal: JournalEntry[] }, summary: StepRunSummary | undefined, viewer: Viewer): MwStepRecord {
   const wf = project.workflows[r.workflowId]
   const step = wf?.steps[r.stepId]
+  const fields = wf?.caseType.fields ?? {}
+  const redacted = hiddenStepFields(wf, r, viewer).length > 0
   const decidedBy = summary?.decidedBy ?? (r as { decidedBy?: string }).decidedBy
   const comment = summary?.comment ?? (r as { comment?: string }).comment
   return {
@@ -433,11 +497,12 @@ export function toStepRecord(project: ProjectDefs, r: StepRecord & { journal: Jo
     workflowVersion: r.workflowVersion,
     ...(r.context?.modelRole || step?.model ? { modelRole: r.context?.modelRole ?? step?.model } : {}),
     ...(r.context ? {
-      context: { pushed: toCaseValues(r.context.pushed), tools: r.context.tools.map((t) => t.tool), modelRole: r.context.modelRole },
+      context: { pushed: visibleCaseValues(r.context.pushed, fields, viewer), tools: r.context.tools.map((t) => t.tool), modelRole: r.context.modelRole },
     } : {}),
-    outputs: toCaseValues(r.outputs),
+    outputs: visibleCaseValues(r.outputs, fields, viewer),
     checkpoint: r.checkpoint.map((c) => ({ rule: c.rule, kind: c.kind, passed: c.passed, ...(c.reason ? { reason: c.reason } : {}) })),
-    journal: r.journal.map(toJournalEntry),
+    journal: visibleJournal(r.journal, redacted),
+    ...(redacted ? { restricted: true } : {}),
     usage: {
       tokens: r.usage.tokens, modelCalls: r.usage.modelCalls, durationMs: r.usage.durationMs,
       ...(r.usage.costUsd !== undefined ? { costUsd: r.usage.costUsd } : {}),

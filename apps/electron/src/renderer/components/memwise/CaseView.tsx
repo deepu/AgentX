@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { CaseFieldList } from './CaseValues'
 import { WorkflowMap } from './map'
+import { stateTitle as playbookStateTitle } from './playbook/labels'
 import {
   absoluteTime,
   caseStatusLabel,
@@ -23,6 +24,7 @@ import {
   recordedOutcomeLabel,
   personName,
   relativeTime,
+  stateLabel,
   stepStatusLabel,
   waitingOnLabel,
   type PeopleById,
@@ -44,6 +46,8 @@ const STATUS_COLOR = { active: 'default', done: 'success', stopped: 'destructive
 
 export function CaseView({ kase, playbook, playbookTitle, people = {}, roles, onOpenStep, onOpenPlaybook, onOpenChat, now }: CaseViewProps) {
   const { t, i18n } = useTranslation()
+  const [mapNote, setMapNote] = React.useState<string | null>(null)
+  React.useEffect(() => { setMapNote(null) }, [kase.caseId])
   const waiting = waitingOnLabel(kase, t, roles)
   const title = playbookTitle ?? playbook?.title ?? kase.workflowId
 
@@ -58,7 +62,7 @@ export function CaseView({ kase, playbook, playbookTitle, people = {}, roles, on
             <button type="button" className="hover:underline" onClick={() => onOpenPlaybook?.(kase.workflowId)}>
               {title}
             </button>
-            <span>{t('memwise.case.currentStep', { step: kase.stateTitle })}</span>
+            <span>{t('memwise.case.currentStep', { step: stateLabel(kase.state, t, kase.stateTitle) })}</span>
             {waiting && <span>{waiting}</span>}
           </>
         }
@@ -91,9 +95,17 @@ export function CaseView({ kase, playbook, playbookTitle, people = {}, roles, on
               roles={roles}
               onSelectState={stateId => {
                 const run = [...kase.timeline].reverse().find(s => s.stepId === stateId)
-                if (run) onOpenStep?.(run.stepRunId)
+                if (run) {
+                  setMapNote(null)
+                  onOpenStep?.(run.stepRunId)
+                } else {
+                  // Nothing to open: the case has not been at this step (or it has no step record)
+                  const reached = kase.path.includes(stateId)
+                  setMapNote(t(reached ? 'memwise.case.mapNoRecord' : 'memwise.case.mapNotReached', { step: playbookStateTitle(playbook, stateId, t) }))
+                }
               }}
             />
+            {mapNote && <p className="px-1 pt-2 text-label-sm text-secondary" role="status" data-map-note>{mapNote}</p>}
           </div>
         ) : (
           <p className="px-3.5 py-3 text-label text-tertiary" data-map-placeholder>

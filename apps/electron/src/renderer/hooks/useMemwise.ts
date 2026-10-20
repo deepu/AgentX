@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAtomValue, useSetAtom, useStore } from 'jotai'
+import i18n from 'i18next'
 import type {
   MwCase,
   MwChange,
@@ -17,6 +18,7 @@ import type {
   MwStatus,
   MwStepRecord,
 } from '@memwise/shared/protocol'
+import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import {
   memwiseAvailableAtom,
   memwiseCasesAtom,
@@ -53,6 +55,15 @@ export function affectedByChange(change: MwChange): { status: boolean; inbox: bo
 }
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+/**
+ * Whether this connection is a person's own sign-in (server mode): the server then advertises
+ * the playbook channels but not the chat ones. Meaningful once connected (after the first reply).
+ */
+export function isPersonOnlyConnection(api: Pick<ElectronAPI, 'isChannelAvailable'> | undefined = typeof window !== 'undefined' ? window.electronAPI : undefined): boolean {
+  if (!api || typeof api.isChannelAvailable !== 'function') return false
+  return api.isChannelAvailable(RPC_CHANNELS.memwise.STATUS) && !api.isChannelAvailable(RPC_CHANNELS.sessions.GET)
+}
 
 export function useMemwiseData(workspaceId: string | null | undefined): void {
   const store = useStore()
@@ -274,12 +285,26 @@ export function useMemwiseQuery<T>(
   return { data, error, loading, reload }
 }
 
+/** Whether a push concerns this case. Matched on the case id, so it works before the first fetch lands. */
+export function caseChangeMatches(c: MwChange, caseId: string, cur: { runId: string } | null): boolean {
+  if (c.kind !== 'run' && c.kind !== 'case' && c.kind !== 'inbox') return false
+  if (c.caseId) return c.caseId === caseId
+  return !c.id || c.id === caseId || c.id === cur?.runId
+}
+
+/** Whether a push concerns this step's run. Before the record is loaded any run change may be it. */
+export function stepChangeMatches(c: MwChange, cur: { runId: string; caseId: string } | null): boolean {
+  if (c.kind !== 'run' && c.kind !== 'case') return false
+  if (!c.id && !c.caseId) return true
+  if (!cur) return true
+  return c.caseId === cur.caseId || c.id === cur.runId || c.id === cur.caseId
+}
+
 export function useMemwiseCase(caseId: string | null): MemwiseQuery<MwCase> {
   return useMemwiseQuery<MwCase>(
     caseId ? `case:${caseId}` : null,
     (api, ws) => api.memwiseGetCase(ws, caseId!),
-    (c, cur) => (c.kind === 'run' || c.kind === 'case' || c.kind === 'inbox')
-      && (!c.id || c.id === caseId || c.id === cur?.runId),
+    (c, cur) => caseChangeMatches(c, caseId!, cur),
   )
 }
 
@@ -303,7 +328,7 @@ export function useMemwiseStepRecord(stepRunId: string | null): MemwiseQuery<MwS
   return useMemwiseQuery<MwStepRecord>(
     stepRunId ? `step:${stepRunId}` : null,
     (api, ws) => api.memwiseGetStepRecord(ws, stepRunId!),
-    (c, cur) => (c.kind === 'run' || c.kind === 'case') && (!c.id || c.id === cur?.runId || c.id === cur?.caseId),
+    (c, cur) => stepChangeMatches(c, cur),
   )
 }
 
@@ -326,7 +351,7 @@ export function useMemwiseUpload(): (file: File) => Promise<import('@memwise/sha
   return useCallback(async (file: File) => {
     const ws = store.get(memwiseWorkspaceIdAtom)
     const api = getMemwiseApi()
-    if (!ws || !api) throw new Error('MemWise is not available')
+    if (!ws || !api) throw new Error(i18n.t('memwise.notAvailable'))
     const data = await fileToBase64(file)
     return api.memwiseUploadFile(ws, { name: file.name, mime: file.type || 'application/octet-stream', data })
   }, [store])

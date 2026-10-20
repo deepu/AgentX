@@ -42,5 +42,14 @@ export const memwiseCaseFilterAtom = atom<CaseFilter>({})
 /** The "Start a case" dialog, openable from the cases list and a playbook. */
 export const memwiseStartCaseDialogAtom = atom<{ open: boolean; workflowId?: string }>({ open: false })
 
+/**
+ * The connection advertised only the person channels (set by App once it has connected): a
+ * person signed in with their own account on a server, so only the playbook screens work.
+ */
+export const memwisePersonConnectionAtom = atom<boolean>(false)
+
+/** Only the playbook screens are available (a person's own sign-in): chats, sources and most settings are hidden. */
+export const memwisePeopleOnlyAtom = atom(get => get(memwisePersonConnectionAtom) || get(memwiseStatusAtom)?.signedIn === true)
+
 /** Items waiting on the acting person: the sidebar's Inbox badge. */
 export const memwiseInboxCountAtom = atom(get => get(memwiseInboxAtom)?.length ?? 0)

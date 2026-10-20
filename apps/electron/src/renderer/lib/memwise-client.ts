@@ -9,6 +9,7 @@ import { useEffect, useRef } from 'react'
 import type {
   MwCase,
   MwCaseSummary,
+  MwStartCaseRefusal,
   MwChange,
   MwDecideApprovalInput,
   MwDocument,
@@ -67,7 +68,7 @@ export const memwise = {
   listCases: (filter: { workflowId?: string; status?: MwRunStatus } = {}): Promise<MwCaseSummary[]> =>
     api().memwiseListCases(activeWorkspaceId(), filter),
   getCase: (caseId: string): Promise<MwCase> => api().memwiseGetCase(activeWorkspaceId(), caseId),
-  startCase: (input: MwStartCaseInput): Promise<MwCaseSummary> => api().memwiseStartCase(activeWorkspaceId(), input),
+  startCase: (input: MwStartCaseInput): Promise<MwCaseSummary | MwStartCaseRefusal> => api().memwiseStartCase(activeWorkspaceId(), input),
   getStepRecord: (stepRunId: string): Promise<MwStepRecord> => api().memwiseGetStepRecord(activeWorkspaceId(), stepRunId),
   explainStep: (input: MwExplainInput): Promise<MwExplanation> => api().memwiseExplainStep(activeWorkspaceId(), input),
   listInbox: (): Promise<MwInboxItem[]> => api().memwiseListInbox(activeWorkspaceId()),
@@ -75,6 +76,7 @@ export const memwise = {
   decideApproval: (input: MwDecideApprovalInput): Promise<MwSubmitResult> =>
     api().memwiseDecideApproval(activeWorkspaceId(), input),
   sendEvent: (input: MwSendEventInput): Promise<MwSubmitResult> => api().memwiseSendEvent(activeWorkspaceId(), input),
+  dismissInboxItem: (itemId: string): Promise<MwSubmitResult> => api().memwiseDismissInboxItem(activeWorkspaceId(), itemId),
   listEntities: (entity: string): Promise<MwEntityRow[]> => api().memwiseListEntities(activeWorkspaceId(), entity),
   listEntityTypes: (): Promise<MwEntityType[]> => api().memwiseListEntityTypes(activeWorkspaceId()),
   uploadFile: (input: MwUploadInput): Promise<MwDocument> => api().memwiseUploadFile(activeWorkspaceId(), input),

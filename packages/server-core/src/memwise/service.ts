@@ -202,7 +202,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
 
     // ---- changes and re-indexing
     const unsubscribe = k.onChange((c) => {
-      if (c.kind === 'run') emitMemwiseChange({ kind: 'run', id: c.runId, workflowId: c.workflowId })
+      if (c.kind === 'run') emitMemwiseChange({ kind: 'run', id: c.runId, caseId: c.caseId, workflowId: c.workflowId })
       else emitMemwiseChange({ kind: c.kind })
     })
 

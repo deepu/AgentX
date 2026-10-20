@@ -37,6 +37,8 @@ interface SettingsNavigatorProps {
   selectedSubpage: SettingsSubpage | null
   /** Called when a subpage is selected */
   onSelectSubpage: (subpage: SettingsSubpage) => void
+  /** Show only these pages (a person's own sign-in sees the ones that work for them). */
+  only?: SettingsSubpage[]
 }
 
 interface SettingsItem {
@@ -135,17 +137,18 @@ function SettingsItemRow({ item, isSelected, onSelect }: SettingsItemRowProps) {
 export default function SettingsNavigator({
   selectedSubpage,
   onSelectSubpage,
+  only,
 }: SettingsNavigatorProps) {
   const { t } = useTranslation()
 
   const settingsItems: SettingsItem[] = useMemo(() =>
-    SETTINGS_ITEMS.map((item) => ({
+    SETTINGS_ITEMS.filter((item) => !only || only.includes(item.id)).map((item) => ({
       id: item.id,
       label: t(item.labelKey),
       icon: SETTINGS_ICONS[item.id],
       description: t(item.descriptionKey),
     })),
-    [t]
+    [t, only]
   )
 
   return (

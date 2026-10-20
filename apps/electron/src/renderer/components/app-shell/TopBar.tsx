@@ -58,6 +58,8 @@ interface TopBarProps {
   onToggleFocusMode: () => void
   onAddSessionPanel: () => void
   onAddBrowserPanel: () => void
+  /** No "new chat / browser panel" menu (a person's own sign-in has no chats). */
+  hideAddPanel?: boolean
   /** When true, hides controls that don't apply in compact/mobile layout */
   isCompact?: boolean
 }
@@ -84,6 +86,7 @@ export function TopBar({
   onToggleFocusMode,
   onAddSessionPanel,
   onAddBrowserPanel,
+  hideAddPanel,
   isCompact,
 }: TopBarProps) {
   const { t } = useTranslation()
@@ -231,7 +234,7 @@ export function TopBar({
         <div className="min-w-0">
           <BrowserTabStrip activeSessionId={activeSessionId} maxVisibleBadges={maxVisibleBrowserBadges} />
         </div>
-        <DropdownMenu>
+        {!hideAddPanel && <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TopBarButton aria-label={t("menu.addPanelMenu")} className="ml-1">
               <Icons.Plus className="size-4" strokeWidth={1.75} />
@@ -247,7 +250,7 @@ export function TopBar({
               {t("browser.newWindow")}
             </StyledDropdownMenuItem>
           </StyledDropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
 
         {/* Help button */}
         <DropdownMenu>

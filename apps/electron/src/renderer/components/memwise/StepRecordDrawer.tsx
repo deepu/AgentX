@@ -12,7 +12,7 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } f
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@memwise/ui'
 import { navigate, routes } from '@/lib/navigate'
-import { memwisePeopleAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
+import { memwisePeopleAtom, memwisePeopleOnlyAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { getMemwiseApi, useMemwiseOpenChat, useMemwiseStepRecord } from '@/hooks/useMemwise'
 import { StepRecordView } from './StepRecordView'
 import { peopleById } from './format'
@@ -28,6 +28,8 @@ export function StepRecordDrawer({ stepRunId, onClose }: StepRecordDrawerProps) 
   const people = peopleById(useAtomValue(memwisePeopleAtom))
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
   const openChat = useMemwiseOpenChat()
+  // A person's own sign-in has no chats
+  const peopleOnly = useAtomValue(memwisePeopleOnlyAtom)
   const [explanations, setExplanations] = React.useState<MwExplanation[]>([])
   const [asking, setAsking] = React.useState(false)
   const [askError, setAskError] = React.useState<string | null>(null)
@@ -84,7 +86,7 @@ export function StepRecordDrawer({ stepRunId, onClose }: StepRecordDrawerProps) 
                 onAsk={q => void ask(q)}
                 asking={asking}
                 askError={askError}
-                onOpenChat={() => void handleOpenChat()}
+                onOpenChat={peopleOnly ? undefined : () => void handleOpenChat()}
               />
             )}
           </div>

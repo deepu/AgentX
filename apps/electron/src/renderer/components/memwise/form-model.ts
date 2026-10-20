@@ -139,16 +139,29 @@ export type FormValues = Record<string, FormValue>
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/**
+ * An amount as people read it while typing: digits grouped with commas (lakhs and crores for
+ * rupees, thousands otherwise); coercion strips the commas again. Text that isn't a plain
+ * number is left as typed.
+ */
+export function groupAmount(text: string, currency?: string): string {
+  const s = text.trim().replace(/,/g, '')
+  if (!/^-?\d+(\.\d+)?$/.test(s)) return text
+  const [whole, frac] = s.split('.')
+  const grouped = new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', { useGrouping: true, maximumFractionDigits: 0 }).format(Number(whole))
+  return frac !== undefined ? `${grouped}.${frac}` : grouped
+}
+
 /** The form's starting value for a field, from a prefilled case value when there is one. */
 export function initialFormValue(field: FormField, prefill: unknown): FormValue {
   switch (field.kind) {
     case 'boolean':
       return typeof prefill === 'boolean' ? prefill : false
     case 'number':
-      return typeof prefill === 'number' ? String(prefill) : typeof prefill === 'string' ? prefill : ''
+      return typeof prefill === 'number' ? groupAmount(String(prefill)) : typeof prefill === 'string' ? prefill : ''
     case 'money':
       return isMoney(prefill)
-        ? { amount: String(prefill.amount), currency: prefill.currency }
+        ? { amount: groupAmount(String(prefill.amount), prefill.currency), currency: prefill.currency }
         : { amount: '', currency: isPlainObject(prefill) && typeof prefill.currency === 'string' ? prefill.currency : DEFAULT_CURRENCY }
     case 'document':
       if (isPlainObject(prefill) && typeof prefill.name === 'string') return prefill as DocumentDraft

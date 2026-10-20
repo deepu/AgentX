@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, ChevronRight, FileWarning, MessageSquare, Send, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronRight, FileWarning, Lock, MessageSquare, Send, XCircle } from 'lucide-react'
 import type { MwExplanation, MwJournalEntry, MwStepRecord } from '@memwise/shared/protocol'
 import { Info_Alert } from '@/components/info/Info_Alert'
 import { Info_Badge } from '@/components/info/Info_Badge'
@@ -46,6 +46,8 @@ export function StepRecordView({ record, people = {}, explanations = [], onAsk, 
   const { t, i18n } = useTranslation()
   const toolCalls = record.journal.filter(j => j.kind === 'tool' || j.kind === 'approval')
   const modelCalls = record.journal.filter(j => j.kind === 'model')
+  // Counted like usage does: calls that came back (failed attempts are listed, not counted)
+  const answeredModelCalls = modelCalls.filter(j => !j.error && !j.failed).length
   const other = record.journal.filter(j => !['tool', 'approval', 'model'].includes(j.kind))
   const by = personName(record.decidedBy, people)
   const usage = record.usage
@@ -60,6 +62,13 @@ export function StepRecordView({ record, people = {}, explanations = [], onAsk, 
         {by && <span>{t('memwise.step.decidedBy', { name: by })}</span>}
         <span>{absoluteTime(record.startedAt, i18n.language)}</span>
       </div>
+
+      {record.restricted && (
+        <Info_Alert variant="info" inline icon={<Lock />}>
+          <Info_Alert.Title>{t('memwise.step.restrictedTitle')}</Info_Alert.Title>
+          <Info_Alert.Description>{t('memwise.step.restrictedDescription')}</Info_Alert.Description>
+        </Info_Alert>
+      )}
 
       {record.tainted && (
         <Info_Alert variant="info" inline icon={<FileWarning />}>
@@ -106,7 +115,7 @@ export function StepRecordView({ record, people = {}, explanations = [], onAsk, 
         </CollapsibleBlock>
       )}
       {modelCalls.length > 0 && (
-        <CollapsibleBlock title={t('memwise.step.modelCalls')} count={modelCalls.length}>
+        <CollapsibleBlock title={t('memwise.step.modelCalls')} count={answeredModelCalls}>
           <JournalList entries={modelCalls} />
         </CollapsibleBlock>
       )}
@@ -169,7 +178,7 @@ function JournalList({ entries }: { entries: MwJournalEntry[] }) {
             <span className="font-medium text-foreground">{e.kind === 'tool' ? toolLabel(e.name) : humanize(e.name)}</span>
             {e.kind === 'tool' && <span className="font-mono text-label-sm text-tertiary">{e.name}</span>}
             {e.durationMs !== undefined && <span className="text-label-sm text-tertiary">{formatDuration(e.durationMs)}</span>}
-            {e.error && <Info_Badge color="destructive">{t('memwise.step.callFailed')}</Info_Badge>}
+            {(e.error || e.failed) && <Info_Badge color="destructive">{t('memwise.step.callFailed')}</Info_Badge>}
           </div>
           {e.error && <p className="mt-1 text-label-sm text-destructive">{e.error}</p>}
           {(e.request !== undefined || e.response !== undefined) && (

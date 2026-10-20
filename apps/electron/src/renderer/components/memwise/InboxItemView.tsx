@@ -6,6 +6,7 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { AlertTriangle, Bell, CheckCircle2, ClipboardList, Mail, ShieldCheck, Undo2 } from 'lucide-react'
 import type {
   MwDecideApprovalInput,
@@ -29,6 +30,7 @@ import { GeneratedForm, type UploadFile } from './GeneratedForm'
 import { buildSubmission, initialFormValues, type FormError, type FormValues } from './form-model'
 import {
   absoluteTime,
+  attentionReason,
   formatValueInline,
   humanize,
   inboxItemStepTitle,
@@ -39,7 +41,9 @@ import {
   personName,
   relativeTime,
   roleTitle,
+  stateLabel,
   toolLabel,
+  resultMessage,
   type PeopleById,
 } from './format'
 
@@ -47,6 +51,8 @@ export interface InboxActions {
   submitStep: (input: MwSubmitStepInput) => Promise<MwSubmitResult>
   decideApproval: (input: MwDecideApprovalInput) => Promise<MwSubmitResult>
   sendEvent: (input: MwSendEventInput) => Promise<MwSubmitResult>
+  /** Mark a reminder read (absent: no "Mark as read" button). */
+  dismiss?: (itemId: string) => Promise<MwSubmitResult>
   uploadFile?: UploadFile
   openCase: (caseId: string) => void
   /** Called after the kernel accepted an answer. */
@@ -106,7 +112,7 @@ function ResultMessage({ result }: { result: MwSubmitResult | null }) {
   return (
     <Info_Alert variant="error" inline icon={<AlertTriangle />}>
       <Info_Alert.Title>{fieldErrors ? t('memwise.inbox.fixErrors') : t('memwise.inbox.notApplied')}</Info_Alert.Title>
-      {result.message && <Info_Alert.Description>{result.message}</Info_Alert.Description>}
+      {(result.code || result.message) && <Info_Alert.Description>{resultMessage(result, t)}</Info_Alert.Description>}
     </Info_Alert>
   )
 }
@@ -141,7 +147,7 @@ export function InboxItemView({ item, actions, people = {}, roles, now }: InboxI
     <Info_Page.Content>
       <Info_Page.Hero
         avatar={<div className="grid size-full place-items-center bg-fill-hover text-secondary [&_svg]:size-4">{KIND_ICON[item.kind]}</div>}
-        title={inboxItemStepTitle(item)}
+        title={inboxItemStepTitle(item, t)}
         meta={
           <>
             <Info_Badge color={item.kind === 'attention' ? 'warning' : 'default'}>{inboxKindLabel(item.kind, t)}</Info_Badge>
@@ -168,15 +174,24 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
   const { t } = useTranslation()
   const [values, setValues] = React.useState<FormValues>(() => initialFormValues(item.fields, item.prefill))
   const [errors, setErrors] = React.useState<Record<string, FormError[]>>({})
+  const [comment, setComment] = React.useState('')
+  const [commentError, setCommentError] = React.useState<string | undefined>()
   const { busy, result, run } = useAnswer(actions.onDone)
   const outcomes = item.outcomes.length ? item.outcomes : ['submitted']
   const hasContext = Object.keys(item.context).length > 0
+  // A form with an outcome that sends the case back (or declines it) carries a comment
+  const offersComment = outcomes.some(outcomeNeedsComment)
 
   const submit = (outcome: string) => {
+    if (outcomeNeedsComment(outcome) && !comment.trim()) {
+      setCommentError(t('memwise.inbox.commentRequired'))
+      return
+    }
+    setCommentError(undefined)
     const s = buildSubmission(item.fields, values)
     setErrors(s.errors)
     if (!s.valid) return
-    void run(outcome, () => actions.submitStep({ stepRunId: item.stepRunId, outcome, values: s.values }))
+    void run(outcome, () => actions.submitStep({ stepRunId: item.stepRunId, outcome, values: s.values, comment: comment.trim() || undefined }))
   }
 
   const returnedBy = personName(item.returned?.by, people)
@@ -218,6 +233,15 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
             onUpload={actions.uploadFile}
             disabled={!!busy || result?.applied}
           />
+          {offersComment && (
+            <CommentBox
+              value={comment}
+              onChange={v => { setComment(v); if (commentError) setCommentError(undefined) }}
+              error={commentError}
+              placeholder={t('memwise.inbox.commentPlaceholder')}
+              disabled={!!busy || result?.applied}
+            />
+          )}
           <div className="flex flex-wrap justify-end gap-2">
             {outcomes.map((o, i) => (
               <Button
@@ -396,7 +420,7 @@ function AttentionBody({ item, actions }: { item: Extract<MwInboxItem, { kind: '
     <>
       <Info_Alert variant="info" icon={<AlertTriangle />}>
         <Info_Alert.Title>{t('memwise.inbox.attentionTitle')}</Info_Alert.Title>
-        <Info_Alert.Description>{item.reason}</Info_Alert.Description>
+        <Info_Alert.Description>{attentionReason(item, t)}</Info_Alert.Description>
       </Info_Alert>
       {item.events.length > 0 ? (
         <div className="space-y-3">
@@ -429,15 +453,24 @@ function AttentionBody({ item, actions }: { item: Extract<MwInboxItem, { kind: '
 
 function ReminderBody({ item, actions }: { item: Extract<MwInboxItem, { kind: 'reminder' }>; actions: InboxActions }) {
   const { t } = useTranslation()
+  const { busy, result, run } = useAnswer(actions.onDone)
+  const dismiss = actions.dismiss
+  const text = item.code === 'still_waiting' ? t('memwise.inbox.reminder.stillWaiting', { step: item.stepTitle }) : item.text
   return (
     <>
       <Info_Alert variant="warning" icon={<Bell />}>
         <Info_Alert.Title>{t('memwise.inbox.reminderTitle')}</Info_Alert.Title>
-        <Info_Alert.Description className={cn('whitespace-pre-wrap')}>{item.text}</Info_Alert.Description>
+        <Info_Alert.Description className={cn('whitespace-pre-wrap')}>{text}</Info_Alert.Description>
       </Info_Alert>
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {dismiss && (
+          <Button variant="secondary" onClick={() => void run('dismiss', () => dismiss(item.id))} disabled={!!busy || result?.applied}>
+            {busy === 'dismiss' ? t('memwise.inbox.sending') : t('memwise.inbox.markRead')}
+          </Button>
+        )}
         <Button variant="primary" onClick={() => actions.openCase(item.caseId)}>{t('memwise.inbox.openCase')}</Button>
       </div>
+      {result && !result.applied && <ResultMessage result={result} />}
     </>
   )
 }

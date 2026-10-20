@@ -67,8 +67,16 @@ function DocumentChip({ doc }: { doc: { name: string; size?: number } }) {
   )
 }
 
-/** A case value, laid out for reading: documents as chips, lists of records as a small table. */
-export function CaseValueView({ value }: { value: unknown }) {
+const isEmptyValue = (v: unknown) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
+
+/** A file name in a table cell: one line, cut with an ellipsis rather than broken at its hyphens. */
+const looksLikeFileName = (v: unknown): v is string => typeof v === 'string' && /^[^\s/]+\.[a-z0-9]{2,5}$/i.test(v)
+
+/**
+ * A case value, laid out for reading: documents as chips, lists of records as a small table.
+ * `fieldNames`: the case's fields, so a record naming one (a flag's `field: pan`) shows its label.
+ */
+export function CaseValueView({ value, fieldNames }: { value: unknown; fieldNames?: ReadonlySet<string> }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language
 
@@ -93,11 +101,20 @@ export function CaseValueView({ value }: { value: unknown }) {
             <tbody className="divide-y divide-separator">
               {value.map((row, i) => (
                 <tr key={i}>
-                  {columns.map(c => (
-                    <td key={c} className="py-1 pr-3 align-top text-foreground">
-                      {formatValueInline((row as Record<string, unknown>)[c], t, locale)}
-                    </td>
-                  ))}
+                  {columns.map(c => {
+                    const cell = (row as Record<string, unknown>)[c]
+                    const namesField = typeof cell === 'string' && (c === 'field' || !!fieldNames?.has(cell))
+                    const file = looksLikeFileName(cell)
+                    return (
+                      <td
+                        key={c}
+                        className={cn('py-1 pr-3 align-top text-foreground', file && 'max-w-[14rem] truncate whitespace-nowrap')}
+                        title={file ? cell : undefined}
+                      >
+                        {namesField ? humanize(cell as string) : formatValueInline(cell, t, locale)}
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -108,7 +125,7 @@ export function CaseValueView({ value }: { value: unknown }) {
   }
   if (isDocumentValue(value)) return <DocumentChip doc={value} />
   const text = formatValueInline(value, t, locale)
-  const empty = value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)
+  const empty = isEmptyValue(value)
   return <span className={cn('[overflow-wrap:anywhere]', empty && 'text-tertiary')}>{text}</span>
 }
 
@@ -130,6 +147,7 @@ export function CaseFieldList({ values, fields, people, only, className }: CaseF
     ...Object.keys(values).filter(n => !(fields ?? []).some(f => f.name === n)),
   ]
   const rows = order.filter(n => values[n] !== undefined)
+  const fieldNames = React.useMemo(() => new Set([...(fields ?? []).map(f => f.name), ...Object.keys(values)]), [fields, values])
   if (rows.length === 0) {
     return <p className="px-3.5 py-3 text-label text-tertiary">{t('memwise.case.noFields')}</p>
   }
@@ -142,9 +160,10 @@ export function CaseFieldList({ values, fields, people, only, className }: CaseF
           <div key={name} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-3.5 py-2.5 text-label" data-field={name}>
             <dt className="w-[140px] shrink-0 text-secondary" title={def?.description}>{humanize(name)}</dt>
             <dd className="min-w-0 flex-1 text-foreground">
-              {cv.hidden ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span> : <CaseValueView value={cv.value} />}
+              {cv.hidden ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span> : <CaseValueView value={cv.value} fieldNames={fieldNames} />}
             </dd>
-            <div className="shrink-0"><ProvenanceBadge value={cv} people={people} /></div>
+            {/* Nothing there: no "who set it" badge for an empty value */}
+            {(cv.hidden || !isEmptyValue(cv.value)) && <div className="shrink-0"><ProvenanceBadge value={cv} people={people} /></div>}
           </div>
         )
       })}

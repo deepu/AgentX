@@ -33,6 +33,11 @@ export interface MwStatus {
   me?: MwPerson
   /** Desktop: the owner may switch who they act as (for trying approvals with two roles). */
   canActAs: boolean
+  /**
+   * This connection signed in with the person's own account (server mode: a personal token or a
+   * web login). Only the playbook screens are available to it; the web app offers to sign out.
+   */
+  signedIn?: boolean
   /** A model is configured for agent steps; without one, agent steps stop and need a person. */
   modelConfigured: boolean
   /** Project folder holding the playbooks (definitions are files, D13). */
@@ -145,6 +150,8 @@ export interface MwPlaybook {
   steps: Record<string, MwStep>
   caseFields: MwField[]
   diagnostics: MwDiagnostic[]
+  /** Case fields a person may fill in when starting a case (the kernel refuses others). */
+  startFields?: string[]
 }
 
 /** Live mode of the map: where the open cases are. */
@@ -263,6 +270,13 @@ export interface MwJournalEntry {
   effect?: MwEffectClass
   startedAt: string
   durationMs?: number
+  /**
+   * The step handles fields this viewer may not see, so `request`, `response` and `error` are
+   * left out; name, kind and timings stay.
+   */
+  redacted?: boolean
+  /** With `redacted`: the entry recorded an error. */
+  failed?: boolean
 }
 
 export interface MwStepRecord extends MwStepRunSummary {
@@ -277,6 +291,8 @@ export interface MwStepRecord extends MwStepRunSummary {
   checkpoint: { rule: string; kind: 'structural' | 'verifier'; passed: boolean; reason?: string }[]
   journal: MwJournalEntry[]
   usage: { tokens?: number; modelCalls?: number; durationMs?: number; costUsd?: number }
+  /** The step handles fields this viewer may not see: those values are hidden and the journal shows no request or response bodies. */
+  restricted?: boolean
 }
 
 export interface MwStartCaseInput {
@@ -355,6 +371,9 @@ export type MwInboxItem =
       workflowId: string
       state: string
       reason: string
+      /** What `reason` says, for the screens to word: the run stopped (with `stopReason`), or it waits in a state with no step. */
+      reasonCode?: 'stopped' | 'waiting'
+      stopReason?: string
       /** Events the state accepts, e.g. `resolved`. */
       events: string[]
       since: string
@@ -369,6 +388,8 @@ export type MwInboxItem =
       workflowId: string
       stepTitle: string
       text: string
+      /** `still_waiting`: the step has waited past its reminder time (`text` is the English). */
+      code?: 'still_waiting'
       since: string
     }
 
@@ -383,7 +404,18 @@ export interface MwSubmitResult {
   applied: boolean
   /** Field -> problems, when values failed validation. */
   errors?: Record<string, string[]>
+  /** In English; the screens show the translation of `code` when they know it. */
   message?: string
+  /** Why it was refused, e.g. `submit.stale`, `approval.forbidden`, `event.use_submit` (screens translate `memwise.result.<code>`). */
+  code?: string
+}
+
+/** `memwise:cases:start` refused the starting values: field -> problems, as MwSubmitResult. */
+export interface MwStartCaseRefusal {
+  applied: false
+  errors: Record<string, string[]>
+  message?: string
+  code?: string
 }
 
 export interface MwDecideApprovalInput {
@@ -450,6 +482,9 @@ export interface MwUploadInput {
 /** Payload of `memwise:changed`: something the screens show changed; refetch what's affected. */
 export interface MwChange {
   kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status'
+  /** The run id for `run` changes. */
   id?: string
+  /** The case the changed run belongs to (`run` changes). */
+  caseId?: string
   workflowId?: string
 }

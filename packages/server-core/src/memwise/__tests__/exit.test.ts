@@ -211,6 +211,22 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     expect(r.applied).toBe(false)
     expect(r.message).toBeTruthy()
     expect((await api.call<MwCase>(staff, ch.CASES_GET, firstCase.caseId)).state).toBe('verify')
+
+    // Nor by sending the outcome as an event: a person step is answered from its form only
+    const ev = await api.call(staff, ch.INBOX_SEND_EVENT, { runId: firstCase.runId, event: 'approved' })
+    expect(ev).toMatchObject({ applied: false, code: expect.stringMatching(/^event\.(use_submit|forbidden)$/) })
+    expect(ev.message).toBeTruthy()
+    const asOwner = await api.call(admin, ch.INBOX_SEND_EVENT, { runId: firstCase.runId, event: 'approved' })
+    expect(asOwner).toMatchObject({ applied: false, code: 'event.use_submit' })
+    expect((await api.call<MwCase>(staff, ch.CASES_GET, firstCase.caseId)).state).toBe('verify')
+  }, 60_000)
+
+  it('refuses starting values that are not start fields, field by field', async () => {
+    const pb = await api.call(staff, ch.PLAYBOOKS_GET, 'client-intake')
+    expect(pb.startFields).toEqual(expect.arrayContaining(['client_name', 'pan']))
+    const r = await api.call(staff, ch.CASES_START, { workflowId: 'client-intake', values: { no_such_field: 'x', client_name: 'Asha Rao' } })
+    expect(r).toMatchObject({ applied: false, code: 'start.invalid', errors: { no_such_field: [expect.any(String)] } })
+    expect(r.errors.client_name).toBeUndefined()
   }, 60_000)
 
   it('the manager approves; onboard writes the Customer', async () => {
@@ -284,5 +300,7 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
   it('pushes memwise:changed as runs move', () => {
     const changes = api.pushes.filter((p) => p.channel === ch.CHANGED).map((p) => p.args[0] as MwChange)
     expect(changes.some((c) => c.kind === 'run' && c.workflowId === 'client-intake')).toBe(true)
+    // Run changes name their case, so a case screen can match them before its first fetch lands
+    expect(changes.some((c) => c.kind === 'run' && c.caseId === firstCase.caseId)).toBe(true)
   })
 })

@@ -452,6 +452,7 @@ export const CHANNEL_MAP = {
   memwiseSubmitStep: invoke(RPC_CHANNELS.memwise.INBOX_SUBMIT),
   memwiseDecideApproval: invoke(RPC_CHANNELS.memwise.INBOX_DECIDE_APPROVAL),
   memwiseSendEvent: invoke(RPC_CHANNELS.memwise.INBOX_SEND_EVENT),
+  memwiseDismissInboxItem: invoke(RPC_CHANNELS.memwise.INBOX_DISMISS),
   memwiseListEntities: invoke(RPC_CHANNELS.memwise.ENTITIES_LIST),
   memwiseListEntityTypes: invoke(RPC_CHANNELS.memwise.ENTITIES_TYPES),
   memwiseUploadFile: invoke(RPC_CHANNELS.memwise.FILES_UPLOAD),

@@ -13,6 +13,7 @@ import type {
   MwRole,
   MwRunStatus,
   MwStepRunSummary,
+  MwSubmitResult,
 } from '@memwise/shared/protocol'
 
 // ---------------------------------------------------------------- words
@@ -262,9 +263,19 @@ export function sortInbox(items: MwInboxItem[]): MwInboxItem[] {
   })
 }
 
+/**
+ * A state's name for people: the built-in end and "needs a person" states in the reader's
+ * language, any other by the title the server sent (its step's title), else its id in words.
+ */
+export function stateLabel(stateId: string, t?: TFunction, title?: string): string {
+  if (t && stateId === 'end') return t('memwise.playbook.endTitle')
+  if (t && stateId === 'needs_person') return t('memwise.playbook.needsPerson')
+  return title ?? humanize(stateId)
+}
+
 /** The step (or state) an inbox item is about, for its row. */
-export function inboxItemStepTitle(item: MwInboxItem): string {
-  return item.kind === 'attention' ? humanize(item.state) : item.stepTitle
+export function inboxItemStepTitle(item: MwInboxItem, t?: TFunction): string {
+  return item.kind === 'attention' ? stateLabel(item.state, t) : item.stepTitle
 }
 
 export function inboxKindLabel(kind: MwInboxItem['kind'], t: TFunction): string {
@@ -315,4 +326,19 @@ export function filterCases(cases: MwCaseSummary[], filter: CaseFilter): MwCaseS
   return cases
     .filter(c => (!filter.workflowId || c.workflowId === filter.workflowId) && (!filter.status || c.status === filter.status))
     .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+}
+
+/** A refusal in the reader's language when its code is known; the server's English otherwise. */
+export function resultMessage(result: Pick<MwSubmitResult, 'code' | 'message'>, t: TFunction): string | undefined {
+  if (result.code) return t(`memwise.result.${result.code}`, { defaultValue: result.message ?? '' }) || result.message
+  return result.message
+}
+
+/** Why a case needs someone, worded here when the server says which kind of reason it is. */
+export function attentionReason(item: Extract<MwInboxItem, { kind: 'attention' }>, t: TFunction): string {
+  if (item.reasonCode === 'stopped') {
+    return item.stopReason ? t('memwise.inbox.attention.stoppedBecause', { reason: item.stopReason }) : t('memwise.inbox.attention.stopped')
+  }
+  if (item.reasonCode === 'waiting') return t('memwise.inbox.attention.waiting', { state: stateLabel(item.state, t) })
+  return item.reason
 }

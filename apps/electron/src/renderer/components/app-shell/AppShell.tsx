@@ -37,6 +37,8 @@ import {
   ClipboardCheck,
   Briefcase,
   BookOpen,
+  LogOut,
+  UserRound,
 } from "lucide-react"
 // SessionStatusIcons no longer used - icons come from dynamic sessionStatuses
 import { SourceAvatar } from "@/components/ui/source-avatar"
@@ -135,7 +137,7 @@ import {
   ActingAsSwitcher,
   SidebarStatusNotice,
 } from "@/components/memwise"
-import { memwiseInboxCountAtom, memwiseCasesAtom, memwisePlaybooksAtom, memwiseStartCaseDialogAtom, memwiseCaseFilterAtom } from "@/atoms/memwise"
+import { memwiseInboxCountAtom, memwiseCasesAtom, memwisePlaybooksAtom, memwiseStartCaseDialogAtom, memwiseCaseFilterAtom, memwisePeopleOnlyAtom, memwiseStatusAtom } from "@/atoms/memwise"
 import type { SettingsSubpage } from "../../../shared/types"
 import { SourcesListPanel } from "./SourcesListPanel"
 import { SkillsListPanel } from "./SkillsListPanel"
@@ -200,6 +202,9 @@ interface AppShellProps {
  * - 'flagged': Shows flagged sessions
  * - 'state': Shows sessions with a specific todo state
  */
+/** Settings a person's own sign-in may open: how the app looks, and the keyboard shortcuts. */
+const PEOPLE_ONLY_SETTINGS: SettingsSubpage[] = ['appearance', 'shortcuts']
+
 export function AppShell(props: AppShellProps) {
   // Wrap with EscapeInterruptProvider so AppShellContent can use useEscapeInterrupt
   return (
@@ -1600,6 +1605,25 @@ function AppShellContent({
   const memwisePlaybooks = useAtomValue(memwisePlaybooksAtom)
   const memwiseCaseFilter = useAtomValue(memwiseCaseFilterAtom)
   const setMemwiseStartCase = useSetAtom(memwiseStartCaseDialogAtom)
+  // A person signed in with their own account: the playbook screens only (the server refuses the rest)
+  const peopleOnly = useAtomValue(memwisePeopleOnlyAtom)
+  const memwiseStatus = useAtomValue(memwiseStatusAtom)
+  const signedInName = memwiseStatus?.signedIn ? memwiseStatus.me?.name : undefined
+  const handleSignOut = useCallback(async () => {
+    if (!window.confirm(t("memwise.signIn.signOutConfirm"))) return
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+    } finally {
+      window.location.href = '/login'
+    }
+  }, [t])
+  // Land on the inbox, and stay off screens that would only be refused
+  useEffect(() => {
+    if (!peopleOnly) return
+    const allowed = isInboxNavigation(navState) || isCasesNavigation(navState) || isPlaybooksNavigation(navState)
+      || (isSettingsNavigation(navState) && (!navState.subpage || PEOPLE_ONLY_SETTINGS.includes(navState.subpage)))
+    if (!allowed) navigate(routes.view.inbox())
+  }, [peopleOnly, navState])
 
   const handleAutomationsScheduledClick = useCallback(() => {
     navigate(routes.view.automationsScheduled())
@@ -2128,7 +2152,7 @@ function AppShellContent({
 
 
   // Sidebar navigation (scrolls) and the pinned footer (Settings, What's New — always visible).
-  const sidebarLinks: SidebarNavItem[] = [
+  const allSidebarLinks: SidebarNavItem[] = [
     // --- MemWise: what's waiting on me, the cases, the playbooks ---
     {
       id: "nav:inbox",
@@ -2405,14 +2429,32 @@ function AppShellContent({
       ],
     },
   ]
+  // A person's own sign-in: Inbox, Cases and Playbooks only
+  const sidebarLinks = peopleOnly
+    ? allSidebarLinks.filter(item => item.id === 'nav:inbox' || item.id === 'nav:cases' || item.id === 'nav:playbooks')
+    : allSidebarLinks
   const sidebarFooterLinks: SidebarNavItem[] = [
+    // --- Who is signed in (a person's own sign-in on a server) ---
+    ...(signedInName ? [{
+      id: "nav:signed-in",
+      title: t("memwise.signIn.signedInAs", { name: signedInName }),
+      icon: UserRound,
+      variant: "ghost" as const,
+    }] : []),
+    ...(peopleOnly && window.electronAPI.getRuntimeEnvironment?.() === 'web' ? [{
+      id: "nav:sign-out",
+      title: t("memwise.signIn.signOut"),
+      icon: LogOut,
+      variant: "ghost" as const,
+      onClick: () => { void handleSignOut() },
+    }] : []),
     // --- Settings ---
     {
       id: "nav:settings",
       title: t("sidebar.settings"),
       icon: Settings,
       variant: isSettingsNavigation(navState) ? "default" : "ghost",
-      onClick: () => handleSettingsClick(),
+      onClick: () => handleSettingsClick(peopleOnly ? 'appearance' : undefined),
     },
     // --- What's New ---
     {
@@ -2454,6 +2496,7 @@ function AppShellContent({
           onToggleFocusMode={handleToggleFocusModeFromPointer}
           onAddSessionPanel={() => handleNewChat(true)}
           onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
+          hideAddPanel={peopleOnly}
           isCompact={isAutoCompact}
         />
 
@@ -2697,6 +2740,7 @@ function AppShellContent({
               <SettingsNavigator
                 selectedSubpage={navState.subpage}
                 onSelectSubpage={(subpage) => handleSettingsClick(subpage)}
+                only={peopleOnly ? PEOPLE_ONLY_SETTINGS : undefined}
               />
             )}
             {isSessionsNavigation(navState) && (

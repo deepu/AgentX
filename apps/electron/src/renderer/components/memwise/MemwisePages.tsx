@@ -5,6 +5,7 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
+import i18n from 'i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
 import { BookOpen, MessageSquare, Play } from 'lucide-react'
@@ -16,6 +17,7 @@ import { navigate, routes } from '@/lib/navigate'
 import {
   memwiseInboxAtom,
   memwisePeopleAtom,
+  memwisePeopleOnlyAtom,
   memwisePlaybooksAtom,
   memwiseRolesAtom,
   memwiseStartCaseDialogAtom,
@@ -39,7 +41,7 @@ import { PlaybookView } from './playbook'
 import { WorkflowMap } from './map'
 import { peopleById, sortInbox } from './format'
 
-const notAvailable = (): MwSubmitResult => ({ applied: false, message: 'MemWise is not available' })
+const notAvailable = (): MwSubmitResult => ({ applied: false, message: i18n.t('memwise.notAvailable') })
 
 function useOpenChatAndGo() {
   const { t } = useTranslation()
@@ -72,6 +74,9 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
       submitStep: input => (api && workspaceId ? api.memwiseSubmitStep(workspaceId, input) : Promise.resolve(notAvailable())),
       decideApproval: input => (api && workspaceId ? api.memwiseDecideApproval(workspaceId, input) : Promise.resolve(notAvailable())),
       sendEvent: input => (api && workspaceId ? api.memwiseSendEvent(workspaceId, input) : Promise.resolve(notAvailable())),
+      ...(api?.memwiseDismissInboxItem ? {
+        dismiss: (id: string) => (workspaceId ? api.memwiseDismissInboxItem(workspaceId, id) : Promise.resolve(notAvailable())),
+      } : {}),
       uploadFile: upload,
       openCase: caseId => navigate(routes.view.cases(caseId)),
       onDone: result => {
@@ -111,6 +116,8 @@ export function CasePage({ caseId }: { caseId: string | null }) {
   const roles = useAtomValue(memwiseRolesAtom)
   const [openStep, setOpenStep] = React.useState<string | null>(null)
   const openChatAndGo = useOpenChatAndGo()
+  // A person's own sign-in has no chats
+  const peopleOnly = useAtomValue(memwisePeopleOnlyAtom)
 
   React.useEffect(() => setOpenStep(null), [caseId])
 
@@ -126,7 +133,7 @@ export function CasePage({ caseId }: { caseId: string | null }) {
     <Info_Page loading={loading && !kase} error={!kase && error ? error : undefined}>
       <Info_Page.Header
         title={kase?.title ?? t('memwise.nav.cases')}
-        actions={kase ? (
+        actions={kase && !peopleOnly ? (
           <Button variant="ghost" size="sm" onClick={() => void openChatAndGo({ kind: 'case', id: kase.caseId })}>
             <MessageSquare />
             {t('memwise.case.openChat')}

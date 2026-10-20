@@ -1,13 +1,16 @@
 /**
  * Hosting pieces that need no kernel: person sign-in on the WS handshake (the shared token
- * still works, as the admin), model-role resolution, and seeding the project folder.
+ * still works, as the admin; a person reaches the playbook channels only and is cut off once
+ * disabled), model-role resolution, and seeding the project folder.
  */
 import { afterEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { WsRpcServer } from '../../transport/server'
+import { RPC_CHANNELS } from '@memwise/shared/protocol'
+import { WsRpcServer, type WsRpcServerOptions } from '../../transport/server'
 import { WsRpcClient } from '../../transport/client'
+import { personMayCall } from '../../transport/person-channels'
 import { connectionModels, NO_MODEL_MESSAGE, piAiProviderIdFor, unconfiguredModels } from '../models'
 import { findExampleProject, seedProject } from '../seed'
 import { createSessionToken, sessionPersonId } from '../../webui/auth'
@@ -20,7 +23,11 @@ afterEach(async () => {
   }
 })
 
-async function connect(token: string) {
+const WHO = RPC_CHANNELS.memwise.STATUS
+const SESSIONS = RPC_CHANNELS.sessions.GET
+
+async function connect(token: string, extra: Partial<WsRpcServerOptions> = {}) {
+  const expired: string[] = []
   const server = new WsRpcServer({
     host: '127.0.0.1',
     port: 0,
@@ -28,9 +35,13 @@ async function connect(token: string) {
     validateToken: async (t) => t === SHARED,
     authenticatePersonToken: async (t) => (t === 'priya-personal-token' ? 'person_priya' : null),
     serverId: 'test',
+    onClientExpired: (id) => { expired.push(id) },
+    ...extra,
   })
   let seen: string | undefined | null = null
-  server.handle('who', (ctx) => { seen = ctx.personId; return ctx.personId ?? 'admin' })
+  server.handle(WHO, (ctx) => { seen = ctx.personId; return ctx.personId ?? 'admin' })
+  server.handle(SESSIONS, () => ['every chat on the server'])
+  server.handle(RPC_CHANNELS.memwise.CHAT_OPEN, () => ({ sessionId: 's' }))
   await server.listen()
   teardown.push(() => server.close())
   const client = new WsRpcClient(`ws://127.0.0.1:${server.port}`, { token, workspaceId: 'ws', autoReconnect: false })
@@ -42,25 +53,89 @@ async function connect(token: string) {
       if (s.status === 'connected' || s.status === 'failed' || s.status === 'disconnected') { clearTimeout(t); off(); resolve(s.status) }
     })
   })
-  return { client, status, seen: () => seen }
+  return { server, client, status, seen: () => seen, expired }
 }
+
+const codeOf = async (p: Promise<unknown>) => p.then(() => 'ok', (e: { code?: string }) => e?.code ?? 'error')
 
 describe('person sign-in on the WS handshake', () => {
   it('puts the person on the request context for a personal token', async () => {
     const { client, status } = await connect('priya-personal-token')
     expect(status).toBe('connected')
-    expect(await client.invoke('who')).toBe('person_priya')
+    expect(await client.invoke(WHO)).toBe('person_priya')
   })
 
   it('keeps the shared token working, as the admin', async () => {
     const { client, status } = await connect(SHARED)
     expect(status).toBe('connected')
-    expect(await client.invoke('who')).toBe('admin')
+    expect(await client.invoke(WHO)).toBe('admin')
   })
 
   it('refuses an unknown token', async () => {
     const { status } = await connect('nope')
     expect(status).not.toBe('connected')
+  })
+
+  it('gives a person the playbook channels only, and advertises just those', async () => {
+    const { client } = await connect('priya-personal-token')
+    expect(await codeOf(client.invoke(SESSIONS))).toBe('FORBIDDEN')
+    expect(await codeOf(client.invoke(RPC_CHANNELS.memwise.CHAT_OPEN))).toBe('FORBIDDEN')
+    expect(client.isChannelAvailable(SESSIONS)).toBe(false)
+    expect(client.isChannelAvailable(WHO)).toBe(true)
+    expect(await client.invoke(WHO)).toBe('person_priya')
+  })
+
+  it('gives the shared token everything', async () => {
+    const { client } = await connect(SHARED)
+    expect(await client.invoke(SESSIONS)).toEqual(['every chat on the server'])
+    expect(client.isChannelAvailable(SESSIONS)).toBe(true)
+  })
+
+  it('cuts a person off on their next request once they are disabled, and refuses them after', async () => {
+    let active = true
+    const { client, server } = await connect('priya-personal-token', { personActive: async () => active })
+    expect(await client.invoke(WHO)).toBe('person_priya')
+    active = false
+    expect(await codeOf(client.invoke(WHO))).toBe('AUTH_FAILED')
+    await new Promise((r) => setTimeout(r, 100))
+    expect(server.getConnectedClientCount()).toBe(0)
+    const again = await connect('priya-personal-token', { personActive: async () => false })
+    expect(again.status).not.toBe('connected')
+  })
+
+  it('ends a person\'s live connections on request', async () => {
+    const { client, server } = await connect('priya-personal-token')
+    expect(await client.invoke(WHO)).toBe('person_priya')
+    expect(server.disconnectPerson('person_priya')).toBe(1)
+    await new Promise((r) => setTimeout(r, 100))
+    expect(server.getConnectedClientCount()).toBe(0)
+  })
+
+  it('refuses a web session whose person cannot be resolved instead of treating it as the admin', async () => {
+    const { status } = await connect('', {
+      validateSessionCookie: async () => true,
+      sessionCookiePerson: async () => { throw new Error('bad subject') },
+    })
+    expect(status).not.toBe('connected')
+  })
+
+  it('reports a client as gone once it can no longer reconnect', async () => {
+    const { server, expired } = await connect('priya-personal-token')
+    server.disconnectPerson('person_priya')
+    await new Promise((r) => setTimeout(r, 100))
+    expect(expired.length).toBe(1)
+  })
+})
+
+describe('person channel allowlist', () => {
+  it('allows the playbook API and a few shell reads, nothing that runs with the server\'s power', () => {
+    expect(personMayCall(RPC_CHANNELS.memwise.INBOX_LIST)).toBe(true)
+    expect(personMayCall(RPC_CHANNELS.workspaces.GET)).toBe(true)
+    for (const ch of [
+      RPC_CHANNELS.memwise.CHAT_OPEN, RPC_CHANNELS.sessions.CREATE, RPC_CHANNELS.sessions.SEND_MESSAGE, RPC_CHANNELS.sources.GET,
+      RPC_CHANNELS.llmConnections.GET_API_KEY, RPC_CHANNELS.settings.SET_SERVER_CONFIG, RPC_CHANNELS.theme.SET_COLOR_THEME,
+      RPC_CHANNELS.preferences.WRITE, RPC_CHANNELS.file.READ, RPC_CHANNELS.workspaces.CREATE,
+    ]) expect(personMayCall(ch)).toBe(false)
   })
 })
 

@@ -33,6 +33,7 @@ import {
   inboxKindLabel,
   relativeTime,
   sortInbox,
+  stateLabel,
   waitingOnLabel,
 } from './format'
 
@@ -97,7 +98,7 @@ export function InboxList({ items, selectedId, onSelect, now, className }: Inbox
                   {relativeTime(item.since, now, i18n.language)}
                 </span>
               }
-              subtitle={inboxItemStepTitle(item)}
+              subtitle={inboxItemStepTitle(item, t)}
               subtitleTrailing={<EntityListBadge colorClass="bg-fill-hover text-secondary">{inboxKindLabel(item.kind, t)}</EntityListBadge>}
               dataAttributes={{ 'data-inbox-kind': item.kind }}
             />
@@ -175,7 +176,7 @@ export function CasesList({ cases, playbooks, roles, selectedId, onSelect, onSta
                   {relativeTime(c.updatedAt, now, i18n.language)}
                 </span>
               }
-              subtitle={`${titleOf(c.workflowId)} · ${c.stateTitle}`}
+              subtitle={`${titleOf(c.workflowId)} · ${stateLabel(c.state, t, c.stateTitle)}`}
               badges={
                 <div className="flex min-w-0 items-center gap-1.5">
                   <EntityListBadge colorClass={STATUS_BADGE[c.status]}>{caseStatusLabel(c.status, t)}</EntityListBadge>

@@ -18,6 +18,7 @@ import { formatBytes, humanize } from './format'
 import {
   emptyItem,
   IDENTIFIER_EXAMPLES,
+  groupAmount,
   toFormField,
   type DocumentDraft,
   type FormError,
@@ -174,6 +175,7 @@ function FieldControl({ id, field, value, onChange, onUpload, disabled, invalid 
             value={m.amount ?? ''}
             placeholder={t('memwise.form.amount')}
             onChange={e => onChange({ ...m, amount: e.target.value })}
+            onBlur={() => { const g = groupAmount(m.amount ?? '', m.currency); if (g !== m.amount) onChange({ ...m, amount: g }) }}
             disabled={disabled}
             className="flex-1"
             {...aria}
@@ -217,6 +219,7 @@ function FieldControl({ id, field, value, onChange, onUpload, disabled, invalid 
           value={str}
           placeholder={example}
           onChange={e => onChange(e.target.value)}
+          onBlur={field.kind === 'number' ? () => { const g = groupAmount(str); if (g !== str) onChange(g) } : undefined}
           disabled={disabled}
           className={field.kind === 'identifier' ? 'font-mono' : undefined}
           {...aria}

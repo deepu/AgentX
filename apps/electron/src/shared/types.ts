@@ -755,13 +755,15 @@ export interface ElectronAPI {
   memwiseGetLiveCounts(workspaceId: string, id: string): Promise<import('@memwise/shared/protocol').MwLiveCounts>
   memwiseListCases(workspaceId: string, filter?: { workflowId?: string; status?: import('@memwise/shared/protocol').MwRunStatus }): Promise<import('@memwise/shared/protocol').MwCaseSummary[]>
   memwiseGetCase(workspaceId: string, caseId: string): Promise<import('@memwise/shared/protocol').MwCase>
-  memwiseStartCase(workspaceId: string, input: import('@memwise/shared/protocol').MwStartCaseInput): Promise<import('@memwise/shared/protocol').MwCaseSummary>
+  memwiseStartCase(workspaceId: string, input: import('@memwise/shared/protocol').MwStartCaseInput): Promise<import('@memwise/shared/protocol').MwCaseSummary | import('@memwise/shared/protocol').MwStartCaseRefusal>
   memwiseGetStepRecord(workspaceId: string, stepRunId: string): Promise<import('@memwise/shared/protocol').MwStepRecord>
   memwiseExplainStep(workspaceId: string, input: import('@memwise/shared/protocol').MwExplainInput): Promise<import('@memwise/shared/protocol').MwExplanation>
   memwiseListInbox(workspaceId: string): Promise<import('@memwise/shared/protocol').MwInboxItem[]>
   memwiseSubmitStep(workspaceId: string, input: import('@memwise/shared/protocol').MwSubmitStepInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
   memwiseDecideApproval(workspaceId: string, input: import('@memwise/shared/protocol').MwDecideApprovalInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
   memwiseSendEvent(workspaceId: string, input: import('@memwise/shared/protocol').MwSendEventInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
+  /** Mark a reminder in the inbox as read (it leaves the inbox). */
+  memwiseDismissInboxItem(workspaceId: string, itemId: string): Promise<import('@memwise/shared/protocol').MwSubmitResult>
   memwiseListEntities(workspaceId: string, entity: string): Promise<import('@memwise/shared/protocol').MwEntityRow[]>
   memwiseListEntityTypes(workspaceId: string): Promise<import('@memwise/shared/protocol').MwEntityType[]>
   memwiseUploadFile(workspaceId: string, input: import('@memwise/shared/protocol').MwUploadInput): Promise<import('@memwise/shared/protocol').MwDocument>
