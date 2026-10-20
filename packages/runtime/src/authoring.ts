@@ -11,7 +11,7 @@ import {
   type DiffNameKind, type ImpactTool, type PastCaseOutcome, type ProjectDefs, type StructuralDiff, type WorkflowDef,
 } from '@memwise/defs';
 import type { ToolGateway } from '@memwise/gateway';
-import { compilePolicy, decide, layersFor, pluginLayers, violationsToDiagnostics } from '@memwise/policy';
+import { compilePolicy, decide, extractDiagnostics, layersFor, pluginLayers, violationsToDiagnostics } from '@memwise/policy';
 import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -184,7 +184,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
 
   async function quickCheck(draftId: string): Promise<Diagnostic[]> {
     const { project, diagnostics, meta } = await loadDraft(root, draftId);
-    const all = [...diagnostics, ...checkProject(project, environment(project))];
+    const env = environment(project);
+    const all = [...diagnostics, ...checkProject(project, env)];
     // Policy tightening per step, as `memwise check` does (the workflow layer is in every step's stack).
     const seen = new Set<string>();
     const workflow = project.workflows[meta.workflowId];
@@ -192,8 +193,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       const policies = pluginPolicies(boundPlugins(project));
       for (const step of [undefined, ...Object.values(workflow.steps)]) {
         const plugins = pluginLayers(policies, workflow, step);
-        const { violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
-        for (const d of violationsToDiagnostics(violations)) {
+        const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
+        for (const d of [...violationsToDiagnostics(violations), ...extractDiagnostics(step, effective, env.tools)]) {
           const key = `${d.file}|${d.path}|${d.message}`;
           if (!seen.has(key)) { seen.add(key); all.push(d); }
         }

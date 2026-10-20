@@ -4,11 +4,12 @@ performer: agent
 strictness: guided
 reads:  [case.client_name, case.client_email, case.pan, case.gstin, case.annual_turnover, case.documents]
 writes:
-  gstin_ok:   { type: Boolean, from: { tool: gst.validate_gstin, field: valid } }
-  legal_name: { type: Text, from: { tool: gst.validate_gstin, field: legal_name } }
-  flags:      List<Flag>
+  gstin_ok:       { type: Boolean, from: { tool: gst.validate_gstin, field: valid } }
+  legal_name:     { type: Text, from: { tool: gst.validate_gstin, field: legal_name } }
+  flags:          List<Flag>
+  client_message: Text
 tools:
-  allowed:  [gst.validate_gstin, intake.extract_fields, email.send, recall.step_record, recall.similar_cases]
+  allowed:  [gst.validate_gstin, intake.extract_fields, recall.step_record, recall.similar_cases]
   required: [gst.validate_gstin]
 model: checker
 budget: { tokens: 40k, time: 10m, modelCalls: 12 }
@@ -24,7 +25,9 @@ legal name it is registered to.
 Compare what the client typed with what was extracted from their documents. Flag any
 mismatch, and say which document it came from.
 
-If anything is missing or doesn't match, email the client at their address on the case.
-Say exactly what is missing or wrong, politely and in plain words, then finish with
-`needs_info`. If everything matches, finish with `checked`. If the GSTIN is not valid at
-all, finish with `failed`.
+If anything is missing or doesn't match, write `client_message` for the client: say exactly
+what is missing or wrong, politely and in plain words. It is sent to them with a new link to
+the form. Then finish with `needs_info`.
+
+If everything matches, write an empty `client_message` and finish with `checked`. If the
+GSTIN is not valid at all, finish with `failed`.

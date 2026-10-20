@@ -1,25 +1,30 @@
 workflow: client-intake
-version: 1
+version: 2
 title: Client intake
 owner: manager                 # stopped cases and cases that need a person go to a manager
 case: ./case.yaml
 policy: ./policy.yaml
-start: fill
+start: prepare
 steps:
-  fill:
+  prepare:                     # staff say who the client is and how to reach them
+    on: { send_link: invite, fill_for_client: fill }
+    wait: { timeout: 7d → needs_person }
+  invite:                      # the client gets a link to the form
+    on: { sent: fill, needs_person: needs_person }
+  fill:                        # the client fills in the form (or staff do, for them)
     on: { submitted: check }
     wait: { remind: 3d, timeout: 7d → needs_person }
   check:
     on:
       checked:      verify
-      needs_info:   fill
+      needs_info:   invite
       failed:       needs_person
       needs_person: needs_person
   verify:
-    on: { approved: onboard, sent_back: fill }
+    on: { approved: onboard, sent_back: invite }
     wait: { remind: 1d, timeout: 3d → needs_person }
   onboard: { on: { done: end } }
   needs_person:
-    on: { resolved: check }
+    on: { resolved: check, resend: invite }
     assignee: manager
     wait: { timeout: 7d → end }

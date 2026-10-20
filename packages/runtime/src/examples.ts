@@ -5,6 +5,8 @@ import { END_STATE, isConversationStep, type ExampleCase, type ExampleSubmission
 import { scriptedProvider, stubTools, type ToolDefinition } from '@memwise/gateway';
 import { isDeepStrictEqual } from 'node:util';
 import { authoringToolDefinitions } from './authoring-tools.ts';
+import { kernelKey, linkStatus, tokenOf, type LinkRow } from './external/links.ts';
+import { externalToolDefinitions } from './external/service.ts';
 import { bindingToolDefinitions } from './plugins/kernel-tools.ts';
 import { McpConnections } from './plugins/routes.ts';
 import { boundPlugins, pluginTool, toolClass } from './plugins/tools.ts';
@@ -26,6 +28,9 @@ export interface RunExampleOptions {
 
 const show = (v: unknown) => JSON.stringify(v);
 
+/** The public address links are made from in example cases (nothing is served there). */
+export const EXAMPLE_PUBLIC_URL = 'https://memwise.example';
+
 export async function runExample(project: ProjectDefs, workflow: WorkflowDef, example: ExampleCase, opts: RunExampleOptions = {}): Promise<ExampleResult> {
   const ids = { workflow: workflow.id, example: example.name };
   // Without a model script only an example that can't reach an agent step on our own engine can
@@ -39,6 +44,11 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
     const base = (opts.tools ?? ((url) => sampleTools({ databaseUrl: url })))(db.url);
     for (const t of [...base, ...authoringToolDefinitions(), ...bindingToolDefinitions()]) {
       if (!tools.has(t.name)) tools.set(t.name, t);
+    }
+    // `external.invite` is the kernel's own, sending through the (sample or stubbed) channel
+    // tools; an example that stubs it binds the stub instead.
+    for (const t of externalToolDefinitions()) {
+      if (!tools.has(t.name) && Object.hasOwn(example.tools ?? {}, t.name)) tools.set(t.name, t);
     }
     // Plugin tools the example stubs (Phase 4): bound here, stubbed, so they win over the kernel's own.
     const noMcp = new McpConnections();
@@ -56,6 +66,8 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
       modelRoles: Object.fromEntries(Object.keys(example.model ?? {}).map((role) => [role, { provider: 'scripted', model: 'scripted' }])),
       providers: [scriptedProvider(example.model ?? {})],
       logLevel: 'error', // the run is left waiting at shutdown on purpose; DBOS warns about that
+      publicUrl: () => EXAMPLE_PUBLIC_URL,
+      businessName: 'Example Business',
     });
     try {
       await kernel.index();
@@ -138,6 +150,39 @@ function reachesModelStep(workflow: WorkflowDef, example: ExampleCase): boolean 
   return false;
 }
 
+/** The newest open link to `stepId` of the run, with its token. */
+async function openLink(kernel: Kernel, runId: string, stepId: string): Promise<string | undefined> {
+  const { rows } = await kernel.pool.query<LinkRow>(
+    `select * from mw.external_links where kind = 'step' and run_id = $1 and step_id = $2 order by created_at desc, id desc`, [runId, stepId]);
+  const row = rows.find((r) => linkStatus(r) === 'open');
+  return row ? tokenOf(await kernelKey(kernel.pool, 'links'), row) : undefined;
+}
+
+/**
+ * Answers an external step as its participant would: documents named in the answer are uploaded
+ * through the link first (as small text files with those names), then the form is sent.
+ */
+async function submitThroughLink(kernel: Kernel, token: string, step: StepDef, answer: ExampleSubmission): Promise<{ applied: boolean; status: string; message?: string; errors?: Record<string, string[]> }> {
+  const values: Record<string, unknown> = { ...(answer.values ?? {}) };
+  for (const [field, w] of Object.entries(step.writes)) {
+    const isDocs = w.type.kind === 'list' && w.type.of.kind === 'scalar' && ['Document', 'File', 'Image'].includes(w.type.of.name);
+    const isDoc = w.type.kind === 'scalar' && ['Document', 'File', 'Image'].includes(w.type.name);
+    if ((!isDocs && !isDoc) || values[field] === undefined) continue;
+    const ids: string[] = [];
+    for (const d of (Array.isArray(values[field]) ? values[field] : [values[field]]) as unknown[]) {
+      const name = typeof d === 'string' ? d : String((d as { name?: unknown })?.name ?? 'document.txt');
+      const up = await kernel.external.upload(token, { name, mime: 'text/plain', data: new TextEncoder().encode(`Example document: ${name}\n`) });
+      if (!('document' in up)) return { applied: false, status: 'invalid', message: up.message };
+      ids.push(up.document.id);
+    }
+    values[field] = isDocs ? ids : ids[0];
+  }
+  const r = await kernel.external.submit(token, { outcome: answer.outcome, values });
+  return r.status === 'applied'
+    ? { applied: true, status: 'applied' }
+    : { applied: false, status: r.status, message: r.message, ...('errors' in r && r.errors ? { errors: r.errors } : {}) };
+}
+
 /**
  * Until the run waits (a state that is not an agent or system step) without an answer left in
  * the example, or stops; answering approvals and person steps as the example says.
@@ -169,7 +214,11 @@ async function settle(kernel: Kernel, runId: string, workflow: WorkflowDef, exam
         // A conversation step is answered by its chat; here the example plays the chat.
         const step = stepIn(workflow, run.state);
         const via = step && isConversationStep(step) ? { via: { chatId: 'example', ...(answer.comment ? { rationale: answer.comment } : {}) } } : {};
-        const r = await kernel.submitStep({ stepRunId, outcome: answer.outcome, values: answer.values, comment: answer.comment, by, ...via });
+        // An external step the client was sent a link to is answered through that link, as the client.
+        const link = step?.performer === 'external' ? await openLink(kernel, runId, step.id) : undefined;
+        const r = link
+          ? await submitThroughLink(kernel, link, step!, answer)
+          : await kernel.submitStep({ stepRunId, outcome: answer.outcome, values: answer.values, comment: answer.comment, by, ...via });
         if (!r.applied) {
           differences.push(`submit.${run.state}: ${r.status}${r.message ? ` (${r.message})` : ''}${r.errors ? ` ${show(r.errors)}` : ''}`);
           return run;

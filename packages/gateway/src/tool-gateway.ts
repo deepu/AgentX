@@ -34,10 +34,10 @@ export function createToolGateway({ tools, ledger, secrets, rates, rateScope = '
     byName.set(tool.name, tool);
   }
 
-  async function preview(tool: ToolDefinition, args: unknown): Promise<EffectPreview> {
+  async function preview(tool: ToolDefinition, args: unknown, token: ToolCallRequest['token']): Promise<EffectPreview> {
     if (!tool.preview) return genericPreview(tool.name, args);
     try {
-      return await tool.preview(args);
+      return await tool.preview(args, { token });
     } catch (e) {
       // A broken preview must not hide the call from the approver.
       const fallback = genericPreview(tool.name, args);
@@ -104,11 +104,13 @@ export function createToolGateway({ tools, ledger, secrets, rates, rateScope = '
         };
       }
       const { effect, classified } = resolveEffect(tool, req.args);
+      const unavailable = tool.unavailable?.();
+      if (unavailable) return { tool: tool.name, effect, classified, decision: { verdict: 'deny', reason: unavailable, origins: [] } };
       const decision = decide(policy, { tool: tool.name, effect, classified, tainted: state.tainted });
       const out: GatewayDecision = { tool: tool.name, effect, classified, decision };
       const rateLimit = rateLimitOf(policy, tool.name);
       if (rateLimit) out.rateLimit = rateLimit;
-      if (decision.verdict === 'preview' || decision.verdict === 'approve') out.preview = await preview(tool, req.args);
+      if (decision.verdict === 'preview' || decision.verdict === 'approve') out.preview = await preview(tool, req.args, req.token);
       return out;
     },
 

@@ -4,6 +4,7 @@ startAt: check
 case:
   client_name: Asha Rao
   client_email: asha@acme-traders.example
+  contact_by: email
   pan: AAACA1234A
   gstin: 29AAACA1234A1Z5
   annual_turnover: { amount: 42000000, currency: INR }
@@ -14,8 +15,8 @@ tools:
   gst.validate_gstin: { valid: true, legal_name: Acme Traders Private Limited }
   intake.extract_fields:
     fields:
-      - { name: pan, value: AAACA1234A, document: pan-card.pdf }
-      - { name: gstin, value: 29AAACA1234A1Z5, document: gst-certificate.pdf }
+      - { name: pan, value: AAACA1234A, document: pan-card.pdf, confidence: 0.97 }
+      - { name: gstin, value: 29AAACA1234A1Z5, document: gst-certificate.pdf, confidence: 0.95 }
 model:
   checker:
     - toolCalls:
@@ -25,7 +26,7 @@ model:
         - name: step.finish
           args:
             outcome: checked
-            writes: { gstin_ok: true, legal_name: Acme Traders Private Limited, flags: [] }
+            writes: { gstin_ok: true, legal_name: Acme Traders Private Limited, flags: [], client_message: "" }
             rationale: The GSTIN is valid and both documents match what the client typed.
   verifier:
     - toolCalls:
@@ -44,4 +45,4 @@ expect:
   outcome: checked
   state: verify
   writes: { gstin_ok: true, legal_name: Acme Traders Private Limited, flags: [] }
-  effects: { email.send: 0 }
+  effects: { external.invite: 0, email.send: 0 }

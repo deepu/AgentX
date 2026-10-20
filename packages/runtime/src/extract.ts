@@ -1,7 +1,8 @@
 // `intake.extract_fields` on quarantined reading (19 §5, D21): each uploaded document is read
 // as data by the `extractor` model role with no tools, and only a JSON object of the requested
-// fields is accepted. Results are tainted (the tool is `quarantine`), so the session and every
-// value taken from them are marked.
+// fields is accepted, each with how sure the reader is and the text it read it from (Phase 5).
+// Results are tainted (the tool is `quarantine`), so the session and every value taken from them
+// are marked.
 import { inflateSync } from 'node:zlib';
 import type { CaseSnapshot } from '@memwise/defs';
 import type { ToolDefinition } from '@memwise/gateway';
@@ -16,6 +17,42 @@ export const DEFAULT_EXTRACT_FIELDS: Record<string, string> = {
   gstin: 'The GSTIN, 15 characters like 29AAACA1234A1Z5',
   legal_name: 'The legal name of the business or person',
 };
+
+/**
+ * One field as the reader gives it (23 §5): the value, how sure it is (0..1) and the text it read
+ * it from. A plain value (older scripted readers) counts as `{ value }`.
+ */
+export interface ReadField { value: unknown; confidence?: number; quote?: string }
+
+/** JSON Schema of one field's answer: `{ value, confidence, quote }`, or a plain value. */
+export function readFieldSchema(description: string): Record<string, unknown> {
+  return {
+    anyOf: [
+      { type: 'string', description },
+      {
+        type: 'object',
+        description: `${description}. Give the value, how sure you are that it is right (confidence, 0 to 1) and the exact text you read it from (quote).`,
+        properties: {
+          value: { type: ['string', 'number', 'boolean'] },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          quote: { type: 'string' },
+        },
+        required: ['value'],
+      },
+    ],
+  };
+}
+
+/** A reader's answer for one field as `{ value, confidence?, quote? }`; undefined when it gave none. */
+export function readField(raw: unknown): ReadField | undefined {
+  if (raw === null || raw === undefined || raw === '') return undefined;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return { value: raw };
+  const r = raw as Record<string, unknown>;
+  if (!('value' in r)) return { value: raw };
+  if (r.value === null || r.value === undefined || r.value === '') return undefined;
+  const confidence = typeof r.confidence === 'number' && Number.isFinite(r.confidence) ? Math.min(1, Math.max(0, r.confidence)) : undefined;
+  return { value: r.value, ...(confidence !== undefined ? { confidence } : {}), ...(typeof r.quote === 'string' && r.quote ? { quote: r.quote } : {}) };
+}
 
 /** Reads one document's text as data and returns only the requested fields (a quarantined read). */
 export type QuarantinedReader = (input: {
@@ -104,7 +141,7 @@ export function quarantinedExtractTool(deps: ExtractToolDeps): ToolDefinition<{ 
         ? Object.fromEntries(fields.map((f) => [f, DEFAULT_EXTRACT_FIELDS[f] ?? f]))
         : DEFAULT_EXTRACT_FIELDS;
       const onCase = ((await deps.getCase(ctx.token.caseId))?.values.documents?.value ?? []) as unknown[];
-      const out: { name: string; value: unknown; document: string }[] = [];
+      const out: { name: string; value: unknown; document: string; confidence?: number; quote?: string }[] = [];
       const notes: string[] = [];
       for (const ref of documents) {
         const doc = onCase.find((d): d is DocumentValue => !!d && typeof d === 'object' && ((d as DocumentValue).id === ref || (d as DocumentValue).name === ref));
@@ -118,8 +155,9 @@ export function quarantinedExtractTool(deps: ExtractToolDeps): ToolDefinition<{ 
           role: deps.role ?? 'extractor', file: { name: file.meta.name, mime: file.meta.mime, text }, fields: wanted,
           sessionId: `${ctx.token.stepRunId}:${id}`,
         });
-        for (const [name, value] of Object.entries(values)) {
-          if (value !== null && value !== undefined && value !== '' && name in wanted) out.push({ name, value, document: file.meta.name });
+        for (const [name, raw] of Object.entries(values)) {
+          const field = name in wanted ? readField(raw) : undefined;
+          if (field) out.push({ name, ...field, document: file.meta.name });
         }
       }
       return { fields: out, ...(notes.length ? { notes } : {}), tainted: true };

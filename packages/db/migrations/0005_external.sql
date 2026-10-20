@@ -30,10 +30,25 @@ create table mw.external_links (
   last_opened_at   timestamptz,
   used_at          timestamptz,
   closed_at        timestamptz,
-  closed_reason    text                               -- answered | left | revoked | replaced
+  closed_reason    text,                              -- answered | left | revoked | replaced
+  idem_key         text unique                        -- what the token is derived from (a retried invite gets the same link)
 );
 create index external_links_run on mw.external_links (run_id, step_id);
 create index external_links_case on mw.external_links (case_id);
+create index external_links_person on mw.external_links (person_id) where person_id is not null;
+
+-- Keys the kernel derives secrets from (link tokens, webhook secrets at rest). Never leave the core.
+create table mw.kernel_keys (
+  name        text primary key,
+  key         bytea not null,
+  created_at  timestamptz not null default now()
+);
+
+-- Suggestions made while staff fill a step in the app (23 §5); links keep their own.
+alter table mw.step_runs add column if not exists suggestions jsonb not null default '[]'::jsonb;
+-- How a person's answer or approval came in when not through the app: email | whatsapp (an inbox link).
+alter table mw.step_runs add column if not exists decided_via text;
+alter table mw.approvals add column if not exists decided_via text;
 
 -- ------------------------------------------------------------------ deliveries (23 §6)
 
@@ -86,3 +101,18 @@ create table mw.inbound_events (
   body         jsonb
 );
 create index inbound_events_hook on mw.inbound_events (hook_id, received_at);
+
+-- ------------------------------------------------------------------ change notifications (19 §8)
+
+-- The case view's link panel and deliveries follow these.
+create or replace function mw.notify_external_change() returns trigger
+  language plpgsql as $$
+begin
+  perform pg_notify('mw_changes', json_build_object('kind', 'external', 'caseId', new.case_id)::text);
+  return null;
+end $$;
+
+create trigger external_links_notify after insert or update on mw.external_links
+  for each row execute function mw.notify_external_change();
+create trigger deliveries_notify after insert or update on mw.deliveries
+  for each row execute function mw.notify_external_change();

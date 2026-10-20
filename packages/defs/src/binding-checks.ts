@@ -10,7 +10,7 @@ import { EFFECT_CLASSES, TREATMENTS, type Diagnostic, type EffectClass, type Pro
 import { formatValueType, parseValueType, sameValueType } from './value-types.ts';
 
 /** Tool name prefixes the kernel keeps for its own tools; no plugin may bind one. */
-export const RESERVED_TOOL_PREFIXES = ['domain.', 'recall.', 'playbooks.', 'plugins.', 'identity.', 'step.', 'checkpoint.'] as const;
+export const RESERVED_TOOL_PREFIXES = ['domain.', 'recall.', 'playbooks.', 'plugins.', 'identity.', 'step.', 'checkpoint.', 'external.'] as const;
 
 export interface BoundPluginTool {
   /** The binding's class, else the manifest's; undefined = unclassified (irreversible). */

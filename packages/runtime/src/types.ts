@@ -191,6 +191,11 @@ export interface SubmitStepInput {
    * Person and external steps refuse it; conversation steps accept only it.
    */
   via?: { chatId: string; rationale?: string };
+  /**
+   * Phase 5 (23 §5): field -> suggestion id, for values taken from the step's extraction
+   * (`extractForStep`). A value still equal to its suggestion keeps the tool's provenance.
+   */
+  sources?: Record<string, string>;
 }
 
 export interface SubmitResult {
@@ -203,7 +208,9 @@ export interface SubmitResult {
 
 export type InboxItem =
   | { kind: 'input' | 'decision'; id: string; stepRunId: string; runId: string; caseId: string; workflowId: string;
-      stepId: string; assignee?: string; since: string; dueAt?: string }
+      stepId: string; assignee?: string; since: string; dueAt?: string;
+      /** Phase 5: the step's form can read its documents (`extract:`, 23 §5): `kernel.external.extractForStep`. */
+      extract?: { documentsField: string; fields: string[]; minConfidence: number } }
   | { kind: 'approval'; id: string; approval: ApprovalRequest; runId: string; caseId: string; workflowId: string; stepId: string;
       since: string }
   | { kind: 'attention'; id: string; runId: string; caseId: string; workflowId: string; state: string; reason: string;
@@ -257,7 +264,9 @@ export type KernelChange =
   /** Phase 3: a draft changed (created, edited, checked, published, discarded). */
   | { kind: 'drafts'; draftId: string }
   /** Phase 4: a plugin was installed, or a binding or identity link changed. */
-  | { kind: 'plugins' };
+  | { kind: 'plugins' }
+  /** Phase 5: a link or a delivery of a case changed (sent, opened, draft saved, used). */
+  | { kind: 'external'; caseId?: string };
 
 export interface KernelPhase2 {
   readonly people: PeopleService;
@@ -545,7 +554,11 @@ export interface ChannelService {
   notifySettings(personId: string): Promise<NotifySettings>;
   setNotifySettings(personId: string, settings: NotifySettings, by: PersonActor): Promise<NotifySettings>;
   /** Webhooks (23 §7): the secret is returned once. */
-  createWebhook(input: { purpose: string; plugin?: string; scheme: WebhookSummary['scheme']; verifyToken?: string }, by: Actor):
+  createWebhook(input: {
+    purpose: string; plugin?: string; scheme: WebhookSummary['scheme']; verifyToken?: string;
+    /** The signing secret to use (`meta`: the app's secret from Meta, default `WHATSAPP_APP_SECRET`); default a new random one. */
+    secret?: string;
+  }, by: Actor):
     Promise<{ hook: WebhookSummary; secret: string }>;
   webhooks(): Promise<WebhookSummary[]>;
   /** The public handler passes a webhook request here; answers what to send back. */

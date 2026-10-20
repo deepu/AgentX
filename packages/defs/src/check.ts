@@ -202,6 +202,7 @@ function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, ste
       if (!env.roles!.includes(role)) at('error', 'unknown-role', `policy.approvals.by: \`${role}\` is not a role in domain/roles.yaml`, ['policy', 'approvals', 'by', i]);
     });
   }
+  if (step.extract) checkExtract(d, step, env);
   if (step.performer === 'system') checkSystemStep(d, workflow, step, env, entities);
   else if (step.map) at('warning', 'map-ignored', `only system steps use \`map\`; a ${step.performer} step chooses its own arguments`, ['map']);
 
@@ -238,6 +239,36 @@ function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, ste
     if (!env.tools[tool]) at('error', 'unknown-tool', `tool ${tool} is not bound in the domain`, ['tools', list, i]);
     if (list === 'required' && !allowed.has(tool)) at('error', 'required-not-allowed', `required tool ${tool} must also be in tools.allowed`, ['tools', list, i]);
   }));
+}
+
+const isDocumentType = (t: ValueType): boolean =>
+  (t.kind === 'scalar' && (t.name === 'Document' || t.name === 'File' || t.name === 'Image')) || (t.kind === 'list' && isDocumentType(t.of));
+
+/**
+ * `extract:` (23 §5, D68): a form step's extraction reads the files of one of its Document writes
+ * with a bound `read` tool and fills only the step's own writes. Whether the step's effective
+ * policy lets the tool run is checked with the policy (`extractToolRefusal` in @memwise/policy).
+ */
+function checkExtract(d: Diagnostics, step: StepDef, env: CheckEnvironment): void {
+  const at = (code: string, message: string, path: PathKey[]) => d.add('error', code, message, step.file, step, path);
+  const x = step.extract!;
+  if (step.performer !== 'external' && step.performer !== 'person') {
+    at('extract-not-on-form-step', `only external and person steps have a form that can read documents; this is a ${step.performer} step`, ['extract']);
+  }
+  const docs = step.writes[x.documents];
+  if (!docs) at('extract-documents-not-written', `\`${x.documents}\` is not one of this step's writes; name the Document or List<Document> field the files are uploaded to`, ['extract', 'documents']);
+  else if (!isDocumentType(docs.type)) at('extract-documents-not-document', `\`${x.documents}\` is ${docs.typeSource}, not a Document or List<Document>`, ['extract', 'documents']);
+  if (!Object.keys(x.fields).length) at('extract-no-fields', 'say which of the step\'s writes extraction may fill, e.g. `fields: [pan, gstin]`', ['extract', 'fields']);
+  for (const [name, target] of Object.entries(x.fields)) {
+    if (!step.writes[target]) at('extract-field-not-written', `\`${target}\`${name !== target ? ` (from ${name})` : ''} is not one of this step's writes, so extraction can't fill it`, ['extract', 'fields']);
+    else if (target === x.documents) at('extract-field-not-written', `\`${target}\` holds the documents themselves; extraction fills the other fields`, ['extract', 'fields']);
+  }
+  if (!(x.minConfidence >= 0 && x.minConfidence <= 1)) at('invalid-format', 'min_confidence is between 0 and 1, e.g. 0.8', ['extract', 'min_confidence']);
+  const tool = env.tools[x.tool];
+  if (!tool) at('unknown-tool', `tool ${x.tool} is not bound in the domain`, ['extract', 'tool']);
+  else if (tool.effect !== 'read') {
+    at('extract-tool-not-read', `${x.tool} is ${tool.effect ?? 'unclassified (treated as irreversible)'}; a form may only run a \`read\` tool while the step waits`, ['extract', 'tool']);
+  }
 }
 
 /**

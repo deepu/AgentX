@@ -10,13 +10,14 @@ import {
   type Diagnostic, type ExampleCase, type ExampleOutcome, type PluginManifest, type ProjectDefs, type StepRecordReader, type WorkflowDef,
 } from '@memwise/defs';
 import type { ToolDefinition } from '@memwise/gateway';
-import { compilePolicy, describePolicy, layersFor, pluginLayers, violationsToDiagnostics } from '@memwise/policy';
+import { compilePolicy, describePolicy, extractDiagnostics, layersFor, pluginLayers, violationsToDiagnostics } from '@memwise/policy';
 import { recallTools } from '@memwise/step-engine';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { format } from 'node:util';
 import { authoringToolDefinitions } from './authoring-tools.ts';
+import { externalToolDefinitions } from './external/service.ts';
 import { bindingToolDefinitions } from './plugins/kernel-tools.ts';
 import { loadProjectAt } from './plugins/load.ts';
 import { discoverMcpTools } from './plugins/routes.ts';
@@ -47,7 +48,7 @@ const USAGE = `usage:
  */
 function boundTools(project?: ProjectDefs): Record<string, { effect?: import('@memwise/defs').EffectClass; inputSchema?: Record<string, unknown> }> {
   const noReader = {} as StepRecordReader; // only names, classes and schemas are read, never executed
-  const defs: ToolDefinition[] = [...sampleTools(), ...recallTools(noReader), ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...domainTools(project?.entities ?? {})];
+  const defs: ToolDefinition[] = [...sampleTools(), ...recallTools(noReader), ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...externalToolDefinitions(), ...domainTools(project?.entities ?? {})];
   const out: ReturnType<typeof boundTools> = Object.fromEntries(defs.map((t) => [t.name, { effect: typeof t.effect === 'string' ? t.effect : undefined, inputSchema: t.inputSchema }]));
   if (project) for (const [name, t] of Object.entries(pluginToolEnvironment(boundPlugins(project)))) out[name] ??= t;
   return out;
@@ -63,15 +64,16 @@ function printDiagnostics(diagnostics: Diagnostic[], out: (line: string) => void
 /** Everything `memwise check` reports for a project folder (a draft folder is one too). */
 async function diagnose(dir: string): Promise<{ project: ProjectDefs; all: Diagnostic[] }> {
   const { project, diagnostics } = await loadProjectAt(dir);
-  const all = [...diagnostics, ...checkProject(project, { tools: boundTools(project) })];
+  const tools = boundTools(project);
+  const all = [...diagnostics, ...checkProject(project, { tools })];
   // Policy tightening, per step (the workflow layer is checked as part of each step's stack).
   const seen = new Set<string>();
   const policies = pluginPolicies(boundPlugins(project));
   for (const workflow of Object.values(project.workflows)) {
     for (const step of [undefined, ...Object.values(workflow.steps)]) {
       const plugins = pluginLayers(policies, workflow, step);
-      const { violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
-      for (const d of violationsToDiagnostics(violations)) {
+      const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
+      for (const d of [...violationsToDiagnostics(violations), ...extractDiagnostics(step, effective, tools)]) {
         const key = `${d.file}|${d.path}|${d.message}`;
         if (!seen.has(key)) { seen.add(key); all.push(d); }
       }

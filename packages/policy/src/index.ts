@@ -8,7 +8,7 @@
 export * from './types.ts';
 export { BUILTIN_TOOLS, PLATFORM_DEFAULTS, VERIFIER_ROLE, layersFor, mergeStricter, pluginLayers, stepLayer, type LayersForInput, type PluginPolicy } from './layers.ts';
 export { compilePolicy } from './compile.ts';
-export { decide } from './decide.ts';
-export { describePolicy, violationsToDiagnostics } from './describe.ts';
+export { decide, extractToolRefusal } from './decide.ts';
+export { describePolicy, extractDiagnostics, violationsToDiagnostics } from './describe.ts';
 export { checkRateLimit, moneyExceeded, rateLimitOf, rateLimitRefusal } from './limits.ts';
 export type { RateLimit } from './order.ts';

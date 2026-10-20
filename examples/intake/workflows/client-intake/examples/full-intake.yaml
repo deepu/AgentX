@@ -1,10 +1,18 @@
 name: full-intake
 description: >
-  The whole playbook: staff fill the form for the client, the check passes, the manager sends it
-  back once (asking for the GST certificate again), staff fill it in again, the check passes, the
-  manager approves, and onboarding writes the customer.
+  The whole playbook: staff say who the client is and send them a link; once staff approve the
+  message, the client fills in the form through it; the check passes; the manager sends the case
+  back once (asking for the GST certificate again), so the client gets a second link with that
+  comment and fills the form again; the check passes; the manager approves, and onboarding
+  writes the customer.
 case: {}
 submit:
+  prepare:
+    outcome: send_link
+    values:
+      client_name: Asha Rao
+      client_email: asha@acme-traders.example
+      contact_by: email
   fill:
     outcome: submitted
     values:
@@ -13,18 +21,18 @@ submit:
       pan: AAACA1234A
       gstin: 29AAACA1234A1Z5
       annual_turnover: { amount: 42000000, currency: INR }
-      documents:
-        - { name: pan-card.pdf, kind: pan_card }
-        - { name: gst-certificate.pdf, kind: gst_certificate }
+      documents: [pan-card.pdf, gst-certificate.pdf]
   verify:
     - { outcome: sent_back, comment: Please upload a clearer GST certificate. }
     - { outcome: approved }
+approvals:
+  external.invite: approve
 tools:
   gst.validate_gstin: { valid: true, legal_name: Acme Traders Private Limited }
   intake.extract_fields:
     fields:
-      - { name: pan, value: AAACA1234A, document: pan-card.pdf }
-      - { name: gstin, value: 29AAACA1234A1Z5, document: gst-certificate.pdf }
+      - { name: pan, value: AAACA1234A, document: pan-card.pdf, confidence: 0.97 }
+      - { name: gstin, value: 29AAACA1234A1Z5, document: gst-certificate.pdf, confidence: 0.95 }
 model:
   checker:
     - toolCalls:
@@ -34,17 +42,17 @@ model:
         - name: step.finish
           args:
             outcome: checked
-            writes: { gstin_ok: true, legal_name: Acme Traders Private Limited, flags: [] }
+            writes: { gstin_ok: true, legal_name: Acme Traders Private Limited, flags: [], client_message: "" }
             rationale: The GSTIN is valid and both documents match what the client typed.
   verifier:
     - toolCalls:
         - name: checkpoint.verdict
           args: { results: [ { rule: 1, passed: true, reason: There are no flags. } ] }
 expect:
-  outcome: submitted
+  outcome: send_link
   state: end
   writes: { gstin_ok: true, legal_name: Acme Traders Private Limited, client_name: Asha Rao }
-  effects: { domain.customer.create: 1, email.send: 0 }
+  effects: { external.invite: 2, email.send: 2, domain.customer.create: 1 }
   entities:
     Customer:
       - { name: Asha Rao, gstin: 29AAACA1234A1Z5 }

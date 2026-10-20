@@ -151,7 +151,11 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
   // a conversation, so agent rows count only when their step runs on the open engine.
   const waiting = await pool.query(
     `select s.id, s.run_id, s.case_id, s.workflow_id, s.workflow_hash, s.step_id, s.assignee, s.started_at, s.performer,
-            (select min(t.fire_at) from mw.timers t where t.run_id = s.run_id and t.status = 'pending' and t.timer_id not like 'remind.%') as due_at
+            (select min(t.fire_at) from mw.timers t where t.run_id = s.run_id and t.status = 'pending' and t.timer_id not like 'remind.%') as due_at,
+            exists (select 1 from mw.external_links l
+                     where l.kind = 'step' and l.run_id = s.run_id and l.step_id = s.step_id
+                       and (l.step_run_id is null or l.step_run_id = s.id)
+                       and l.used_at is null and l.closed_at is null and l.expires_at > now()) as link_open
        from mw.step_runs s join mw.runs r on r.id = s.run_id
       where s.status = 'waiting' and s.performer in ('person', 'external', 'agent') and r.status = 'active'
         and (s.assignee is null or s.assignee = any($1::text[]))
@@ -167,10 +171,14 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
       });
       continue;
     }
+    // An external step someone outside was sent a link to waits on them, not on staff (23 §3).
+    if (s.performer === 'external' && s.link_open) continue;
+    const ex = step?.extract;
     items.push({
       kind: step && Object.keys(step.writes).length ? 'input' : 'decision',
       id: `step:${s.id}`, stepRunId: s.id, runId: s.run_id, caseId: s.case_id, workflowId: s.workflow_id, stepId: s.step_id,
       ...(s.assignee ? { assignee: s.assignee } : {}), since: iso(s.started_at), ...(s.due_at ? { dueAt: iso(s.due_at) } : {}),
+      ...(ex ? { extract: { documentsField: ex.documents, fields: [...new Set(Object.values(ex.fields))], minConfidence: ex.minConfidence } } : {}),
     });
   }
 
