@@ -122,6 +122,9 @@ export function toFormField(field: MwField): FormField {
 // ---------------------------------------------------------------- working values
 
 export interface MoneyDraft { amount: string; currency: string }
+
+/** Shown filled in, not as a placeholder: an empty currency box that looks filled fails validation. */
+export const DEFAULT_CURRENCY = 'INR'
 export type DocumentDraft = MwDocument | { name: string; [k: string]: unknown }
 export type FormValue =
   | string
@@ -146,7 +149,7 @@ export function initialFormValue(field: FormField, prefill: unknown): FormValue 
     case 'money':
       return isMoney(prefill)
         ? { amount: String(prefill.amount), currency: prefill.currency }
-        : { amount: '', currency: isPlainObject(prefill) && typeof prefill.currency === 'string' ? prefill.currency : '' }
+        : { amount: '', currency: isPlainObject(prefill) && typeof prefill.currency === 'string' ? prefill.currency : DEFAULT_CURRENCY }
     case 'document':
       if (isPlainObject(prefill) && typeof prefill.name === 'string') return prefill as DocumentDraft
       if (typeof prefill === 'string' && prefill) return { name: prefill }

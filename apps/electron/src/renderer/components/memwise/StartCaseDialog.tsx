@@ -17,16 +17,20 @@ import { getMemwiseApi, useMemwiseRefresh, useMemwiseUpload } from '@/hooks/useM
 import { GeneratedForm } from './GeneratedForm'
 import { buildSubmission, initialFormValues, type FormError, type FormValues } from './form-model'
 
-/** Case fields a person would enter at the start: not those agent or system steps write. */
+/**
+ * Case fields a person would enter at the start: those a person or client step writes (so
+ * bookkeeping fields no step fills, like a status, stay out); without such steps, every field
+ * agent or system steps don't write.
+ */
 export function startFields(playbook: MwPlaybook): MwField[] {
   const machineWritten = new Set<string>()
+  const personWritten = new Set<string>()
   for (const step of Object.values(playbook.steps)) {
-    if (step.performer === 'agent' || step.performer === 'system') {
-      for (const w of step.writes) machineWritten.add(w.name)
-    }
+    const target = step.performer === 'agent' || step.performer === 'system' ? machineWritten : personWritten
+    for (const w of step.writes) target.add(w.name)
   }
   return playbook.caseFields
-    .filter(f => !machineWritten.has(f.name) && !f.type.startsWith('Ref<'))
+    .filter(f => (personWritten.size ? personWritten.has(f.name) : !machineWritten.has(f.name)) && !f.type.startsWith('Ref<'))
     .map(f => ({ ...f, required: false }))
 }
 

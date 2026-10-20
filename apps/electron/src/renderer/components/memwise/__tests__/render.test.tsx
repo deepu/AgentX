@@ -6,7 +6,7 @@
 import { describe, expect, test, beforeAll, mock } from 'bun:test'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { initReactI18next } from 'react-i18next'
+import { initReactI18next, setI18n } from 'react-i18next'
 import { setupI18n, i18n } from '@memwise/shared/i18n'
 import type { MwInboxItem } from '@memwise/shared/protocol'
 import {
@@ -32,7 +32,8 @@ const { peopleById } = await import('../format')
 const { startFields } = await import('../StartCaseDialog')
 
 beforeAll(() => {
-  setupI18n([initReactI18next])
+  // setupI18n is once per process: if another test file set it up without the React binding, bind it here.
+  setI18n(setupI18n([initReactI18next]))
   void i18n.changeLanguage('en')
 })
 
@@ -135,7 +136,7 @@ describe('acting as', () => {
 
 describe('start a case', () => {
   test('offers the fields people enter, not the ones steps write', () => {
-    expect(startFields(samplePlaybook).map(f => f.name)).toEqual(['client_name', 'client_email', 'pan', 'gstin', 'annual_turnover', 'documents', 'status'])
+    expect(startFields(samplePlaybook).map(f => f.name)).toEqual(['client_name', 'client_email', 'pan', 'gstin', 'annual_turnover', 'documents'])
     expect(startFields(samplePlaybook).every(f => !f.required)).toBe(true)
   })
 })

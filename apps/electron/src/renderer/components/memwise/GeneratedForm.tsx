@@ -24,6 +24,7 @@ import {
   type FormField,
   type FormValue,
   type FormValues,
+  DEFAULT_CURRENCY,
   type MoneyDraft,
 } from './form-model'
 
@@ -164,7 +165,7 @@ function FieldControl({ id, field, value, onChange, onUpload, disabled, invalid 
     case 'longtext':
       return <Textarea id={id} value={str} onChange={e => onChange(e.target.value)} disabled={disabled} rows={3} {...aria} />
     case 'money': {
-      const m = (typeof value === 'object' && value !== null && !Array.isArray(value) ? value : { amount: '', currency: '' }) as MoneyDraft
+      const m = (typeof value === 'object' && value !== null && !Array.isArray(value) ? value : { amount: '', currency: DEFAULT_CURRENCY }) as MoneyDraft
       return (
         <div className="flex gap-2">
           <Input
@@ -180,7 +181,7 @@ function FieldControl({ id, field, value, onChange, onUpload, disabled, invalid 
           <Input
             aria-label={t('memwise.form.currency')}
             value={m.currency ?? ''}
-            placeholder="INR"
+            placeholder={DEFAULT_CURRENCY}
             maxLength={3}
             onChange={e => onChange({ ...m, currency: e.target.value.toUpperCase() })}
             disabled={disabled}

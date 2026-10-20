@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'bun:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { initReactI18next } from 'react-i18next'
+import { initReactI18next, setI18n } from 'react-i18next'
 import { setupI18n } from '@memwise/shared/i18n/setupI18n'
 import { WorkflowMap } from '../index'
 import { sampleHighlightPath, sampleLiveCounts, samplePlaybook, sampleRoles } from '../../playbook/sample-playbook'
 
 const i18n = setupI18n([initReactI18next])
+// setupI18n is once per process: if another test file set it up without the React binding, bind it here.
+setI18n(i18n)
 i18n.changeLanguage('en')
 
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/\s+/g, ' ')

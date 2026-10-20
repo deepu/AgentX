@@ -188,7 +188,7 @@ export function PlaybookPage({ playbookId }: { playbookId: string | null }) {
         }
       />
       {playbook && (
-        <Info_Page.Content>
+        <Info_Page.Content wide={tab === 'map'}>
           <Tabs value={tab} onValueChange={v => setTab(v as 'playbook' | 'map')}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <TabsList>
