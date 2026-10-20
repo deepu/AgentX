@@ -174,7 +174,7 @@ function MapNodeCard({
           current && 'ring-2 ring-accent/50',
           dim && 'opacity-60',
         )}
-        style={{ ...style, top: node.y + 14, height: node.h - 28 }}
+        style={style}
       >
         <Flag className="size-3.5" aria-hidden />
         {stateTitle(playbook, END_ID, t)}

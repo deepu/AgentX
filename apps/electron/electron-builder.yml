@@ -122,6 +122,9 @@ mac:
       to: memwise/migrations
     - from: ../../examples/intake
       to: examples/intake
+    # Bundled Postgres 18 (D37); main/memwise-kernel.ts looks in memwise/postgres/bin.
+    - from: ../../node_modules/@embedded-postgres/darwin-${arch}/native
+      to: memwise/postgres
   # Exclude binaries for other platforms
   files:
     - "!**/resources/bin/win32-*/**"
@@ -192,6 +195,9 @@ win:
       to: memwise/migrations
     - from: ../../examples/intake
       to: examples/intake
+    # Bundled Postgres 18 (D37); main/memwise-kernel.ts looks in memwise/postgres/bin.
+    - from: ../../node_modules/@embedded-postgres/windows-x64/native
+      to: memwise/postgres
 
 nsis:
   oneClick: true
@@ -224,6 +230,9 @@ linux:
       to: memwise/migrations
     - from: ../../examples/intake
       to: examples/intake
+    # Bundled Postgres 18 (D37); main/memwise-kernel.ts looks in memwise/postgres/bin.
+    - from: ../../node_modules/@embedded-postgres/linux-x64/native
+      to: memwise/postgres
   # Exclude binaries for other platforms
   files:
     - "!**/resources/bin/darwin-*/**"

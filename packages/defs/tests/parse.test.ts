@@ -32,7 +32,7 @@ describe('the sample project (examples/intake)', () => {
     expect(wf.caseType.id).toBe('client_intake');
     expect(wf.caseType.types.Flag!.fields.document!.typeSource).toBe('Text');
     expect(wf.policy).toEqual({ name: 'client-intake', effects: { irreversible: 'deny' }, budgets: { tokens: 100000 }, file: 'workflows/client-intake/policy.yaml' });
-    expect(wf.examples.map((e) => e.name).sort()).toEqual(['clean-application', 'pan-mismatch']);
+    expect(wf.examples.map((e) => e.name).sort()).toEqual(['clean-application', 'full-intake', 'onboard-creates-customer', 'pan-mismatch']);
 
     const check = wf.steps.check!;
     expect(check.budget).toEqual({ tokens: 40_000, timeMs: 600_000, modelCalls: 12 });

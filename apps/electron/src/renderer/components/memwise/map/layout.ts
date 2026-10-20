@@ -56,6 +56,7 @@ export interface MapLayout {
 export const NODE_W = 184
 export const NODE_H = 78
 const END_W = 120
+const END_INSET = 14
 const COL_GAP = 84
 const PAD = 24
 const ROW_GAP = 96
@@ -272,8 +273,9 @@ export function layoutWorkflow(playbook: MwPlaybook): MapLayout {
     const p = placed.get(id)
     if (!p) continue
     // `end` is a small marker, not a step card.
-    const w = id === END_ID ? END_W : NODE_W
-    nodes.push({ id, row: p.row, col: p.col, x: PAD + p.col * (NODE_W + COL_GAP), y: rowY.get(p.row)!, w, h: NODE_H })
+    const end = id === END_ID
+    const y = rowY.get(p.row)! + (end ? END_INSET : 0)
+    nodes.push({ id, row: p.row, col: p.col, x: PAD + p.col * (NODE_W + COL_GAP), y, w: end ? END_W : NODE_W, h: end ? NODE_H - 2 * END_INSET : NODE_H })
   }
   const maxRight = Math.max(...nodes.map((n) => n.x + n.w))
   const width = maxRight + PAD
