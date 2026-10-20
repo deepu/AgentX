@@ -348,6 +348,8 @@ export type MwInboxItem =
       context: Record<string, MwCaseValue>
       since: string
       dueAt?: string
+      /** Phase 4: the bind-plugin `fix` step was sent back by the reviewer: their step, outcome and comment. */
+      returned?: MwReturnedNote
       /** Phase 4: a bind-plugin step (`fix`, `review`): the screens show the binding review. */
       binding?: MwInboxBinding
     }
@@ -767,6 +769,8 @@ export interface MwVersion {
   source: 'app' | 'cli' | 'files'
   draftId?: string
   runId?: string
+  /** Phase 4: a plugin playbook's version came from its binding ("from Client intake 1.0.0 · binding 2"). */
+  origin?: MwWorkflowOrigin
   openCases: number
   live: boolean
 }

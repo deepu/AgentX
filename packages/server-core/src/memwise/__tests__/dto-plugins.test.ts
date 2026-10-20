@@ -5,10 +5,15 @@
 import { describe, expect, it } from 'bun:test'
 import type { BindingDef, IdentityCandidate, PluginManifest } from '@memwise/defs'
 import type { BindingView, EntityRecordView, PluginDetail } from '@memwise/runtime'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type { CaseTypeDef, WorkflowVersion } from '@memwise/defs'
 import {
-  classFromAnnotations, identityFields, policyDocLines, recordTitle, toBinding, toBindingState, toBindingView, toEntityRecord,
-  toIdentityInboxItem, toPluginDetail, toPluginSummary, toWorkflowOrigin,
+  caseTitle, classFromAnnotations, identityFields, policyDocLines, recordTitle, toBinding, toBindingState, toBindingView, toEntityRecord,
+  toIdentityInboxItem, toPluginDetail, toPluginSummary, toVersion, toWorkflowOrigin, versionOrigin,
 } from '../dto'
+import { readPluginHead } from '../../handlers/rpc/memwise'
 
 const names = new Map([['per_ravi', 'Ravi Menon']])
 
@@ -198,5 +203,56 @@ describe('identity', () => {
 
   it('record title falls back to the entity and a short id', () => {
     expect(recordTitle('Customer', 'cus_0123456789', {})).toBe('Customer 456789')
+  })
+})
+
+describe('Phase 4 walkthrough fixes', () => {
+  it('a bind-plugin case is named by the plugin, never its draft', () => {
+    const caseType = { id: 'plugin_binding', fields: { draft: { typeSource: 'Text' }, plugin: { typeSource: 'Text' } } } as unknown as CaseTypeDef
+    const values = { draft: 'memwise__sample-crm-mvh1vciv', plugin: 'memwise/sample-crm' }
+    expect(caseTitle(values, 'case_0123456789', caseType, project)).toBe('Bind Sample CRM')
+    // Not installed (or no project at hand): the plugin id.
+    expect(caseTitle({ ...values, plugin: 'acme/other' }, 'case_0123456789', caseType, project)).toBe('Bind acme/other')
+    expect(caseTitle(values, 'case_0123456789', caseType)).toBe('Bind memwise/sample-crm')
+    // Values with provenance, as the case summary holds them.
+    expect(caseTitle({ draft: { value: values.draft }, plugin: { value: values.plugin } }, 'case_1', caseType, project)).toBe('Bind Sample CRM')
+  })
+
+  it('a plugin playbook\'s versions say which binding made them', () => {
+    const v: WorkflowVersion = { workflowId: 'client-intake', version: 2, hash: 'h_live', publishedAt: '2026-10-21T02:11:00Z', source: 'files', openCases: 0, live: true }
+    const wf = { hash: 'h_live', origin: { kind: 'plugin' as const, plugin: 'memwise/sample-crm', pluginVersion: '1.0.0', bindingVersion: 2 } }
+    const bindings = [
+      { version: 2, pluginVersion: '1.0.0', frozenAt: '2026-10-21T02:10:00Z' },
+      { version: 1, pluginVersion: '0.9.0', frozenAt: '2026-10-01T09:00:00Z' },
+    ]
+    const live = versionOrigin(v, wf, project, bindings)
+    expect(live).toEqual({ kind: 'plugin', plugin: 'memwise/sample-crm', pluginTitle: 'Sample CRM', pluginVersion: '1.0.0', bindingVersion: 2 })
+    expect(toVersion(v, names, live).origin).toEqual(live)
+    // An older version: the binding frozen last before it was indexed.
+    expect(versionOrigin({ ...v, hash: 'h_old', publishedAt: '2026-10-01T09:00:05Z' }, wf, project, bindings))
+      .toMatchObject({ pluginVersion: '0.9.0', bindingVersion: 1 })
+    // Authored playbooks, and versions published through review, keep their own line.
+    expect(versionOrigin(v, { hash: 'h_live' }, project, bindings)).toBeUndefined()
+    expect(versionOrigin({ ...v, source: 'app' }, wf, project, bindings)).toBeUndefined()
+    expect(toVersion(v, names).origin).toBeUndefined()
+  })
+
+  it('the Install dialog reads a folded description as text', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mw-head-'))
+    try {
+      writeFileSync(join(dir, 'memwise-plugin.yaml'), [
+        'id: acme/folded   # a comment',
+        'version: 1.0.0',
+        'title: "Folded: plugin"',
+        'description: >',
+        '  Reads the first line',
+        '  and the second.',
+        'tools: {}',
+        '',
+      ].join('\n'))
+      expect(await readPluginHead(dir)).toEqual({ id: 'acme/folded', title: 'Folded: plugin', description: 'Reads the first line and the second.' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

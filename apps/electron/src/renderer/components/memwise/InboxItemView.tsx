@@ -202,7 +202,7 @@ export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId
         }
       />
       {(item.kind === 'input' || item.kind === 'decision') && item.binding && (
-        <BindingBody item={item} binding={item.binding} actions={actions} roles={roles} view={bindingView} error={bindingError} now={now} />
+        <BindingBody item={item} binding={item.binding} actions={actions} people={people} roles={roles} view={bindingView} error={bindingError} now={now} />
       )}
       {item.kind === 'input' && !item.binding && <InputBody item={item} actions={actions} people={people} />}
       {item.kind === 'decision' && !item.binding && <DecisionBody item={item} actions={actions} people={people} roles={roles} draftId={reviewDraftOf(item) ?? reviewDraftId} playbookTitles={playbookTitles} />}
@@ -241,20 +241,9 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
     void run(outcome, () => actions.submitStep({ stepRunId: item.stepRunId, outcome, values: s.values, comment: comment.trim() || undefined }))
   }
 
-  const returnedBy = personName(item.returned?.by, people)
-
   return (
     <>
-      {item.returned && (
-        <Info_Alert variant="warning" icon={<Undo2 />}>
-          <Info_Alert.Title>
-            {returnedBy
-              ? t('memwise.inbox.returnedBy', { name: returnedBy, step: item.returned.stepTitle })
-              : t('memwise.inbox.returnedFrom', { step: item.returned.stepTitle })}
-          </Info_Alert.Title>
-          <Info_Alert.Description>{item.returned.text}</Info_Alert.Description>
-        </Info_Alert>
-      )}
+      {item.returned && <ReturnedAlert returned={item.returned} people={people} />}
       {hasContext && (
         <Info_Section title={t('memwise.inbox.context')}>
           <CaseFieldList values={item.context} people={people} />
@@ -592,14 +581,31 @@ function ReminderBody({ item, actions }: { item: Extract<MwInboxItem, { kind: 'r
 
 type BindingItem = Extract<MwInboxItem, { kind: 'input' | 'decision' }>
 
+/** The case came back to this step: who sent it back from which step, and their words. */
+function ReturnedAlert({ returned, people }: { returned: NonNullable<BindingItem['returned']>; people: PeopleById }) {
+  const { t } = useTranslation()
+  const by = personName(returned.by, people)
+  return (
+    <Info_Alert variant="warning" icon={<Undo2 />} data-returned>
+      <Info_Alert.Title>
+        {by
+          ? t('memwise.inbox.returnedBy', { name: by, step: returned.stepTitle })
+          : t('memwise.inbox.returnedFrom', { step: returned.stepTitle })}
+      </Info_Alert.Title>
+      <Info_Alert.Description>{returned.text}</Info_Alert.Description>
+    </Info_Alert>
+  )
+}
+
 /**
  * The bind-plugin `fix` step (edit: the choices are editable and saved into the binding draft,
  * then Done) and its `review` step (Approve / Ask for changes), on the binding review screen.
  */
-function BindingBody({ item, binding, actions, roles, view, error, now }: {
+function BindingBody({ item, binding, actions, people, roles, view, error, now }: {
   item: BindingItem
   binding: NonNullable<BindingItem['binding']>
   actions: InboxActions
+  people: PeopleById
   roles?: MwRole[]
   view?: MwBindingView | null
   error?: string | null
@@ -631,6 +637,7 @@ function BindingBody({ item, binding, actions, roles, view, error, now }: {
 
   return (
     <>
+      {item.returned && <ReturnedAlert returned={item.returned} people={people} />}
       <Info_Alert variant="info" icon={<Puzzle />} data-binding-mode={binding.mode}>
         <Info_Alert.Title>{t(editing ? 'memwise.inbox.binding.editTitle' : 'memwise.inbox.binding.reviewTitle', { title: view?.pluginTitle ?? binding.pluginId })}</Info_Alert.Title>
         <Info_Alert.Description>{t(editing ? 'memwise.inbox.binding.editDescription' : 'memwise.inbox.binding.reviewDescription')}</Info_Alert.Description>

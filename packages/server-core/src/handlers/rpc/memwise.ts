@@ -181,19 +181,17 @@ function isInside(child: string, root: string): boolean {
 }
 
 /** The id, title and description a plugin folder declares, read without loading it (for the Install dialog). */
-export function readPluginHead(dir: string): { id?: string; title?: string; description?: string } {
+export async function readPluginHead(dir: string): Promise<{ id?: string; title?: string; description?: string }> {
   try {
-    const text = readFileSync(join(dir, 'memwise-plugin.yaml'), 'utf8')
-    const field = (key: string) => {
-      const m = new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*(?:#.*)?$`, 'm').exec(text)
-      if (!m) return undefined
-      const raw = m[1]!.trim()
-      if (/^".*"$/.test(raw)) { try { return JSON.parse(raw) as string } catch { return raw.slice(1, -1) } }
-      return raw.replace(/^'(.*)'$/, '$1')
-    }
-    const id = field('id')
-    const title = field('title')
-    const description = field('description')
+    const file = join(dir, 'memwise-plugin.yaml')
+    const text = readFileSync(file, 'utf8')
+    // The manifest's own parser: folded and quoted scalars (`description: >`) read as written.
+    const { parsePluginManifest } = await import('@memwise/defs')
+    const m = parsePluginManifest(text, file).value
+    if (!m) return {}
+    const id = m.id || undefined
+    const title = m.title?.trim() || undefined
+    const description = m.description?.trim() || undefined
     return { ...(id ? { id } : {}), ...(title ? { title } : {}), ...(description ? { description } : {}) }
   } catch { /* not a MemWise plugin: maybe a Claude plugin */ }
   try {
@@ -261,6 +259,22 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     }
   }
 
+  /**
+   * The comment a person sent this step run back with (the runtime's `returnedComments`): the newest one
+   * made on another step since this step last ran, so it holds on a first visit too.
+   */
+  async function sentBackNote(svc: MemwiseService, stepRunId: string, title: (stepId: string) => string): Promise<MwReturnedNote | undefined> {
+    try {
+      const { returnedComments } = await import('@memwise/runtime')
+      const last = (await returnedComments(svc.kernel.pool, stepRunId)).at(-1)
+      const text = last?.comment.trim()
+      if (!last || !text || !last.outcome) return undefined
+      return { stepTitle: title(last.stepId), outcome: last.outcome, text, ...(last.by ? { by: last.by } : {}), at: last.at }
+    } catch {
+      return undefined
+    }
+  }
+
   async function enrichInbox(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, items: InboxItem[]): Promise<MwInboxItem[]> {
     const views = new Map<string, Promise<CaseView | undefined>>()
     const view = (caseId: string) => {
@@ -270,7 +284,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     const titleOf = (v: CaseView | undefined, caseId: string) => {
       if (!v) return caseId
       const wf = c.project.workflows[v.summary.workflowId]
-      return d.caseTitle(Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value])), caseId, wf?.caseType)
+      return d.caseTitle(Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value])), caseId, wf?.caseType, c.project)
     }
     // Identity matches name a domain record, not a case: one list read per entity.
     const rows = new Map<string, Promise<Map<string, Record<string, unknown>>>>()
@@ -305,15 +319,21 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
             outcomes: [...(step?.outcomes ?? [])], context, since: item.since, ...(item.dueAt ? { dueAt: item.dueAt } : {}),
           }
           const binding = bindingOfItem(item.workflowId, item.stepId, values)
+          const stepTitleOf = (id: string) => d.stateTitle(wf, id)
+          // The binding's `fix` step is often reached for the first time by a reviewer's "Ask for changes".
+          const returned = (item.kind === 'input' ? returnedNote(v, item.stepRunId, item.stepId, stepTitleOf) : undefined)
+            ?? (binding?.mode === 'edit' ? await sentBackNote(svc, item.stepRunId, stepTitleOf) : undefined)
           if (item.kind === 'input' && wf && step) {
             const fields = d.stepWriteFields(c, wf, step)
-            const returned = returnedNote(v, item.stepRunId, item.stepId, (id) => d.stateTitle(wf, id))
             out.push({
               kind: 'input', ...common, fields, prefill: d.toCaseValues(values, fields.map((f) => f.name).filter((f) => f in values)),
               ...(returned ? { returned } : {}), ...(binding ? { binding } : {}),
             })
           } else {
-            out.push({ kind: 'decision', ...common, instructions: step?.instructions ?? '', ...(binding ? { binding } : {}) })
+            out.push({
+              kind: 'decision', ...common, instructions: step?.instructions ?? '',
+              ...(returned ? { returned } : {}), ...(binding ? { binding } : {}),
+            })
           }
           break
         }
@@ -889,11 +909,14 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     // ---------------------------------------------------------------- Phase 3 (20 §6)
 
     async listVersions(ctx: RequestContext, workflowId: string): Promise<MwVersion[]> {
-      const { svc, d } = await begin(ctx)
+      const { svc, c, d } = await begin(ctx)
       const versions = (svc.kernel as KernelWithAuthoring).versions
       if (!versions) return []
       const [rows, names] = await Promise.all([versions.call(svc.kernel, workflowId), peopleNames(svc)])
-      return rows.map((v) => d.toVersion(v, names))
+      // A plugin playbook's versions come from its binding, not from edits to the files.
+      const wf = c.project.workflows[workflowId]
+      const bindings = wf?.origin?.kind === 'plugin' ? await bindingHistory(svc, d, wf.origin.plugin, names) : []
+      return rows.map((v) => d.toVersion(v, names, d.versionOrigin(v, wf, c.project, bindings)))
     },
 
     async buildPlaybook(ctx: RequestContext, workspaceId: string, input: MwBuildPlaybookInput = {}): Promise<MwBuildPlaybookResult> {
@@ -1120,15 +1143,15 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const { listExamplePlugins } = await import('../../memwise/seed')
       const { sourcePluginId } = await import('../../memwise/connectors')
       const examplesDir = (svc as { examplePluginsDir?: string }).examplePluginsDir
-      const examples: MwInstallableSource[] = listExamplePlugins(examplesDir).map((x) => {
-        const head = readPluginHead(x.dir)
+      const examples: MwInstallableSource[] = await Promise.all(listExamplePlugins(examplesDir).map(async (x) => {
+        const head = await readPluginHead(x.dir)
         const version = head.id ? installed.get(head.id) : undefined
         return {
           slug: x.name, name: head.title ?? x.name, dir: x.dir,
           ...(head.description ? { description: head.description } : {}),
           ...(head.id ? { pluginId: head.id } : {}), ...(version ? { installed: version } : {}),
         }
-      })
+      }))
       const sources: MwInstallableSource[] = (await sourceFolders(svc)).map((x) => {
         const pluginId = sourcePluginId(x.slug)
         const version = installed.get(pluginId)

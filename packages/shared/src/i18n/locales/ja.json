@@ -1405,6 +1405,7 @@
   "memwise.versions.casesRunning_other": "進行中のケース {{count}} 件",
   "memwise.versions.casesStillRunning_one": "このバージョンでまだ進行中のケース {{count}} 件",
   "memwise.versions.casesStillRunning_other": "このバージョンでまだ進行中のケース {{count}} 件",
+  "memwise.versions.fromBinding": "{{title}} {{version}} から · バインディング {{binding}}",
   "memwise.versions.fromFiles": "{{date}} にファイルで変更",
   "memwise.versions.live": "使用中",
   "memwise.versions.noCases": "進行中のケースなし",

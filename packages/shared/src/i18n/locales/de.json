@@ -1405,6 +1405,7 @@
   "memwise.versions.casesRunning_other": "{{count}} laufende Fälle",
   "memwise.versions.casesStillRunning_one": "{{count}} Fall läuft noch darauf",
   "memwise.versions.casesStillRunning_other": "{{count}} Fälle laufen noch darauf",
+  "memwise.versions.fromBinding": "aus {{title}} {{version}} · Bindung {{binding}}",
   "memwise.versions.fromFiles": "in den Dateien geändert am {{date}}",
   "memwise.versions.live": "Aktiv",
   "memwise.versions.noCases": "Keine laufenden Fälle",

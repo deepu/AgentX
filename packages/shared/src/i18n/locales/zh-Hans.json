@@ -1405,6 +1405,7 @@
   "memwise.versions.casesRunning_other": "{{count}} 个进行中的案例",
   "memwise.versions.casesStillRunning_one": "仍有 {{count}} 个案例在此版本上进行",
   "memwise.versions.casesStillRunning_other": "仍有 {{count}} 个案例在此版本上进行",
+  "memwise.versions.fromBinding": "来自 {{title}} {{version}} · 绑定 {{binding}}",
   "memwise.versions.fromFiles": "{{date}} 在文件中更改",
   "memwise.versions.live": "使用中",
   "memwise.versions.noCases": "没有进行中的案例",

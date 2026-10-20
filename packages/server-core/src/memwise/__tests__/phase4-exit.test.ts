@@ -25,7 +25,7 @@ import { createTestDatabase, PgEntityStore, postgresAvailable, type TestDatabase
 import { initProject, nameSimilarity, parseExampleFile, type ExampleCase, type ScriptedTurn } from '@memwise/defs'
 import type {
   MwBindingView, MwCase, MwCaseSummary, MwEntityRecord, MwEntityRow, MwIdentityCandidate, MwInboxItem, MwInstallChoices,
-  MwPlaybook, MwPlaybookSummary, MwPluginDetail, MwPluginSummary, MwStepRecord,
+  MwPlaybook, MwPlaybookSummary, MwPluginDetail, MwPluginSummary, MwStepRecord, MwVersion,
 } from '@memwise/shared/protocol'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import type { RequestContext } from '../../transport/types'
@@ -217,6 +217,10 @@ describe.skipIf(!postgresAvailable())('Phase 4 exit: plugins and bindings', () =
     expect(choices.canInstall).toBe(true)
     const dirOf = (slug: string) => choices.examples.find((x) => x.slug === slug)!.dir
     expect(choices.examples.map((x) => x.slug)).toEqual(expect.arrayContaining(['client-intake', 'sample-crm', 'sample-email']))
+    // A folded `description: >` reads as its text.
+    expect(choices.examples.find((x) => x.slug === 'client-intake')).toMatchObject({
+      name: 'Client intake', description: expect.stringMatching(/^Staff fill the intake form for a new client, an agent checks it .*domain's records\.$/),
+    })
     expect((await api.call<MwInstallChoices>(manager, ch.PLUGINS_EXAMPLES)).canInstall).toBe(false)
     await expect(api.call(manager, ch.PLUGINS_INSTALL, { path: dirOf('sample-email') })).rejects.toThrow(/owner/)
 
@@ -268,8 +272,20 @@ describe.skipIf(!postgresAvailable())('Phase 4 exit: plugins and bindings', () =
     expect(view).toMatchObject({ pluginId: EMAIL, editable: true, report: { outcome: 'passed' } })
     expect(view.binding.tools['email.send']).toMatchObject({ effect: 'outbound' })
 
+    // The case is named by the plugin, not its draft.
+    const review = await inboxItem(manager, 'decision', (i) => i.caseId === caseId)
+    expect(review.caseTitle).toBe('Bind Sample email')
+    expect((await api.call<MwCase>(manager, ch.CASES_GET, caseId)).title).toBe('Bind Sample email')
+    // "Ask for changes": the manager's comment reaches staff on the fix step, a first visit.
+    const ask = 'Keep outbound mail on approval.'
+    expect(await api.call<any>(manager, ch.INBOX_SUBMIT, { stepRunId: review.stepRunId, outcome: 'changes_requested', comment: ask })).toEqual({ applied: true })
+    const fix = await inboxItem(staff, 'decision', (i) => i.caseId === caseId)
+    expect(fix.binding).toMatchObject({ pluginId: EMAIL, mode: 'edit' })
+    expect(fix.returned).toMatchObject({ stepTitle: 'Review the binding', outcome: 'changes_requested', text: ask, by: expect.any(String) })
+    expect(await api.call<any>(staff, ch.INBOX_SUBMIT, { stepRunId: fix.stepRunId, outcome: 'done' })).toEqual({ applied: true })
+
     const done = await managerApprovesBinding(EMAIL, caseId)
-    expect(done.path).toEqual(['check', 'propose', 'dry_run', 'review', 'freeze', 'link', 'end'])
+    expect(done.path).toEqual(['check', 'propose', 'dry_run', 'review', 'fix', 'dry_run', 'review', 'freeze', 'link', 'end'])
     expect(done.values.binding_version?.value).toBe(1)
     expect((await plugin(EMAIL))!.binding).toMatchObject({ status: 'bound', version: 1, pluginVersion: '1.0.0', frozenByName: 'Ravi' })
     expect(await boundTools()).toContain('email.send')
@@ -315,6 +331,9 @@ describe.skipIf(!postgresAvailable())('Phase 4 exit: plugins and bindings', () =
     expect(JSON.stringify(pb.steps.onboard)).toContain('domain.customer.create')
     expect(JSON.stringify(pb.steps.onboard)).not.toContain('domain.client.create')
     expect(pb.steps.verify).toMatchObject({ assignee: 'manager' })
+    // Its version came from the binding, not from edits to the files.
+    const versions = await api.call<MwVersion[]>(staff, ch.PLAYBOOKS_VERSIONS, 'client-intake')
+    expect(versions).toEqual([expect.objectContaining({ version: 1, source: 'files', live: true, origin })])
   }, 60_000)
 
   let customerId = ''

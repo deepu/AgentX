@@ -1433,6 +1433,7 @@
   "memwise.versions.casesStillRunning_many": "{{count}} spraw wciąż trwa na tej wersji",
   "memwise.versions.casesStillRunning_one": "{{count}} sprawa wciąż trwa na tej wersji",
   "memwise.versions.casesStillRunning_other": "{{count}} spraw wciąż trwa na tej wersji",
+  "memwise.versions.fromBinding": "z {{title}} {{version}} · powiązanie {{binding}}",
   "memwise.versions.fromFiles": "zmieniono w plikach {{date}}",
   "memwise.versions.live": "W użyciu",
   "memwise.versions.noCases": "Brak trwających spraw",

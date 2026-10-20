@@ -23,6 +23,7 @@ const { PluginsList } = await import('../plugins/PluginsList')
 const { PluginOverview } = await import('../plugins/PluginView')
 const { BindingReview } = await import('../plugins/BindingReview')
 const { RecordsTable, RecordView } = await import('../plugins/RecordsView')
+const { versionOrigin } = await import('../playbook/VersionLine')
 
 beforeAll(() => {
   setI18n(setupI18n([initReactI18next]))
@@ -84,6 +85,26 @@ describe('binding review', () => {
     expect(html).toContain('data-outcome="approved"')
     expect(html).toContain('Ask for changes')
     expect(html).not.toContain('data-choice=')
+  })
+
+  test('fix after "Ask for changes": the reviewer\'s comment shows above the binding', () => {
+    const fix = {
+      ...sampleBindingReviewInbox, id: 'in_bind_fix2', stepRunId: 'sr_bind_fix2', stepTitle: 'Fix the binding', outcomes: ['done'],
+      binding: { ...sampleBindingReviewInbox.binding!, mode: 'edit' as const },
+      returned: { stepTitle: 'Review the binding', outcome: 'changes_requested', text: 'Keep outbound mail on approval.' },
+    }
+    const html = render(<InboxItemView item={fix} actions={actions} bindingView={sampleBindingView} now={NOW} />)
+    expect(html).toContain('data-returned')
+    expect(html).toContain('Keep outbound mail on approval.')
+    expect(html).toContain('data-binding-mode="edit"')
+  })
+
+  test('a plugin playbook\'s version line names the binding', () => {
+    const t = i18n.t.bind(i18n)
+    const origin = { kind: 'plugin' as const, plugin: 'memwise/client-intake', pluginTitle: 'Client intake', pluginVersion: '1.0.0', bindingVersion: 2 }
+    const v = { version: 1, hash: 'h', publishedAt: '2026-10-20T08:00:00Z', source: 'files' as const, openCases: 0, live: true }
+    expect(versionOrigin({ ...v, origin }, t)).toBe('from Client intake 1.0.0 · binding 2')
+    expect(versionOrigin(v, t, 'en', NOW)).toBe('changed in the files Oct 20')
   })
 
   test('loading, before the binding arrives', () => {

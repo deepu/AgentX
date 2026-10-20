@@ -72,9 +72,19 @@ export function stateTitle(wf: WorkflowDef | undefined, state: string): string {
   return wf?.steps[state]?.title ?? humanize(state)
 }
 
-/** A readable case title: the client's name, the legal name, the first text value, else a short reference. */
-export function caseTitle(values: Record<string, unknown>, caseId: string, caseType?: CaseTypeDef): string {
+/** The bind-plugin playbook's case type (22 §4): its cases are named by the plugin, never the draft. */
+const PLUGIN_BINDING_CASE = 'plugin_binding'
+
+/**
+ * A readable case title: the client's name, the legal name, the first text value, else a short
+ * reference. A plugin binding case is "Bind Client intake" (the installed plugin's title, else its id).
+ */
+export function caseTitle(values: Record<string, unknown>, caseId: string, caseType?: CaseTypeDef, project?: Pick<ProjectDefs, 'plugins'>): string {
   const plain = (v: unknown) => (v && typeof v === 'object' && 'value' in (v as object) ? (v as { value: unknown }).value : v)
+  if (caseType?.id === PLUGIN_BINDING_CASE) {
+    const plugin = plain(values.plugin)
+    if (typeof plugin === 'string' && plugin.trim()) return `Bind ${project ? pluginTitle(project, plugin.trim()) : plugin.trim()}`
+  }
   for (const key of ['client_name', 'legal_name', 'title']) {
     const v = plain(values[key])
     if (typeof v === 'string' && v.trim()) return v.trim()
@@ -358,7 +368,7 @@ export function toCaseSummary(project: ProjectDefs, s: CaseSummary): MwCaseSumma
     runId: s.runId,
     workflowId: s.workflowId,
     workflowVersion: s.workflowVersion,
-    title: caseTitle(s.values, s.caseId, wf?.caseType),
+    title: caseTitle(s.values, s.caseId, wf?.caseType, project),
     state: s.state,
     stateTitle: stateTitle(wf, s.state),
     status: s.status,
@@ -401,7 +411,7 @@ export function toCase(ctx: DtoContext, view: CaseView): MwCase {
   const wf = ctx.project.workflows[view.summary.workflowId]
   return {
     ...toCaseSummary(ctx.project, view.summary),
-    title: caseTitle(Object.fromEntries(Object.entries(view.values).map(([k, v]) => [k, v.hidden ? undefined : v.value])), view.summary.caseId, wf?.caseType),
+    title: caseTitle(Object.fromEntries(Object.entries(view.values).map(([k, v]) => [k, v.hidden ? undefined : v.value])), view.summary.caseId, wf?.caseType, ctx.project),
     fields: wf ? caseFields(ctx, wf.caseType) : [],
     values: toCaseValues(view.values),
     timeline: view.stepRuns.map((r) => toStepRunSummary(ctx.project, view.summary.workflowId, r)),
@@ -679,14 +689,34 @@ export function toDraftReport(r: DraftReport, ctx?: Pick<DtoContext, 'project'>)
   }
 }
 
-export function toVersion(v: WorkflowVersion, names: Map<string, string>): MwVersion {
+export function toVersion(v: WorkflowVersion, names: Map<string, string>, origin?: MwWorkflowOrigin): MwVersion {
   const publishedByName = v.publishedBy ? names.get(v.publishedBy) : undefined
   return {
     version: v.version, hash: v.hash, publishedAt: v.publishedAt,
     ...(v.publishedBy ? { publishedBy: v.publishedBy } : {}), ...(publishedByName ? { publishedByName } : {}),
     source: v.source, ...(v.draftId ? { draftId: v.draftId } : {}), ...(v.runId ? { runId: v.runId } : {}),
+    ...(origin ? { origin } : {}),
     openCases: v.openCases, live: v.live,
   }
+}
+
+/**
+ * Where a version of a plugin playbook came from (22 §3): the index records the resolved workflow
+ * as found in the files, but it is the binding that made it. The live hash is the workflow's own
+ * origin; an older one is the binding frozen last before the version was indexed.
+ */
+export function versionOrigin(
+  v: Pick<WorkflowVersion, 'hash' | 'publishedAt' | 'source'>, wf: Pick<WorkflowDef, 'hash' | 'origin'> | undefined,
+  project: Pick<ProjectDefs, 'plugins'>, bindings: readonly Pick<MwBindingVersion, 'version' | 'pluginVersion' | 'frozenAt'>[],
+): MwWorkflowOrigin | undefined {
+  const o = wf?.origin
+  if (v.source !== 'files' || o?.kind !== 'plugin') return undefined
+  if (v.hash === wf!.hash) return toWorkflowOrigin(project, o)
+  const at = Date.parse(v.publishedAt)
+  const b = bindings
+    .filter((x) => Date.parse(x.frozenAt) <= at)
+    .sort((x, y) => Date.parse(y.frozenAt) - Date.parse(x.frozenAt) || y.version - x.version)[0]
+  return b ? toWorkflowOrigin(project, { kind: 'plugin', plugin: o.plugin, pluginVersion: b.pluginVersion, bindingVersion: b.version }) : undefined
 }
 
 // ---------------------------------------------------------------- Phase 4: plugins, bindings, identity (22 §9)

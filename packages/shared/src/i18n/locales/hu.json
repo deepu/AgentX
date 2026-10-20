@@ -1405,6 +1405,7 @@
   "memwise.versions.casesRunning_other": "{{count}} futó ügy",
   "memwise.versions.casesStillRunning_one": "{{count}} ügy fut még rajta",
   "memwise.versions.casesStillRunning_other": "{{count}} ügy fut még rajta",
+  "memwise.versions.fromBinding": "forrás: {{title}} {{version}} · {{binding}}. kötés",
   "memwise.versions.fromFiles": "a fájlokban módosítva: {{date}}",
   "memwise.versions.live": "Használatban",
   "memwise.versions.noCases": "Nincs futó ügy",
