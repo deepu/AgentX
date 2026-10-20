@@ -12,6 +12,15 @@ Phase 5  External participants                      a real client fills the form
 Phase 6  Server, hosting and learning               multi-user server, workers, metering; corrections improve workflows
 ```
 
+## What runs in sequence and what runs in parallel
+
+Phases are milestones in order; work inside a phase runs in parallel, and some later work starts early on side tracks.
+
+- **In sequence (the critical path): 0 → 1 → 2 → 3.** The rename comes first so nothing is renamed twice. Intake (Phase 2) is built on the kernel's runs, journal and gateway. Building by chat (Phase 3) needs a live workflow and change control to edit.
+- **In parallel inside a phase.** Phase 0: the five spikes alongside the rename. Phase 1: formats and checks, Postgres, the step engine on DBOS, the gateways and the policy compiler, built against agreed package boundaries and joined at the end.
+- **Side tracks that start early, beside Phase 1:** the Phase 2 UI (navigation, inbox, approval card, case view) against sample data; the Phase 5 relay; the Phase 4 plugin format and loader.
+- **About three tracks at once.** With agents building, the limit is integration and review, not hands.
+
 ## Phase 0 · Rename, skeleton and spikes
 
 **Rename everything to MemWise** (D4) before any new code, so nothing is renamed twice.
