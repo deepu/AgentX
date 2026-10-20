@@ -6,7 +6,7 @@ import {
   actorLabel, PgBindingVersionStore, PgEntityStore, PgIdentityStore, PgPluginStore, ulid, withActor, withTransaction,
 } from '@memwise/db';
 import {
-  applyDraft, BINDINGS_DIR, bindingPath, bindingToYaml, checkProject, compileRecordMapping, createBindingDraft, DraftConflictError,
+  applyDraft, BINDINGS_DIR, bindingPath, DEFAULT_DOMAIN, hasRole, bindingToYaml, checkProject, compileRecordMapping, createBindingDraft, DraftConflictError,
   draftContentHash, draftDir, DraftStaleError, EFFECT_CLASSES, importClaudePlugin, installPlugin, listDrafts, loadDraft, loadProject,
   matchRecord, parseBindingFile, PLUGIN_MANIFEST, proposeBinding, readDraft, structuralDiff, updateDraftMeta, withDiscoveredTools,
   writeDraftFiles, writeDraftReport,
@@ -675,6 +675,25 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
   const mayDecide = (actor: Actor, roles: string[] | undefined) =>
     actor.kind === 'system' || (actor.kind === 'person' && (!roles || roles.some((r) => actor.roles.includes(r))));
 
+  /**
+   * Who decides one match: a pairing between two domains' records (plugin `domain:<other>`, 24
+   * §4) goes to the owner of the record's domain; a plugin's match to the bind-plugin owner.
+   */
+  async function mayDecideCandidate(actor: Actor, c: Pick<IdentityCandidate, 'plugin' | 'entity'>): Promise<boolean> {
+    if (!c.plugin.startsWith('domain:')) return mayDecide(actor, await deciderRoles());
+    if (actor.kind === 'system') return true;
+    if (actor.kind !== 'person') return false;
+    const project = await live();
+    const domain = entityDef(c.entity)?.domain ?? DEFAULT_DOMAIN;
+    const owner = project.domains?.[domain]?.owner;
+    return !owner || !Object.keys(project.roles).length || hasRole(actor, owner, domain);
+  }
+  async function decidable(actor: Actor, list: IdentityCandidate[]): Promise<IdentityCandidate[]> {
+    const out: IdentityCandidate[] = [];
+    for (const c of list) if (await mayDecideCandidate(actor, c)) out.push(c);
+    return out;
+  }
+
   const identity: IdentityService = {
     async resolve({ plugin: pluginId, source }) {
       const project = await live();
@@ -701,12 +720,17 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
     },
 
     async candidates(filter = {}) {
-      if (filter.actor && !mayDecide(filter.actor, await deciderRoles())) return [];
-      return identityStore.candidates(deps.pool, filter.status ? { status: filter.status } : {});
+      const list = await identityStore.candidates(deps.pool, filter.status ? { status: filter.status } : {});
+      return filter.actor ? decidable(filter.actor, list) : list;
     },
 
     async decide({ candidateId, decision, by }) {
-      if (!mayDecide(by, await deciderRoles())) return { applied: false, message: 'only the people who own plugin bindings decide identity matches' };
+      const found = await identityStore.candidate(deps.pool, candidateId);
+      if (found && !(await mayDecideCandidate(by, found))) {
+        return { applied: false, message: found.plugin.startsWith('domain:')
+          ? 'only the owner of this domain decides whether two records are the same'
+          : 'only the people who own plugin bindings decide identity matches' };
+      }
       const r = await withTransaction(deps.pool, async (db) => {
         const c = await identityStore.candidate(db, candidateId, { forUpdate: true });
         if (!c) return { applied: false, message: `there is no identity match ${candidateId}` };
@@ -786,8 +810,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
 
   async function identityInbox(actor: Actor): Promise<IdentityCandidate[]> {
     if (actor.kind !== 'person') return [];
-    if (!mayDecide(actor, await deciderRoles())) return [];
-    return identityStore.candidates(deps.pool, { status: 'pending' });
+    return decidable(actor, await identityStore.candidates(deps.pool, { status: 'pending' }));
   }
 
   // ---------------------------------------------------------------- entity records with read-through
