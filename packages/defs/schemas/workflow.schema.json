@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "workflow": {
+      "type": "string",
+      "description": "The workflow id, usually the folder name."
+    },
+    "version": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "title": {
+      "type": "string"
+    },
+    "case": {
+      "description": "Path to the case type, relative to this file. Default ./case.yaml.",
+      "type": "string"
+    },
+    "policy": {
+      "description": "Path to the workflow policy layer. Default ./policy.yaml when it exists.",
+      "type": "string"
+    },
+    "start": {
+      "type": "string"
+    },
+    "steps": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "on": {
+            "description": "Outcome or event name → target state, or end.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "wait": {
+            "type": "object",
+            "properties": {
+              "remind": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w)\\s*)+$|^\\s*\\d+\\s*$"
+                  }
+                ],
+                "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."
+              },
+              "timeout": {
+                "type": "string",
+                "pattern": "^\\s*(\\S+)\\s*(→|->)\\s*(\\S+)\\s*$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "The states, by name. A state with a steps/<name>.md file runs that step."
+    }
+  },
+  "required": [
+    "workflow",
+    "version",
+    "start",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "title": "MemWise workflow",
+  "description": "workflows/<id>/workflow.yaml: the shape."
+}

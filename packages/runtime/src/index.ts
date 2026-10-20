@@ -1,9 +1,11 @@
 /**
- * @memwise/runtime: runs: statecharts, DBOS workflows per step, timers, events.
- *
- * Empty skeleton from Phase 0 of the build plan (docs/memwise/17-build-plan.md);
- * filled in from Phase 1 (design follows spikes S1, S2 and S5). See README.md for what this package owns and which
- * packages it may depend on.
+ * @memwise/runtime: runs. Workflow statecharts on XState with their state in our tables, one
+ * DBOS driver workflow per run and one per step, durable timers and outside events (D39).
+ * See README.md and docs/memwise/18-kernel-interfaces.md.
  */
 
-export {};
+export { createKernel, migrateAll, DEFAULT_ENGINE_VERSION } from './kernel.ts';
+export { compileMachine, metaOf, stateKind, stateMeta, remindTimerId, REMIND_EVENT, type RunEvent, type StateKind, type StateMeta } from './machine.ts';
+export { newCaseId, newRunId, stepRunIdOf, driverIdOf, ulid } from './ids.ts';
+export { sampleTools, ensureSandbox, SAMPLE_PLUGIN, type SampleToolsOptions } from './sample-tools.ts';
+export type * from './types.ts';

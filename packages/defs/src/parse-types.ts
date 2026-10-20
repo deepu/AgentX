@@ -1,0 +1,91 @@
+/** `case.yaml` and `domain/entities/*.yaml`: fields made of value types. */
+import { caseFormat, entityFormat } from './formats.ts';
+import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, sha256, type ParseResult, type PathKey } from './source.ts';
+import { SCALAR_TYPES, type CaseTypeDef, type EntityTypeDef, type FieldDef, type RecordTypeDef } from './types.ts';
+import { parseValueType } from './value-types.ts';
+
+/** Parses a type expression, reporting `invalid-type` at the path when it can't be read. */
+export function typeAt(src: unknown, report: Reporter, path: PathKey[]) {
+  if (typeof src !== 'string') return undefined; // the format check already said so
+  const type = parseValueType(src);
+  if (!type) report.error('invalid-type', `\`${src}\` is not a type: expected Text, Money, Identifier(GSTIN), Quantity(kg), Enum[a, b], List<T>, Ref<Entity> or a record type name`, path);
+  return type;
+}
+
+/** A `fields:` map. A field may be a type expression or `{ type, required, description, access }`. */
+export function parseFields(raw: unknown, report: Reporter, path: PathKey[]): Record<string, FieldDef> {
+  const out: Record<string, FieldDef> = {};
+  for (const [name, spec] of Object.entries(asRecord(raw))) {
+    const obj = isRecord(spec) ? spec : undefined;
+    const typeSource = obj ? obj.type : spec;
+    const type = typeAt(typeSource, report, obj ? [...path, name, 'type'] : [...path, name]);
+    if (!type) continue;
+    out[name] = compact({
+      type,
+      typeSource: (typeSource as string).trim(),
+      required: obj && typeof obj.required === 'boolean' ? obj.required : undefined,
+      description: obj ? asString(obj.description) : undefined,
+      access: obj && Array.isArray(obj.access) ? asStrings(obj.access) : undefined,
+    });
+  }
+  return out;
+}
+
+export function parseCaseFile(text: string, file: string): ParseResult<CaseTypeDef> {
+  const src = readYaml(text, file);
+  const report = new Reporter(file, src.locate);
+  report.diagnostics.push(...src.diagnostics);
+  if (!isRecord(src.data)) {
+    if (!src.diagnostics.length) report.error('invalid-format', 'expected a case type: case, fields, types');
+    return { diagnostics: report.diagnostics };
+  }
+  report.validate(caseFormat, src.data);
+  const data = src.data;
+  const types: Record<string, RecordTypeDef> = {};
+  for (const name of Object.keys(asRecord(data.types))) {
+    if ((SCALAR_TYPES as readonly string[]).includes(name) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      report.error('invalid-type-name', `\`${name}\` can't be a record type name`, ['types', name]);
+      continue;
+    }
+    types[name] = { name, fields: parseFields(asRecord(data.types)[name], report, ['types', name]) };
+  }
+  const value: CaseTypeDef = {
+    id: asString(data.case) ?? '',
+    fields: parseFields(data.fields, report, ['fields']),
+    types,
+    file,
+    hash: sha256(text),
+  };
+  rememberLocator(value, src.locate);
+  return { value, diagnostics: report.diagnostics };
+}
+
+export function parseEntityFile(text: string, file: string): ParseResult<EntityTypeDef> {
+  const src = readYaml(text, file);
+  const report = new Reporter(file, src.locate);
+  report.diagnostics.push(...src.diagnostics);
+  if (!isRecord(src.data)) {
+    if (!src.diagnostics.length) report.error('invalid-format', 'expected an entity type: entity, fields, relationships');
+    return { diagnostics: report.diagnostics };
+  }
+  report.validate(entityFormat, src.data);
+  const data = src.data;
+  const relationships: EntityTypeDef['relationships'] = {};
+  for (const [name, spec] of Object.entries(asRecord(data.relationships))) {
+    const m = typeof spec === 'string' ? /^\s*(one|many)\s+([A-Za-z_]\w*)\s*$/.exec(spec) : null;
+    if (m) relationships[name] = { cardinality: m[1] as 'one' | 'many', target: m[2]! };
+  }
+  const value: EntityTypeDef = compact({
+    entity: asString(data.entity) ?? '',
+    fields: parseFields(data.fields, report, ['fields']),
+    relationships,
+    lifecycle: Array.isArray(data.lifecycle) ? asStrings(data.lifecycle) : undefined,
+    ownership: isRecord(data.ownership)
+      ? Object.fromEntries(Object.entries(data.ownership).filter(([, v]) => typeof v === 'string')) as Record<string, string>
+      : undefined,
+    file,
+    hash: sha256(text),
+  });
+  rememberLocator(value, src.locate);
+  return { value, diagnostics: report.diagnostics };
+}

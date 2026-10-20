@@ -11,7 +11,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "schemas": "bun scripts/write-schemas.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "yaml": "^2.8.2",
