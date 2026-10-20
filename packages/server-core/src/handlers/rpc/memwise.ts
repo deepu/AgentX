@@ -97,12 +97,15 @@ const EVENT_MESSAGES: Record<string, string> = {
 }
 const DRAFT_MESSAGES: Record<string, string> = {
   missing: 'That draft was not found.',
-  closed: 'This draft was already published or discarded.',
+  not_open: 'This draft was already published or discarded.',
   edit_missing: 'That change was not found in the draft.',
+  edit_not_pending: 'That change was already kept or discarded.',
   edit_conflict: 'The files changed again since that edit, so it cannot be undone on its own.',
+  pending_edits: 'Keep or discard the changes from chat before sending the draft for review.',
+  conflict: 'The live playbook changed since this draft was made; look at the conflicting files first.',
   write_failed: 'The draft could not be changed.',
   in_review: 'This draft is already waiting for approval.',
-  has_errors: 'Fix the errors in the draft before sending it for review.',
+  errors: 'Fix the errors in the draft before sending it for review.',
   submit_failed: 'The draft could not be sent for review.',
   create_failed: 'The draft could not be made.',
   check_failed: 'The draft could not be checked.',
@@ -111,6 +114,8 @@ const refusal = (code: string, message: string): MwSubmitResult => ({ applied: f
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 /** The meta playbooks that build and change playbooks (20 §3). */
 const META_PLAYBOOKS = ['create-playbook', 'change-playbook']
+/** Larger files are left out of `MwDraft.fileTexts` (the diff still shows them). */
+const FILE_TEXT_MAX = 256_000
 
 function clientOf(ctx: RequestContext): ClientIdentity {
   return { clientId: ctx.clientId, personId: ctx.personId ?? null }
@@ -445,6 +450,27 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     }
   }
 
+  /**
+   * The draft's files as text for the step editor: every file of its playbook folder, and the
+   * domain files it changes. Each read is bounded so one odd file can't stall the screen.
+   */
+  async function draftFileTexts(authoring: ReturnType<typeof authoringOf>, meta: DraftMeta, diff: DraftDiff | undefined): Promise<Record<string, string>> {
+    const out: Record<string, string> = {}
+    const listed = await authoring.read({ draftId: meta.id }).catch(() => undefined)
+    const folder = `workflows/${meta.workflowId}/`
+    const paths = new Set<string>(((listed as { files?: string[] } | undefined)?.files ?? []).filter((p) => p.startsWith(folder)))
+    for (const f of diff?.files ?? []) {
+      if (f.status !== 'deleted' && f.path.startsWith('domain/')) paths.add(f.path)
+    }
+    for (const path of [...paths].sort()) {
+      const changed = diff?.files.find((f) => f.path === path)
+      if (changed && typeof changed.after === 'string') { out[path] = changed.after; continue }
+      const r = await authoring.read({ draftId: meta.id, path }).catch(() => undefined) as { content?: string | null } | undefined
+      if (typeof r?.content === 'string' && r.content.length <= FILE_TEXT_MAX) out[path] = r.content
+    }
+    return out
+  }
+
   /** The draft read as a playbook, with policies compiled from the draft's own files. */
   async function draftPlaybook(svc: MemwiseService, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, draftId: string): Promise<MwPlaybook | undefined> {
     try {
@@ -683,6 +709,14 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     async buildPlaybook(ctx: RequestContext, workspaceId: string, input: MwBuildPlaybookInput = {}): Promise<MwBuildPlaybookResult> {
       const { svc, actor, c } = await begin(ctx)
       if (input.workflowId && !c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
+      // Checked before anything starts, so a refusal leaves no run behind (`build.forbidden`;
+      // RPC errors carry only the message, which the dialog shows).
+      const meta = c.project.workflows[input.workflowId ? 'change-playbook' : 'create-playbook']
+      if (!meta) throw new Error('Building playbooks by chat is not set up in this project (the create-playbook and change-playbook playbooks are missing).')
+      const assignee = meta.steps[meta.start]?.assignee
+      if (assignee && !actor.roles.includes(assignee)) {
+        throw Object.assign(new Error(`Building and changing playbooks is for someone with the ${assignee} role.`), { code: 'build.forbidden' })
+      }
       const authoring = authoringOf(svc)
       const started = await authoring.startBuild({
         ...(input.workflowId ? { workflowId: input.workflowId } : {}),
@@ -727,6 +761,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         reportStale: !!got.report && got.report.hash !== got.contentHash,
         ...(playbook ? { playbook } : {}),
         diagnostics: diagnostics.map(d.toDiagnostic),
+        ...(got.meta.status === 'open' ? { fileTexts: await draftFileTexts(authoring, got.meta, diff) } : {}),
       }
     },
 
@@ -748,7 +783,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const authoring = authoringOf(svc)
       const got = await authoring.getDraft(input?.draftId)
       if (!got) return { applied: false, diagnostics: [], code: 'draft.missing', message: DRAFT_MESSAGES.missing }
-      if (got.meta.status !== 'open') return { applied: false, diagnostics: [], code: 'draft.closed', message: DRAFT_MESSAGES.closed }
+      if (got.meta.status !== 'open') return { applied: false, diagnostics: [], code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
       if (!Array.isArray(input.files) || !input.files.length) return { applied: false, diagnostics: [], code: 'draft.write_failed', message: 'Nothing to write.' }
       try {
         const { edit, diagnostics } = await authoring.write({
@@ -766,9 +801,12 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const authoring = authoringOf(svc)
       const got = await authoring.getDraft(input?.draftId)
       if (!got) return refusal('draft.missing', DRAFT_MESSAGES.missing!)
-      if (!got.edits.some((e) => e.id === input.editId)) return refusal('draft.edit_missing', DRAFT_MESSAGES.edit_missing!)
+      if (got.meta.status !== 'open') return refusal('draft.not_open', DRAFT_MESSAGES.not_open!)
+      const edit = got.edits.find((e) => e.id === input.editId)
+      if (!edit) return refusal('edit.missing', DRAFT_MESSAGES.edit_missing!)
+      if (edit.status !== 'pending') return refusal('edit.not_pending', DRAFT_MESSAGES.edit_not_pending!)
       const r = await authoring.keepEdit(input.draftId, input.editId, actor)
-      if (!r.applied) return refusal('draft.edit_missing', r.message ?? DRAFT_MESSAGES.edit_missing!)
+      if (!r.applied) return refusal('edit.missing', r.message ?? DRAFT_MESSAGES.edit_missing!)
       emitMemwiseChange({ kind: 'drafts', id: input.draftId })
       return { applied: true }
     },
@@ -778,12 +816,16 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const authoring = authoringOf(svc)
       const got = await authoring.getDraft(input?.draftId)
       if (!got) return refusal('draft.missing', DRAFT_MESSAGES.missing!)
-      if (got.meta.status !== 'open') return refusal('draft.closed', DRAFT_MESSAGES.closed!)
-      if (!got.edits.some((e) => e.id === input.editId)) return refusal('draft.edit_missing', DRAFT_MESSAGES.edit_missing!)
+      if (got.meta.status !== 'open') return refusal('draft.not_open', DRAFT_MESSAGES.not_open!)
+      const edit = got.edits.find((e) => e.id === input.editId)
+      if (!edit) return refusal('edit.missing', DRAFT_MESSAGES.edit_missing!)
+      if (edit.status !== 'pending') return refusal('edit.not_pending', DRAFT_MESSAGES.edit_not_pending!)
       const r = await authoring.discardEdit(input.draftId, input.editId, actor)
       if (!r.applied) {
         const names = r.conflicts?.length ? ` (${r.conflicts.join(', ')})` : ''
-        return refusal(r.conflicts?.length ? 'draft.edit_conflict' : 'draft.edit_missing', r.message ?? `${DRAFT_MESSAGES.edit_conflict}${names}`)
+        return r.conflicts?.length
+          ? refusal('edit.conflict', `${DRAFT_MESSAGES.edit_conflict}${names}`)
+          : refusal('edit.missing', r.message ?? DRAFT_MESSAGES.edit_missing!)
       }
       emitMemwiseChange({ kind: 'drafts', id: input.draftId })
       return { applied: true }
@@ -794,7 +836,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const authoring = authoringOf(svc)
       const got = await authoring.getDraft(draftId)
       if (!got) return refusal('draft.missing', DRAFT_MESSAGES.missing!)
-      if (got.meta.status !== 'open') return refusal('draft.closed', DRAFT_MESSAGES.closed!)
+      if (got.meta.status !== 'open') return refusal('draft.not_open', DRAFT_MESSAGES.not_open!)
       await authoring.discardDraft(draftId, actor)
       emitMemwiseChange({ kind: 'drafts', id: draftId })
       return { applied: true }
@@ -815,11 +857,15 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const authoring = authoringOf(svc)
       const got = await authoring.getDraft(draftId)
       if (!got) return { applied: false, code: 'draft.missing', message: DRAFT_MESSAGES.missing }
-      if (got.meta.status !== 'open') return { applied: false, code: 'draft.closed', message: DRAFT_MESSAGES.closed }
+      if (got.meta.status !== 'open') return { applied: false, code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
       const facts = await draftLookup(svc, actor, c).facts(got.meta, { got })
       if (facts.run?.status === 'active') return { applied: false, code: 'draft.in_review', message: DRAFT_MESSAGES.in_review, runId: facts.run.runId, caseId: facts.run.caseId }
+      const pending = got.edits.filter((e) => e.status === 'pending').length
+      if (pending) return { applied: false, code: 'draft.pending_edits', message: `${DRAFT_MESSAGES.pending_edits} (${pending})` }
       const errors = (await authoring.quickCheck(draftId)).filter((x) => x.severity === 'error')
-      if (errors.length) return { applied: false, code: 'draft.has_errors', message: `${DRAFT_MESSAGES.has_errors} (${errors.length})` }
+      if (errors.length) return { applied: false, code: 'draft.errors', message: `${DRAFT_MESSAGES.errors} (${errors.length})` }
+      const conflicts = (await authoring.diff(draftId).catch(() => undefined))?.conflicts ?? []
+      if (conflicts.length) return { applied: false, code: 'draft.conflict', message: `${DRAFT_MESSAGES.conflict} (${conflicts.join(', ')})` }
       try {
         const r = await authoring.submitDraft(draftId, actor)
         emitMemwiseChange({ kind: 'drafts', id: draftId })
@@ -836,8 +882,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (!v) return { applied: false, code: 'example.missing', message: 'That case was not found.' }
       if (input.draftId) {
         const got = await authoringOf(svc).getDraft(input.draftId)
-        if (!got) return { applied: false, code: 'draft.missing', message: DRAFT_MESSAGES.missing }
-        if (got.meta.status !== 'open') return { applied: false, code: 'draft.closed', message: DRAFT_MESSAGES.closed }
+        if (!got || got.meta.status !== 'open') return { applied: false, code: 'example.no_draft', message: 'That draft is not open for changes any more; save the example into a new draft.' }
       }
       try {
         const r = await authoringOf(svc).exampleFromCase({

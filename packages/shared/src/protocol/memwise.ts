@@ -570,6 +570,10 @@ export interface MwFileChange {
   conflict?: boolean
   /** Which pending chat edit last touched it (for highlighting). */
   pendingEditId?: string
+  /** The live file's text (absent for an added file). */
+  before?: string
+  /** The draft's text (absent for a deleted file). */
+  after?: string
 }
 
 export type MwChangeKind = 'added' | 'removed' | 'changed'
@@ -638,6 +642,11 @@ export interface MwDraft extends MwDraftSummary {
   playbook?: MwPlaybook
   /** Checks on the current content (structure and policy; no example cases). */
   diagnostics: MwDiagnostic[]
+  /**
+   * The draft's files as text, by project-relative path: every file of the draft's playbook folder,
+   * plus the domain files it changes (for the step editor). Absent once the draft is closed.
+   */
+  fileTexts?: Record<string, string>
 }
 
 export interface MwCreateDraftInput {

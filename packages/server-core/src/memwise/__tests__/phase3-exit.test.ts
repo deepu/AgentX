@@ -30,7 +30,7 @@ import {
   type SessionToolContext,
 } from '@memwise/session-tools-core'
 import type { RequestContext } from '../../transport/types'
-import { ctxFor, fakeServer, fakeSessions, quiet, until } from './api-harness'
+import { ctxFor, fakeServer, fakeSessions, quiet, until as untilOk } from './api-harness'
 import { registerMemwiseHandlers } from '../../handlers/rpc/memwise'
 import type { HandlerDeps } from '../../handlers/handler-deps'
 import { buildMemwiseToolCallbacks } from '../chat-tools'
@@ -115,6 +115,23 @@ function chatTools(sessionId: string) {
     const text = r.content[0]?.text ?? ''
     return r.isError ? { error: text } : JSON.parse(text)
   }
+}
+
+/**
+ * Polls like the harness's `until`, but rides out a Postgres deadlock (40P01) on a read. Publishing
+ * re-indexes the project, and the kernel re-applies the domain tables' row rules (DDL) on every
+ * index, which can deadlock with a read made at that moment. Reported to the kernel side; a client
+ * would simply refetch.
+ */
+function until<T>(what: string, fn: () => Promise<T>, ok: (v: T) => boolean, timeoutMs?: number): Promise<T> {
+  const retrying = async (): Promise<T> => {
+    for (let i = 0; ; i++) {
+      try { return await fn() } catch (e) {
+        if ((e as { code?: string }).code !== '40P01' || i >= 5) throw e
+      }
+    }
+  }
+  return untilOk(what, retrying, ok, timeoutMs)
 }
 
 async function runCli(args: string[], timeoutMs = 300_000): Promise<{ code: number | null; output: string }> {
@@ -238,8 +255,11 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     expect(item.draftId).toBeUndefined()
     expect(await api.call<any>(staff, ch.CHAT_OPEN, { anchor: { kind: 'step', id: build.stepRunId } })).toEqual({ sessionId: build.sessionId })
     expect((await api.call<MwInboxItem[]>(manager, ch.INBOX_LIST)).some((i) => i.kind === 'conversation')).toBe(false)
-    // Opening it as someone without the step's role is refused.
+    // Opening it as someone without the step's role is refused; so is building, before any run starts.
     await expect(api.call(manager, ch.CHAT_OPEN, { anchor: { kind: 'step', id: build.stepRunId } })).rejects.toThrow(/staff/)
+    const runsBefore = (await api.call<MwCaseSummary[]>(manager, ch.CASES_LIST, { workflowId: 'create-playbook' })).length
+    await expect(api.call(manager, ch.PLAYBOOKS_BUILD, { request: 'Anything' })).rejects.toThrow(/staff role/)
+    expect(await api.call<MwCaseSummary[]>(manager, ch.CASES_LIST, { workflowId: 'create-playbook' })).toHaveLength(runsBefore)
   }, 60_000)
 
   it('the chat builds engagement-letter in a draft with its tools, and the checks pass', async () => {
@@ -277,7 +297,10 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     const draft = await api.call<MwDraft>(staff, ch.DRAFTS_GET, letterDraft)
     expect(draft).toMatchObject({ kind: 'create', workflowId: 'engagement-letter', stage: 'checked', reportStale: false, pendingEdits: 2, runId: build.runId, caseId: build.caseId })
     expect(draft.edits.map((e) => [e.via, e.sessionId, e.byName])).toEqual([['chat', build.sessionId, 'Priya'], ['chat', build.sessionId, 'Priya']])
-    expect(draft.files.find((f) => f.path === 'domain/roles.yaml')).toMatchObject({ status: 'modified', pendingEditId: first.editId })
+    expect(draft.files.find((f) => f.path === 'domain/roles.yaml')).toMatchObject({ status: 'modified', pendingEditId: first.editId, after: expect.stringContaining('partner:') })
+    // The step editor gets every file of the playbook's folder, and the domain files it changes.
+    expect(Object.keys(draft.fileTexts ?? {}).sort()).toEqual(files.map((f) => f.path).sort())
+    expect(draft.fileTexts?.['workflows/engagement-letter/steps/record.md']).toBe(files.find((f) => f.path.endsWith('record.md'))!.content)
     expect(draft.playbook?.steps.partner_review).toMatchObject({ performer: 'person', assignee: 'partner' })
     expect(draft.diagnostics.filter((x) => x.severity === 'error')).toEqual([])
     expect(await api.call<any>(staff, ch.DRAFTS_KEEP, { draftId: letterDraft, editId: first.editId })).toEqual({ applied: true })
@@ -451,7 +474,8 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     const after = await api.call<MwDraft>(staff, ch.DRAFTS_GET, draftId)
     expect(after.files.find((f) => f.path === path)).toBeUndefined()
     expect(after.edits.find((e) => e.id === edit.editId)?.status).toBe('discarded')
-    expect(await api.call<any>(staff, ch.DRAFTS_DISCARD_EDIT, { draftId, editId: edit.editId })).toMatchObject({ applied: false, code: expect.stringMatching(/^draft\./) })
+    expect(await api.call<any>(staff, ch.DRAFTS_DISCARD_EDIT, { draftId, editId: edit.editId })).toMatchObject({ applied: false, code: 'edit.not_pending' })
+    expect(await api.call<any>(staff, ch.DRAFTS_KEEP, { draftId, editId: 'edit-nope' })).toMatchObject({ applied: false, code: 'edit.missing' })
     expect(await api.call<any>(staff, ch.DRAFTS_KEEP, { draftId: 'no-such-draft', editId: 'x' })).toMatchObject({ applied: false, code: 'draft.missing' })
   }, 120_000)
 

@@ -604,6 +604,8 @@ export function toFileChange(f: FileChange, pending: Map<string, string>): MwFil
     hunks: f.hunks.map((h) => ({ oldStart: h.oldStart, oldLines: h.oldLines, newStart: h.newStart, newLines: h.newLines, lines: h.lines.map((l) => ({ kind: l.kind, text: l.text })) })),
     ...(f.conflict ? { conflict: true } : {}),
     ...(editId ? { pendingEditId: editId } : {}),
+    ...(typeof f.before === 'string' ? { before: f.before } : {}),
+    ...(typeof f.after === 'string' ? { after: f.after } : {}),
   }
 }
 
