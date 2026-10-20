@@ -38,6 +38,7 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 | 14 | [Reference scenarios](14-scenarios.md) | Client intake and four other stress tests |
 | 15 | [Decision log](15-decisions.md) | Every decision made so far, with its reason |
 | 16 | [Open questions](16-open-questions.md) | What's left, including the spikes that start the build |
+| 17 | [Build plan](17-build-plan.md) | Phases 0–6, each with an exit test, the spikes and the risks |
 
 ## Status labels
 
@@ -47,4 +48,4 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 
 ## Next
 
-A phased build plan, starting with the spikes in [16](16-open-questions.md) and ending each phase in something usable.
+The [build plan](17-build-plan.md): rename and spikes first, then the kernel, then client intake.
