@@ -168,7 +168,7 @@ export interface MwLiveCounts {
 export type MwProvenance =
   | { kind: 'input'; at: string; by?: string }
   | { kind: 'tool'; at: string; stepRunId: string; tool: string; callId: string }
-  | { kind: 'judgement'; at: string; stepRunId: string; rationale?: string }
+  | { kind: 'judgement'; at: string; stepRunId: string; rationale?: string; /** Set when a conversation step's chat wrote it (Phase 3). */ chatId?: string }
   | { kind: 'person'; at: string; by: string; stepRunId?: string }
   | { kind: 'system'; at: string; note?: string }
 
@@ -378,6 +378,26 @@ export type MwInboxItem =
       events: string[]
       since: string
     }
+  /**
+   * A conversation step (Phase 3, `engine: open`) waiting on its chat: building or changing a
+   * playbook. "Continue" opens the chat anchored to this step run (memwise:chat:open, kind step).
+   */
+  | {
+      kind: 'conversation'
+      id: string
+      stepRunId: string
+      caseId: string
+      runId: string
+      caseTitle: string
+      workflowId: string
+      stepTitle: string
+      assignee?: string
+      /** The chat already opened on it, if any. */
+      sessionId?: string
+      /** The draft being built, when there is one yet. */
+      draftId?: string
+      since: string
+    }
   /** A reminder fired on a waiting step. */
   | {
       kind: 'reminder'
@@ -481,10 +501,225 @@ export interface MwUploadInput {
 
 /** Payload of `memwise:changed`: something the screens show changed; refetch what's affected. */
 export interface MwChange {
-  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status'
+  /** `drafts`: a draft was created, edited, checked, published or discarded (`id` = draft id). */
+  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts'
   /** The run id for `run` changes. */
   id?: string
   /** The case the changed run belongs to (`run` changes). */
   caseId?: string
   workflowId?: string
+}
+
+// ================================================================ Phase 3 (docs/memwise/20-phase-3-interfaces.md)
+// PHASE 3 CONTRACT: drafts, change control, versions, building by chat. Change only additively.
+
+export type MwDraftStage =
+  /** Being edited; not checked since the last change. */
+  | 'draft'
+  /** Checks and example cases passed on the current content. */
+  | 'checked'
+  /** The last check found errors or failing example cases. */
+  | 'failed'
+  /** Waiting for approval (a change-playbook run is at its review step). */
+  | 'in_review'
+  | 'published'
+  | 'discarded'
+
+export interface MwDraftSummary {
+  id: string
+  title: string
+  workflowId: string
+  /** The playbook's title (the draft's, for a new playbook). */
+  playbookTitle: string
+  kind: 'create' | 'change'
+  stage: MwDraftStage
+  createdBy?: string
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+  /** Chat edits waiting for keep or discard. */
+  pendingEdits: number
+  changedFiles: number
+  baseVersion?: number
+  publishedVersion?: number
+  /** The create-playbook / change-playbook run, and its case. */
+  runId?: string
+  caseId?: string
+}
+
+export interface MwDraftEdit {
+  id: string
+  at: string
+  by: string
+  byName?: string
+  via: 'chat' | 'editor' | 'cli'
+  sessionId?: string
+  summary: string
+  paths: string[]
+  status: 'pending' | 'kept' | 'discarded'
+}
+
+export interface MwDiffLine { kind: 'same' | 'added' | 'removed'; text: string }
+export interface MwDiffHunk { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: MwDiffLine[] }
+
+export interface MwFileChange {
+  path: string
+  status: 'added' | 'modified' | 'deleted'
+  hunks: MwDiffHunk[]
+  /** The live file changed since the draft was made. */
+  conflict?: boolean
+  /** Which pending chat edit last touched it (for highlighting). */
+  pendingEditId?: string
+}
+
+export type MwChangeKind = 'added' | 'removed' | 'changed'
+
+/** The map's "proposed change" mode and the editor's highlights. */
+export interface MwStructuralDiff {
+  states: Record<string, MwChangeKind>
+  transitions: { from: string; event: string; to: string; change: 'added' | 'removed' }[]
+  steps: Record<string, { change: MwChangeKind; parts: string[] }>
+  caseFields: { added: string[]; removed: string[]; changed: string[] }
+  tools: { added: string[]; removed: string[] }
+  requiredTools: { step: string; tool: string; change: 'added' | 'removed' }[]
+  roles: { added: string[]; removed: string[] }
+  examples: { added: string[]; removed: string[]; changed: string[] }
+  version: { from?: number; to?: number }
+  playbook: string[]
+}
+
+export interface MwExampleOutcome { name: string; status: 'pass' | 'fail' | 'skip'; differences: string[]; reason?: string }
+
+export interface MwPastCaseOutcome {
+  caseId: string
+  title: string
+  status: 'same' | 'different' | 'skip' | 'error'
+  differences: string[]
+  livePath: string[]
+  draftPath: string[]
+}
+
+export interface MwImpact {
+  liveVersion?: number
+  newVersion: number
+  openCases: { total: number; byState: Record<string, number> }
+  removedStatesWithCases: { state: string; cases: number }[]
+  newTools: { name: string; bound: boolean; effect?: MwEffectClass; treatment?: MwTreatment; plugin?: string }[]
+  newRequiredTools: { step: string; tool: string }[]
+  caseFields: { added: string[]; removed: string[]; changed: string[] }
+  otherPlaybooks: { id: string; uses: string[] }[]
+  /** Plain sentences for the review card. */
+  summary: string[]
+}
+
+export interface MwDraftReport {
+  hash: string
+  at: string
+  diagnostics: MwDiagnostic[]
+  errors: number
+  warnings: number
+  examples: MwExampleOutcome[]
+  pastCases: MwPastCaseOutcome[]
+  impact?: MwImpact
+  outcome: 'passed' | 'failed'
+  summary: string
+}
+
+export interface MwDraft extends MwDraftSummary {
+  edits: MwDraftEdit[]
+  files: MwFileChange[]
+  /** Absent when the draft's playbook doesn't load yet. */
+  structure?: MwStructuralDiff
+  conflicts: string[]
+  report?: MwDraftReport
+  /** The draft changed since `report` was made. */
+  reportStale: boolean
+  /** The draft read as a playbook (for the editor and the map), when it loads. */
+  playbook?: MwPlaybook
+  /** Checks on the current content (structure and policy; no example cases). */
+  diagnostics: MwDiagnostic[]
+}
+
+export interface MwCreateDraftInput {
+  /** The playbook to change; with `create`, the new playbook's id. */
+  workflowId: string
+  title: string
+  kind?: 'create' | 'change'
+}
+
+/** Editor edits: whole files, project-relative paths (`workflows/<id>/steps/check.md`). */
+export interface MwWriteDraftInput {
+  draftId: string
+  files: { path: string; content: string | null }[]
+  summary: string
+}
+
+export interface MwWriteDraftResult {
+  applied: boolean
+  editId?: string
+  diagnostics: MwDiagnostic[]
+  code?: string
+  message?: string
+}
+
+export interface MwDraftEditInput { draftId: string; editId: string }
+
+export interface MwCheckDraftInput {
+  draftId: string
+  /** How many recent finished cases of the live version to replay on the draft (default 5; 0 = none). */
+  pastCases?: number
+}
+
+/** Build a new playbook (no workflowId) or change one, by chat: starts the meta playbook and opens its chat. */
+export interface MwBuildPlaybookInput {
+  workflowId?: string
+  /** What the person wants, in their words; becomes the case's `request`. */
+  request?: string
+  title?: string
+}
+
+export interface MwBuildPlaybookResult {
+  sessionId: string
+  runId: string
+  caseId: string
+  stepRunId: string
+}
+
+export interface MwSubmitDraftResult {
+  applied: boolean
+  runId?: string
+  caseId?: string
+  code?: string
+  message?: string
+}
+
+export interface MwVersion {
+  version: number
+  hash: string
+  publishedAt: string
+  publishedBy?: string
+  publishedByName?: string
+  source: 'app' | 'cli' | 'files'
+  draftId?: string
+  runId?: string
+  openCases: number
+  live: boolean
+}
+
+/** Save a case as an example case (a correction becomes a test, 05 §12). */
+export interface MwExampleFromCaseInput {
+  caseId: string
+  name?: string
+  /** What a step should have done, when this is a correction: the step and its right outcome. */
+  correction?: { step: string; outcome: string; note?: string }
+  /** Add to this draft; default a new change draft of the case's playbook. */
+  draftId?: string
+}
+
+export interface MwExampleFromCaseResult {
+  applied: boolean
+  draftId?: string
+  path?: string
+  code?: string
+  message?: string
 }

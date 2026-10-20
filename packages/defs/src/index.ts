@@ -7,6 +7,7 @@
 
 export * from './types.ts';
 export * from './contracts.ts';
+export * from './draft-types.ts';
 export { crashPoint } from './testing.ts';
 
 export { parseValueType, formatValueType, sameValueType, parseDuration, parseCount, parseRate } from './value-types.ts';
