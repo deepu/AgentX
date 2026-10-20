@@ -4,6 +4,7 @@ import {
   DEFAULT_DOMAIN, defaultDomainName, keyOf, resolveEntity, splitEntityKey, type DomainDef, type EntityTypeDef, type FieldDef,
   type ProjectDefs, type StepToken, type WorkflowDef,
 } from '@memwise/defs';
+import { mentionTokens, PgMentionStore, type MentionSourceKind, type Queryable } from '@memwise/db';
 import type pg from 'pg';
 import type { KernelChange } from '../types.ts';
 import type { DefinitionCache } from '../views.ts';
@@ -116,6 +117,21 @@ export async function workflowOfToken(deps: Pick<RecordsDeps, 'pool' | 'defs'>, 
   const { rows } = await deps.pool.query('select workflow_id, workflow_hash from mw.runs where id = $1', [token.runId]);
   if (!rows[0]) return deps.defs.latest(token.workflowId);
   return deps.defs.workflow(rows[0].workflow_id, rows[0].workflow_hash).catch(() => undefined);
+}
+
+/**
+ * Stores the `[[etmf.Site:site_…]]` mentions in a text (a note, a person's comment on a step) as
+ * that source's mentions (24 §6). `db` is the kernel's own connection: the app role may not
+ * update mentions, which the store's upsert needs.
+ */
+export async function storeMentions(db: Queryable, entities: Record<string, EntityTypeDef>,
+  source: { kind: MentionSourceKind; id: string; label: string; caseId?: string }, text: string): Promise<number> {
+  const targets = mentionTokens(text).flatMap((t) => {
+    const def = entityByName(entities, t.entity);
+    return def ? [{ entity: keyOf(def), id: t.id, label: source.label, ...(source.caseId ? { caseId: source.caseId } : {}) }] : [];
+  });
+  await new PgMentionStore().replaceForSource(db, source.kind, source.id, targets);
+  return targets.length;
 }
 
 export { keyOf };

@@ -1218,6 +1218,7 @@
   "memwise.playbook.file": "文件",
   "memwise.playbook.hideRules": "隐藏规则",
   "memwise.playbook.layer.domain": "你的领域",
+  "memwise.playbook.layer.workspace": "工作区规则",
   "memwise.playbook.layer.platform": "平台默认",
   "memwise.playbook.layer.plugin": "插件 {{name}}",
   "memwise.playbook.layer.step": "此步骤",
