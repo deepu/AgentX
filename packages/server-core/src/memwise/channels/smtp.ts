@@ -223,7 +223,7 @@ function connect(settings: SmtpSettings): Promise<net.Socket> {
 function upgrade(socket: net.Socket, settings: SmtpSettings): Promise<tls.TLSSocket> {
   return new Promise((resolve, reject) => {
     const secured = tls.connect({ socket, servername: net.isIP(settings.host) ? undefined : settings.host, ...settings.tlsOptions }, () => resolve(secured))
-    secured.once('error', (e) => reject(new SmtpError(`the secure connection to the mail server failed: ${e.message}`)))
+    secured.once('error', (e: Error) => reject(new SmtpError(`the secure connection to the mail server failed: ${e.message}`)))
   })
 }
 

@@ -61,7 +61,7 @@ function setup(over: Partial<ExternalService> = {}, opts: { kernel?: 'none'; ipL
     log,
     ...(opts.ipLimit ? { ipLimit: opts.ipLimit } : {}),
   })
-  const req = (method: string, path: string, init: { body?: BodyInit; headers?: Record<string, string> } = {}) =>
+  const req = (method: string, path: string, init: { body?: string | Uint8Array | ReadableStream<Uint8Array>; headers?: Record<string, string> } = {}) =>
     handle(new Request(`${BASE}${path}`, { method, ...(init.body !== undefined ? { body: init.body } : {}), headers: { 'x-memwise-client-ip': '203.0.113.7', 'user-agent': 'phone', ...init.headers } }))
   const jsonReq = (method: string, path: string, body: unknown) =>
     req(method, path, { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } })
@@ -142,7 +142,7 @@ describe('the form API', () => {
     expect(r.headers.get('cache-control')).toBe('no-store')
     expect(r.headers.get('content-type')).toContain('application/json')
     expectSecurityHeaders(r)
-    expect((await r.json()).status).toBe('open')
+    expect((await r.json() as any).status).toBe('open')
     expect(calls).toEqual([{ method: 'form', args: [TOKEN, { ip: '203.0.113.7', userAgent: 'phone' }] }])
   })
 
@@ -150,20 +150,20 @@ describe('the form API', () => {
     const { req } = setup({ form: async () => ({ status: 'expired', message: 'This link has expired.' }) } as Partial<ExternalService>)
     const r = await req('GET', `/f/${TOKEN}/api/form`)
     expect(r.status).toBe(200)
-    expect(await r.json()).toEqual({ status: 'expired', message: 'This link has expired.' })
+    expect(await r.json() as any).toEqual({ status: 'expired', message: 'This link has expired.' })
   })
 
   it('answers a token that cannot be one as unknown, without asking the kernel', async () => {
     const { req, calls } = setup()
     const r = await req('GET', '/f/bad!token/api/form')
-    expect((await r.json()).status).toBe('unknown')
+    expect((await r.json() as any).status).toBe('unknown')
     expect(calls).toEqual([])
   })
 
   it('PUT api/draft saves the values', async () => {
     const { jsonReq, calls } = setup()
     const r = await jsonReq('PUT', `/f/${TOKEN}/api/draft`, { values: { pan: 'AAACM1234M' } })
-    expect(await r.json()).toEqual({ savedAt: '2026-10-20T10:42:00.000Z' })
+    expect(await r.json() as any).toEqual({ savedAt: '2026-10-20T10:42:00.000Z' })
     expect(calls[0]).toEqual({ method: 'saveDraft', args: [TOKEN, { pan: 'AAACM1234M' }, { ip: '203.0.113.7', userAgent: 'phone' }] })
   })
 
@@ -172,7 +172,7 @@ describe('the form API', () => {
     const r = await req('POST', `/f/${TOKEN}/api/files?name=${encodeURIComponent('C:\\Users\\asha\\pan-card.pdf')}`, {
       body: new Uint8Array([37, 80, 68, 70]), headers: { 'content-type': 'application/pdf; charset=binary' },
     })
-    expect((await r.json()).document.id).toBe('file_1')
+    expect((await r.json() as any).document.id).toBe('file_1')
     const [token, file] = calls[0]!.args as [string, { name: string; mime: string; data: Uint8Array }]
     expect(token).toBe(TOKEN)
     expect(file.name).toBe('pan-card.pdf')
@@ -188,7 +188,7 @@ describe('the form API', () => {
     })
     const r = await req('POST', `/f/${TOKEN}/api/files?name=big.pdf`, { body: big })
     expect(r.status).toBe(413)
-    expect((await r.json()).message).toContain('15 MB')
+    expect((await r.json() as any).message).toContain('15 MB')
     const declared = await req('POST', `/f/${TOKEN}/api/files?name=big.pdf`, { body: 'x', headers: { 'content-length': String(20 * 1024 * 1024) } })
     expect(declared.status).toBe(413)
     expect(calls).toEqual([])
@@ -196,9 +196,9 @@ describe('the form API', () => {
 
   it('POST api/extract and api/submit pass their bodies', async () => {
     const { jsonReq, calls } = setup()
-    expect((await (await jsonReq('POST', `/f/${TOKEN}/api/extract`, { documents: ['file_1'] })).json())).toEqual({ suggestions: [] })
+    expect((await (await jsonReq('POST', `/f/${TOKEN}/api/extract`, { documents: ['file_1'] })).json() as any)).toEqual({ suggestions: [] })
     const s = await jsonReq('POST', `/f/${TOKEN}/api/submit`, { outcome: 'submitted', values: { pan: 'X' }, sources: { pan: 'sug_1' } })
-    expect((await s.json()).status).toBe('applied')
+    expect((await s.json() as any).status).toBe('applied')
     expect(calls.map((c) => c.method)).toEqual(['extract', 'submit'])
     expect(calls[0]!.args[1]).toEqual({ documents: ['file_1'] })
     expect(calls[1]!.args[1]).toEqual({ outcome: 'submitted', values: { pan: 'X' }, sources: { pan: 'sug_1' } })
@@ -267,9 +267,9 @@ describe('the form API', () => {
 describe('inbox links', () => {
   it('GET api/item and POST api/decide', async () => {
     const { req, jsonReq, calls } = setup()
-    expect((await (await req('GET', `/i/${TOKEN}/api/item`)).json()).status).toBe('open')
+    expect((await (await req('GET', `/i/${TOKEN}/api/item`)).json() as any).status).toBe('open')
     const d = await jsonReq('POST', `/i/${TOKEN}/api/decide`, { outcome: 'sent_back', comment: 'Fix the PAN' })
-    expect((await d.json()).status).toBe('applied')
+    expect((await d.json() as any).status).toBe('applied')
     expect(calls[1]).toEqual({ method: 'decideInboxItem', args: [TOKEN, { outcome: 'sent_back', comment: 'Fix the PAN' }, { ip: '203.0.113.7', userAgent: 'phone' }] })
     expect((await jsonReq('POST', `/i/${TOKEN}/api/decide`, { comment: 'no outcome' })).status).toBe(400)
   })
@@ -303,7 +303,7 @@ describe('client addresses and the per-address limit', () => {
     for (let i = 0; i < 3; i++) expect((await req('GET', `/f/${TOKEN}/api/form`)).status).toBe(200)
     const over = await req('GET', `/f/${TOKEN}/api/form`)
     expect(over.status).toBe(429)
-    expect((await over.json()).status).toBe('rate_limited')
+    expect((await over.json() as any).status).toBe('rate_limited')
     // Another address is not affected; assets are not counted.
     expect((await req('GET', `/f/${TOKEN}/api/form`, { headers: { 'x-memwise-client-ip': '198.51.100.1' } })).status).toBe(200)
     expect((await req('GET', '/assets/form/assets/index-abc.js')).status).toBe(200)
