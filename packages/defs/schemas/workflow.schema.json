@@ -26,6 +26,11 @@
       "description": "Path to the workflow policy layer. Default ./policy.yaml when it exists.",
       "type": "string"
     },
+    "forked_from": {
+      "description": "Phase 4: this playbook is a fork of a plugin workflow, <plugin>@<version>; it shadows the plugin's.",
+      "type": "string",
+      "pattern": "^\\S+@\\S+$"
+    },
     "start": {
       "type": "string"
     },

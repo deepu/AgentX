@@ -68,18 +68,22 @@ export class PgEntityStore {
     return (await this.select(db, def, 'where id = $1', [id]))[0];
   }
 
-  /** Rows, newest first. */
-  async list(db: Queryable, def: EntityTypeDef, opts: { limit?: number } = {}): Promise<StoredEntityRow[]> {
-    return this.select(db, def, 'order by created_at desc, id desc limit $1', [opts.limit ?? 500]);
+  /**
+   * Rows, newest first. `unrestricted`: the kernel's own reads (identity matching on the system
+   * pool), from the table itself, so fields with an `access` list are not nulled; never for a
+   * person or a step.
+   */
+  async list(db: Queryable, def: EntityTypeDef, opts: { limit?: number; unrestricted?: boolean } = {}): Promise<StoredEntityRow[]> {
+    return this.select(db, def, 'order by created_at desc, id desc limit $1', [opts.limit ?? 500], opts.unrestricted);
   }
 
-  private async select(db: Queryable, def: EntityTypeDef, tail: string, params: unknown[]): Promise<StoredEntityRow[]> {
+  private async select(db: Queryable, def: EntityTypeDef, tail: string, params: unknown[], unrestricted = false): Promise<StoredEntityRow[]> {
     const cols = entityColumns(def);
     // Dates as text: the driver would turn them into local-midnight Date objects.
     const list = cols.map((c) => (c.type === 'date' ? `${q(c.column)}::text as ${q(c.column)}` : q(c.column)));
     const { rows } = await db.query(
-      `select id, lifecycle, created_at, created_by_step, _hidden${list.length ? `, ${list.join(', ')}` : ''}
-       from domain_read.${q(entityTableName(def.entity))} ${tail}`, params);
+      `select id, lifecycle, created_at, created_by_step, ${unrestricted ? `'{}'::text[] as _hidden` : '_hidden'}${list.length ? `, ${list.join(', ')}` : ''}
+       from ${unrestricted ? 'domain' : 'domain_read'}.${q(entityTableName(def.entity))} ${tail}`, params);
     return rows.map((r) => {
       const values: Record<string, unknown> = {};
       for (const c of cols) {

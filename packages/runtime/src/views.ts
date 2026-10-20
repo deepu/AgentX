@@ -2,11 +2,11 @@
 // nulled for roles that lack access), timeline and path, and live counts for the map.
 import { PgNotificationStore } from '@memwise/db';
 import { END_STATE, type ApprovalRequest, type CaseValue, type FieldDef, type PolicyDoc, type WorkflowDef } from '@memwise/defs';
-import { compilePolicy, layersFor, type CompiledPolicy } from '@memwise/policy';
+import { compilePolicy, layersFor, pluginLayers, type CompiledPolicy, type PluginPolicy } from '@memwise/policy';
 import type pg from 'pg';
 import { assigneeOf } from './driver.ts';
 import { REMIND_EVENT, stateKind } from './machine.ts';
-import { getTransitions, latestWorkflowDef, loadDomainPolicy, loadWorkflowDef } from './runs.ts';
+import { getTransitions, latestWorkflowDef, loadDomainPolicy, loadPluginPolicies, loadWorkflowDef } from './runs.ts';
 import type {
   Actor, CaseSummary, CaseView, InboxItem, LiveCounts, RunStatus, StepRunSummary, TransitionRecord,
 } from './types.ts';
@@ -29,11 +29,12 @@ export class DefinitionCache {
     return latestWorkflowDef(this.pool, id);
   }
 
-  /** The step's effective policy under the latest domain layer (what a step run now would get). */
-  async policy(workflow: WorkflowDef, stepId?: string, domainPolicy?: PolicyDoc): Promise<CompiledPolicy> {
+  /** The step's effective policy under the latest domain and plugin layers (what a step run now would get). */
+  async policy(workflow: WorkflowDef, stepId?: string, domainPolicy?: PolicyDoc, pluginPolicies?: PluginPolicy[]): Promise<CompiledPolicy> {
     const domain = domainPolicy ?? (await loadDomainPolicy(this.pool));
     const step = stepId ? workflow.steps[stepId] : undefined;
-    return compilePolicy(layersFor({ domainPolicy: domain, workflow, step }));
+    const plugins = pluginLayers(pluginPolicies ?? (await loadPluginPolicies(this.pool)), workflow, step);
+    return compilePolicy(layersFor({ domainPolicy: domain, plugins, workflow, step }));
   }
 }
 
@@ -179,9 +180,10 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
        from mw.approvals a join mw.step_runs s on s.id = a.step_run_id
       where a.status = 'pending' and s.status = 'waiting' order by a.requested_at, a.id`);
   const domainPolicy = approvals.rows.length ? await loadDomainPolicy(pool) : undefined;
+  const pluginPolicies = approvals.rows.length ? await loadPluginPolicies(pool) : undefined;
   for (const a of approvals.rows) {
     const wf = await defs.workflow(a.workflow_id, a.workflow_hash);
-    const policy = await defs.policy(wf, a.step_id, domainPolicy);
+    const policy = await defs.policy(wf, a.step_id, domainPolicy, pluginPolicies);
     if (!mayApprove(actor, approverRoles(policy, wf, a.step_id))) continue;
     const approval: ApprovalRequest = {
       id: a.id, stepRunId: a.step_run_id, tool: a.tool, effect: a.effect, treatment: a.treatment, args: a.args,

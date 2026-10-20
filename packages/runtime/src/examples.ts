@@ -5,6 +5,9 @@ import { END_STATE, isConversationStep, type ExampleCase, type ExampleSubmission
 import { scriptedProvider, stubTools, type ToolDefinition } from '@memwise/gateway';
 import { isDeepStrictEqual } from 'node:util';
 import { authoringToolDefinitions } from './authoring-tools.ts';
+import { bindingToolDefinitions } from './plugins/kernel-tools.ts';
+import { McpConnections } from './plugins/routes.ts';
+import { boundPlugins, pluginTool, toolClass } from './plugins/tools.ts';
 import { createKernel } from './kernel.ts';
 import { sampleTools } from './sample-tools.ts';
 import type { Actor, Kernel, RunRecord } from './types.ts';
@@ -31,13 +34,25 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
   if (opts.adminUrl) process.env.MEMWISE_TEST_DATABASE_URL = opts.adminUrl;
   const db = await createTestDatabase('mw_example');
   try {
-    // The playbooks.* definitions too, so meta-playbook examples can stub check_draft and publish_draft.
+    // The playbooks.* and plugins.* definitions too, so meta-playbook examples can stub them.
     const tools = new Map<string, ToolDefinition>();
-    for (const t of [...(opts.tools ?? ((url) => sampleTools({ databaseUrl: url })))(db.url), ...authoringToolDefinitions()]) if (!tools.has(t.name)) tools.set(t.name, t);
+    const base = (opts.tools ?? ((url) => sampleTools({ databaseUrl: url })))(db.url);
+    for (const t of [...base, ...authoringToolDefinitions(), ...bindingToolDefinitions()]) {
+      if (!tools.has(t.name)) tools.set(t.name, t);
+    }
+    // Plugin tools the example stubs (Phase 4): bound here, stubbed, so they win over the kernel's own.
+    const noMcp = new McpConnections();
+    for (const bp of boundPlugins(project)) {
+      for (const t of Object.values(bp.manifest.tools)) {
+        if (tools.has(t.name) || !Object.hasOwn(example.tools ?? {}, t.name) || toolClass(t, bp.binding).off) continue;
+        tools.set(t.name, pluginTool(t, bp, { root: project.root, builtins: new Map(base.map((b) => [b.name, b])), mcp: noMcp }));
+      }
+    }
     const kernel = await createKernel({
       databaseUrl: db.url,
       projectDir: project.root,
       tools: stubTools([...tools.values()], example.tools ?? {}),
+      builtins: base,
       modelRoles: Object.fromEntries(Object.keys(example.model ?? {}).map((role) => [role, { provider: 'scripted', model: 'scripted' }])),
       providers: [scriptedProvider(example.model ?? {})],
       logLevel: 'error', // the run is left waiting at shutdown on purpose; DBOS warns about that

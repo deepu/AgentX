@@ -458,6 +458,16 @@ export const RPC_CHANNELS = {
     DRAFTS_CHECK: 'memwise:drafts:check',
     DRAFTS_SUBMIT: 'memwise:drafts:submit',
     EXAMPLES_FROM_CASE: 'memwise:examples:fromCase',
+    // Phase 4 (docs/memwise/22-phase-4-interfaces.md §9)
+    PLUGINS_LIST: 'memwise:plugins:list',
+    PLUGINS_GET: 'memwise:plugins:get',
+    PLUGINS_INSTALL: 'memwise:plugins:install',
+    PLUGINS_BIND: 'memwise:plugins:bind',
+    PLUGINS_EXAMPLES: 'memwise:plugins:examples',
+    BINDINGS_GET: 'memwise:bindings:get',
+    IDENTITY_LIST: 'memwise:identity:list',
+    IDENTITY_DECIDE: 'memwise:identity:decide',
+    ENTITIES_RECORD: 'memwise:entities:record',
   },
   pages: {
     GET: 'pages:get',

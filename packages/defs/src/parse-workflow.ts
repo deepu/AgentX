@@ -18,6 +18,8 @@ export interface WorkflowShape {
   case?: string;
   /** Path of the workflow policy layer, relative to workflow.yaml. */
   policy?: string;
+  /** Phase 4: `forked_from: <plugin>@<version>`, a playbook copied from a plugin workflow and edited here. */
+  forkedFrom?: string;
 }
 
 export function parseWorkflowFile(text: string, file: string): ParseResult<WorkflowShape> {
@@ -64,6 +66,7 @@ export function parseWorkflowFile(text: string, file: string): ParseResult<Workf
     states,
     case: asString(data.case),
     policy: asString(data.policy),
+    forkedFrom: asString(data.forked_from),
   });
   rememberLocator(value, src.locate);
   return { value, diagnostics: report.diagnostics };

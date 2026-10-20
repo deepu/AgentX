@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { relativeTime } from '../format'
 import { isOpenDraft, sortDrafts, stageLabel, stageTone } from '../draft/draft-model'
+import { originLabel } from '../plugins/plugin-model'
 
 /** "2 Oct", with the year when it is not this year. */
 export function shortDate(iso: string, locale?: string, now: number = Date.now()): string {
@@ -22,8 +23,13 @@ export function shortDate(iso: string, locale?: string, now: number = Date.now()
   return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) }).format(at)
 }
 
-/** How a version came to be, in words: "published 2 Oct by Ravi", "changed in the files 12 Sep". */
+/** How a version came to be, in words: "published 2 Oct by Ravi", "changed in the files 12 Sep", "from Client intake 1.0.0 · binding 2". */
 export function versionOrigin(v: MwVersion, t: TFunction, locale?: string, now?: number): string {
+  if (v.origin) {
+    return v.origin.bindingVersion !== undefined
+      ? t('memwise.versions.fromBinding', { title: v.origin.pluginTitle, version: v.origin.pluginVersion, binding: v.origin.bindingVersion })
+      : originLabel(v.origin, t)
+  }
   const date = shortDate(v.publishedAt, locale, now)
   const by = v.publishedByName ?? v.publishedBy
   if (v.source === 'files') return t('memwise.versions.fromFiles', { date })

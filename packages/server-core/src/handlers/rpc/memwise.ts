@@ -11,10 +11,16 @@ import type {
   MwBuildPlaybookInput, MwBuildPlaybookResult, MwCheckDraftInput, MwCreateDraftInput, MwDraft, MwDraftEditInput,
   MwDraftReport, MwDraftSummary, MwExampleFromCaseInput, MwExampleFromCaseResult, MwSubmitDraftResult, MwVersion,
   MwWriteDraftInput, MwWriteDraftResult,
+  MwBindResult, MwBindingVersion, MwBindingView, MwDecideIdentityInput, MwEntityRecord, MwEntityRecordInput, MwGetBindingInput,
+  MwIdentityCandidate, MwInboxBinding, MwInstallChoices, MwInstallPluginInput, MwInstallableSource, MwPluginDetail,
+  MwPluginSummary,
 } from '@memwise/shared/protocol'
 import type { ApprovalDecision, DraftDiff, DraftMeta } from '@memwise/defs'
 import type { CompiledPolicy } from '@memwise/policy'
-import type { Actor, CaseView, InboxItem } from '@memwise/runtime'
+import type { Actor, CaseView, IdentityService, InboxItem, PluginsService } from '@memwise/runtime'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { isAbsolute, join, relative, resolve } from 'node:path'
+import { resolveConfigDir } from '@memwise/shared/config/paths'
 import { pushTyped, type RequestContext, type RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange } from '../../memwise/host'
@@ -62,6 +68,16 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.DRAFTS_CHECK,
   RPC_CHANNELS.memwise.DRAFTS_SUBMIT,
   RPC_CHANNELS.memwise.EXAMPLES_FROM_CASE,
+  // Phase 4
+  RPC_CHANNELS.memwise.PLUGINS_LIST,
+  RPC_CHANNELS.memwise.PLUGINS_GET,
+  RPC_CHANNELS.memwise.PLUGINS_INSTALL,
+  RPC_CHANNELS.memwise.PLUGINS_BIND,
+  RPC_CHANNELS.memwise.PLUGINS_EXAMPLES,
+  RPC_CHANNELS.memwise.BINDINGS_GET,
+  RPC_CHANNELS.memwise.IDENTITY_LIST,
+  RPC_CHANNELS.memwise.IDENTITY_DECIDE,
+  RPC_CHANNELS.memwise.ENTITIES_RECORD,
 ] as const
 
 /** Largest upload accepted through the API (base64 travels inside one WS message). */
@@ -112,6 +128,17 @@ const DRAFT_MESSAGES: Record<string, string> = {
   create_failed: 'The draft could not be made.',
   check_failed: 'The draft could not be checked.',
 }
+const IDENTITY_MESSAGES: Record<string, string> = {
+  missing: 'That match was not found.',
+  decided: 'Someone already decided this match.',
+  invalid: 'Choose "Same record" or "Different".',
+  failed: 'The match could not be decided.',
+}
+/** The meta playbook that binds a plugin (22 §4); its person steps show the binding review. */
+const BIND_PLUGIN = 'bind-plugin'
+const BIND_STEP_MODE: Record<string, MwInboxBinding['mode']> = { fix: 'edit', review: 'review' }
+/** Linked-record badges are read for at most this many rows of an entity list. */
+const LINK_BADGE_ROWS = 2000
 const refusal = (code: string, message: string): MwSubmitResult => ({ applied: false, code, message })
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 /** The meta playbooks that build and change playbooks (20 §3). */
@@ -132,6 +159,48 @@ function requireService(): MemwiseService {
   const svc = getMemwiseService()
   if (!svc) throw new Error(getMemwiseHostStatus().message ?? 'Playbooks are not running.')
   return svc
+}
+
+/** The kernel's plugins API (Phase 4); refused clearly by a kernel that has none yet. */
+function pluginsOf(svc: MemwiseService): PluginsService {
+  const plugins = (svc.kernel as { plugins?: PluginsService }).plugins
+  if (!plugins) throw new Error('Plugins are not available in this version.')
+  return plugins
+}
+
+function identityOf(svc: MemwiseService): IdentityService {
+  const identity = (svc.kernel as { identity?: IdentityService }).identity
+  if (!identity) throw new Error('Linking records is not available in this version.')
+  return identity
+}
+
+/** `child` is `root` or inside it (both real paths). */
+function isInside(child: string, root: string): boolean {
+  const rel = relative(root, child)
+  return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/** The id, title and description a plugin folder declares, read without loading it (for the Install dialog). */
+export async function readPluginHead(dir: string): Promise<{ id?: string; title?: string; description?: string }> {
+  try {
+    const file = join(dir, 'memwise-plugin.yaml')
+    const text = readFileSync(file, 'utf8')
+    // The manifest's own parser: folded and quoted scalars (`description: >`) read as written.
+    const { parsePluginManifest } = await import('@memwise/defs')
+    const m = parsePluginManifest(text, file).value
+    if (!m) return {}
+    const id = m.id || undefined
+    const title = m.title?.trim() || undefined
+    const description = m.description?.trim() || undefined
+    return { ...(id ? { id } : {}), ...(title ? { title } : {}), ...(description ? { description } : {}) }
+  } catch { /* not a MemWise plugin: maybe a Claude plugin */ }
+  try {
+    const json = JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf8')) as { name?: string; description?: string }
+    if (typeof json.name !== 'string') return {}
+    return { id: `claude/${json.name}`, title: json.name, ...(typeof json.description === 'string' ? { description: json.description } : {}) }
+  } catch {
+    return {}
+  }
 }
 
 /** Calls decideApproval with the deciding actor (Phase 2 signature, second argument). */
@@ -190,6 +259,22 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     }
   }
 
+  /**
+   * The comment a person sent this step run back with (the runtime's `returnedComments`): the newest one
+   * made on another step since this step last ran, so it holds on a first visit too.
+   */
+  async function sentBackNote(svc: MemwiseService, stepRunId: string, title: (stepId: string) => string): Promise<MwReturnedNote | undefined> {
+    try {
+      const { returnedComments } = await import('@memwise/runtime')
+      const last = (await returnedComments(svc.kernel.pool, stepRunId)).at(-1)
+      const text = last?.comment.trim()
+      if (!last || !text || !last.outcome) return undefined
+      return { stepTitle: title(last.stepId), outcome: last.outcome, text, ...(last.by ? { by: last.by } : {}), at: last.at }
+    } catch {
+      return undefined
+    }
+  }
+
   async function enrichInbox(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, items: InboxItem[]): Promise<MwInboxItem[]> {
     const views = new Map<string, Promise<CaseView | undefined>>()
     const view = (caseId: string) => {
@@ -199,10 +284,25 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     const titleOf = (v: CaseView | undefined, caseId: string) => {
       if (!v) return caseId
       const wf = c.project.workflows[v.summary.workflowId]
-      return d.caseTitle(Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value])), caseId, wf?.caseType)
+      return d.caseTitle(Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value])), caseId, wf?.caseType, c.project)
+    }
+    // Identity matches name a domain record, not a case: one list read per entity.
+    const rows = new Map<string, Promise<Map<string, Record<string, unknown>>>>()
+    const recordValues = (entity: string, id: string) => {
+      if (!rows.has(entity)) {
+        rows.set(entity, svc.kernel.listEntities(entity, actor).then(
+          (list) => new Map(list.map((r) => [r.id, Object.fromEntries(Object.entries(r.values).filter(([k]) => !r.hidden.includes(k)))])),
+          () => new Map(),
+        ))
+      }
+      return rows.get(entity)!.then((m) => m.get(id) ?? {})
     }
     const out: MwInboxItem[] = []
     for (const item of items) {
+      if (item.kind === 'identity') {
+        out.push(d.toIdentityInboxItem(item, c.project, await recordValues(item.candidate.entity, item.candidate.recordId)))
+        continue
+      }
       const v = await view(item.caseId)
       const caseTitle = titleOf(v, item.caseId)
       const wf = c.project.workflows[item.workflowId]
@@ -218,15 +318,22 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
             ...(item.assignee ? { assignee: item.assignee } : {}),
             outcomes: [...(step?.outcomes ?? [])], context, since: item.since, ...(item.dueAt ? { dueAt: item.dueAt } : {}),
           }
+          const binding = bindingOfItem(item.workflowId, item.stepId, values)
+          const stepTitleOf = (id: string) => d.stateTitle(wf, id)
+          // The binding's `fix` step is often reached for the first time by a reviewer's "Ask for changes".
+          const returned = (item.kind === 'input' ? returnedNote(v, item.stepRunId, item.stepId, stepTitleOf) : undefined)
+            ?? (binding?.mode === 'edit' ? await sentBackNote(svc, item.stepRunId, stepTitleOf) : undefined)
           if (item.kind === 'input' && wf && step) {
             const fields = d.stepWriteFields(c, wf, step)
-            const returned = returnedNote(v, item.stepRunId, item.stepId, (id) => d.stateTitle(wf, id))
             out.push({
               kind: 'input', ...common, fields, prefill: d.toCaseValues(values, fields.map((f) => f.name).filter((f) => f in values)),
-              ...(returned ? { returned } : {}),
+              ...(returned ? { returned } : {}), ...(binding ? { binding } : {}),
             })
           } else {
-            out.push({ kind: 'decision', ...common, instructions: step?.instructions ?? '' })
+            out.push({
+              kind: 'decision', ...common, instructions: step?.instructions ?? '',
+              ...(returned ? { returned } : {}), ...(binding ? { binding } : {}),
+            })
           }
           break
         }
@@ -279,6 +386,55 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       }
     }
     return out
+  }
+
+  /** A bind-plugin person step (`fix`, `review`): the plugin and draft its review screen shows. */
+  function bindingOfItem(workflowId: string, stepId: string, values: CaseView['values']): MwInboxBinding | undefined {
+    if (workflowId !== BIND_PLUGIN) return undefined
+    const plugin = values.plugin?.value
+    if (typeof plugin !== 'string' || !plugin) return undefined
+    const draft = values.draft?.value
+    return { pluginId: plugin, ...(typeof draft === 'string' && draft ? { draftId: draft } : {}), mode: BIND_STEP_MODE[stepId] ?? 'review' }
+  }
+
+  /** Freezes of a plugin's binding, newest first (`mw.binding_versions`). */
+  async function bindingHistory(svc: MemwiseService, d: Awaited<ReturnType<typeof dto>>, pluginId: string, names: Map<string, string>): Promise<MwBindingVersion[]> {
+    try {
+      const r = await svc.kernel.pool.query(
+        'select version, plugin_version, hash, frozen_by, run_id, draft_id, frozen_at from mw.binding_versions where plugin_id = $1 order by version desc',
+        [pluginId],
+      )
+      return r.rows.map((row) => d.toBindingVersion(row, names))
+    } catch {
+      return []
+    }
+  }
+
+  /** May this connection install plugins (a folder on the server)? The owner's own connection only. */
+  function mayInstall(svc: MemwiseService, ctx: RequestContext): boolean {
+    return svc.canActAs(clientOf(ctx))
+  }
+
+  /**
+   * Folders this connection may install from. On the desktop the owner may pick any folder; on a
+   * server only the bundled examples, the connector folders and anything under the config dir.
+   */
+  async function installRoots(svc: MemwiseService): Promise<string[]> {
+    const roots = [resolveConfigDir()]
+    const examples = (svc as { examplePluginsDir?: string }).examplePluginsDir
+    if (examples) roots.push(examples)
+    const sources = await sourceFolders(svc)
+    roots.push(...sources.map((x) => x.dir))
+    return roots.flatMap((r) => { try { return [realpathSync(r)] } catch { return [] } })
+  }
+
+  async function sourceFolders(svc: MemwiseService): Promise<{ slug: string; name: string; dir: string }[]> {
+    const list = (svc as { sourcePlugins?: () => Promise<{ slug: string; name: string; dir: string }[]> }).sourcePlugins
+    if (typeof list !== 'function') return []
+    try { return await list.call(svc) } catch (e) {
+      log.warn(`[memwise] listing the connectors failed: ${errText(e)}`)
+      return []
+    }
   }
 
   async function caseDigest(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, anchor: MwOpenChatInput['anchor']): Promise<{ title: string; digest: string; caseId?: string }> {
@@ -507,13 +663,19 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const loaded = await loadDraft(svc.projectDir, draftId)
       const wf = loaded.workflow
       if (!wf) return undefined
-      const { compilePolicy, layersFor } = await import('@memwise/policy')
+      const { compilePolicy, layersFor, pluginLayers } = await import('@memwise/policy')
+      const { boundPlugins, pluginPolicies, startFields } = await import('@memwise/runtime')
+      // The plugin layers as the draft's own project binds them (as the authoring checks do)
+      let bound: ReturnType<typeof pluginPolicies> = []
+      try { bound = pluginPolicies(boundPlugins(loaded.project)) } catch { /* shown without plugin layers */ }
       const policies: Record<string, CompiledPolicy | undefined> = {}
       for (const step of Object.values(wf.steps)) {
-        try { policies[step.id] = compilePolicy(layersFor({ ...(loaded.project.domainPolicy ? { domainPolicy: loaded.project.domainPolicy } : {}), workflow: wf, step })) } catch { /* shown without */ }
+        try {
+          const plugins = pluginLayers(bound, wf, step)
+          policies[step.id] = compilePolicy(layersFor({ ...(loaded.project.domainPolicy ? { domainPolicy: loaded.project.domainPolicy } : {}), plugins, workflow: wf, step }))
+        } catch { /* shown without */ }
       }
       const ctxD: DtoContext = { ...c, project: loaded.project, diagnostics: loaded.diagnostics }
-      const { startFields } = await import('@memwise/runtime')
       return { ...d.toPlaybook(ctxD, wf, policies), startFields: startFields(wf) }
     } catch {
       return undefined
@@ -556,8 +718,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         title: wf.title ?? d.humanize(wf.id),
         stepCount: Object.keys(wf.steps).length,
         open: cases.filter((s) => s.workflowId === wf.id && s.status === 'active').length,
-        waitingOnMe: inbox.filter((i) => i.workflowId === wf.id && i.kind !== 'reminder').length,
+        waitingOnMe: inbox.filter((i) => i.kind !== 'identity' && i.kind !== 'reminder' && i.workflowId === wf.id).length,
         done: cases.filter((s) => s.workflowId === wf.id && s.status === 'done').length,
+        ...(wf.origin ? { origin: d.toWorkflowOrigin(c.project, wf.origin) } : {}),
       }))
     },
 
@@ -693,8 +856,26 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     },
 
     async listEntities(ctx: RequestContext, entity: string): Promise<MwEntityRow[]> {
-      const { svc, actor, d } = await begin(ctx)
-      return (await svc.kernel.listEntities(entity, actor)).map(d.toEntityRow)
+      const { svc, actor, c, d } = await begin(ctx)
+      const rows = (await svc.kernel.listEntities(entity, actor)).map(d.toEntityRow)
+      if (!rows.length || !c.project.bindings || !Object.keys(c.project.bindings).length) return rows
+      // Phase 4: a source badge per linked outside record (one read for the whole list).
+      try {
+        const ids = rows.slice(0, LINK_BADGE_ROWS).map((r) => r.id)
+        const r = await svc.kernel.pool.query(
+          'select record_id, plugin, source, method from mw.identity_links where entity = $1 and record_id = any($2::text[]) order by at',
+          [entity, ids],
+        )
+        const byRecord = new Map<string, ReturnType<typeof d.toEntityLinkBadge>[]>()
+        for (const row of r.rows as { record_id: string; plugin: string; source: string; method: string }[]) {
+          const list = byRecord.get(row.record_id) ?? []
+          list.push(d.toEntityLinkBadge({ plugin: row.plugin, source: row.source, method: row.method as 'key' }, c.project))
+          byRecord.set(row.record_id, list)
+        }
+        return rows.map((row) => (byRecord.has(row.id) ? { ...row, links: byRecord.get(row.id)! } : row))
+      } catch {
+        return rows
+      }
     },
 
     async listEntityTypes(ctx: RequestContext): Promise<MwEntityType[]> {
@@ -728,11 +909,14 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     // ---------------------------------------------------------------- Phase 3 (20 §6)
 
     async listVersions(ctx: RequestContext, workflowId: string): Promise<MwVersion[]> {
-      const { svc, d } = await begin(ctx)
+      const { svc, c, d } = await begin(ctx)
       const versions = (svc.kernel as KernelWithAuthoring).versions
       if (!versions) return []
       const [rows, names] = await Promise.all([versions.call(svc.kernel, workflowId), peopleNames(svc)])
-      return rows.map((v) => d.toVersion(v, names))
+      // A plugin playbook's versions come from its binding, not from edits to the files.
+      const wf = c.project.workflows[workflowId]
+      const bindings = wf?.origin?.kind === 'plugin' ? await bindingHistory(svc, d, wf.origin.plugin, names) : []
+      return rows.map((v) => d.toVersion(v, names, d.versionOrigin(v, wf, c.project, bindings)))
     },
 
     async buildPlaybook(ctx: RequestContext, workspaceId: string, input: MwBuildPlaybookInput = {}): Promise<MwBuildPlaybookResult> {
@@ -931,6 +1115,158 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         return { applied: false, code: 'example.failed', message: errText(e) }
       }
     },
+
+    // ---------------------------------------------------------------- Phase 4 (22 §9)
+
+    async listPlugins(ctx: RequestContext): Promise<MwPluginSummary[]> {
+      const { svc, d } = await begin(ctx)
+      const [list, names] = await Promise.all([pluginsOf(svc).list(), peopleNames(svc)])
+      return list.map((p) => d.toPluginSummary(p, names))
+    },
+
+    async getPlugin(ctx: RequestContext, pluginId: string): Promise<MwPluginDetail> {
+      const { svc, c, d } = await begin(ctx)
+      const detail = await pluginsOf(svc).get(pluginId)
+      if (!detail) throw new Error('That plugin was not found.')
+      const names = await peopleNames(svc)
+      return d.toPluginDetail(detail, { project: c.project, names, history: await bindingHistory(svc, d, pluginId, names) })
+    },
+
+    /** What the Install dialog offers: the bundled examples and the workspace's connectors (owner only). */
+    async installChoices(ctx: RequestContext): Promise<MwInstallChoices> {
+      const svc = requireService()
+      const canInstall = mayInstall(svc, ctx)
+      // Server folders are shown only to whoever may install from them.
+      if (!canInstall) return { examples: [], sources: [], canInstall: false, canInstallPath: false }
+      const installed = new Map<string, string>()
+      try { for (const p of await pluginsOf(svc).list()) installed.set(p.id, p.version) } catch { /* listed without */ }
+      const { listExamplePlugins } = await import('../../memwise/seed')
+      const { sourcePluginId } = await import('../../memwise/connectors')
+      const examplesDir = (svc as { examplePluginsDir?: string }).examplePluginsDir
+      const examples: MwInstallableSource[] = await Promise.all(listExamplePlugins(examplesDir).map(async (x) => {
+        const head = await readPluginHead(x.dir)
+        const version = head.id ? installed.get(head.id) : undefined
+        return {
+          slug: x.name, name: head.title ?? x.name, dir: x.dir,
+          ...(head.description ? { description: head.description } : {}),
+          ...(head.id ? { pluginId: head.id } : {}), ...(version ? { installed: version } : {}),
+        }
+      }))
+      const sources: MwInstallableSource[] = (await sourceFolders(svc)).map((x) => {
+        const pluginId = sourcePluginId(x.slug)
+        const version = installed.get(pluginId)
+        return { slug: x.slug, name: x.name, dir: x.dir, pluginId, ...(version ? { installed: version } : {}) }
+      })
+      return { examples, sources, canInstall, canInstallPath: svc.mode === 'desktop' }
+    },
+
+    /**
+     * Install a plugin folder on the machine running the kernel (22 §2): the owner's own
+     * connection only; on a server, only folders the Install dialog offers (or under the config dir).
+     */
+    async installPlugin(ctx: RequestContext, input: MwInstallPluginInput): Promise<MwPluginSummary> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!mayInstall(svc, ctx)) throw new Error('Only the owner of this install can install plugins.')
+      const raw = typeof input?.path === 'string' ? input.path.trim() : ''
+      if (!raw) throw new Error('Choose a plugin folder to install.')
+      if (!isAbsolute(raw)) throw new Error('Give the full path of the plugin folder.')
+      if (!existsSync(raw)) throw new Error('That folder was not found.')
+      const dir = realpathSync(resolve(raw))
+      if (svc.mode !== 'desktop' && !(await installRoots(svc)).some((root) => isInside(dir, root))) {
+        throw new Error('On a server, plugins can be installed only from the examples and the connectors set up here.')
+      }
+      const summary = await pluginsOf(svc).install(dir, actor)
+      emitMemwiseChange({ kind: 'plugins' })
+      return d.toPluginSummary(summary, await peopleNames(svc))
+    },
+
+    /** Start bind-plugin for the plugin's newest version; the screens then open its case. */
+    async bindPlugin(ctx: RequestContext, pluginId: string): Promise<MwBindResult> {
+      const { svc, actor, c } = await begin(ctx)
+      if (typeof pluginId !== 'string' || !pluginId) throw new Error('That plugin was not found.')
+      const meta = c.project.workflows[BIND_PLUGIN]
+      if (!meta) throw new Error('Binding plugins is not set up in this project (the bind-plugin playbook is missing).')
+      if (meta.owner && !actor.roles.includes(meta.owner)) {
+        throw Object.assign(new Error(`Binding plugins is for someone with the ${meta.owner} role.`), { code: 'bind.forbidden' })
+      }
+      const r = await pluginsOf(svc).startBind(pluginId, actor)
+      emitMemwiseChange({ kind: 'plugins' })
+      return { runId: r.runId, caseId: r.caseId }
+    },
+
+    async getBinding(ctx: RequestContext, input: MwGetBindingInput): Promise<MwBindingView> {
+      const { svc, c, d } = await begin(ctx)
+      const pluginId = input?.pluginId
+      if (typeof pluginId !== 'string' || !pluginId) throw new Error('That plugin was not found.')
+      const plugins = pluginsOf(svc)
+      const summary = (await plugins.list()).find((p) => p.id === pluginId)
+      if (!summary) throw new Error('That plugin was not found.')
+      const state = summary.binding
+      const draftId = input.draftId ?? (state.status === 'binding' ? state.draftId : undefined)
+      const view = await plugins.binding(pluginId, draftId ? { draftId } : undefined)
+      if (!view) throw new Error('This plugin is not bound yet; start binding it first.')
+      const authoring = (svc.kernel as KernelWithAuthoring).authoring
+      const draft = view.draftId && authoring ? await authoring.getDraft(view.draftId).catch(() => undefined) : undefined
+      let run: { runId: string; caseId: string; state: string } | undefined
+      if (state.status === 'binding') {
+        const r = await svc.kernel.getRun(state.runId).catch(() => undefined)
+        if (r && r.status === 'active') run = { runId: r.id, caseId: r.caseId, state: r.state }
+      }
+      const pinned = view.binding.pluginVersion
+      const detail = await plugins.get(pluginId).catch(() => undefined)
+      return d.toBindingView(view, {
+        project: c.project, names: await peopleNames(svc),
+        ...(detail && (!pinned || detail.version === pinned) ? { plugin: detail } : {}),
+        editable: draft?.meta.status === 'open',
+        ...(run ? { run } : {}),
+        ...(draft ? { contentHash: draft.contentHash } : {}),
+      })
+    },
+
+    async listIdentityCandidates(ctx: RequestContext, filter: { status?: MwIdentityCandidate['status'] } = {}): Promise<MwIdentityCandidate[]> {
+      const { svc, actor, c, d } = await begin(ctx)
+      const status = filter?.status && ['pending', 'confirmed', 'rejected', 'settled'].includes(filter.status) ? filter.status : undefined
+      // Only people who decide identity matches see them (they carry the outside records' values).
+      const [list, names] = await Promise.all([identityOf(svc).candidates({ ...(status ? { status } : {}), actor }), peopleNames(svc)])
+      const titles = new Map<string, Promise<Map<string, string>>>()
+      const titleOf = (entity: string, id: string) => {
+        if (!titles.has(entity)) {
+          titles.set(entity, svc.kernel.listEntities(entity, actor).then(
+            (rows) => new Map(rows.map((r) => [r.id, d.recordTitle(entity, r.id, Object.fromEntries(Object.entries(r.values).filter(([k]) => !r.hidden.includes(k))))])),
+            () => new Map(),
+          ))
+        }
+        return titles.get(entity)!.then((m) => m.get(id))
+      }
+      const out: MwIdentityCandidate[] = []
+      for (const x of list) out.push(d.toIdentityCandidate(x, c.project, names, await titleOf(x.entity, x.recordId)))
+      return out
+    },
+
+    async decideIdentity(ctx: RequestContext, input: MwDecideIdentityInput): Promise<MwSubmitResult> {
+      const { svc, actor } = await begin(ctx)
+      if (!input?.candidateId) return refusal('identity.missing', IDENTITY_MESSAGES.missing!)
+      if (input.decision !== 'confirm' && input.decision !== 'reject') return refusal('identity.invalid', IDENTITY_MESSAGES.invalid!)
+      try {
+        const r = await identityOf(svc).decide({ candidateId: input.candidateId, decision: input.decision, by: actor })
+        if (!r.applied) return refusal('identity.decided', r.message ?? IDENTITY_MESSAGES.decided!)
+        emitMemwiseChange({ kind: 'inbox' })
+        emitMemwiseChange({ kind: 'plugins' })
+        return { applied: true }
+      } catch (e) {
+        return refusal('identity.failed', errText(e))
+      }
+    },
+
+    async getEntityRecord(ctx: RequestContext, input: MwEntityRecordInput): Promise<MwEntityRecord> {
+      const { svc, actor, c, d } = await begin(ctx)
+      if (!input?.entity || !input.id) throw new Error('That record was not found.')
+      const entityRecord = (svc.kernel as { entityRecord?: (e: string, id: string, a: Actor) => ReturnType<Kernel['entityRecord']> }).entityRecord
+      if (typeof entityRecord !== 'function') throw new Error('Linked records are not available in this version.')
+      const r = await entityRecord.call(svc.kernel, input.entity, input.id, actor)
+      if (!r) throw new Error('That record was not found.')
+      return d.toEntityRecord(r, c.project, await peopleNames(svc))
+    },
   }
 }
 
@@ -976,6 +1312,16 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.DRAFTS_CHECK, (ctx, _ws: string, input) => api.checkDraft(ctx, input))
   server.handle(ch.DRAFTS_SUBMIT, (ctx, _ws: string, draftId: string) => api.submitDraft(ctx, draftId))
   server.handle(ch.EXAMPLES_FROM_CASE, (ctx, _ws: string, input) => api.exampleFromCase(ctx, input))
+  // Phase 4
+  server.handle(ch.PLUGINS_LIST, (ctx) => api.listPlugins(ctx))
+  server.handle(ch.PLUGINS_GET, (ctx, _ws: string, pluginId: string) => api.getPlugin(ctx, pluginId))
+  server.handle(ch.PLUGINS_INSTALL, (ctx, _ws: string, input) => api.installPlugin(ctx, input))
+  server.handle(ch.PLUGINS_BIND, (ctx, _ws: string, pluginId: string) => api.bindPlugin(ctx, pluginId))
+  server.handle(ch.PLUGINS_EXAMPLES, (ctx) => api.installChoices(ctx))
+  server.handle(ch.BINDINGS_GET, (ctx, _ws: string, input) => api.getBinding(ctx, input))
+  server.handle(ch.IDENTITY_LIST, (ctx, _ws: string, filter) => api.listIdentityCandidates(ctx, filter ?? {}))
+  server.handle(ch.IDENTITY_DECIDE, (ctx, _ws: string, input) => api.decideIdentity(ctx, input))
+  server.handle(ch.ENTITIES_RECORD, (ctx, _ws: string, input) => api.getEntityRecord(ctx, input))
 
   onMemwiseChange((change) => {
     pushTyped(server, RPC_CHANNELS.memwise.CHANGED, { to: 'all' }, change)

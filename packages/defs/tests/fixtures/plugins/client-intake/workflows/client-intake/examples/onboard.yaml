@@ -1,0 +1,14 @@
+name: onboard
+startAt: onboard
+case:
+  client_name: Asha Rao
+  client_email: asha@acme.example
+  gstin: 29AAACA1234A1Z5
+  pan: AAACA1234A
+expect:
+  outcome: done
+  state: end
+  effects: { domain.client.create: 1 }
+  entities:
+    Client:
+      - { name: Asha Rao, email: asha@acme.example, tax_id: 29AAACA1234A1Z5 }

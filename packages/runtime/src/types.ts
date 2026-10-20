@@ -37,6 +37,10 @@ export interface KernelOptions {
    * throwaway cluster of the CLI's own.
    */
   testDatabaseUrl?: string;
+  /** Phase 4: implementations for plugin tools with `run: { builtin: <name> }`, by tool name. */
+  builtins?: ToolDefinition[];
+  /** Phase 4: resolves an MCP server declared `{ source: <slug> }` (a connector set up in the app), with its credentials. */
+  resolveMcpSource?: (slug: string) => Promise<import('@memwise/defs').McpServerDef | undefined>;
 }
 
 export type RunStatus = 'active' | 'done' | 'stopped';
@@ -114,7 +118,7 @@ export interface StartRunInput {
   by?: string;
 }
 
-export interface Kernel extends KernelPhase2, KernelPhase3 {
+export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4 {
   /** Load the project folder and index it; returns the loader's diagnostics. */
   index(): Promise<Diagnostic[]>;
   startRun(input: StartRunInput): Promise<{ runId: string; caseId: string }>;
@@ -208,7 +212,9 @@ export type InboxItem =
       text: string; since: string }
   /** Phase 3: a conversation step (`engine: open`) waiting on its chat, for its assignee role. */
   | { kind: 'conversation'; id: string; stepRunId: string; runId: string; caseId: string; workflowId: string; stepId: string;
-      assignee?: string; since: string };
+      assignee?: string; since: string }
+  /** Phase 4: an uncertain identity match waiting for a person (22 §6). */
+  | { kind: 'identity'; id: string; candidate: import('@memwise/defs').IdentityCandidate; since: string };
 
 export interface CaseSummary {
   caseId: string; runId: string; workflowId: string; workflowVersion: number; workflowHash: string;
@@ -249,7 +255,9 @@ export type KernelChange =
   | { kind: 'inbox' }
   | { kind: 'definitions' }
   /** Phase 3: a draft changed (created, edited, checked, published, discarded). */
-  | { kind: 'drafts'; draftId: string };
+  | { kind: 'drafts'; draftId: string }
+  /** Phase 4: a plugin was installed, or a binding or identity link changed. */
+  | { kind: 'plugins' };
 
 export interface KernelPhase2 {
   readonly people: PeopleService;
@@ -360,3 +368,111 @@ export interface KernelPhase3 {
 }
 
 export type { _DiffHunk as DiffHunk };
+
+// ================================================================ Phase 4 (docs/memwise/22-phase-4-interfaces.md)
+// PHASE 4 CONTRACT. `@memwise/server-core` codes against these; change only additively.
+
+import type {
+  BindingDef, BindingGap, BindingReport, EffectClass as _EffectClass, IdentityCandidate, IdentityLink, PluginManifest,
+  PluginTrust,
+} from '@memwise/defs';
+
+/** The meta playbook that binds a plugin into the domain (22 §4). */
+export const BIND_PLUGIN = 'bind-plugin';
+
+export type PersonActor = Extract<Actor, { kind: 'person' }>;
+
+/** Where a plugin stands in this domain. */
+export type BindingState =
+  | { status: 'unbound' }
+  /** A bind-plugin case is open for it. */
+  | { status: 'binding'; runId: string; caseId: string; draftId?: string }
+  | { status: 'bound'; version: number; pluginVersion: string; frozenAt?: string; frozenBy?: string };
+
+export interface PluginSummary {
+  id: string;
+  /** Newest installed version. */
+  version: string;
+  /** Every installed version, newest first. */
+  versions: string[];
+  title: string;
+  description?: string;
+  trust: PluginTrust;
+  imported?: 'claude-plugin';
+  tools: number;
+  workflows: string[];
+  provides: string[];
+  requires: string[];
+  binding: BindingState;
+  /** Bound to an older version than the newest installed. */
+  upgradeAvailable?: boolean;
+}
+
+export interface PluginDetail extends PluginSummary {
+  manifest: PluginManifest;
+  dir: string;
+  hash: string;
+  skills: { name: string; description?: string }[];
+  /** Tools with their effective class in this domain (the binding's, else declared; none = irreversible). */
+  toolClasses: { name: string; description: string; effect?: _EffectClass; from: 'declared' | 'annotations' | 'binding' | 'none'; off?: boolean }[];
+  /** Install notes (ignored Claude plugin parts, discovery problems). */
+  notes: string[];
+}
+
+/** A binding, live or a draft, with what the review screen shows. */
+export interface BindingView {
+  pluginId: string;
+  draftId?: string;
+  binding: BindingDef;
+  /** The YAML as on disk (live or the draft's), for editing through drafts.write. */
+  text: string;
+  path: string;
+  gaps: BindingGap[];
+  report?: BindingReport;
+  /** The plugin's default policy as YAML-ready data, beside the binding's tightening. */
+  pluginPolicy?: import('@memwise/defs').PolicyDoc;
+}
+
+export interface EntityRecordView {
+  entity: string;
+  id: string;
+  values: Record<string, unknown>;
+  hidden: string[];
+  createdAt: string;
+  links: (IdentityLink & {
+    /** The linked record's mapped values read live through the source's `get` tool; absent when it couldn't be read. */
+    values?: Record<string, unknown>;
+    extra?: Record<string, unknown>;
+    error?: string;
+  })[];
+  /** Field → the plugin it is read through (the entity's `ownership:` names that plugin's namespace or id). */
+  readThrough: Record<string, { plugin: string; value: unknown }>;
+}
+
+export interface PluginsService {
+  list(): Promise<PluginSummary[]>;
+  get(id: string): Promise<PluginDetail | undefined>;
+  /** Copy a MemWise or Claude plugin folder into `plugins/`; imported MCP tools are discovered now. */
+  install(dir: string, by: Actor): Promise<PluginSummary>;
+  /** Start bind-plugin for the plugin's newest installed version. */
+  startBind(pluginId: string, by: PersonActor): Promise<{ runId: string; caseId: string }>;
+  binding(pluginId: string, opts?: { draftId?: string }): Promise<BindingView | undefined>;
+}
+
+export interface IdentityService {
+  resolve(input: { plugin: string; source?: string }): Promise<{ linked: number; candidates: number; unmatched: number; created: number }>;
+  /**
+   * Identity candidates, with the outside records' values. With `actor`, only for someone who may
+   * decide identity matches (the bind-plugin owner role); anyone else gets none.
+   */
+  candidates(filter?: { status?: IdentityCandidate['status']; actor?: Actor }): Promise<IdentityCandidate[]>;
+  decide(input: { candidateId: string; decision: 'confirm' | 'reject'; by: PersonActor }): Promise<{ applied: boolean; message?: string }>;
+  links(entity: string, recordId: string): Promise<IdentityLink[]>;
+}
+
+export interface KernelPhase4 {
+  readonly plugins: PluginsService;
+  readonly identity: IdentityService;
+  /** A domain record with its identity links and the fields read through them (22 §5). */
+  entityRecord(entity: string, id: string, actor: Actor): Promise<EntityRecordView | undefined>;
+}

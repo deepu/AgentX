@@ -27,3 +27,19 @@ Change control is itself two playbooks, run like any other case (docs/memwise/20
 
 The `playbooks.*` tools are bound by the kernel when it has a project folder. The example cases stub them and answer
 the chat steps and the review from `submit:`.
+
+## Binding plugins (Phase 4)
+
+Plugins are installed into `plugins/<slug>/<version>/` (`memwise plugin install <project> <folder>`, or Plugins in the app)
+and do nothing until they are bound (docs/memwise/22-phase-4-interfaces.md). Binding is a playbook too:
+
+- `workflows/bind-plugin`: `check` (installed, required capabilities provided, tool names free: `plugins.install_check`),
+  `propose` (a deterministic proposal written into a binding draft: `plugins.propose_binding`), `classify` (the `binder`
+  model role classifies the tools nobody classified: `plugins.classify_tools`), `dry_run` (checks with the binding applied, the
+  plugin's example cases through it, its mappings on sample records: `plugins.dry_run`), `fix` (staff), `review` (a manager),
+  `freeze` (the next binding version goes live: `plugins.freeze`) and `link` (identity resolution: `identity.resolve`).
+- The frozen binding is `domain/bindings/<slug>.yaml`. Only frozen bindings bind tools; the plugin's workflows run in this
+  domain's terms through it. `memwise bind <project> <plugin> --draft` makes a binding draft from a proposal on the command line.
+
+The `plugins.*` and `identity.resolve` tools are bound by the kernel when it has a project folder; the example cases stub them
+and script the binder.

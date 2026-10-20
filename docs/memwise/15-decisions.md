@@ -120,9 +120,21 @@ Choices made while building playbooks by chat ([20](20-phase-3-interfaces.md)).
 | D59 | **Corrections become example cases** in a change draft of the playbook ("Save as example", optionally with what a step should have done). | The playbook learns from mistakes through the same review as any change | [20 §5](20-phase-3-interfaces.md) |
 | D60 | **`memwise push` publishes directly from a folder the person controls**, after its checks and example cases pass; the app publishes only through the review step. | Teams that review in git shouldn't review twice | [20 §7](20-phase-3-interfaces.md) |
 
+## Settled in Phase 4
+
+Choices made while building plugins and bindings ([22](22-phase-4-interfaces.md)).
+
+| # | Decision | Why | Docs |
+|---|---|---|---|
+| D61 | **A plugin is a folder with `memwise-plugin.yaml`, installed by copying it to `plugins/<slug>/<version>/`, where it does nothing until bound.** Its tools are reached by routes the core picks: `builtin` (first-party code shipped with the app), `mcp` (a server the plugin declares, stdio or HTTP, or a connector set up in the app) and `command` (a subprocess per call). Claude plugins import into the same manifest: skills and MCP servers come in, tools are discovered from the servers and stay unclassified. | One format for first-party, imported and community code; installing can't change what runs (D9, D28) | [22 §2](22-phase-4-interfaces.md) |
+| D62 | **A binding is a frozen file per plugin, `domain/bindings/<slug>.yaml`, made by the bind-plugin meta playbook** (install check, proposal, an agent classifying tools, dry run, review, freeze, identity resolution) through a binding draft. Only frozen bindings bind tools; a binding's class wins over the manifest's but may not loosen a declared one; the plugin's default policy and the binding's tightening are policy layers. | "A step can never use a tool the domain hasn't bound" (06 §4), and binding is reviewed like any change (D33) | [22 §3–4](22-phase-4-interfaces.md) |
+| D63 | **Plugin workflows are referenced, not copied: indexing resolves them through the binding into domain terms** (entities, fields, roles, capability aliases), with an origin and a hash covering the binding. Changing one forks it into `workflows/`. Capabilities are tool aliases the binding points at a provider. | Plugins stay reusable across businesses (D10); swapping a vendor touches only the binding (06 §8) | [22 §3](22-phase-4-interfaces.md) |
+| D64 | **Mappings are declarative and deterministic**: a fixed set of transforms, a direction, unmapped fields kept under the plugin's namespace. The domain stores identity links and its own fields; fields a plugin owns are read through the link, live. Writing back to the owner comes with linked entities in Phase 6. | No model runs when data moves (P1); links don't drift like copies (04 §5) | [22 §5](22-phase-4-interfaces.md) |
+| D65 | **Identity resolution is deterministic in Phase 4**: exact keys first, then a name similarity with thresholds; confident matches link, uncertain ones go to the inbox, decisions are recorded and never asked again. A model for fuzzy matches waits until this falls short. | Testable and explainable; the inbox catches the rest | [22 §6](22-phase-4-interfaces.md) |
+
 ## Agreed for Phase 6
 
-Agreed on 20 October 2026 from the eTMF trial of the model, and built in Phase 6 ([21](21-domains-and-records.md)). Numbers D53–D69 are left for decisions settled in Phases 3–5.
+Agreed on 20 October 2026 from the eTMF trial of the model, and built in Phase 6 ([21](21-domains-and-records.md)). Numbers D53–D69 are left for decisions settled in Phases 3–5 (Phase 3 used D53–D60, Phase 4 D61–D65).
 
 | # | Decision | Why | Docs |
 |---|---|---|---|

@@ -781,6 +781,16 @@ export interface ElectronAPI {
   memwiseCheckDraft(workspaceId: string, input: import('@memwise/shared/protocol').MwCheckDraftInput): Promise<import('@memwise/shared/protocol').MwDraftReport>
   memwiseSubmitDraft(workspaceId: string, draftId: string): Promise<import('@memwise/shared/protocol').MwSubmitDraftResult>
   memwiseExampleFromCase(workspaceId: string, input: import('@memwise/shared/protocol').MwExampleFromCaseInput): Promise<import('@memwise/shared/protocol').MwExampleFromCaseResult>
+  // Phase 4: plugins, bindings, identity (docs/memwise/22-phase-4-interfaces.md §9)
+  memwiseListPlugins(workspaceId: string): Promise<import('@memwise/shared/protocol').MwPluginSummary[]>
+  memwiseGetPlugin(workspaceId: string, pluginId: string): Promise<import('@memwise/shared/protocol').MwPluginDetail>
+  memwiseInstallPlugin(workspaceId: string, input: import('@memwise/shared/protocol').MwInstallPluginInput): Promise<import('@memwise/shared/protocol').MwPluginSummary>
+  memwiseBindPlugin(workspaceId: string, pluginId: string): Promise<import('@memwise/shared/protocol').MwBindResult>
+  memwiseListInstallChoices(workspaceId: string): Promise<import('@memwise/shared/protocol').MwInstallChoices>
+  memwiseGetBinding(workspaceId: string, input: import('@memwise/shared/protocol').MwGetBindingInput): Promise<import('@memwise/shared/protocol').MwBindingView>
+  memwiseListIdentityCandidates(workspaceId: string, filter?: { status?: import('@memwise/shared/protocol').MwIdentityCandidate['status'] }): Promise<import('@memwise/shared/protocol').MwIdentityCandidate[]>
+  memwiseDecideIdentity(workspaceId: string, input: import('@memwise/shared/protocol').MwDecideIdentityInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
+  memwiseGetEntityRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwEntityRecordInput): Promise<import('@memwise/shared/protocol').MwEntityRecord>
   onMemwiseChanged(callback: (change: import('@memwise/shared/protocol').MwChange) => void): () => void
 
   // Automations
@@ -1052,6 +1062,16 @@ export interface PlaybooksNavigationState {
 }
 
 /**
+ * MemWise plugins (Phase 4, docs/memwise/22-phase-4-interfaces.md §10): installed plugins and
+ * their bindings, and the domain's records with the outside records linked to them.
+ */
+export interface PluginsNavigationState {
+  navigator: 'plugins'
+  details: { type: 'plugin'; pluginId: string } | { type: 'records'; entity: string } | null
+  rightSidebar?: RightSidebarPanel
+}
+
+/**
  * Unified navigation state
  */
 export type NavigationState =
@@ -1065,6 +1085,7 @@ export type NavigationState =
   | InboxNavigationState
   | CasesNavigationState
   | PlaybooksNavigationState
+  | PluginsNavigationState
 
 export const isSessionsNavigation = (
   state: NavigationState
@@ -1105,6 +1126,10 @@ export const isCasesNavigation = (
 export const isPlaybooksNavigation = (
   state: NavigationState
 ): state is PlaybooksNavigationState => state.navigator === 'playbooks'
+
+export const isPluginsNavigation = (
+  state: NavigationState
+): state is PluginsNavigationState => state.navigator === 'plugins'
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
@@ -1152,6 +1177,10 @@ export const getNavigationStateKey = (state: NavigationState): string => {
   if (state.navigator === 'playbooks') {
     if (state.details?.type === 'draft') return `playbooks/draft/${state.details.draftId}`
     return state.details ? `playbooks/playbook/${state.details.playbookId}` : 'playbooks'
+  }
+  if (state.navigator === 'plugins') {
+    if (state.details?.type === 'records') return `plugins/records/${state.details.entity}`
+    return state.details ? `plugins/plugin/${state.details.pluginId}` : 'plugins'
   }
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
@@ -1240,6 +1269,15 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
   if (key.startsWith('playbooks/draft/')) {
     const draftId = key.slice(16)
     return { navigator: 'playbooks', details: draftId ? { type: 'draft', draftId } : null }
+  }
+  if (key === 'plugins') return { navigator: 'plugins', details: null }
+  if (key.startsWith('plugins/plugin/')) {
+    const pluginId = key.slice(15)
+    return { navigator: 'plugins', details: pluginId ? { type: 'plugin', pluginId } : null }
+  }
+  if (key.startsWith('plugins/records/')) {
+    const entity = key.slice(16)
+    return { navigator: 'plugins', details: entity ? { type: 'records', entity } : null }
   }
 
   // Handle settings

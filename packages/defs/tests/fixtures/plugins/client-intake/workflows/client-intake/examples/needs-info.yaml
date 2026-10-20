@@ -1,0 +1,24 @@
+name: needs-info
+startAt: check
+case:
+  client_name: Ravi Menon
+  client_email: ravi@menon.example
+  gstin: 27AAACM1234M1Z2
+tools:
+  gst.validate_gstin: { valid: false }
+  email.send: { message_id: sandbox-1 }
+  domain.client.get: { id: cli_1, name: Ravi Menon, tax_id: 27AAACM1234M1Z2 }
+approvals:
+  email.send: approve
+model:
+  checker:
+    - toolCalls:
+        - { name: gst.validate_gstin, args: { gstin: 27AAACM1234M1Z2 } }
+        - { name: email.send, args: { to: ravi@menon.example, body: Your GSTIN did not validate. } }
+        - { name: domain.client.get, args: { id: cli_1 } }
+    - toolCalls:
+        - { name: step.finish, args: { outcome: needs_info, writes: { gstin_ok: false } } }
+expect:
+  outcome: needs_info
+  state: end
+  effects: { email.send: 1 }

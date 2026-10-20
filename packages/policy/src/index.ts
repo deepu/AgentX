@@ -6,7 +6,7 @@
  */
 
 export * from './types.ts';
-export { BUILTIN_TOOLS, PLATFORM_DEFAULTS, VERIFIER_ROLE, layersFor, mergeStricter, stepLayer, type LayersForInput } from './layers.ts';
+export { BUILTIN_TOOLS, PLATFORM_DEFAULTS, VERIFIER_ROLE, layersFor, mergeStricter, pluginLayers, stepLayer, type LayersForInput, type PluginPolicy } from './layers.ts';
 export { compilePolicy } from './compile.ts';
 export { decide } from './decide.ts';
 export { describePolicy, violationsToDiagnostics } from './describe.ts';

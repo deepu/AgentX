@@ -8,6 +8,8 @@ import { parsePolicyFile } from './parse-policy.ts';
 import { parseStepFile } from './parse-step.ts';
 import { parseCaseFile, parseEntityFile, parseRolesFile } from './parse-types.ts';
 import { locatorOf, rememberLocator, Reporter } from './source.ts';
+import type { WorkflowOrigin } from './plugin-types.ts';
+import { loadPluginsAndBindings, type LoadProjectOptions } from './project-plugins.ts';
 import type { CaseTypeDef, Diagnostic, EntityTypeDef, ExampleCase, PolicyDoc, ProjectDefs, StepDef, WorkflowDef } from './types.ts';
 
 const posix = (p: string) => p.split(sep).join('/');
@@ -143,14 +145,25 @@ export async function loadWorkflow(dir: string, projectRoot: string): Promise<{ 
     examples,
     dir: relDir,
     hash: h.digest('hex'),
+    ...(forkOrigin(shape.forkedFrom) ? { origin: forkOrigin(shape.forkedFrom)! } : {}),
   };
   rememberLocator(workflow, locatorOf(shape)!);
   diagnostics.push(...report.diagnostics);
   return { workflow, diagnostics };
 }
 
-/** Loads a whole project folder (see the layout in types.ts). Content errors are diagnostics; it never throws for them. */
-export async function loadProject(root: string): Promise<{ project: ProjectDefs; diagnostics: Diagnostic[] }> {
+/** `memwise/client-intake@1.0.0` → a fork origin (the last `@` splits, so scoped ids stay whole). */
+function forkOrigin(forkedFrom: string | undefined): WorkflowOrigin | undefined {
+  const at = forkedFrom?.lastIndexOf('@') ?? -1;
+  if (!forkedFrom || at <= 0 || at === forkedFrom.length - 1) return undefined;
+  return { kind: 'fork', plugin: forkedFrom.slice(0, at), pluginVersion: forkedFrom.slice(at + 1) };
+}
+
+/**
+ * Loads a whole project folder (see the layout in types.ts). Content errors are diagnostics; it
+ * never throws for them. Phase 4: also `plugins/` and `domain/bindings/` (see project-plugins.ts).
+ */
+export async function loadProject(root: string, opts: LoadProjectOptions = {}): Promise<{ project: ProjectDefs; diagnostics: Diagnostic[] }> {
   const abs = resolve(root);
   const project: ProjectDefs = { root: abs, roles: {}, entities: {}, workflows: {} };
   const diagnostics: Diagnostic[] = [];
@@ -209,6 +222,9 @@ export async function loadProject(root: string): Promise<{ project: ProjectDefs;
       project.workflows[r.workflow.id] = r.workflow;
     }
   }
+
+  // Phase 4: installed plugins, bindings, and the plugin workflows frozen bindings resolve.
+  diagnostics.push(...(await loadPluginsAndBindings(abs, project, opts)));
   return { project, diagnostics };
 }
 

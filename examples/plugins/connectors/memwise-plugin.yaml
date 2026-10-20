@@ -1,0 +1,11 @@
+# The Connectors plugin (docs/memwise/22-phase-4-interfaces.md §7). It ships no tools of its own:
+# it is the connector setup guide as a skill, and the bridge from connectors people set up in chat
+# (the workspace's sources) to plugins. Each MCP source can be installed as its own plugin
+# `source/<slug>`, whose one server is `{ source: <slug> }`: the app resolves it when a tool is
+# called, with the source's stored credentials, so nothing secret is copied into the project.
+id: memwise/connectors
+version: 1.0.0
+title: Connectors
+description: Set up connectors to outside systems, and bring the ones set up in chat into playbooks as plugins.
+trust: first-party
+skills: [connector-setup]

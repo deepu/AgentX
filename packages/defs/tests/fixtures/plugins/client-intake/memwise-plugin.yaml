@@ -1,0 +1,40 @@
+# A plugin in its own terms: Client, approver, email.send.
+id: test/client-intake
+version: 1.0.0
+title: Client intake
+description: Collect a client's details, check them, onboard them.
+trust: first-party
+provides:
+  capabilities: { document_extraction: { tool: intake.extract_fields } }
+requires:
+  capabilities:
+    email_send: { as: email.send }
+  entities:
+    Client:
+      fields:
+        name:   { type: PersonName, required: true }
+        email:  Email
+        tax_id: Identifier(GSTIN)
+        pan:    Identifier(PAN)
+  roles:
+    staff:    { title: Staff }
+    approver: { title: Approver, description: Approves onboarding }
+tools:
+  gst.validate_gstin:
+    description: Look up a GSTIN in the GST registry.
+    effect: read
+    input: { type: object, properties: { gstin: { type: string } }, required: [gstin] }
+    output: { type: object, properties: { valid: { type: boolean } } }
+    run: { builtin: gst.validate_gstin }
+  intake.extract_fields:
+    description: Read fields from the client's documents.
+    effect: read
+    quarantine: true
+    input: { type: object, properties: { documents: { type: array } } }
+    run: { command: [node, extract.mjs], timeout: 30s }
+workflows: [client-intake]
+skills: [intake-guide]
+policy:
+  effects: { outbound: approve }
+  tools: { rules: { intake.extract_fields: { rateLimit: 30/min } } }
+environment: { runtime: node@22 }

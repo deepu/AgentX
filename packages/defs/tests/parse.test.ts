@@ -11,7 +11,8 @@ describe('the sample project (examples/intake)', () => {
     const { project, diagnostics } = await loadProject(SAMPLE);
     expect(diagnostics).toEqual([]);
     expect(Object.keys(project.entities).sort()).toEqual(['Customer', 'Engagement']);
-    expect(project.domainPolicy?.modelRoles).toEqual(['checker', 'verifier', 'extractor', 'explainer']);
+    // Phase 4 adds `binder` (the bind-plugin playbook's classify step).
+    expect(project.domainPolicy?.modelRoles).toEqual(expect.arrayContaining(['checker', 'verifier', 'extractor', 'explainer']));
     expect(Object.keys(project.roles).sort()).toEqual(['finance', 'manager', 'staff']);
     expect(project.roles.manager).toEqual({ id: 'manager', title: 'Manager', description: 'Approves onboarding' });
 

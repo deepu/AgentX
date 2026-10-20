@@ -57,7 +57,7 @@ const PAST_BADGE: Record<MwPastCaseOutcome['status'], { color: 'success' | 'warn
   error: { color: 'destructive' },
 }
 
-function ExampleRow({ example }: { example: MwExampleOutcome }) {
+export function ExampleRow({ example }: { example: MwExampleOutcome }) {
   const { t } = useTranslation()
   const badge = EXAMPLE_BADGE[example.status]
   return (

@@ -1,0 +1,13 @@
+name: missing-capability
+description: The plugin needs a way to send email and no bound plugin provides one, so a manager is asked.
+case:
+  plugin: memwise/client-intake
+tools:
+  plugins.install_check: { outcome: missing, missing: [email_send], version: 1.0.0, summary: "Missing: the capability email_send (no bound plugin provides it). Bind a plugin that sends email first." }
+model:
+  binder: []                   # the binder is not reached in this case
+expect:
+  outcome: missing
+  state: needs_person
+  writes: { summary: "Missing: the capability email_send (no bound plugin provides it). Bind a plugin that sends email first." }
+  effects: { plugins.propose_binding: 0 }

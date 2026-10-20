@@ -35,7 +35,7 @@ export interface ParsedRoute {
 // Compound Route Types (new format)
 // =============================================================================
 
-export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'pages' | 'settings' | 'inbox' | 'cases' | 'playbooks'
+export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'pages' | 'settings' | 'inbox' | 'cases' | 'playbooks' | 'plugins'
 
 export interface ParsedCompoundRoute {
   /** The navigator type */
@@ -64,7 +64,7 @@ export interface ParsedCompoundRoute {
  */
 const COMPOUND_ROUTE_PREFIXES = [
   'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'sources', 'skills', 'automations', 'projects', 'pages', 'settings',
-  'inbox', 'cases', 'playbooks',
+  'inbox', 'cases', 'playbooks', 'plugins',
 ]
 
 /**
@@ -75,11 +75,19 @@ const MEMWISE_NAVIGATORS = {
   inbox: 'item',
   cases: 'case',
   playbooks: 'playbook',
+  plugins: 'plugin',
 } as const
 type MemwiseNavigator = keyof typeof MEMWISE_NAVIGATORS
 
 /** Playbooks also open drafts (Phase 3): `playbooks/draft/{draftId}`. */
 const MEMWISE_DRAFT_DETAIL = 'draft'
+/** Plugins also open an entity's records (Phase 4): `plugins/records/{entity}`. */
+const MEMWISE_RECORDS_DETAIL = 'records'
+
+/** The second detail type a MemWise navigator has besides its own (drafts, records). */
+function memwiseExtraDetail(navigator: string): string | undefined {
+  return navigator === 'playbooks' ? MEMWISE_DRAFT_DETAIL : navigator === 'plugins' ? MEMWISE_RECORDS_DETAIL : undefined
+}
 
 function isMemwiseNavigator(value: string): value is MemwiseNavigator {
   return Object.prototype.hasOwnProperty.call(MEMWISE_NAVIGATORS, value)
@@ -239,11 +247,12 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
       return { navigator: first, details: null }
     }
     const detailType = MEMWISE_NAVIGATORS[first]
-    const isDraft = first === 'playbooks' && segments[1] === MEMWISE_DRAFT_DETAIL
-    if ((segments[1] === detailType || isDraft) && segments[2] && segments.length === 3) {
+    const extra = memwiseExtraDetail(first)
+    const isExtra = !!extra && segments[1] === extra
+    if ((segments[1] === detailType || isExtra) && segments[2] && segments.length === 3) {
       const id = safeDecode(segments[2])
       if (!id) return null
-      return { navigator: first, details: { type: isDraft ? MEMWISE_DRAFT_DETAIL : detailType, id } }
+      return { navigator: first, details: { type: isExtra ? extra! : detailType, id } }
     }
     return null
   }
@@ -388,9 +397,8 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
 
   if (isMemwiseNavigator(parsed.navigator)) {
     if (!parsed.details) return parsed.navigator
-    const detailType = parsed.navigator === 'playbooks' && parsed.details.type === MEMWISE_DRAFT_DETAIL
-      ? MEMWISE_DRAFT_DETAIL
-      : MEMWISE_NAVIGATORS[parsed.navigator]
+    const extra = memwiseExtraDetail(parsed.navigator)
+    const detailType = extra && parsed.details.type === extra ? extra : MEMWISE_NAVIGATORS[parsed.navigator]
     return `${parsed.navigator}/${detailType}/${encodeURIComponent(parsed.details.id)}`
   }
 
@@ -543,6 +551,9 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
     }
     if (compound.navigator === 'playbooks' && compound.details.type === MEMWISE_DRAFT_DETAIL) {
       return { type: 'view', name: 'draft-info', id: compound.details.id, params: {} }
+    }
+    if (compound.navigator === 'plugins' && compound.details.type === MEMWISE_RECORDS_DETAIL) {
+      return { type: 'view', name: 'records-info', id: compound.details.id, params: {} }
     }
     return { type: 'view', name: `${compound.navigator}-info`, id: compound.details.id, params: {} }
   }
@@ -709,6 +720,9 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
     if (compound.navigator === 'playbooks' && compound.details?.type === MEMWISE_DRAFT_DETAIL) {
       return { navigator: 'playbooks', details: { type: 'draft', draftId: compound.details.id } }
     }
+    if (compound.navigator === 'plugins' && compound.details?.type === MEMWISE_RECORDS_DETAIL) {
+      return { navigator: 'plugins', details: { type: 'records', entity: compound.details.id } }
+    }
     return memwiseNavigationState(compound.navigator, compound.details?.id)
   }
 
@@ -813,11 +827,17 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
     case 'inbox':
     case 'cases':
     case 'playbooks':
+    case 'plugins':
       return memwiseNavigationState(parsed.name)
     case 'inbox-info':
     case 'cases-info':
     case 'playbooks-info':
+    case 'plugins-info':
       return memwiseNavigationState(parsed.name.slice(0, -5) as MemwiseNavigator, parsed.id)
+    case 'records-info':
+      return parsed.id
+        ? { navigator: 'plugins', details: { type: 'records', entity: parsed.id } }
+        : { navigator: 'plugins', details: null }
     case 'draft-info':
       return parsed.id
         ? { navigator: 'playbooks', details: { type: 'draft', draftId: parsed.id } }
@@ -902,6 +922,8 @@ function memwiseNavigationState(navigator: MemwiseNavigator, id?: string): Navig
       return { navigator: 'cases', details: id ? { type: 'case', caseId: id } : null }
     case 'playbooks':
       return { navigator: 'playbooks', details: id ? { type: 'playbook', playbookId: id } : null }
+    case 'plugins':
+      return { navigator: 'plugins', details: id ? { type: 'plugin', pluginId: id } : null }
   }
 }
 
@@ -967,6 +989,12 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
       return { navigator: 'playbooks', details: { type: MEMWISE_DRAFT_DETAIL, id: state.details.draftId } }
     }
     return { navigator: 'playbooks', details: state.details ? { type: 'playbook', id: state.details.playbookId } : null }
+  }
+  if (state.navigator === 'plugins') {
+    if (state.details?.type === 'records') {
+      return { navigator: 'plugins', details: { type: MEMWISE_RECORDS_DETAIL, id: state.details.entity } }
+    }
+    return { navigator: 'plugins', details: state.details ? { type: 'plugin', id: state.details.pluginId } : null }
   }
 
   // Sessions

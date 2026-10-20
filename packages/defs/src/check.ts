@@ -4,6 +4,7 @@
  *
  * Codes are stable; tools and editors key on them.
  */
+import { boundPluginTools, checkBindings } from './binding-checks.ts';
 import { shapeFileOf } from './load.ts';
 import { lineOf, type PathKey } from './source.ts';
 import { END_STATE, type CheckEnvironment, type Diagnostic, type EntityTypeDef, type FieldDef, type ProjectDefs, type Severity, type StepDef, type ValueType, type WorkflowDef } from './types.ts';
@@ -349,9 +350,21 @@ function checkExamples(d: Diagnostics, workflow: WorkflowDef, env: CheckEnvironm
   }
 }
 
-/** Entity types, then every workflow with the project's entities (and its roles, unless `env` names them). */
+/**
+ * Entity types, then every workflow with the project's entities (and its roles, unless `env` names
+ * them). Phase 4: the tools frozen bindings bind count as bound (a tool `env` names keeps its
+ * entry), and the bindings themselves are checked.
+ */
 export function checkProject(project: ProjectDefs, env: CheckEnvironment): Diagnostic[] {
   const d = new Diagnostics();
+  const pluginTools = boundPluginTools(project);
+  if (Object.keys(pluginTools).length) {
+    const tools = { ...env.tools };
+    for (const [name, t] of Object.entries(pluginTools)) {
+      tools[name] ??= { ...(t.effect ? { effect: t.effect } : {}), ...(t.inputSchema ? { inputSchema: t.inputSchema } : {}) };
+    }
+    env = { ...env, tools };
+  }
   const entities = project.entities;
   const declared = Object.keys(project.roles ?? {});
   if (!env.roles && declared.length) env = { ...env, roles: declared };
@@ -371,6 +384,7 @@ export function checkProject(project: ProjectDefs, env: CheckEnvironment): Diagn
   }
   const out = d.list;
   for (const workflow of Object.values(project.workflows)) out.push(...checkWorkflow(workflow, env, { entities }));
+  if (project.bindings) out.push(...checkBindings(project));
   return out;
 }
 

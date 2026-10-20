@@ -1,0 +1,6 @@
+{
+  "name": "sample-crm",
+  "version": "1.0.0",
+  "description": "A tiny CRM over MCP: a few company contacts you can list, read and create. For trying MemWise plugin bindings and identity matching.",
+  "author": { "name": "MemWise" }
+}

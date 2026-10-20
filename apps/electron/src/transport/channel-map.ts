@@ -470,6 +470,16 @@ export const CHANNEL_MAP = {
   memwiseCheckDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_CHECK),
   memwiseSubmitDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_SUBMIT),
   memwiseExampleFromCase: invoke(RPC_CHANNELS.memwise.EXAMPLES_FROM_CASE),
+  // Phase 4: plugins, bindings, identity (docs/memwise/22-phase-4-interfaces.md §9)
+  memwiseListPlugins: invoke(RPC_CHANNELS.memwise.PLUGINS_LIST),
+  memwiseGetPlugin: invoke(RPC_CHANNELS.memwise.PLUGINS_GET),
+  memwiseInstallPlugin: invoke(RPC_CHANNELS.memwise.PLUGINS_INSTALL),
+  memwiseBindPlugin: invoke(RPC_CHANNELS.memwise.PLUGINS_BIND),
+  memwiseListInstallChoices: invoke(RPC_CHANNELS.memwise.PLUGINS_EXAMPLES),
+  memwiseGetBinding: invoke(RPC_CHANNELS.memwise.BINDINGS_GET),
+  memwiseListIdentityCandidates: invoke(RPC_CHANNELS.memwise.IDENTITY_LIST),
+  memwiseDecideIdentity: invoke(RPC_CHANNELS.memwise.IDENTITY_DECIDE),
+  memwiseGetEntityRecord: invoke(RPC_CHANNELS.memwise.ENTITIES_RECORD),
   onMemwiseChanged: listener(RPC_CHANNELS.memwise.CHANGED),
 
   // Automations

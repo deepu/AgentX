@@ -20,7 +20,8 @@ import type { Diagnostic, EffectClass, Treatment } from './types.ts';
 
 export const DRAFTS_DIR = 'drafts';
 
-export type DraftKind = 'create' | 'change';
+/** `binding` (Phase 4): a draft of one plugin's `domain/bindings/<slug>.yaml`; it copies `domain/` only. */
+export type DraftKind = 'create' | 'change' | 'binding';
 export type DraftStatus = 'open' | 'published' | 'discarded';
 
 /** `drafts/<id>/draft.yaml` */
@@ -29,8 +30,10 @@ export interface DraftMeta {
   id: string;
   /** What the change is, in the person's words: "Engagement letter", "Add a sanctions check". */
   title: string;
-  /** The playbook this draft creates or changes (one per draft). */
+  /** The playbook this draft creates or changes (one per draft); for a binding draft, the binding's slug. */
   workflowId: string;
+  /** Binding drafts (Phase 4): the plugin id and version the binding is for. */
+  plugin?: { id: string; version: string };
   kind: DraftKind;
   status: DraftStatus;
   /** Live version and workflow hash when the draft was made (change drafts). */

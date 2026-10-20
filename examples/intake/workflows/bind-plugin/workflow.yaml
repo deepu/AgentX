@@ -1,0 +1,29 @@
+workflow: bind-plugin
+version: 1
+title: Bind a plugin
+owner: manager                 # binding runs that stop or need a person go to a manager
+case: ./case.yaml
+start: check
+steps:
+  check:                       # installed, required capabilities provided, tool names free
+    on: { ok: propose, missing: needs_person }
+  propose:                     # a deterministic proposal written into a binding draft
+    on: { classified: dry_run, unclassified: classify }
+  classify:                    # the binder agent classifies the tools nobody classified
+    on: { proposed: dry_run, needs_person: needs_person }
+  dry_run:                     # checks, the plugin's example cases, mappings on sample records
+    on: { passed: review, failed: fix }
+  fix:                         # staff edit the binding draft
+    on: { done: dry_run }
+    wait: { remind: 2d, timeout: 14d → end }
+  review:
+    on: { approved: freeze, changes_requested: fix }
+    wait: { remind: 2d, timeout: 14d → fix }
+  freeze:                      # the draft becomes the next binding version; tools and workflows go live
+    on: { frozen: link, stale: dry_run }
+  link:                        # identity resolution for the mapped record sources
+    on: { done: end }
+  needs_person:
+    on: { resolved: check }
+    assignee: manager
+    wait: { timeout: 30d → end }

@@ -70,6 +70,8 @@ export interface MwPlaybookSummary {
   open: number
   waitingOnMe: number
   done: number
+  /** Phase 4: a plugin's workflow (referenced through its binding) or a fork of one. */
+  origin?: MwWorkflowOrigin
 }
 
 export interface MwField {
@@ -152,6 +154,8 @@ export interface MwPlaybook {
   diagnostics: MwDiagnostic[]
   /** Case fields a person may fill in when starting a case (the kernel refuses others). */
   startFields?: string[]
+  /** Phase 4: a plugin's workflow (referenced through its binding) or a fork of one. */
+  origin?: MwWorkflowOrigin
 }
 
 /** Live mode of the map: where the open cases are. */
@@ -325,6 +329,8 @@ export type MwInboxItem =
       dueAt?: string
       /** The case came back to this step: what sent it back and why (a comment, else the step's rationale). */
       returned?: MwReturnedNote
+      /** Phase 4: a bind-plugin step (`fix`): the screens show the binding review instead of a form. */
+      binding?: MwInboxBinding
     }
   /** A person step that only decides (approval card: approve / send back with a comment). */
   | {
@@ -342,6 +348,10 @@ export type MwInboxItem =
       context: Record<string, MwCaseValue>
       since: string
       dueAt?: string
+      /** Phase 4: the bind-plugin `fix` step was sent back by the reviewer: their step, outcome and comment. */
+      returned?: MwReturnedNote
+      /** Phase 4: a bind-plugin step (`fix`, `review`): the screens show the binding review. */
+      binding?: MwInboxBinding
     }
   /** An agent step wants to run an effect that needs approval (e.g. sending an email). */
   | {
@@ -410,6 +420,40 @@ export type MwInboxItem =
       text: string
       /** `still_waiting`: the step has waited past its reminder time (`text` is the English). */
       code?: 'still_waiting'
+      since: string
+    }
+  /**
+   * Phase 4: an uncertain identity match (22 §6): a domain record and a connector's record that
+   * may be the same. "Same record" links them; "Different" records the rejection. No case.
+   */
+  | {
+      kind: 'identity'
+      id: string
+      candidateId: string
+      /** Not part of a case or run (absent; declared so code reading any item's case compiles). */
+      caseId?: undefined
+      runId?: undefined
+      workflowId?: undefined
+      /** The domain record's title, for the list row. */
+      caseTitle: string
+      /** "Same company?" in plain words, for the list row. */
+      stepTitle: string
+      entity: string
+      recordId: string
+      plugin: string
+      pluginTitle: string
+      source: string
+      externalId: string
+      /** 0..1 */
+      score: number
+      /** Plain words: "same GSTIN", "name 0.82 similar". */
+      reasons: string[]
+      /** The domain record's values (fields the viewer may not see are left out). */
+      record: Record<string, unknown>
+      /** The outside record's mapped values when the match was made. */
+      external: Record<string, unknown>
+      /** The fields to show side by side, in order (the identity keys first). */
+      fields: string[]
       since: string
     }
 
@@ -486,6 +530,8 @@ export interface MwEntityRow {
   id: string
   values: Record<string, MwCaseValue>
   createdAt: string
+  /** Phase 4: the outside records this row is linked to (a source badge each). */
+  links?: MwEntityLinkBadge[]
 }
 
 // ---------------------------------------------------------------- uploads
@@ -501,8 +547,11 @@ export interface MwUploadInput {
 
 /** Payload of `memwise:changed`: something the screens show changed; refetch what's affected. */
 export interface MwChange {
-  /** `drafts`: a draft was created, edited, checked, published or discarded (`id` = draft id). */
-  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts'
+  /**
+   * `drafts`: a draft was created, edited, checked, published or discarded (`id` = draft id).
+   * `plugins` (Phase 4): a plugin was installed, or a binding or identity link changed.
+   */
+  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins'
   /** The run id for `run` changes. */
   id?: string
   /** The case the changed run belongs to (`run` changes). */
@@ -531,7 +580,10 @@ export interface MwDraftSummary {
   workflowId: string
   /** The playbook's title (the draft's, for a new playbook). */
   playbookTitle: string
-  kind: 'create' | 'change'
+  /** `binding` (Phase 4): a plugin's binding (`domain/bindings/<slug>.yaml`), edited on the binding review screen. */
+  kind: 'create' | 'change' | 'binding'
+  /** Binding drafts: the plugin and version the binding is for. */
+  plugin?: { id: string; version: string }
   stage: MwDraftStage
   createdBy?: string
   createdByName?: string
@@ -717,6 +769,8 @@ export interface MwVersion {
   source: 'app' | 'cli' | 'files'
   draftId?: string
   runId?: string
+  /** Phase 4: a plugin playbook's version came from its binding ("from Client intake 1.0.0 · binding 2"). */
+  origin?: MwWorkflowOrigin
   openCases: number
   live: boolean
 }
@@ -737,4 +791,382 @@ export interface MwExampleFromCaseResult {
   path?: string
   code?: string
   message?: string
+}
+
+// ================================================================ Phase 4 (docs/memwise/22-phase-4-interfaces.md)
+// PHASE 4 CONTRACT: plugins, bindings, identity, read-through. Change only additively.
+
+/** Who wrote the plugin (06 §10). Imported Claude plugins are `community`. */
+export type MwPluginTrust = 'first-party' | 'verified' | 'community' | 'local'
+
+/** Where a workflow comes from (06 §5): referenced from a plugin through its binding, or forked from one. */
+export interface MwWorkflowOrigin {
+  kind: 'plugin' | 'fork'
+  plugin: string
+  /** The plugin's title, for "from Client intake 1.0.0". */
+  pluginTitle: string
+  pluginVersion: string
+  bindingVersion?: number
+}
+
+/** Where a plugin stands in this domain. */
+export type MwBindingState =
+  | { status: 'unbound' }
+  /** A bind-plugin case is open for it. */
+  | { status: 'binding'; runId: string; caseId: string; draftId?: string }
+  | { status: 'bound'; version: number; pluginVersion: string; frozenAt?: string; frozenBy?: string; frozenByName?: string }
+
+export interface MwPluginSummary {
+  id: string
+  /** Newest installed version. */
+  version: string
+  /** Every installed version, newest first. */
+  versions: string[]
+  title: string
+  description?: string
+  trust: MwPluginTrust
+  /** Converted from a Claude plugin (`.claude-plugin/plugin.json`). */
+  imported?: 'claude-plugin'
+  /** Number of tools. */
+  tools: number
+  workflows: string[]
+  /** Capability names it provides / requires. */
+  provides: string[]
+  requires: string[]
+  binding: MwBindingState
+  /** Bound to an older version than the newest installed. */
+  upgradeAvailable?: boolean
+}
+
+/** Where a tool's effect class came from: the manifest, MCP hints, the binding (agent or person), or nowhere. */
+export type MwClassSource = 'declared' | 'annotations' | 'binding' | 'none'
+
+export interface MwPluginTool {
+  name: string
+  description: string
+  /** Effective class in this domain; absent = unclassified (counts as irreversible). */
+  effect?: MwEffectClass
+  from: MwClassSource
+  /** Bound `off`: not available to any step. */
+  off?: boolean
+  /** The manifest's class, when it declares one (a binding may tighten, never loosen it). */
+  declared?: MwEffectClass
+  /** The class the MCP annotations suggest (`readOnlyHint` → read, `destructiveHint` → irreversible). */
+  hinted?: MwEffectClass
+  /** Why the binding chose its class (the binder agent's reason, or a person's note). */
+  reason?: string
+  /** How the core reaches its code. */
+  route: 'builtin' | 'mcp' | 'command'
+  /** The capability it provides, if any. */
+  capability?: string
+}
+
+export interface MwPluginWorkflow {
+  id: string
+  title: string
+  /** Resolved into this domain through a frozen binding (a live playbook). */
+  live: boolean
+}
+
+export interface MwBindingVersion {
+  version: number
+  pluginVersion: string
+  hash: string
+  frozenBy?: string
+  frozenByName?: string
+  runId?: string
+  draftId?: string
+  frozenAt: string
+}
+
+export interface MwPluginDetail extends MwPluginSummary {
+  dir: string
+  hash: string
+  /** Tools with their effective class in this domain and where it came from. */
+  toolList: MwPluginTool[]
+  workflowList: MwPluginWorkflow[]
+  skills: { name: string; description?: string }[]
+  /** Capabilities it provides (name → tool) and requires (name → the name its workflows use, and what the binding fills it with). */
+  providesList: { name: string; tool: string }[]
+  requiresList: { name: string; as: string; optional?: boolean; boundTo?: string }[]
+  /** Entities it expects, in its own terms. */
+  entities: { name: string; fields: { name: string; type: string; required?: boolean }[] }[]
+  roles: { id: string; title: string }[]
+  /** Record kinds a connector exposes (mapped onto domain entities by the binding). */
+  records: { name: string; title?: string; key: string; fields: Record<string, string> }[]
+  /** MCP servers it brings: a command, a URL, or a connector set up in the workspace. */
+  servers: { name: string; kind: 'command' | 'url' | 'source'; detail: string }[]
+  /** Install notes (ignored Claude plugin parts, discovery problems). */
+  notes: string[]
+  /** Recorded only (built in Phase 7). */
+  environment?: { runtime?: string; network?: string[] }
+  /** Freezes of its binding, newest first. */
+  bindingHistory: MwBindingVersion[]
+}
+
+/** A plugin folder on the machine running the kernel that can be installed (an example, or a workspace connector). */
+export interface MwInstallableSource {
+  slug: string
+  name: string
+  /** Folder on the machine running the kernel. */
+  dir: string
+  description?: string
+  /** The plugin id, when known. */
+  pluginId?: string
+  /** The version already installed, when the same id is. */
+  installed?: string
+}
+
+/** `memwise:plugins:examples`: what the Install dialog offers. */
+export interface MwInstallChoices {
+  /** Example plugins shipped with the app (`examples/plugins/`). */
+  examples: MwInstallableSource[]
+  /** MCP connectors set up in this workspace, installable as plugins `source/<slug>`. */
+  sources: MwInstallableSource[]
+  /** This connection may install (the owner's own connection). */
+  canInstall: boolean
+  /** It may also install from any folder path (desktop). */
+  canInstallPath: boolean
+}
+
+export interface MwInstallPluginInput {
+  /** A folder on the machine running the kernel: a MemWise plugin, or a Claude plugin. */
+  path: string
+}
+
+export interface MwBindResult {
+  runId: string
+  caseId: string
+}
+
+// ---------------------------------------------------------------- bindings
+
+/** A deterministic transform (no model when a mapping runs), applied left to right. */
+export type MwTransform =
+  | 'trim' | 'lower' | 'upper' | 'digits' | 'squash'
+  | { default: unknown }
+  | { map: Record<string, unknown> }
+  | { money: string }
+  | { template: string }
+
+export interface MwFieldMapping {
+  /** Source field (dotted path); absent with a `template` transform. */
+  from?: string
+  transform?: MwTransform[]
+  /** Default `read`. */
+  direction?: 'read' | 'write' | 'both'
+}
+
+export interface MwIdentityRules {
+  keys: string[]
+  fuzzy?: { field: string; auto: number; review: number }
+  createMissing?: boolean
+}
+
+export interface MwRecordBinding {
+  entity: string
+  /** Domain field → mapping. */
+  fields: Record<string, MwFieldMapping>
+  identity: MwIdentityRules
+}
+
+export type MwTreatmentMap = Partial<Record<MwEffectClass, MwTreatment>>
+
+/** A policy layer as data (the binding's tightening), in the shape the YAML reads. */
+export interface MwPolicyDoc {
+  effects?: MwTreatmentMap
+  tools?: {
+    allow?: string[]
+    deny?: string[]
+    require?: string[]
+    rules?: Record<string, { treatment?: MwTreatment; rateLimit?: { count: number; perMs: number } }>
+  }
+  budgets?: { tokens?: number; timeMs?: number; modelCalls?: number; money?: { amount: number; currency: string } }
+  modelRoles?: string[]
+  taint?: { enabled?: boolean; outboundWhenTainted?: MwTreatment }
+  approvals?: { by?: string[] }
+}
+
+/** `domain/bindings/<slug>.yaml`, as data. */
+export interface MwBinding {
+  plugin: string
+  pluginVersion: string
+  pluginHash: string
+  /** Bumped by every freeze; 0 in a draft never frozen. */
+  version: number
+  frozen?: { by: string; byName?: string; at: string; runId?: string }
+  tools: Record<string, { effect?: MwEffectClass; off?: boolean; reason?: string }>
+  /** Capability → the bound tool that provides it. */
+  capabilities: Record<string, string>
+  /** Plugin entity → domain entity and field renames (plugin field → domain field). */
+  entities: Record<string, { entity: string; fields: Record<string, string> }>
+  /** Plugin role → domain role. */
+  roles: Record<string, string>
+  records: Record<string, MwRecordBinding>
+  policy?: MwPolicyDoc
+  dryRun?: { at: string; hash: string; passed: boolean; summary: string }
+}
+
+export interface MwBindingGap {
+  kind: 'tool-unclassified' | 'capability-missing' | 'entity-unmapped' | 'field-unmapped' | 'role-unmapped' | 'record-unmapped' | 'type-mismatch'
+  /** The plugin's name for the thing (tool, capability, `Client.tax_id`, role, record source). */
+  subject: string
+  message: string
+  suggestions?: string[]
+}
+
+/** One sample record pushed through a mapping at dry run. */
+export interface MwMappedRecord {
+  source: string
+  externalId: string
+  /** The record as the connector returned it, when the dry run kept it ("before"). */
+  raw?: Record<string, unknown>
+  /** Domain field → value after the transforms ("after"). */
+  values: Record<string, unknown>
+  /** Fields no mapping uses, kept under the plugin's namespace. */
+  extra: Record<string, unknown>
+  errors: string[]
+  /** For `both`/`write` fields: values that don't survive the round trip. */
+  roundTrip: string[]
+}
+
+export interface MwBindingReport {
+  hash: string
+  at: string
+  diagnostics: MwDiagnostic[]
+  errors: number
+  warnings: number
+  examples: MwExampleOutcome[]
+  records: MwMappedRecord[]
+  /** Upgrades: how each workflow changes against the live binding. */
+  impact?: { workflowId: string; title: string; diff: MwStructuralDiff }[]
+  outcome: 'passed' | 'failed'
+  summary: string
+}
+
+/** A policy rule in plain words, for the binding review's policy section. */
+export interface MwPolicyLine {
+  /** "outbound", "email.send", "tokens". */
+  subject: string
+  /** "needs approval", "30 per minute". */
+  value: string
+}
+
+/** What the binding review screen shows: the binding (live or a draft), and what it binds. */
+export interface MwBindingView {
+  pluginId: string
+  pluginTitle: string
+  pluginVersion: string
+  /** Set when this is a draft (being bound); absent for the live binding. */
+  draftId?: string
+  /** The draft is open: the binding may be edited (through `memwise:drafts:write`). */
+  editable: boolean
+  binding: MwBinding
+  /** The YAML as on disk (live or the draft's): edits rewrite the sections they change and keep the rest. */
+  text: string
+  /** Project-relative path of the file (`domain/bindings/<slug>.yaml`). */
+  path: string
+  gaps: MwBindingGap[]
+  report?: MwBindingReport
+  /** The binding changed since `report` was made. */
+  reportStale: boolean
+  /** The plugin's tools with their class and where it came from. */
+  tools: MwPluginTool[]
+  /** Capabilities it requires, with the bound tools that can provide each. */
+  capabilities: { name: string; as: string; optional?: boolean; providers: string[] }[]
+  /** Entities it expects, in its own terms. */
+  entities: { name: string; fields: { name: string; type: string; required?: boolean }[] }[]
+  /** The domain's entities, for the entity and field selects. */
+  domainEntities: { name: string; fields: { name: string; type: string }[] }[]
+  roles: { id: string; title: string }[]
+  /** Record sources the plugin exposes. */
+  records: { name: string; title?: string; key: string; fields: Record<string, string> }[]
+  /** The plugin's own default policy, and the binding's tightening, in plain words. */
+  pluginPolicy: MwPolicyLine[]
+  bindingPolicy: MwPolicyLine[]
+  /** The bind-plugin case, while one is open. */
+  run?: { runId: string; caseId: string; state: string }
+}
+
+/** `memwise:bindings:get` */
+export interface MwGetBindingInput {
+  pluginId: string
+  /** A binding draft; default the draft of the open bind-plugin case, else the live binding. */
+  draftId?: string
+}
+
+/** On a bind-plugin inbox item: which plugin and draft it is about. */
+export interface MwInboxBinding {
+  pluginId: string
+  draftId?: string
+  /** `fix`: edit, then Done; `review`: approve or ask for changes. */
+  mode: 'edit' | 'review'
+}
+
+// ---------------------------------------------------------------- identity
+
+export type MwMatchMethod = 'key' | 'fuzzy' | 'person' | 'created'
+
+export interface MwIdentityCandidate {
+  id: string
+  entity: string
+  recordId: string
+  recordTitle?: string
+  plugin: string
+  pluginTitle: string
+  source: string
+  externalId: string
+  score: number
+  reasons: string[]
+  external: Record<string, unknown>
+  /** `settled`: no longer asked, because one side was linked otherwise (not a person's rejection). */
+  status: 'pending' | 'confirmed' | 'rejected' | 'settled'
+  decidedBy?: string
+  decidedByName?: string
+  decidedAt?: string
+  createdAt: string
+}
+
+export interface MwDecideIdentityInput {
+  candidateId: string
+  decision: 'confirm' | 'reject'
+}
+
+/** A source badge on an entity row. */
+export interface MwEntityLinkBadge {
+  plugin: string
+  pluginTitle: string
+  source: string
+  method: MwMatchMethod
+}
+
+export interface MwIdentityLink extends MwEntityLinkBadge {
+  id: string
+  externalId: string
+  score: number
+  reasons: string[]
+  linkedBy?: string
+  linkedByName?: string
+  at: string
+  /** The linked record's mapped values, read live; absent when it couldn't be read. */
+  values?: Record<string, unknown>
+  extra?: Record<string, unknown>
+  error?: string
+}
+
+/** `memwise:entities:record`: a domain record with its links and the fields read through them. */
+export interface MwEntityRecord {
+  entity: string
+  id: string
+  title: string
+  values: Record<string, MwCaseValue>
+  createdAt: string
+  links: MwIdentityLink[]
+  /** Field → the value read live through a link, and the plugin it came from. */
+  readThrough: Record<string, { plugin: string; pluginTitle: string; value: unknown }>
+}
+
+export interface MwEntityRecordInput {
+  entity: string
+  id: string
 }

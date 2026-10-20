@@ -124,6 +124,12 @@ describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {
       .rejects.toThrow(/permission denied/);
     const raw = await withActor(db.pool, staff, (c) => c.query('select bank_account from domain_read.customer where id = $1', [id]));
     expect(raw.rows).toEqual([{ bank_account: null }]);
+
+    // The kernel's own unrestricted read (identity matching) sees every field; never under an app actor.
+    const system = await entities.list(db.pool, customer, { unrestricted: true });
+    expect(system.find((r) => r.id === id)?.values.bank_account).toBe('HDFC 0001234');
+    expect(system.find((r) => r.id === id)?.hidden).toEqual([]);
+    await expect(withActor(db.pool, staff, (c) => entities.list(c, customer, { unrestricted: true }))).rejects.toThrow(/permission denied/);
   });
 
   test('create is idempotent on the key', async () => {

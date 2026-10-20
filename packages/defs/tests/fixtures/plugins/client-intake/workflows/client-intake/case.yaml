@@ -1,0 +1,10 @@
+case: client_intake
+fields:
+  client_name:  PersonName
+  client_email: Email
+  gstin:        Identifier(GSTIN)
+  pan:          Identifier(PAN)
+  phone:        Text
+  gstin_ok:     Boolean
+  client:       Ref<Client>
+  related:      List<Ref<Client>>

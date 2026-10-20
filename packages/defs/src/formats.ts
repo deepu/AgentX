@@ -68,6 +68,8 @@ export const workflowFormat = z.strictObject({
   owner: z.string().optional().meta({ description: 'Role that gets attention items: stopped runs, cases needing a person.' }),
   case: z.string().optional().meta({ description: 'Path to the case type, relative to this file. Default ./case.yaml.' }),
   policy: z.string().optional().meta({ description: 'Path to the workflow policy layer. Default ./policy.yaml when it exists.' }),
+  forked_from: z.string().regex(/^\S+@\S+$/, { error: 'expected <plugin>@<version>, e.g. memwise/client-intake@1.0.0' }).optional()
+    .meta({ description: 'Phase 4: this playbook is a fork of a plugin workflow, <plugin>@<version>; it shadows the plugin\'s.' }),
   start: z.string(),
   steps: z.record(z.string(), z.strictObject({
     on: z.record(z.string(), z.string()).optional().meta({ description: 'Outcome or event name → target state, or end.' }),
@@ -164,6 +166,119 @@ export const rolesFormat = z.strictObject({
   ], { error: 'expected a title, or { title, description }' })),
 }).meta({ title: 'MemWise roles', description: 'domain/roles.yaml: the roles people can have.' });
 
+// ---------------------------------------------------------------- plugins and bindings (Phase 4)
+
+const role = z.union([
+  z.string(),
+  z.strictObject({ title: z.string(), description: z.string().optional() }),
+], { error: 'expected a title, or { title, description }' });
+
+const jsonSchema = z.record(z.string(), z.unknown()).meta({ description: 'A JSON Schema.' });
+
+const toolRoute = z.union([
+  z.strictObject({ builtin: z.string().meta({ description: 'First-party code shipped with the app, by name.' }) }),
+  z.strictObject({ mcp: z.string().meta({ description: 'A server under mcp_servers.' }), tool: z.string().meta({ description: 'The tool name on that server.' }) }),
+  z.strictObject({ command: z.array(z.string()).min(1).meta({ description: 'A subprocess per call: JSON arguments on stdin, a JSON result on stdout.' }), timeout: duration.optional() }),
+], { error: 'expected { builtin: <name> }, { mcp: <server>, tool: <name> } or { command: [...] }' });
+
+const mcpServer = z.union([
+  z.strictObject({ command: z.string(), args: names.optional(), env: z.record(z.string(), z.string()).optional(), cwd: z.string().optional() }),
+  z.strictObject({ type: z.enum(['http', 'sse']).optional(), url: z.string(), headers: z.record(z.string(), z.string()).optional() }),
+  z.strictObject({ source: z.string().meta({ description: 'A connector set up in the app; the host resolves it with its credentials.' }) }),
+], { error: 'expected { command, args, env }, { url, headers } or { source }' });
+
+export const pluginFormat = z.strictObject({
+  id: z.string().meta({ description: '<publisher>/<name>, lower case.' }),
+  version: z.string().meta({ description: 'Semver, e.g. 1.0.0.' }),
+  title: z.string(),
+  description: z.string().optional(),
+  trust: z.enum(['first-party', 'verified', 'community', 'local']).optional().meta({ description: 'Default local.' }),
+  imported_from: z.strictObject({ kind: z.literal('claude-plugin'), name: z.string(), version: z.string().optional() }).optional(),
+  provides: z.strictObject({
+    capabilities: z.record(z.string(), z.strictObject({ tool: z.string() })).optional(),
+  }).optional(),
+  requires: z.strictObject({
+    capabilities: z.record(z.string(), z.strictObject({
+      as: z.string().meta({ description: 'The tool name the plugin\'s workflows use for it.' }),
+      optional: z.boolean().optional(),
+    })).optional(),
+    entities: z.record(z.string(), z.strictObject({ fields })).optional().meta({ description: 'Entities in the plugin\'s own terms, mapped to the domain\'s at binding.' }),
+    roles: z.record(z.string(), role).optional(),
+  }).optional(),
+  tools: z.record(z.string(), z.strictObject({
+    description: z.string().optional(),
+    effect: z.enum(EFFECT_CLASSES).optional().meta({ description: 'Absent: unclassified (irreversible until a binding classifies it).' }),
+    input: jsonSchema.optional(),
+    output: jsonSchema.optional(),
+    quarantine: z.boolean().optional(),
+    idempotent: z.boolean().optional(),
+    secrets: names.optional(),
+    annotations: z.strictObject({
+      readOnlyHint: z.boolean().optional(),
+      destructiveHint: z.boolean().optional(),
+      idempotentHint: z.boolean().optional(),
+      openWorldHint: z.boolean().optional(),
+    }).optional(),
+    capability: z.string().optional(),
+    run: toolRoute,
+  })).optional(),
+  mcp_servers: z.record(z.string(), mcpServer).optional(),
+  workflows: names.optional().meta({ description: 'Folders under workflows/.' }),
+  skills: names.optional().meta({ description: 'Folders under skills/ with a SKILL.md.' }),
+  records: z.record(z.string(), z.strictObject({
+    title: z.string().optional(),
+    list: z.strictObject({ tool: z.string(), items: z.string().optional(), args: z.record(z.string(), z.unknown()).optional() }),
+    get: z.strictObject({ tool: z.string(), arg: z.string(), item: z.string().optional() }).optional(),
+    key: z.string(),
+    fields: z.record(z.string(), typeExpr),
+  })).optional().meta({ description: 'Record kinds a connector exposes, for bindings to map onto domain entities.' }),
+  policy: policyFormat.optional(),
+  environment: z.strictObject({ runtime: z.string().optional(), lockfile: z.string().optional(), network: names.optional() }).optional(),
+  components: names.optional(),
+  pages: names.optional(),
+  triggers: z.array(z.unknown()).optional(),
+}).meta({ title: 'MemWise plugin', description: 'memwise-plugin.yaml: a plugin\'s manifest.' });
+
+export const TRANSFORM_NAMES = ['trim', 'lower', 'upper', 'digits', 'squash'] as const;
+
+const transform = z.union([
+  z.enum(TRANSFORM_NAMES),
+  z.strictObject({ default: z.unknown() }),
+  z.strictObject({ map: z.record(z.string(), z.unknown()) }),
+  z.strictObject({ money: z.string().regex(/^[A-Z]{3}$/, { error: 'expected a 3-letter ISO currency code' }) }),
+  z.strictObject({ template: z.string().meta({ description: 'Text from several source fields: "{first} {last}".' }) }),
+], { error: 'expected trim, lower, upper, digits, squash, { default }, { map }, { money: INR } or { template }' });
+
+export const bindingFormat = z.strictObject({
+  plugin: z.string(),
+  plugin_version: z.string(),
+  plugin_hash: z.string().optional(),
+  version: z.number().int().nonnegative().optional(),
+  frozen: z.strictObject({ by: z.string(), at: z.string(), run: z.string().optional() }).optional(),
+  tools: z.record(z.string(), z.strictObject({
+    effect: z.enum(EFFECT_CLASSES).optional(),
+    off: z.boolean().optional(),
+    reason: z.string().optional(),
+  })).optional(),
+  capabilities: z.record(z.string(), z.string()).optional().meta({ description: 'Required capability → the bound tool that provides it.' }),
+  entities: z.record(z.string(), z.strictObject({ entity: z.string(), fields: z.record(z.string(), z.string()).optional() })).optional(),
+  roles: z.record(z.string(), z.string()).optional(),
+  records: z.record(z.string(), z.strictObject({
+    entity: z.string(),
+    fields: z.record(z.string(), z.union([
+      z.string(),
+      z.strictObject({ from: z.string().optional(), transform: z.array(transform).optional(), direction: z.enum(['read', 'write', 'both']).optional() }),
+    ], { error: 'expected a source field, or { from, transform, direction }' })),
+    identity: z.strictObject({
+      keys: names.optional(),
+      fuzzy: z.strictObject({ field: z.string(), auto: z.number().min(0).max(1), review: z.number().min(0).max(1) }).optional(),
+      create_missing: z.boolean().optional(),
+    }).optional(),
+  })).optional(),
+  policy: policyFormat.optional(),
+  dry_run: z.strictObject({ at: z.string(), hash: z.string(), passed: z.boolean(), summary: z.string() }).optional(),
+}).meta({ title: 'MemWise binding', description: 'domain/bindings/<slug>.yaml: how one plugin is bound into this domain.' });
+
 export const formats = {
   workflow: workflowFormat,
   step: stepFormat,
@@ -172,6 +287,8 @@ export const formats = {
   policy: policyFormat,
   example: exampleFormat,
   roles: rolesFormat,
+  plugin: pluginFormat,
+  binding: bindingFormat,
 } as const;
 export type FormatName = keyof typeof formats;
 

@@ -278,6 +278,7 @@ export function stateLabel(stateId: string, t?: TFunction, title?: string): stri
 export function inboxItemStepTitle(item: MwInboxItem, t?: TFunction): string {
   if (item.kind === 'attention') return stateLabel(item.state, t)
   if (item.kind === 'conversation' && t) return conversationTitle(item, t)
+  if (item.kind === 'identity' && t) return t('memwise.inbox.identity.stepTitle', { entity: humanize(item.entity).toLowerCase() })
   return item.stepTitle
 }
 
@@ -296,6 +297,7 @@ export function inboxKindLabel(kind: MwInboxItem['kind'], t: TFunction): string 
     case 'attention': return t('memwise.inbox.kind.attention')
     case 'reminder': return t('memwise.inbox.kind.reminder')
     case 'conversation': return t('memwise.inbox.kind.conversation')
+    case 'identity': return t('memwise.inbox.kind.identity')
   }
 }
 

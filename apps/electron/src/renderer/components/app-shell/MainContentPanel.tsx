@@ -37,6 +37,7 @@ import {
   isInboxNavigation,
   isCasesNavigation,
   isPlaybooksNavigation,
+  isPluginsNavigation,
 } from '@/contexts/NavigationContext'
 import { useSessionSelection, useIsMultiSelectActive, useSelectedIds, useSelectionCount } from '@/hooks/useSession'
 import { sourceSelection, skillSelection, automationSelection } from '@/hooks/useEntitySelection'
@@ -50,7 +51,7 @@ import ProjectInfoPage from '@/pages/ProjectInfoPage'
 import { KanbanBoardContainer } from './kanban/KanbanBoardContainer'
 import { PagesHome } from '../pages/PagesHome'
 import { PageView } from '../pages/PageView'
-import { InboxDetailPage, CasePage, PlaybookPage, DraftPage } from '../memwise'
+import { InboxDetailPage, CasePage, PlaybookPage, DraftPage, PluginPage, RecordsPage } from '../memwise'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -383,6 +384,17 @@ export function MainContentPanel({
           <DraftPage key={navState.details.draftId} draftId={navState.details.draftId} />
         ) : (
           <PlaybookPage playbookId={navState.details?.playbookId ?? null} />
+        )}
+      </Panel>
+    )
+  }
+  if (isPluginsNavigation(navState)) {
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        {navState.details?.type === 'records' ? (
+          <RecordsPage key={navState.details.entity} entity={navState.details.entity} />
+        ) : (
+          <PluginPage pluginId={navState.details?.type === 'plugin' ? navState.details.pluginId : null} />
         )}
       </Panel>
     )

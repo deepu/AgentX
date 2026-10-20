@@ -1,0 +1,28 @@
+name: all-classified-frozen
+description: >
+  Every tool of the sample email plugin declares its class, so the proposal needs no binder; the
+  dry run passes, the manager approves, and the binding is frozen as version 1. It maps no record
+  sources, so linking finds nothing to do.
+case:
+  plugin: memwise/sample-email
+submit:
+  review: { outcome: approved }
+tools:
+  plugins.install_check: { outcome: ok, missing: [], version: 1.0.0, summary: "Installed (1.0.0). Provides email_send. Tools: email.send (outbound)." }
+  plugins.propose_binding:
+    outcome: classified
+    draft: memwise__sample-email-binding
+    unclassified_tools: []
+    gaps: 0
+    version: 1.0.0
+    summary: Every tool has a class; nothing is left to decide.
+  plugins.dry_run: { outcome: passed, hash: 5e1f, errors: 0, examples_failed: 0, summary: Checks pass; no example cases; no record sources. }
+  plugins.freeze: { outcome: frozen, version: 1 }
+  identity.resolve: { linked: 0, candidates: 0, unmatched: 0, created: 0 }
+model:
+  binder: []                   # the binder is not reached in this case
+expect:
+  outcome: ok
+  state: end
+  writes: { draft: memwise__sample-email-binding, gaps: 0, checked_hash: 5e1f, binding_version: 1, linked: 0 }
+  effects: { plugins.freeze: 1, plugins.classify_tools: 0 }

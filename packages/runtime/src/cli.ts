@@ -4,17 +4,24 @@
 // task (Phase 3, docs/memwise/20-phase-3-interfaces.md §7).
 import { createPool, PgStepRecordReader, PgVersionStore } from '@memwise/db';
 import {
-  applyDraft, checkProject, convertTaskYaml, createDraft, describeStructuralDiff, diffDraft, DraftConflictError, draftContentHash,
-  draftDir, initProject, loadDraft, loadProject, loadWorkflow, readDraft, writeDraftFiles,
-  type Diagnostic, type ExampleCase, type ExampleOutcome, type ProjectDefs, type StepRecordReader, type WorkflowDef,
+  applyDraft, checkProject, convertTaskYaml, createBindingDraft, createDraft, describeStructuralDiff, diffDraft, DraftConflictError,
+  draftContentHash, draftDir, importClaudePlugin, initProject, installPlugin, listDrafts, loadDraft, loadProject, loadWorkflow,
+  PLUGIN_MANIFEST, proposeBinding, readDraft, withDiscoveredTools, writeDraftFiles,
+  type Diagnostic, type ExampleCase, type ExampleOutcome, type PluginManifest, type ProjectDefs, type StepRecordReader, type WorkflowDef,
 } from '@memwise/defs';
 import type { ToolDefinition } from '@memwise/gateway';
-import { compilePolicy, describePolicy, layersFor, violationsToDiagnostics } from '@memwise/policy';
+import { compilePolicy, describePolicy, layersFor, pluginLayers, violationsToDiagnostics } from '@memwise/policy';
 import { recallTools } from '@memwise/step-engine';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { format } from 'node:util';
 import { authoringToolDefinitions } from './authoring-tools.ts';
+import { bindingToolDefinitions } from './plugins/kernel-tools.ts';
+import { loadProjectAt } from './plugins/load.ts';
+import { discoverMcpTools } from './plugins/routes.ts';
+import { compareVersions } from './plugins/service.ts';
+import { boundPlugins, pluginPolicies, pluginToolEnvironment, toolClass } from './plugins/tools.ts';
 import { domainTools } from './domain-tools.ts';
 import { runExample, type ExampleResult } from './examples.ts';
 import { sampleTools } from './sample-tools.ts';
@@ -28,12 +35,22 @@ const USAGE = `usage:
   memwise draft <project> <workflow> [--title <title>] [--new]
   memwise diff <project> <draft>
   memwise push <project> <draft> [--database-url <url>] [--test-database-url <admin-url>] [--by <person>]
-  memwise convert <task.yaml> <project>`;
+  memwise convert <task.yaml> <project>
+  memwise plugin install <project> <plugin-folder>
+  memwise plugin list <project>
+  memwise bind <project> <plugin-id> [--draft]`;
 
-/** The tools a project is checked against: the sample set, the recall tools, the playbooks.* tools and the project's domain tools. */
-function boundTools(project?: ProjectDefs): ToolDefinition[] {
+/**
+ * The tools a project is checked against: the sample set (the CLI's builtins), the recall tools,
+ * the kernel's playbooks.* and plugins.* tools, the project's domain tools, and the tools of its
+ * frozen bindings (names and classes, no connection made).
+ */
+function boundTools(project?: ProjectDefs): Record<string, { effect?: import('@memwise/defs').EffectClass; inputSchema?: Record<string, unknown> }> {
   const noReader = {} as StepRecordReader; // only names, classes and schemas are read, never executed
-  return [...sampleTools(), ...recallTools(noReader), ...authoringToolDefinitions(), ...domainTools(project?.entities ?? {})];
+  const defs: ToolDefinition[] = [...sampleTools(), ...recallTools(noReader), ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...domainTools(project?.entities ?? {})];
+  const out: ReturnType<typeof boundTools> = Object.fromEntries(defs.map((t) => [t.name, { effect: typeof t.effect === 'string' ? t.effect : undefined, inputSchema: t.inputSchema }]));
+  if (project) for (const [name, t] of Object.entries(pluginToolEnvironment(boundPlugins(project)))) out[name] ??= t;
+  return out;
 }
 
 function printDiagnostics(diagnostics: Diagnostic[], out: (line: string) => void = console.log) {
@@ -45,14 +62,15 @@ function printDiagnostics(diagnostics: Diagnostic[], out: (line: string) => void
 
 /** Everything `memwise check` reports for a project folder (a draft folder is one too). */
 async function diagnose(dir: string): Promise<{ project: ProjectDefs; all: Diagnostic[] }> {
-  const { project, diagnostics } = await loadProject(dir);
-  const tools = Object.fromEntries(boundTools(project).map((t) => [t.name, { effect: typeof t.effect === 'string' ? t.effect : undefined, inputSchema: t.inputSchema }]));
-  const all = [...diagnostics, ...checkProject(project, { tools })];
+  const { project, diagnostics } = await loadProjectAt(dir);
+  const all = [...diagnostics, ...checkProject(project, { tools: boundTools(project) })];
   // Policy tightening, per step (the workflow layer is checked as part of each step's stack).
   const seen = new Set<string>();
+  const policies = pluginPolicies(boundPlugins(project));
   for (const workflow of Object.values(project.workflows)) {
     for (const step of [undefined, ...Object.values(workflow.steps)]) {
-      const { violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, workflow, step }));
+      const plugins = pluginLayers(policies, workflow, step);
+      const { violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
       for (const d of violationsToDiagnostics(violations)) {
         const key = `${d.file}|${d.path}|${d.message}`;
         if (!seen.has(key)) { seen.add(key); all.push(d); }
@@ -106,7 +124,7 @@ async function test(dir: string, opts: TestOptions): Promise<number> {
   let results: ExampleResult[] = [];
   let code: number;
   try {
-    const { project, diagnostics } = await loadProject(dir);
+    const { project, diagnostics } = await loadProjectAt(dir);
     const loadErrors = diagnostics.filter((d) => d.severity === 'error');
     if (loadErrors.length) { printDiagnostics(loadErrors, out); return 1; }
     const workflows = opts.workflow ? [project.workflows[opts.workflow]].filter((w): w is WorkflowDef => !!w) : Object.values(project.workflows);
@@ -172,12 +190,13 @@ async function record(stepRunId: string, databaseUrl: string): Promise<number> {
 }
 
 async function policy(dir: string, workflowId: string, stepId: string): Promise<number> {
-  const { project } = await loadProject(dir);
+  const { project } = await loadProjectAt(dir);
   const workflow = project.workflows[workflowId];
   if (!workflow) { console.log(`no workflow ${workflowId}`); return 1; }
   const step = workflow.steps[stepId];
   if (!step) { console.log(`workflow ${workflowId} has no step ${stepId}`); return 1; }
-  const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, workflow, step }));
+  const plugins = pluginLayers(pluginPolicies(boundPlugins(project)), workflow, step);
+  const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
   console.log(describePolicy(effective));
   if (violations.length) {
     console.log('\nviolations:');
@@ -313,11 +332,81 @@ async function convert(taskFile: string, root: string): Promise<number> {
   return 0;
 }
 
+// ---------------------------------------------------------------- Phase 4: plugins and bindings
+
+async function pluginInstall(root: string, dir: string): Promise<number> {
+  const src = resolve(dir);
+  let manifest: PluginManifest | undefined;
+  const notes: string[] = [];
+  if (!existsSync(join(src, PLUGIN_MANIFEST))) {
+    const imported = await importClaudePlugin(src);
+    manifest = imported.manifest;
+    notes.push(...imported.notes);
+    for (const [name, server] of Object.entries(manifest.mcpServers)) {
+      try {
+        const tools = await discoverMcpTools(server, src, name);
+        manifest = withDiscoveredTools(manifest, name, tools);
+        notes.push(`found ${tools.length} tool(s) on the MCP server ${name}`);
+      } catch (e) {
+        notes.push(`the MCP server ${name} could not be reached, so its tools are not known yet: ${(e as Error).message}`);
+      }
+    }
+  }
+  const r = await installPlugin(root, src, manifest ? { manifest } : {});
+  console.log(r.created ? `installed ${r.id} ${r.version} in ${r.dir}` : `${r.id} ${r.version} is already installed in ${r.dir}`);
+  for (const n of notes) console.log(`  note: ${n}`);
+  console.log(`nothing is bound yet: bind it with memwise bind ${root} ${r.id} --draft, or in the app`);
+  return 0;
+}
+
+async function pluginList(root: string): Promise<number> {
+  const { project, diagnostics } = await loadProject(root);
+  for (const d of diagnostics.filter((x) => x.code.startsWith('plugin') || x.code.startsWith('binding'))) printDiagnostics([d]);
+  const ids = Object.keys(project.pluginVersions ?? project.plugins ?? {}).sort();
+  if (!ids.length) { console.log('no plugins installed'); return 0; }
+  const drafts = (await listDrafts(root)).filter((d) => d.kind === 'binding' && d.status === 'open');
+  for (const id of ids) {
+    const versions = Object.keys(project.pluginVersions?.[id] ?? {}).sort(compareVersions).reverse();
+    const newest = project.plugins?.[id];
+    const b = project.bindings?.[id];
+    const draft = drafts.find((d) => d.plugin?.id === id);
+    const state = b?.frozen ? `bound v${b.version} (${b.pluginVersion})${newest && compareVersions(newest.manifest.version, b.pluginVersion) > 0 ? `, ${newest.manifest.version} available` : ''}`
+      : draft ? `being bound (draft ${draft.id})` : 'not bound';
+    console.log(`${id}  ${versions.join(', ') || newest?.manifest.version}  ${newest?.manifest.title ?? ''}  [${newest?.manifest.trust ?? '?'}]  ${state}`);
+    if (newest) {
+      const tools = Object.values(newest.manifest.tools).map((t) => `${t.name} (${toolClass(t, b?.pluginVersion === newest.manifest.version ? b : undefined).effect ?? 'unclassified'})`);
+      if (tools.length) console.log(`    tools: ${tools.join(', ')}`);
+    }
+  }
+  return 0;
+}
+
+async function bind(root: string, pluginId: string, opts: { draft: boolean }): Promise<number> {
+  const { project } = await loadProject(root);
+  const plugin = project.plugins?.[pluginId];
+  if (!plugin) { console.log(`${pluginId} is not installed in ${root} (memwise plugin install ${root} <folder>)`); return 1; }
+  const previous = project.bindings?.[pluginId];
+  const proposal = proposeBinding({ plugin, project, ...(previous ? { previous } : {}) });
+  console.log(`${previous ? `an upgrade of the binding of ${pluginId} (v${previous.version}, ${previous.pluginVersion})` : `a binding of ${pluginId}`} to ${plugin.manifest.version}`);
+  console.log('\n== tools');
+  for (const [name, c] of Object.entries(proposal.classes).sort(([a], [b]) => a.localeCompare(b))) console.log(`  ${name}  ${c.effect ?? 'unclassified'}  (${c.from})`);
+  console.log('\n== gaps');
+  if (!proposal.gaps.length) console.log('  none');
+  for (const g of proposal.gaps) console.log(`  ${g.kind}  ${g.subject}: ${g.message}${g.suggestions?.length ? ` (perhaps ${g.suggestions.join(', ')})` : ''}`);
+  if (!opts.draft) return 0;
+  const meta = await createBindingDraft(root, {
+    pluginId, pluginVersion: plugin.manifest.version, title: `${previous ? 'Upgrade' : 'Bind'} ${plugin.manifest.title}`, createdBy: 'cli', binding: proposal.binding,
+  });
+  console.error(`\nbinding draft ${meta.id}: edit domain/bindings in it, then review and freeze it in the app (bind-plugin)`);
+  console.log(draftDir(root, meta.id));
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   const flags: Record<string, string> = {};
   const positional: string[] = [];
-  const BOOLEAN = new Set(['json', 'new']);
+  const BOOLEAN = new Set(['json', 'new', 'draft']);
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i]!;
     if (a.startsWith('--')) flags[a.slice(2)] = BOOLEAN.has(a.slice(2)) ? 'true' : (rest[++i] ?? '');
@@ -346,6 +435,11 @@ export async function main(argv: string[]): Promise<number> {
         });
       } break;
       case 'convert': if (positional.length === 2) return await convert(positional[0]!, positional[1]!); break;
+      case 'plugin':
+        if (positional[0] === 'install' && positional.length === 3) return await pluginInstall(positional[1]!, positional[2]!);
+        if (positional[0] === 'list' && positional.length === 2) return await pluginList(positional[1]!);
+        break;
+      case 'bind': if (positional.length === 2) return await bind(positional[0]!, positional[1]!, { draft: flags.draft === 'true' }); break;
     }
   } catch (e) {
     // Plain-words errors from the file layer (no such draft, a non-empty folder ...) without a stack.

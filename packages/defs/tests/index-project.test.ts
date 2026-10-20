@@ -32,7 +32,7 @@ describe('indexProject', () => {
     // The meta playbooks (Phase 3) are indexed like any other.
     expect(all).toContain('workflow create-playbook workflows/create-playbook');
     expect(all).toContain('workflow change-playbook workflows/change-playbook');
-    const rows = all.filter((r) => !/(create|change)-playbook/.test(r));
+    const rows = all.filter((r) => !/(create|change)-playbook|bind-plugin|plugin_binding/.test(r));
     expect(rows).toEqual([
       'case_type client_intake workflows/client-intake/case.yaml',
       'entity_type Customer domain/entities/customer.yaml',

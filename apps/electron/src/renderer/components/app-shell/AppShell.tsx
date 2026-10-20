@@ -39,6 +39,7 @@ import {
   BookOpen,
   LogOut,
   UserRound,
+  Puzzle,
 } from "lucide-react"
 // SessionStatusIcons no longer used - icons come from dynamic sessionStatuses
 import { SourceAvatar } from "@/components/ui/source-avatar"
@@ -127,6 +128,7 @@ import {
   isInboxNavigation,
   isCasesNavigation,
   isPlaybooksNavigation,
+  isPluginsNavigation,
   type NavigationState,
 } from "@/contexts/NavigationContext"
 import {
@@ -134,11 +136,12 @@ import {
   InboxListPanel,
   CasesListPanel,
   PlaybooksListPanel,
+  PluginsListPanel,
   ActingAsSwitcher,
   SidebarStatusNotice,
 } from "@/components/memwise"
 import { isMetaPlaybook } from "@/components/memwise/draft"
-import { memwiseInboxCountAtom, memwiseCasesAtom, memwisePlaybooksAtom, memwiseStartCaseDialogAtom, memwiseNewPlaybookDialogAtom, memwiseCaseFilterAtom, memwisePeopleOnlyAtom, memwiseStatusAtom } from "@/atoms/memwise"
+import { memwiseInboxCountAtom, memwiseCasesAtom, memwisePlaybooksAtom, memwisePluginsAtom, memwiseStartCaseDialogAtom, memwiseNewPlaybookDialogAtom, memwiseInstallPluginDialogAtom, memwiseCaseFilterAtom, memwisePeopleOnlyAtom, memwiseStatusAtom } from "@/atoms/memwise"
 import type { SettingsSubpage } from "../../../shared/types"
 import { SourcesListPanel } from "./SourcesListPanel"
 import { SkillsListPanel } from "./SkillsListPanel"
@@ -1601,6 +1604,11 @@ function AppShellContent({
   const handlePlaybooksClick = useCallback(() => {
     navigate(routes.view.playbooks())
   }, [])
+  const handlePluginsClick = useCallback(() => {
+    navigate(routes.view.plugins())
+  }, [])
+  const memwisePlugins = useAtomValue(memwisePluginsAtom)
+  const setMemwiseInstallPlugin = useSetAtom(memwiseInstallPluginDialogAtom)
   const memwiseInboxCount = useAtomValue(memwiseInboxCountAtom)
   const memwiseCases = useAtomValue(memwiseCasesAtom)
   const memwisePlaybooks = useAtomValue(memwisePlaybooksAtom)
@@ -1897,6 +1905,7 @@ function AppShellContent({
     result.push({ id: 'nav:inbox', type: 'nav', action: handleInboxClick })
     result.push({ id: 'nav:cases', type: 'nav', action: handleCasesClick })
     result.push({ id: 'nav:playbooks', type: 'nav', action: handlePlaybooksClick })
+    if (!peopleOnly) result.push({ id: 'nav:plugins', type: 'nav', action: handlePluginsClick })
 
     // 1. Sessions section: All Sessions (expandable) with status items, Flagged, Archived as children
     result.push({ id: 'nav:allSessions', type: 'nav', action: handleAllSessionsClick })
@@ -1929,7 +1938,7 @@ function AppShellContent({
     result.push({ id: 'nav:whats-new', type: 'nav', action: handleWhatsNewClick })
 
     return result
-  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleProjectsClick, handlePagesClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick, handleInboxClick, handleCasesClick, handlePlaybooksClick])
+  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleProjectsClick, handlePagesClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick, handleInboxClick, handleCasesClick, handlePlaybooksClick, handlePluginsClick, peopleOnly])
 
   // Toggle folder expanded state
   const handleToggleFolder = React.useCallback((path: string) => {
@@ -2042,6 +2051,7 @@ function AppShellContent({
     if (isInboxNavigation(navState)) return t("memwise.nav.inbox")
     if (isCasesNavigation(navState)) return t("memwise.nav.cases")
     if (isPlaybooksNavigation(navState)) return t("memwise.nav.playbooks")
+    if (isPluginsNavigation(navState)) return t("memwise.nav.plugins")
 
     // Sources navigator
     if (isSourcesNavigation(navState)) {
@@ -2180,6 +2190,14 @@ function AppShellContent({
       icon: BookOpen,
       variant: isPlaybooksNavigation(navState) ? "default" : "ghost",
       onClick: handlePlaybooksClick,
+    },
+    {
+      id: "nav:plugins",
+      title: t("memwise.nav.plugins"),
+      label: memwisePlugins && memwisePlugins.length > 0 ? String(memwisePlugins.length) : undefined,
+      icon: Puzzle,
+      variant: isPluginsNavigation(navState) ? "default" : "ghost",
+      onClick: handlePluginsClick,
     },
     { id: "section:chats", type: "section", title: t("memwise.nav.chatsSection") },
     // --- Sessions Section ---
@@ -2667,6 +2685,14 @@ function AppShellContent({
                       onClick={() => setMemwiseNewPlaybook(true)}
                     />
                   )}
+                  {/* Install a plugin (plugins mode); the owner's own connection only */}
+                  {isPluginsNavigation(navState) && !peopleOnly && (
+                    <HeaderIconButton
+                      icon={<Plus className="h-4 w-4" />}
+                      tooltip={t("memwise.plugins.install")}
+                      onClick={() => setMemwiseInstallPlugin(true)}
+                    />
+                  )}
                   {/* Add Project button (only for projects mode) */}
                   {isProjectsNavigation(navState) && activeWorkspace && (
                     <HeaderIconButton
@@ -2697,6 +2723,12 @@ function AppShellContent({
                 selectedDraftId={navState.details?.type === 'draft' ? navState.details.draftId : null}
                 onSelect={(id) => navigate(routes.view.playbooks(id))}
                 onSelectDraft={(id) => navigate(routes.view.draft(id))}
+              />
+            )}
+            {isPluginsNavigation(navState) && (
+              <PluginsListPanel
+                selectedPluginId={navState.details?.type === 'plugin' ? navState.details.pluginId : null}
+                selectedEntity={navState.details?.type === 'records' ? navState.details.entity : null}
               />
             )}
             {/* Content: SessionList, SourcesListPanel, or SettingsNavigator based on navigation state */}
