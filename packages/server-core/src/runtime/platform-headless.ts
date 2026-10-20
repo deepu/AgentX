@@ -26,7 +26,7 @@ function createConsoleLogger(): Logger {
     warn: (...args) => console.warn(fmt('warn', args)),
     error: (...args) => console.error(fmt('error', args)),
     debug: (...args) => {
-      if (process.env.CRAFT_DEBUG === 'true' || process.env.CRAFT_IS_PACKAGED !== 'true') {
+      if (process.env.MEMWISE_DEBUG === 'true' || process.env.MEMWISE_IS_PACKAGED !== 'true') {
         console.debug(fmt('debug', args))
       }
     },
@@ -37,14 +37,14 @@ function createConsoleLogger(): Logger {
  * Create PlatformServices for headless (Bun) mode.
  *
  * Environment variables:
- * - CRAFT_APP_ROOT — override appRootPath (default: cwd). Ignored, together with every CRAFT_*
+ * - MEMWISE_APP_ROOT — override appRootPath (default: cwd). Ignored, together with every MEMWISE_*
  *   path inside it, when this server runs from a source checkout and the value points into
- *   another one: that is a running Craft app's root inherited through an agent shell
+ *   another one: that is a running MemWise app's root inherited through an agent shell
  *   (see inherited-app-env.ts).
- * - CRAFT_RESOURCES_PATH — override resourcesPath (default: cwd/resources)
- * - CRAFT_IS_PACKAGED — 'true' for production (default: false)
- * - CRAFT_VERSION — app version string (default: '0.0.0-dev')
- * - CRAFT_DEBUG — 'true' to enable debug logging
+ * - MEMWISE_RESOURCES_PATH — override resourcesPath (default: cwd/resources)
+ * - MEMWISE_IS_PACKAGED — 'true' for production (default: false)
+ * - MEMWISE_VERSION — app version string (default: '0.0.0-dev')
+ * - MEMWISE_DEBUG — 'true' to enable debug logging
  */
 export function createHeadlessPlatform(options?: { appVersion?: string }): PlatformServices {
   const logger = createConsoleLogger()
@@ -53,26 +53,26 @@ export function createHeadlessPlatform(options?: { appVersion?: string }): Platf
   if (inherited.ignoredAppRoot) {
     for (const key of inherited.dropKeys) delete process.env[key]
     logger.warn(
-      `Ignoring CRAFT_APP_ROOT=${inherited.ignoredAppRoot}: it points outside this server's checkout (${sourceRoot}), ` +
-      `most likely inherited from a running Craft app. Dropped: ${inherited.dropKeys.join(', ')}. Using ${inherited.appRootPath}.`,
+      `Ignoring MEMWISE_APP_ROOT=${inherited.ignoredAppRoot}: it points outside this server's checkout (${sourceRoot}), ` +
+      `most likely inherited from a running MemWise app. Dropped: ${inherited.dropKeys.join(', ')}. Using ${inherited.appRootPath}.`,
     )
   }
   // Republish so tools this server spawns (agent shells, scripts) resolve the same root.
-  process.env.CRAFT_APP_ROOT = inherited.appRootPath
+  process.env.MEMWISE_APP_ROOT = inherited.appRootPath
   // A server running from source is never packaged, whatever an inherited env says (the packaged
-  // app exports CRAFT_IS_PACKAGED, which resolveScriptRuntime also reads from the env).
-  if (sourceRoot && (process.env.CRAFT_IS_PACKAGED === 'true' || process.env.CRAFT_IS_PACKAGED === '1')) {
-    logger.warn(`Ignoring CRAFT_IS_PACKAGED=${process.env.CRAFT_IS_PACKAGED}: this server runs from the source checkout ${sourceRoot}.`)
-    process.env.CRAFT_IS_PACKAGED = 'false'
+  // app exports MEMWISE_IS_PACKAGED, which resolveScriptRuntime also reads from the env).
+  if (sourceRoot && (process.env.MEMWISE_IS_PACKAGED === 'true' || process.env.MEMWISE_IS_PACKAGED === '1')) {
+    logger.warn(`Ignoring MEMWISE_IS_PACKAGED=${process.env.MEMWISE_IS_PACKAGED}: this server runs from the source checkout ${sourceRoot}.`)
+    process.env.MEMWISE_IS_PACKAGED = 'false'
   }
-  const isPackaged = !sourceRoot && process.env.CRAFT_IS_PACKAGED === 'true'
-  const isDebugMode = process.env.CRAFT_DEBUG === 'true' || !isPackaged
+  const isPackaged = !sourceRoot && process.env.MEMWISE_IS_PACKAGED === 'true'
+  const isDebugMode = process.env.MEMWISE_DEBUG === 'true' || !isPackaged
 
   return {
     appRootPath: inherited.appRootPath,
-    resourcesPath: process.env.CRAFT_RESOURCES_PATH || join(process.cwd(), 'resources'),
+    resourcesPath: process.env.MEMWISE_RESOURCES_PATH || join(process.cwd(), 'resources'),
     isPackaged,
-    appVersion: process.env.CRAFT_VERSION || options?.appVersion || '0.0.0-dev',
+    appVersion: process.env.MEMWISE_VERSION || options?.appVersion || '0.0.0-dev',
 
     imageProcessor: {
       async getMetadata(buffer) {

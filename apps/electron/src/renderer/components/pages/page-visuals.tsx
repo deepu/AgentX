@@ -9,7 +9,7 @@ import { formatDistanceToNowStrict, type Locale } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { shortTimeLocale } from '@/utils/session'
-import type { PageConfig, PageKind } from '@craft-agent/shared/pages/types'
+import type { PageConfig, PageKind } from '@memwise/shared/pages/types'
 
 export const PAGE_KIND_ICONS: Record<PageKind, LucideIcon> = {
   static: FileText,

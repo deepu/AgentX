@@ -75,7 +75,7 @@ describe('digestAgentTranscript', () => {
 
 describe('readBackgroundTaskOutput', () => {
   let dir: string
-  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'craft-task-output-')) })
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'memwise-task-output-')) })
   afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
   it('returns a shell output tail, cut at a line start', async () => {

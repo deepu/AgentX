@@ -1,4 +1,4 @@
-import type { AgentEventUsage } from '@craft-agent/core/types'
+import type { AgentEventUsage } from '@memwise/core/types'
 
 /** The cumulative counters of a session's token usage that a turn adds to. */
 export interface CumulativeUsage {

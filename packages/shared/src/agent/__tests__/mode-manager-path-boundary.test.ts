@@ -12,7 +12,7 @@ describe('mode-manager path containment for plans/data exceptions', () => {
   let siblingData: string;
 
   beforeEach(() => {
-    base = mkdtempSync(join(tmpdir(), 'craft-mode-boundary-test-'));
+    base = mkdtempSync(join(tmpdir(), 'memwise-mode-boundary-test-'));
     plansDir = join(base, 'plans');
     dataDir = join(base, 'data');
     siblingPlans = join(base, 'plans-evil', 'pwn.md');

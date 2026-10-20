@@ -33,7 +33,7 @@ import {
   type DecisionRequest,
   type DecisionResult,
   type ResolveDecisionClientOptions,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 
 /** Ask a resolved decision point. `null` means no answer: behave as before. `signal` cancels the call. */
 export type DecisionPointFn = (request: DecisionRequest, meta?: Record<string, unknown>, signal?: AbortSignal) => Promise<DecisionResult | null>

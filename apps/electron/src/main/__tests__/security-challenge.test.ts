@@ -72,7 +72,7 @@ describe('classifySecurityChallenge', () => {
       const verdict = classifySecurityChallenge(facts({
         url: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=abc&scope=email',
         ax: { nodes: 7, actionable: 2 },
-        page: { title: 'Sign in - Google Accounts', text: 'Craft Agents wants to access your Google Account. Cancel Allow' },
+        page: { title: 'Sign in - Google Accounts', text: 'MemWise wants to access your Google Account. Cancel Allow' },
       }))
       expect(verdict).toEqual({ detected: false, provider: 'none', signals: ['ax:near-empty(2/7)'], suspected: false })
     })

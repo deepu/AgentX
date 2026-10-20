@@ -8,7 +8,7 @@
 
 import { join, parse as parsePath } from 'path'
 import { existsSync, mkdirSync } from 'fs'
-import { validateFilePath, getWorkspaceAllowedDirs } from '@craft-agent/server-core/handlers'
+import { validateFilePath, getWorkspaceAllowedDirs } from '@memwise/server-core/handlers'
 import { BrowserView, BrowserWindow, app, ipcMain, nativeTheme, screen, session, shell, type Session as ElectronSession } from 'electron'
 import { mainLog } from './logger'
 import type { WindowManager } from './window-manager'
@@ -27,18 +27,18 @@ import {
   type BrowserEmptyStateLaunchResult,
   type BrowserInstanceInfo,
 } from '../shared/types'
-import { DEFAULT_THEME, loadAppTheme, getAllowRemoteEvaluate } from '@craft-agent/shared/config'
-import { CodedError } from '@craft-agent/shared/protocol'
+import { DEFAULT_THEME, loadAppTheme, getAllowRemoteEvaluate } from '@memwise/shared/config'
+import { CodedError } from '@memwise/shared/protocol'
 import { getBrowserLiveFxCornerRadii } from '../shared/browser-live-fx'
 import type {
   IBrowserPaneManager,
   BrowserInstanceSnapshot,
   BrowserClickResult,
-} from '@craft-agent/server-core/handlers'
+} from '@memwise/server-core/handlers'
 import type {
   BrowserCapabilityRequest,
   ScreenshotResultWire,
-} from '@craft-agent/server-core/transport'
+} from '@memwise/server-core/transport'
 
 export type { BrowserInstanceInfo }
 
@@ -65,7 +65,7 @@ const THEME_OBSERVER_MIN_INTERVAL_MS = 120
 const EARLY_THEME_EXTRACTION_DELAY_MS = 100
 const BROWSER_EMPTY_STATE_PAGE = 'browser-empty-state.html'
 
-const CRAFT_DEEPLINK_SCHEME_PREFIX = `${process.env.CRAFT_DEEPLINK_SCHEME || 'craftagents'}://`
+const MEMWISE_DEEPLINK_SCHEME_PREFIX = `${process.env.MEMWISE_DEEPLINK_SCHEME || 'memwise'}://`
 
 /** A URL's origin ("null" for opaque ones such as about:blank and file:). */
 function originOf(url: string): string {
@@ -732,7 +732,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       normalizedPath = `workspace/${encodeURIComponent(workspaceId)}/${normalizedPath}`
     }
 
-    return `${CRAFT_DEEPLINK_SCHEME_PREFIX}${normalizedPath}${routeQuery ? `?${routeQuery}` : ''}`
+    return `${MEMWISE_DEEPLINK_SCHEME_PREFIX}${normalizedPath}${routeQuery ? `?${routeQuery}` : ''}`
   }
 
   private async triggerEmptyStateRouteLaunch(
@@ -1803,7 +1803,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     return instance.downloads.slice(-limit)
   }
 
-  // validateUploadFilePath removed — uses shared validateFilePath from @craft-agent/server-core/handlers
+  // validateUploadFilePath removed — uses shared validateFilePath from @memwise/server-core/handlers
 
   async uploadFile(id: string, ref: string, filePaths: string[]): Promise<ElementGeometry> {
     const instance = this.requireAliveInstance(id)
@@ -2359,7 +2359,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
   }
 
   private async handleDeepLinkUrl(url: string): Promise<void> {
-    if (!url.startsWith(CRAFT_DEEPLINK_SCHEME_PREFIX)) return
+    if (!url.startsWith(MEMWISE_DEEPLINK_SCHEME_PREFIX)) return
 
     try {
       if (!this.windowManager) {
@@ -3084,7 +3084,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         const extractThemeColor = ${THEME_COLOR_EXTRACTOR_FN};
 
         const w = window;
-        const previousCleanup = w.__CRAFT_THEME_OBSERVER_CLEANUP__;
+        const previousCleanup = w.__MEMWISE_THEME_OBSERVER_CLEANUP__;
         if (typeof previousCleanup === 'function') {
           try { previousCleanup(); } catch {}
         }
@@ -3170,7 +3170,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         if (typeof mql.addEventListener === 'function') mql.addEventListener('change', onSchemeChange);
         else if (typeof mql.addListener === 'function') mql.addListener(onSchemeChange);
 
-        w.__CRAFT_THEME_OBSERVER_CLEANUP__ = () => {
+        w.__MEMWISE_THEME_OBSERVER_CLEANUP__ = () => {
           headObserver.disconnect();
           rootObserver.disconnect();
           w.removeEventListener('scroll', onScroll);
@@ -3775,7 +3775,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     })
 
     pageWc.on('will-navigate', (event, url) => {
-      if (url.startsWith(CRAFT_DEEPLINK_SCHEME_PREFIX)) {
+      if (url.startsWith(MEMWISE_DEEPLINK_SCHEME_PREFIX)) {
         event.preventDefault()
         void this.handleDeepLinkUrl(url)
       }
@@ -3791,7 +3791,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         `[browser-pane] window-open requested id=${instance.id} url=${details.url} disposition=${details.disposition ?? 'unknown'} frameName=${details.frameName || 'none'}`,
       )
 
-      if (details.url.startsWith(CRAFT_DEEPLINK_SCHEME_PREFIX)) {
+      if (details.url.startsWith(MEMWISE_DEEPLINK_SCHEME_PREFIX)) {
         void this.handleDeepLinkUrl(details.url)
         return { action: 'deny' }
       }

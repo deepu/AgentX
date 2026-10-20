@@ -3,20 +3,20 @@ export type RecentDirScenario = 'none' | 'few' | 'many'
 const RECENT_DIR_SCENARIO_DATA: Record<RecentDirScenario, string[]> = {
   none: [],
   few: [
-    '/Users/demo/projects/craft-agent',
-    '/Users/demo/projects/craft-agent/apps/electron',
-    '/Users/demo/projects/craft-agent/packages/shared',
+    '/Users/demo/projects/memwise',
+    '/Users/demo/projects/memwise/apps/electron',
+    '/Users/demo/projects/memwise/packages/shared',
   ],
   many: [
-    '/Users/demo/projects/craft-agent',
-    '/Users/demo/projects/craft-agent/apps/electron',
-    '/Users/demo/projects/craft-agent/apps/viewer',
-    '/Users/demo/projects/craft-agent/apps/cli',
-    '/Users/demo/projects/craft-agent/packages/shared',
-    '/Users/demo/projects/craft-agent/packages/server-core',
-    '/Users/demo/projects/craft-agent/packages/pi-agent-server',
-    '/Users/demo/projects/craft-agent/packages/ui',
-    '/Users/demo/projects/craft-agent/scripts',
+    '/Users/demo/projects/memwise',
+    '/Users/demo/projects/memwise/apps/electron',
+    '/Users/demo/projects/memwise/apps/viewer',
+    '/Users/demo/projects/memwise/apps/cli',
+    '/Users/demo/projects/memwise/packages/shared',
+    '/Users/demo/projects/memwise/packages/server-core',
+    '/Users/demo/projects/memwise/packages/pi-agent-server',
+    '/Users/demo/projects/memwise/packages/ui',
+    '/Users/demo/projects/memwise/scripts',
   ],
 }
 

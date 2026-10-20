@@ -22,7 +22,7 @@ export function resolvePiModel(
   piAuthProvider?: string,
   preferCustomEndpoint?: boolean,
 ): PiModel | undefined {
-  // Strip Craft's pi/ prefix — Pi SDK uses bare model IDs (e.g. "claude-sonnet-4-6")
+  // Strip MemWise's pi/ prefix — Pi SDK uses bare model IDs (e.g. "claude-sonnet-4-6")
   const bareId = modelId.startsWith('pi/') ? modelId.slice(3) : modelId;
 
   // Custom-endpoint takes precedence when configured

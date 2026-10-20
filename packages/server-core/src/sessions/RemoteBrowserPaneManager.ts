@@ -13,8 +13,8 @@
  * See docs/adr-transport-locality.md for the locality boundary definition.
  */
 
-import { CodedError } from '@craft-agent/shared/protocol'
-import type { BrowserInstanceInfo, BrowserSecurityChallenge } from '@craft-agent/shared/protocol'
+import { CodedError } from '@memwise/shared/protocol'
+import type { BrowserInstanceInfo, BrowserSecurityChallenge } from '@memwise/shared/protocol'
 import type {
   IBrowserPaneManager,
   BrowserClickResult,
@@ -76,7 +76,7 @@ export class RemoteBrowserPaneManager implements IBrowserPaneManager {
       throw new CodedError(
         'BROWSER_NO_CAPABLE_CLIENT',
         'No connected desktop client supports browser tools for this session. ' +
-        'Open this workspace from the Craft Agent desktop app and try again.',
+        'Open this workspace from the MemWise desktop app and try again.',
       )
     }
     if (!this.rpcServer.hasClientCapability(clientId, CLIENT_BROWSER_INVOKE)) {

@@ -4,7 +4,7 @@
  * Backs PageActionBroker.executors.executeScript for script-kind grants: runs
  * the grant's pinned workspace-relative script through the SAME hardened runner
  * page refreshes use (executeScriptAction) — argv/no-shell, workspace-contained
- * (symlink-aware), CRAFT_*-only env, SIGTERM→SIGKILL timeout. The broker has
+ * (symlink-aware), MEMWISE_*-only env, SIGTERM→SIGKILL timeout. The broker has
  * already validated the lease, nonce, replay cache, and grant before this runs,
  * and enforces the per-action timeout by aborting `signal`.
  *
@@ -16,7 +16,7 @@
  * NOTE: this deliberately does NOT set `ScriptAction.page`. That field makes the
  * runner overwrite the page's scheduled-refresh completion marker
  * (recordPageRefresh); an on-demand run a user clicks must not masquerade as a
- * refresh. CRAFT_PAGE_* env is still injected via buildBaseScriptEnv so the
+ * refresh. MEMWISE_PAGE_* env is still injected via buildBaseScriptEnv so the
  * script can find its own data dir.
  */
 
@@ -25,9 +25,9 @@ import {
   buildBaseScriptEnv,
   type ScriptAction,
   type ScriptActionResult,
-} from '@craft-agent/shared/automations'
-import type { PageScriptRuntime } from '@craft-agent/core'
-import type { Logger } from '@craft-agent/server-core/runtime'
+} from '@memwise/shared/automations'
+import type { PageScriptRuntime } from '@memwise/core'
+import type { Logger } from '@memwise/server-core/runtime'
 
 export interface PagesScriptExecutorDeps {
   workspaceRootPath: string

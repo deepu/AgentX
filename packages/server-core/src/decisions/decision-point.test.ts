@@ -12,7 +12,7 @@ import {
   type DecisionRecord,
   type DecisionRequest,
   type DecisionResult,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 import { DECISION_COLD_AFTER_MS, DECISION_COLD_DEADLINE_MS, openDecisionPoint } from './decision-point'
 
 const REQUEST: DecisionRequest = { state: { message: 'hi' }, questions: { q: { type: 'noul', instructions: 'Is it a greeting?' } } }

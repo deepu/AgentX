@@ -11,7 +11,7 @@ const originalUserProfile = process.env.USERPROFILE;
 let scratchHome: string;
 
 beforeAll(() => {
-  scratchHome = mkdtempSync(join(tmpdir(), 'craft-text-completion-'));
+  scratchHome = mkdtempSync(join(tmpdir(), 'memwise-text-completion-'));
   process.env.HOME = scratchHome;
   process.env.USERPROFILE = scratchHome;
 });

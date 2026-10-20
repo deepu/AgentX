@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { OAuthFlowStore, type PreparedOAuthFlow } from '@craft-agent/shared/auth'
-import type { LoadedSource } from '@craft-agent/shared/sources'
+import { OAuthFlowStore, type PreparedOAuthFlow } from '@memwise/shared/auth'
+import type { LoadedSource } from '@memwise/shared/sources'
 import { completeOAuthFlow, createOAuthFlowStarter } from './oauth'
 
 const logger = { info: () => {} }

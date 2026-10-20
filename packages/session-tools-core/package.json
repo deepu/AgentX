@@ -1,5 +1,5 @@
 {
-  "name": "@craft-agent/session-tools-core",
+  "name": "@memwise/session-tools-core",
   "version": "0.15.3",
   "license": "Apache-2.0",
   "description": "Shared utilities for session-scoped tools (Claude and Codex)",

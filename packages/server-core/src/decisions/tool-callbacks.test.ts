@@ -10,7 +10,7 @@ import {
   normalizeDecisionLayerSettings,
   resolveDecisionEndpoint,
   type DecisionClientResolution,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 
 const QUESTIONS = {
   topic: { type: 'choice' as const, instructions: 'Which topic?', criteria: { billing: 'money', shipping: 'delivery' } },
@@ -30,7 +30,7 @@ describe('decision tool callbacks', () => {
       sessionId: 's1',
       log: m => logs.push(m),
       resolveClient: async () => ({ ok: false, failure: { kind: 'unconfigured', message: 'no key' } }),
-      recorder: new DecisionRecorder({ path: join(mkdtempSync(join(tmpdir(), 'craft-decide-')), 'd.jsonl') }),
+      recorder: new DecisionRecorder({ path: join(mkdtempSync(join(tmpdir(), 'memwise-decide-')), 'd.jsonl') }),
     })
     const result = await callbacks.decide({ state: 'x', questions: QUESTIONS })
     expect(result).toEqual({ ok: false, error: { kind: 'unconfigured', message: 'no key' } })
@@ -38,7 +38,7 @@ describe('decision tool callbacks', () => {
   })
 
   it('runs the decision and records it with the session id and meta', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'craft-decide-'))
+    const dir = mkdtempSync(join(tmpdir(), 'memwise-decide-'))
     try {
       const recorder = new DecisionRecorder({ path: join(dir, 'decisions.jsonl') })
       let requested: { url: string; body: unknown } | undefined
@@ -77,7 +77,7 @@ describe('decision tool callbacks', () => {
   })
 
   it('maps client errors to tool errors and records the failure', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'craft-decide-'))
+    const dir = mkdtempSync(join(tmpdir(), 'memwise-decide-'))
     try {
       const recorder = new DecisionRecorder({ path: join(dir, 'decisions.jsonl') })
       const fetchImpl = (async () => new Response('{"error":{"message":"nope"}}', { status: 429 })) as unknown as typeof fetch
@@ -109,7 +109,7 @@ describe('decision tool callbacks', () => {
     const callbacks = buildDecisionToolCallbacks({
       sessionId: 's',
       resolveClient: async () => { resolutions += 1; return resolutionWith(fetchImpl) },
-      recorder: new DecisionRecorder({ path: join(mkdtempSync(join(tmpdir(), 'craft-decide-')), 'd.jsonl') }),
+      recorder: new DecisionRecorder({ path: join(mkdtempSync(join(tmpdir(), 'memwise-decide-')), 'd.jsonl') }),
       resolutionTtlMs: 1_000,
       now: () => clock,
     })
@@ -125,7 +125,7 @@ describe('decision tool callbacks', () => {
     const callbacks = buildDecisionToolCallbacks({
       sessionId: 's',
       resolveClient: async () => { attempts += 1; throw new Error('vault locked') },
-      recorder: new DecisionRecorder({ path: join(mkdtempSync(join(tmpdir(), 'craft-decide-')), 'd.jsonl') }),
+      recorder: new DecisionRecorder({ path: join(mkdtempSync(join(tmpdir(), 'memwise-decide-')), 'd.jsonl') }),
     })
     const first = await callbacks.decide({ state: 'x', questions: QUESTIONS })
     const second = await callbacks.decide({ state: 'x', questions: QUESTIONS })
@@ -140,7 +140,7 @@ describe('decision tool callbacks', () => {
     const callbacks = buildDecisionToolCallbacks({
       sessionId: 's',
       resolveClient: async () => resolutionWith(fetchImpl),
-      recorder: new DecisionRecorder({ path: join(mkdtempSync(join(tmpdir(), 'craft-decide-')), 'd.jsonl') }),
+      recorder: new DecisionRecorder({ path: join(mkdtempSync(join(tmpdir(), 'memwise-decide-')), 'd.jsonl') }),
     })
     const result = await callbacks.decide({ state: 'x', questions: { bad: { type: 'choice', instructions: 'pick', criteria: { only: null } } } })
     expect(result.ok).toBe(false)

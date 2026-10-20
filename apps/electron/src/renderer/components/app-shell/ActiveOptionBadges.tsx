@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
-import type { PermissionMode } from '@craft-agent/shared/agent/modes'
-import type { BackgroundTaskOutput } from '@craft-agent/shared/protocol'
+import type { PermissionMode } from '@memwise/shared/agent/modes'
+import type { BackgroundTaskOutput } from '@memwise/shared/protocol'
 import { ActiveTasksBar, type BackgroundTask } from './ActiveTasksBar'
 import { ComposerModeChip } from './input/ComposerModeChip'
 

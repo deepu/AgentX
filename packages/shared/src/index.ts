@@ -1,20 +1,20 @@
 /**
- * @craft-agent/shared
+ * @memwise/shared
  *
- * Shared business logic for Craft Agent.
+ * Shared business logic for MemWise.
  * Used by the Electron app.
  *
  * Import specific modules via subpath exports:
- *   import { CraftAgent } from '@craft-agent/shared/agent';
- *   import { loadStoredConfig } from '@craft-agent/shared/config';
- *   import { getCredentialManager } from '@craft-agent/shared/credentials';
- *   import { CraftMcpClient } from '@craft-agent/shared/mcp';
- *   import { debug } from '@craft-agent/shared/utils';
- *   import { loadSource, createSource, getSourceCredentialManager } from '@craft-agent/shared/sources';
- *   import { createWorkspace, loadWorkspace } from '@craft-agent/shared/workspaces';
+ *   import { MemWiseAgent } from '@memwise/shared/agent';
+ *   import { loadStoredConfig } from '@memwise/shared/config';
+ *   import { getCredentialManager } from '@memwise/shared/credentials';
+ *   import { MemWiseMcpClient } from '@memwise/shared/mcp';
+ *   import { debug } from '@memwise/shared/utils';
+ *   import { loadSource, createSource, getSourceCredentialManager } from '@memwise/shared/sources';
+ *   import { createWorkspace, loadWorkspace } from '@memwise/shared/workspaces';
  *
  * Available modules:
- *   - agent: CraftAgent SDK wrapper, plan tools
+ *   - agent: MemWiseAgent SDK wrapper, plan tools
  *   - auth: OAuth, token management, auth state
  *   - clients: Craft API client
  *   - config: Storage, models, preferences

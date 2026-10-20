@@ -19,7 +19,7 @@
 
 import * as React from 'react'
 import { motion } from 'motion/react'
-import { SPRING } from '@craft-agent/ui/motion'
+import { SPRING } from '@memwise/ui/motion'
 
 export type CompactPanelRole = 'navigator' | 'detail'
 

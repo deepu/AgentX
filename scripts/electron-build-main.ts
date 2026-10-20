@@ -54,7 +54,7 @@ function getBuildDefines(): string[] {
     "MICROSOFT_OAUTH_CLIENT_ID",
     "MICROSOFT_OAUTH_CLIENT_SECRET",
     "SENTRY_ELECTRON_INGEST_URL",
-    "CRAFT_DEV_RUNTIME",
+    "MEMWISE_DEV_RUNTIME",
   ];
 
   return definedVars.map((varName) => {
@@ -244,7 +244,7 @@ async function buildWhatsAppWorker(): Promise<void> {
       `--outfile=${WA_WORKER_OUTPUT}`,
       "--external:electron",
       // Baileys' runtime-optional features — wrapped in try/catch at the
-      // call site and not used by Craft Agent (we send text + documents, no
+      // call site and not used by MemWise (we send text + documents, no
       // link previews, no inline image processing, no terminal QR).
       "--external:link-preview-js",
       "--external:qrcode-terminal",

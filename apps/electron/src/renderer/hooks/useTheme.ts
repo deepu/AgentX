@@ -7,7 +7,7 @@ import {
 import { useTheme as useThemeContext } from '@/context/ThemeContext'
 
 interface UseThemeResult {
-  /** Effective theme: preset merged with ~/.craft-agent/theme.json overrides */
+  /** Effective theme: preset merged with ~/.memwise/theme.json overrides */
   theme: ThemeOverrides
   defaultTheme: ThemeOverrides
   shikiTheme: string

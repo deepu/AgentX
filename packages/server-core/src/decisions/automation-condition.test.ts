@@ -4,7 +4,7 @@ import {
   normalizeDecisionLayerSettings,
   resolveDecisionEndpoint,
   type DecisionClientResolution,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 import { AUTOMATION_CONDITION_MAX_MESSAGE_CHARS, buildAutomationConditionRequest, checkAutomationCondition } from './automation-condition'
 
 function answering(noul: number): () => Promise<DecisionClientResolution> {

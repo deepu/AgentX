@@ -10,9 +10,9 @@ import {
   readDecisionLog,
   resolveDecisionEndpoint,
   type DecisionClientResolution,
-} from '@craft-agent/shared/decisions'
-import type { LoadedSkill } from '@craft-agent/shared/skills'
-import type { LoadedSource } from '@craft-agent/shared/sources'
+} from '@memwise/shared/decisions'
+import type { LoadedSkill } from '@memwise/shared/skills'
+import type { LoadedSource } from '@memwise/shared/sources'
 import {
   buildSuggestionRequest,
   candidatesUsedBy,

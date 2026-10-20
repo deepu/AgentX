@@ -24,7 +24,7 @@ function parseBooleanEnv(value: string | undefined): boolean | undefined {
  */
 export function isDevRuntime(): boolean {
   const nodeEnv = (getEnv('NODE_ENV') || '').toLowerCase();
-  return nodeEnv === 'development' || nodeEnv === 'dev' || getEnv('CRAFT_DEBUG') === '1';
+  return nodeEnv === 'development' || nodeEnv === 'dev' || getEnv('MEMWISE_DEBUG') === '1';
 }
 
 /**
@@ -32,18 +32,18 @@ export function isDevRuntime(): boolean {
  * Explicit env override has precedence over dev-runtime defaults.
  */
 export function isDeveloperFeedbackEnabled(): boolean {
-  const override = parseBooleanEnv(getEnv('CRAFT_FEATURE_DEVELOPER_FEEDBACK'));
+  const override = parseBooleanEnv(getEnv('MEMWISE_FEATURE_DEVELOPER_FEEDBACK'));
   if (override !== undefined) return override;
   return isDevRuntime();
 }
 
 /**
- * Runtime-evaluated check for craft-agents-cli integration.
+ * Runtime-evaluated check for memwise-cli integration.
  *
- * Defaults to disabled. Override with CRAFT_FEATURE_CRAFT_AGENTS_CLI=1|0.
+ * Defaults to disabled. Override with MEMWISE_FEATURE_MEMWISE_CLI=1|0.
  */
-export function isCraftAgentsCliEnabled(): boolean {
-  const override = parseBooleanEnv(getEnv('CRAFT_FEATURE_CRAFT_AGENTS_CLI'));
+export function isMemWiseCliEnabled(): boolean {
+  const override = parseBooleanEnv(getEnv('MEMWISE_FEATURE_MEMWISE_CLI'));
   if (override !== undefined) return override;
   return false;
 }
@@ -51,10 +51,10 @@ export function isCraftAgentsCliEnabled(): boolean {
 /**
  * Runtime-evaluated check for embedded server settings page.
  *
- * Defaults to disabled. Override with CRAFT_FEATURE_EMBEDDED_SERVER=1|0.
+ * Defaults to disabled. Override with MEMWISE_FEATURE_EMBEDDED_SERVER=1|0.
  */
 export function isEmbeddedServerEnabled(): boolean {
-  const override = parseBooleanEnv(getEnv('CRAFT_FEATURE_EMBEDDED_SERVER'));
+  const override = parseBooleanEnv(getEnv('MEMWISE_FEATURE_EMBEDDED_SERVER'));
   if (override !== undefined) return override;
   return false;
 }
@@ -66,14 +66,29 @@ export function isEmbeddedServerEnabled(): boolean {
  * never from its own process.env. Gates publish/update only — unpublish stays
  * available regardless, so disabling the flag never strands a published page.
  *
- * Defaults to ENABLED as of 2026-08-27 (the Cloudflare publication Worker is
- * deployed and verified live). Publishing sends the page bundle to Cloudflare,
- * so this is opt-out: set CRAFT_FEATURE_PAGES_SHARING=0 to hide the Share UI.
+ * Defaults to DISABLED in MemWise: the publication Worker inherited from
+ * Craft Agents is Craft's hosted service, not ours, so publishing would send
+ * page bundles to a third party. Opt in with MEMWISE_FEATURE_PAGES_SHARING=1
+ * (and point MEMWISE_PAGES_SHARE_API_URL at a Worker you run).
  */
 export function isPagesSharingEnabled(): boolean {
-  const override = parseBooleanEnv(getEnv('CRAFT_FEATURE_PAGES_SHARING'));
+  const override = parseBooleanEnv(getEnv('MEMWISE_FEATURE_PAGES_SHARING'));
   if (override !== undefined) return override;
-  return true;
+  return false;
+}
+
+/**
+ * Runtime-evaluated check for session sharing (upload to the web viewer).
+ *
+ * Defaults to DISABLED in MemWise: the inherited viewer is Craft's hosted
+ * service, so sharing would upload a whole session transcript to a third
+ * party. Gates share/update only; revoking an existing share stays available.
+ * Opt in with MEMWISE_FEATURE_SESSION_SHARING=1.
+ */
+export function isSessionSharingEnabled(): boolean {
+  const override = parseBooleanEnv(getEnv('MEMWISE_FEATURE_SESSION_SHARING'));
+  if (override !== undefined) return override;
+  return false;
 }
 
 export const FEATURE_FLAGS = {
@@ -83,23 +98,23 @@ export const FEATURE_FLAGS = {
    * Enable agent developer feedback tool.
    *
    * Defaults to enabled in explicit development runtimes; disabled otherwise.
-   * Override with CRAFT_FEATURE_DEVELOPER_FEEDBACK=1|0.
+   * Override with MEMWISE_FEATURE_DEVELOPER_FEEDBACK=1|0.
    */
   get developerFeedback(): boolean {
     return isDeveloperFeedbackEnabled();
   },
   /**
-   * Enable craft-agent CLI guidance and guardrails.
+   * Enable memwise CLI guidance and guardrails.
    *
-   * Defaults to disabled. Override with CRAFT_FEATURE_CRAFT_AGENTS_CLI=1|0.
+   * Defaults to disabled. Override with MEMWISE_FEATURE_MEMWISE_CLI=1|0.
    */
-  get craftAgentsCli(): boolean {
-    return isCraftAgentsCliEnabled();
+  get memwiseCli(): boolean {
+    return isMemWiseCliEnabled();
   },
   /**
    * Enable embedded server settings page.
    *
-   * Defaults to disabled. Override with CRAFT_FEATURE_EMBEDDED_SERVER=1|0.
+   * Defaults to disabled. Override with MEMWISE_FEATURE_EMBEDDED_SERVER=1|0.
    */
   get embeddedServer(): boolean {
     return isEmbeddedServerEnabled();
@@ -107,10 +122,19 @@ export const FEATURE_FLAGS = {
   /**
    * Enable Pages sharing (publish to Cloudflare).
    *
-   * Defaults to ENABLED (Worker deployed 2026-08-27). Opt out with
-   * CRAFT_FEATURE_PAGES_SHARING=0.
+   * Defaults to DISABLED in MemWise (the inherited Worker is Craft's). Opt in
+   * with MEMWISE_FEATURE_PAGES_SHARING=1.
    */
   get pagesSharing(): boolean {
     return isPagesSharingEnabled();
+  },
+  /**
+   * Enable session sharing (upload to the web viewer).
+   *
+   * Defaults to DISABLED in MemWise (the inherited viewer is Craft's). Opt in
+   * with MEMWISE_FEATURE_SESSION_SHARING=1.
+   */
+  get sessionSharing(): boolean {
+    return isSessionSharingEnabled();
   },
 } as const;

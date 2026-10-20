@@ -6,7 +6,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 
 /**
- * Force a Craft-built system prompt onto a Pi AgentSession.
+ * Force a MemWise-built system prompt onto a Pi AgentSession.
  *
  * Since Pi 0.86 the supported way to replace the whole prompt is a
  * `before_agent_start` extension handler that returns `{ systemPrompt }`. The SDK
@@ -19,7 +19,7 @@ import {
  * is registered on the session's resource loader at creation time.
  */
 export interface SystemPromptOverride {
-  /** Inline extension to register via `createCraftResourceLoader`. */
+  /** Inline extension to register via `createMemWiseResourceLoader`. */
   readonly extension: InlineExtension;
   /** Replace the prompt forced onto the next and every later run. */
   set(prompt: string): void;
@@ -27,7 +27,7 @@ export interface SystemPromptOverride {
   current(): string | undefined;
 }
 
-export const CRAFT_SYSTEM_PROMPT_EXTENSION_NAME = 'craft-system-prompt';
+export const MEMWISE_SYSTEM_PROMPT_EXTENSION_NAME = 'craft-system-prompt';
 
 export function createSystemPromptOverride(): SystemPromptOverride {
   let current: string | undefined;
@@ -35,7 +35,7 @@ export function createSystemPromptOverride(): SystemPromptOverride {
     pi.on('before_agent_start', () => (current === undefined ? undefined : { systemPrompt: current }));
   };
   return {
-    extension: { name: CRAFT_SYSTEM_PROMPT_EXTENSION_NAME, factory, hidden: true },
+    extension: { name: MEMWISE_SYSTEM_PROMPT_EXTENSION_NAME, factory, hidden: true },
     set(prompt: string): void {
       current = prompt;
     },
@@ -46,11 +46,11 @@ export function createSystemPromptOverride(): SystemPromptOverride {
 /**
  * The resource loader `createAgentSession` would build on its own (same cwd,
  * agentDir and settings), plus the system-prompt override extension. Discovery
- * follows the SDK rules for what it is given: Craft passes an empty agentDir
+ * follows the SDK rules for what it is given: MemWise passes an empty agentDir
  * (`agent-dir.ts`) and settings that never trust the working directory
  * (`session-settings.ts`), so no on-disk extension, skill or prompt loads.
  */
-export async function createCraftResourceLoader(options: {
+export async function createMemWiseResourceLoader(options: {
   cwd: string;
   agentDir: string;
   settingsManager: SettingsManager;

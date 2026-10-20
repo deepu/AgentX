@@ -8,7 +8,7 @@
  * (resources/docs/pages.md) — change it only with a migration note.
  */
 
-import { isSourceUsable, type LoadedSource } from '@craft-agent/shared/sources'
+import { isSourceUsable, type LoadedSource } from '@memwise/shared/sources'
 
 export const PAGE_SOURCE_AUTH_REQUIRED_PREFIX = 'source-auth-required'
 

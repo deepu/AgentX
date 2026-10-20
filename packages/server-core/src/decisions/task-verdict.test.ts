@@ -8,7 +8,7 @@ import {
   normalizeDecisionLayerSettings,
   resolveDecisionEndpoint,
   type DecisionClientResolution,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 import { buildTaskVerdictDecider } from './task-verdict'
 import { buildVerdictDecisionRequest } from '../tasks/verdict-decision'
 
@@ -28,7 +28,7 @@ describe('task verdict decider', () => {
   })
 
   it('runs the request under the configured background deadline and records it with the run context', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'craft-verdict-'))
+    const dir = mkdtempSync(join(tmpdir(), 'memwise-verdict-'))
     const recorder = new DecisionRecorder({ path: join(dir, 'decisions.jsonl') })
     let sentBody: { model: string; questions: Record<string, unknown> } | undefined
     let sawSignal = false
@@ -56,7 +56,7 @@ describe('task verdict decider', () => {
   })
 
   it('returns null and records the failure when the provider errors', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'craft-verdict-'))
+    const dir = mkdtempSync(join(tmpdir(), 'memwise-verdict-'))
     const recorder = new DecisionRecorder({ path: join(dir, 'decisions.jsonl') })
     const fetchImpl = (async () => new Response('{"error":"nope"}', { status: 529 })) as unknown as typeof fetch
     const decide = buildTaskVerdictDecider({ resolveClient: async () => resolutionWith(fetchImpl), recorder })

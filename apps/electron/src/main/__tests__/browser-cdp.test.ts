@@ -49,7 +49,7 @@ function createMockWebContents(sendCommandImpl?: (method: string, params?: any) 
   }
 }
 
-/** Name of the page function in a Runtime.callFunctionOn call (its `craft:` marker comment). */
+/** Name of the page function in a Runtime.callFunctionOn call (its `memwise:` marker comment). */
 function pageFunction(params: any): string | undefined {
   return /craft:([a-z-]+)/.exec(String(params?.functionDeclaration ?? ''))?.[1]
 }

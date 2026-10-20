@@ -1,1 +1,1 @@
-export { createHeadlessPlatform } from '@craft-agent/server-core/runtime'
+export { createHeadlessPlatform } from '@memwise/server-core/runtime'

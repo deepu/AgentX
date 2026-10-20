@@ -1,0 +1,19 @@
+{
+  "name": "@memwise/policy",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Policy layers, the compiler and effective policy (MemWise)",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@memwise/defs": "workspace:*"
+  }
+}

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { motion, AnimatePresence, useMotionValue, useMotionValueEvent, animate } from 'motion/react'
-import { DURATION, EASE, prefersReducedMotion } from '@craft-agent/ui/motion'
+import { DURATION, EASE, prefersReducedMotion } from '@memwise/ui/motion'
 import { cn } from '@/lib/utils'
 import { FreeFormInput, type FreeFormInputProps } from './FreeFormInput'
 import { StructuredInput } from './StructuredInput'

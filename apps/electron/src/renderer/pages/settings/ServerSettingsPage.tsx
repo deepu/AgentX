@@ -10,9 +10,9 @@ import { useTranslation } from 'react-i18next'
 import { Copy, Eye, EyeOff, AlertTriangle, RotateCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button, IconButton } from '@/components/ui/button'
-import { Spinner } from '@craft-agent/ui'
+import { Spinner } from '@memwise/ui'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
-import type { ServerConfig, ServerStatus } from '@craft-agent/shared/config/server-config'
+import type { ServerConfig, ServerStatus } from '@memwise/shared/config/server-config'
 
 import {
   SettingsPage,

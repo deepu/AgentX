@@ -9,8 +9,8 @@
  * as without the condition.
  */
 
-import type { SemanticCondition } from '@craft-agent/shared/automations'
-import type { DecisionRequest } from '@craft-agent/shared/decisions'
+import type { SemanticCondition } from '@memwise/shared/automations'
+import type { DecisionRequest } from '@memwise/shared/decisions'
 import { openDecisionPoint, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 
 /** "Yes" probability needed to run when the condition sets no threshold. */

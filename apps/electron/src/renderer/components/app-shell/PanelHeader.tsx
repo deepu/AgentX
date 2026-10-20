@@ -22,7 +22,7 @@
 
 import * as React from 'react'
 import { motion } from 'motion/react'
-import { TWEEN } from '@craft-agent/ui/motion'
+import { TWEEN } from '@memwise/ui/motion'
 import { cn } from '@/lib/utils'
 import { useCompensateForStoplight } from '@/context/StoplightContext'
 import { useAppShellContext } from '@/context/AppShellContext'

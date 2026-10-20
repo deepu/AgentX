@@ -1,12 +1,14 @@
-# Craft Agents Windows Installer
-# Usage: irm https://thecraftagents.com/install-app.ps1 | iex
+# MemWise Windows Installer
+# Usage: $env:MEMWISE_VERSIONS_URL = "<release feed>"; .\install-app.ps1
 
 & {
 $ErrorActionPreference = "Stop"
 
-$VERSIONS_URL = "https://thecraftagents.com/electron"
-$DOWNLOAD_DIR = "$env:TEMP\craft-agent-install"
-$APP_NAME = "Craft Agents"
+# MemWise has no release feed yet; the inherited Craft Agents feed served Craft's builds.
+$VERSIONS_URL = $env:MEMWISE_VERSIONS_URL
+if (-not $VERSIONS_URL) { throw "Set MEMWISE_VERSIONS_URL to a MemWise release feed" }
+$DOWNLOAD_DIR = "$env:TEMP\memwise-install"
+$APP_NAME = "MemWise"
 
 # Colors for output
 function Write-Info { Write-Host "> $args" -ForegroundColor Blue }
@@ -58,7 +60,7 @@ Write-Info "Latest version: $version"
 # Parse YAML to extract sha512, url (filename), and size for our architecture
 # YAML format:
 #   files:
-#     - url: Craft-Agents-x64.exe
+#     - url: MemWise-x64.exe
 #       sha512: <base64>
 #       size: 123456789
 #       arch: x64
@@ -108,7 +110,7 @@ if (-not $checksum -or $checksum.Length -lt 80) {
 
 # Use default filename if not found
 if (-not $filename) {
-    $filename = "Craft-Agents-$arch.exe"
+    $filename = "MemWise-$arch.exe"
 }
 
 $installerUrl = "$VERSIONS_URL/latest/$filename"
@@ -192,9 +194,9 @@ if ($actualHash -ne $checksum) {
 Write-Success "Checksum verified!"
 
 # Close the app if it's running
-$process = Get-Process -Name "Craft Agents" -ErrorAction SilentlyContinue
+$process = Get-Process -Name "MemWise" -ErrorAction SilentlyContinue
 if ($process) {
-    Write-Info "Closing Craft Agents..."
+    Write-Info "Closing MemWise..."
     $process | Stop-Process -Force
     Start-Sleep -Seconds 2
 }
@@ -227,11 +229,11 @@ Write-Info "Cleaning up..."
 Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
 
 # Add command line shortcut
-Write-Info "Adding 'craft-agents' command to PATH..."
+Write-Info "Adding 'memwise' command to PATH..."
 
-$binDir = "$env:LOCALAPPDATA\Craft Agents\bin"
-$cmdFile = "$binDir\craft-agents.cmd"
-$exePath = "$env:LOCALAPPDATA\Programs\Craft Agents\Craft Agents.exe"
+$binDir = "$env:LOCALAPPDATA\MemWise\bin"
+$cmdFile = "$binDir\memwise.cmd"
+$exePath = "$env:LOCALAPPDATA\Programs\MemWise\MemWise.exe"
 
 # Create bin directory
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
@@ -245,9 +247,9 @@ $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -notlike "*$binDir*") {
     $newPath = "$userPath;$binDir"
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-    Write-Success "Added to PATH (restart terminal to use 'craft-agents' command)"
+    Write-Success "Added to PATH (restart terminal to use 'memwise' command)"
 } else {
-    Write-Success "Command 'craft-agents' is ready"
+    Write-Success "Command 'memwise' is ready"
 }
 
 Write-Host ""
@@ -255,10 +257,10 @@ Write-Host "--------------------------------------------------------------------
 Write-Host ""
 Write-Success "Installation complete!"
 Write-Host ""
-Write-Host "  Craft Agents has been installed."
+Write-Host "  MemWise has been installed."
 Write-Host ""
 Write-Host "  Launch from:"
 Write-Host "    - Start Menu or desktop shortcut"
-Write-Host "    - Command line: craft-agents (restart terminal first)"
+Write-Host "    - Command line: memwise (restart terminal first)"
 Write-Host ""
 }

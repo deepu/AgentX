@@ -4,10 +4,10 @@
  * email account, web news, the working folder). A click sends the prompt at once,
  * so every template only reads. Pure: no React, no i18n instance; `t` is passed in.
  */
-import type { LoadedSource } from '@craft-agent/shared/sources/types'
-import { inferGoogleServiceFromUrl, inferMicrosoftServiceFromUrl } from '@craft-agent/shared/sources/types'
+import type { LoadedSource } from '@memwise/shared/sources/types'
+import { inferGoogleServiceFromUrl, inferMicrosoftServiceFromUrl } from '@memwise/shared/sources/types'
 import { deriveConnectionStatus } from '../../ui/source-connection-status'
-import { parseMentions } from '@craft-agent/shared/mentions'
+import { parseMentions } from '@memwise/shared/mentions'
 
 /** Source kinds (prompt about one workspace source) */
 type SourceSuggestionKind = 'email' | 'calendar' | 'chat' | 'tasks' | 'issues' | 'code' | 'docs' | 'source'

@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtom } from 'jotai'
-import { flattenLabels, formatDisplayValue, sessionLabelChips, type LabelConfig, type SessionLabelChip } from '@craft-agent/shared/labels'
+import { flattenLabels, formatDisplayValue, sessionLabelChips, type LabelConfig, type SessionLabelChip } from '@memwise/shared/labels'
 import { EntityListLabelBadge } from '@/components/ui/entity-list-label-badge'
 import { LabelIcon } from '@/components/ui/label-icon'
 import {

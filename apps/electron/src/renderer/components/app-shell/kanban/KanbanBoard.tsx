@@ -18,8 +18,8 @@ import {
   snapshotRects,
   springTiming,
   type FlipSnapshot,
-} from '@craft-agent/ui/motion'
-import type { KanbanColumnDef } from '@craft-agent/shared/projects/types'
+} from '@memwise/ui/motion'
+import type { KanbanColumnDef } from '@memwise/shared/projects/types'
 import { SmartPointerSensor } from '@/components/ui/sortable-list'
 import { IconButton } from '@/components/ui/button'
 import { cn } from '@/lib/utils'

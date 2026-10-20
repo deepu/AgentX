@@ -102,44 +102,44 @@
       "comment": "CLI tools: bare invocation (prints help)"
     },
     {
-      "pattern": "^craft-agent\\s+label\\s+(list|get|auto-rule-list|auto-rule-validate)\\b",
-      "comment": "craft-agent label read-only operations"
+      "pattern": "^memwise\\s+label\\s+(list|get|auto-rule-list|auto-rule-validate)\\b",
+      "comment": "memwise label read-only operations"
     },
     {
-      "pattern": "^craft-agent\\s+source\\s+(list|get|validate|test|auth-help)\\b",
-      "comment": "craft-agent source read-only operations"
+      "pattern": "^memwise\\s+source\\s+(list|get|validate|test|auth-help)\\b",
+      "comment": "memwise source read-only operations"
     },
     {
-      "pattern": "^craft-agent\\s+skill\\s+(list|get|validate|where)\\b",
-      "comment": "craft-agent skill read-only operations"
+      "pattern": "^memwise\\s+skill\\s+(list|get|validate|where)\\b",
+      "comment": "memwise skill read-only operations"
     },
     {
-      "pattern": "^craft-agent\\s+automation\\s+(list|get|validate|history|last-executed|test|lint)\\b",
-      "comment": "craft-agent automation read-only operations"
+      "pattern": "^memwise\\s+automation\\s+(list|get|validate|history|last-executed|test|lint)\\b",
+      "comment": "memwise automation read-only operations"
     },
     {
-      "pattern": "^craft-agent\\s+permission\\s+(list|get|validate)\\b",
-      "comment": "craft-agent permission read-only operations"
+      "pattern": "^memwise\\s+permission\\s+(list|get|validate)\\b",
+      "comment": "memwise permission read-only operations"
     },
     {
-      "pattern": "^craft-agent\\s+theme\\s+(get|validate|list-presets|get-preset)\\b",
-      "comment": "craft-agent theme read-only operations"
+      "pattern": "^memwise\\s+theme\\s+(get|validate|list-presets|get-preset)\\b",
+      "comment": "memwise theme read-only operations"
     },
     {
-      "pattern": "^craft-agent\\s*$",
-      "comment": "craft-agent bare invocation (prints help)"
+      "pattern": "^memwise\\s*$",
+      "comment": "memwise bare invocation (prints help)"
     },
     {
-      "pattern": "^craft-agent\\s+(label|source|skill|automation|permission|theme)\\s*$",
-      "comment": "craft-agent entity help"
+      "pattern": "^memwise\\s+(label|source|skill|automation|permission|theme)\\s*$",
+      "comment": "memwise entity help"
     },
     {
-      "pattern": "^craft-agent\\s+(label|source|skill|automation|permission|theme)\\s+--help\\b",
-      "comment": "craft-agent entity help flags"
+      "pattern": "^memwise\\s+(label|source|skill|automation|permission|theme)\\s+--help\\b",
+      "comment": "memwise entity help flags"
     },
     {
-      "pattern": "^craft-agent\\s+--(help|version|discover)\\b",
-      "comment": "craft-agent global flags"
+      "pattern": "^memwise\\s+--(help|version|discover)\\b",
+      "comment": "memwise global flags"
     },
     {
       "pattern": "^find\\b",

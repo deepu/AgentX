@@ -57,13 +57,13 @@ export default [
       }],
 
       // Enforce centralized z-index token scale
-      'craft-styles/no-hardcoded-z-index': 'error',
+      'memwise-styles/no-hardcoded-z-index': 'error',
 
       // Enforce dedicated island z-index tokens in island components
-      'craft-styles/no-floating-z-tokens-in-island': 'error',
+      'memwise-styles/no-floating-z-tokens-in-island': 'error',
 
       // Enforce approved shadow utility classes/tokens only
-      'craft-styles/no-nonstandard-shadows': ['error', {
+      'memwise-styles/no-nonstandard-shadows': ['error', {
         allowedClasses: [
           'shadow-none',
           'shadow-xs',
@@ -86,8 +86,8 @@ export default [
       }],
 
       // Design-system guardrails (implementation plan A0): warn until the class codemod (A3–B9) lands
-      'craft-styles/no-motion-antipatterns': 'warn',
-      'craft-styles/no-raw-palette-colors': 'warn',
+      'memwise-styles/no-motion-antipatterns': 'warn',
+      'memwise-styles/no-raw-palette-colors': 'warn',
     },
   },
 
@@ -99,7 +99,7 @@ export default [
       'src/components/ui/__tests__/styled-dropdown.test.ts',
     ],
     rules: {
-      'craft-styles/no-nonstandard-shadows': 'off',
+      'memwise-styles/no-nonstandard-shadows': 'off',
     },
   },
 

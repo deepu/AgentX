@@ -189,7 +189,7 @@ describe('session completion seam', () => {
     expect(sent[0]).toContain("is the agent's full transcript: do not read it whole")
     expect(sent[0]).not.toContain('Read that output file')
     // Nobody typed it: the agent must not take it for the user.
-    expect(sent[0]!.startsWith('<system-notification>\nSent by Craft Agents automatically, not typed by the user.')).toBe(true)
+    expect(sent[0]!.startsWith('<system-notification>\nSent by MemWise automatically, not typed by the user.')).toBe(true)
     expect(sent[0]!.trimEnd().endsWith('</system-notification>')).toBe(true)
   })
 })

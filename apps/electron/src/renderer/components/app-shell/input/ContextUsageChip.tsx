@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 import type { getContextDisplay, getContextDisplayLabels } from './context-display'
 

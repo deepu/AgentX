@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Spinner } from '@craft-agent/ui'
+import { Spinner } from '@memwise/ui'
 import { useActiveWorkspace } from '@/context/AppShellContext'
 import type { WhatsAppUiEvent } from '../../../shared/types'
 
@@ -116,7 +116,7 @@ export function WhatsAppConnectDialog({ open, onOpenChange, onConnected }: Whats
           {phase.kind === 'show_qr' && (
             <div className="flex flex-col items-center gap-3">
               {/* QR codes scan only as dark-on-white, so the quiet zone stays white in dark mode too */}
-              {/* eslint-disable-next-line craft-styles/no-raw-palette-colors */}
+              {/* eslint-disable-next-line memwise-styles/no-raw-palette-colors */}
               <div className="rounded-lg bg-white p-4">
                 <QRCodeSVG value={phase.qr} size={240} level="M" />
               </div>

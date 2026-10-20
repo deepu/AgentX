@@ -24,7 +24,7 @@
  * audit log.
  *
  * Every decision — lease issued, action executed/rejected/cancelled — is
- * appended to a durable JSONL audit log (~/.craft-agent/logs/page-actions.jsonl),
+ * appended to a durable JSONL audit log (~/.memwise/logs/page-actions.jsonl),
  * with caller-supplied objects redacted by key name.
  */
 
@@ -40,7 +40,7 @@ import type {
   PageScriptRuntime,
   PageConfig,
   PageRenderLease,
-} from '@craft-agent/core';
+} from '@memwise/core';
 import { CONFIG_DIR } from '../config/paths.ts';
 import { createLogger } from '../utils/debug.ts';
 import { redactSensitiveValues } from '../utils/redaction.ts';

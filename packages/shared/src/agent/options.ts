@@ -6,7 +6,7 @@ import { debug } from "../utils/debug";
 import { getProxyEnvVars } from "../config/proxy-env.ts";
 import { getGitBashPath } from "../config/storage.ts";
 
-declare const CRAFT_AGENT_CLI_VERSION: string | undefined;
+declare const MEMWISE_AGENT_CLI_VERSION: string | undefined;
 
 let customPathToClaudeCodeExecutable: string | null = null;
 let claudeConfigChecked = false;
@@ -191,12 +191,12 @@ export function buildClaudeSubprocessEnv(
         ...getProxyEnvVars(),
         ...envOverrides,
         // Propagate debug mode from argv flag OR existing env var
-        CRAFT_DEBUG: (process.argv.includes('--debug') || process.env.CRAFT_DEBUG === '1') ? '1' : '0',
+        MEMWISE_DEBUG: (process.argv.includes('--debug') || process.env.MEMWISE_DEBUG === '1') ? '1' : '0',
     };
 
     // SDK 0.3.268 (Claude Code 2.1.268) stopped offering the task-tracking tools
     // (TodoWrite and the Task* family) by default on Opus ≤4.7, Sonnet ≤4.6 and
-    // Haiku 4.5. Craft renders TodoWrite in the transcript regardless of model, so
+    // Haiku 4.5. MemWise renders TodoWrite in the transcript regardless of model, so
     // keep the tools available everywhere. No-op on models that still get them.
     if (env.CLAUDE_CODE_ENABLE_TODO_TOOLS === undefined) {
         env.CLAUDE_CODE_ENABLE_TODO_TOOLS = '1';
@@ -243,8 +243,8 @@ export function getDefaultOptions(envOverrides?: Record<string, string>): Partia
 
     // Standalone CLI distribution (`scripts/install.sh`) lays the per-version
     // SDK out at ~/.local/share/craft/versions/<version>/claude-agent-sdk/<binary>
-    if (typeof CRAFT_AGENT_CLI_VERSION !== 'undefined' && CRAFT_AGENT_CLI_VERSION != null) {
-        const baseDir = join(homedir(), '.local', 'share', 'craft', 'versions', CRAFT_AGENT_CLI_VERSION);
+    if (typeof MEMWISE_AGENT_CLI_VERSION !== 'undefined' && MEMWISE_AGENT_CLI_VERSION != null) {
+        const baseDir = join(homedir(), '.local', 'share', 'craft', 'versions', MEMWISE_AGENT_CLI_VERSION);
         return {
             pathToClaudeCodeExecutable: join(baseDir, 'claude-agent-sdk', nativeBinaryName()),
             env,

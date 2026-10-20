@@ -1,6 +1,6 @@
 import type { SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk';
 import type { SdkAutomationCallback } from '../../../automations/types.ts';
-import type { AgentEvent } from '@craft-agent/core/types';
+import type { AgentEvent } from '@memwise/core/types';
 import type { PendingSteer } from '../types.ts';
 
 /** Turn-scoped FIFO. Only an emitting hook may consume accepted messages. */

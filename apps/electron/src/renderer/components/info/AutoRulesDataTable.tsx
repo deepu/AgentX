@@ -17,14 +17,14 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { Info_DataTable, SortableHeader, INFO_TABLE_HEADER_CLASS, INFO_TABLE_SORTABLE_HEADER_CLASS } from './Info_DataTable'
 import { Info_Badge } from './Info_Badge'
 import { Info_FullscreenButton } from './Info_FullscreenButton'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
-import { DataTableOverlay } from '@craft-agent/ui'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@memwise/ui'
+import { DataTableOverlay } from '@memwise/ui'
 import { LabelIcon } from '@/components/ui/label-icon'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 import { toast } from 'sonner'
-import type { LabelConfig, AutoLabelRule } from '@craft-agent/shared/labels'
-import { isSemanticAutoLabelRule, DEFAULT_SEMANTIC_RULE_THRESHOLD } from '@craft-agent/shared/labels'
+import type { LabelConfig, AutoLabelRule } from '@memwise/shared/labels'
+import { isSemanticAutoLabelRule, DEFAULT_SEMANTIC_RULE_THRESHOLD } from '@memwise/shared/labels'
 
 /**
  * Flattened auto-rule row: associates a rule with its parent label

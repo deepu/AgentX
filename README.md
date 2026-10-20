@@ -1,40 +1,15 @@
-<div align="center">
-  <a href="https://trendshift.io/repositories/20714" target="_blank"><img src="https://trendshift.io/api/badge/repositories/20714" alt="craft-ai-agents%2Fcraft-agents-oss | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</div>
-
-# Craft Agents
+# MemWise
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
-[![Discord](https://img.shields.io/badge/Discord-Come%20join%20our%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/bwskSM82p)
 
-## How it Works (Video)
-To understand what Craft Agents does and how it works watch this video.
+MemWise is an agentic system built for workflows and policies: durable, checkable workflows that people and agents run together, with policies that decide what each step may do.
 
-[![Demo Video](https://img.youtube.com/vi/xQouiAIilvU/hqdefault.jpg)](https://www.youtube.com/watch?v=xQouiAIilvU)
-
-[Click Here (or on the image above) to watch the video on YouTube →](https://www.youtube.com/watch?v=xQouiAIilvU)
-
-
-## Why Craft Agents was built
-Craft Agents is a tool we built so that we (at craft.do) can work effectively with agents. It enables intuitive multitasking, no-fluff connection to any API or Service, sharing sessions, and a more document (vs code) centric workflow - in a beautiful and fluid UI.
-
-It uses the Claude Agent SDK and the Pi SDK side by side—building on what we found great and improving areas where we've desired improvements.
-
-It's built with Agent Native software principles in mind, and is highly customisable out of the box. One of the first of its kind.
-
-Craft Agents is open source under the Apache 2.0 license - so you are free to remix, change anything. And that's actually possible. We ourselves are building Craft Agents with Craft Agents only - no code editors - so really, any customisation is just a prompt away.
-
-We built Craft Agents because we wanted a better, more opinionated (and preferably non-CLI way) of working with the most powerful agents in the world. We'll continue to improve it, based on our experiences and intuition.
-
-<img width="1578" height="894" alt="image" src="https://github.com/user-attachments/assets/3f1f2fe8-7cf6-4487-99ff-76f6c8c0a3fb" />
+It starts from [Craft Agents](https://github.com/lukilabs/craft-agents-oss), the open-source (Apache-2.0) agent desktop app by Craft Docs Ltd., and keeps its desktop app, chat, sources, skills and server while the workflow runtime is built underneath. MemWise is an independent fork: it is not affiliated with or endorsed by Craft Docs Ltd. The design and build plan live in [docs/memwise](docs/memwise/README.md).
 
 ## Things that are hard to believe "just work"
 
 **How do I connect to Linear, Gmail, Slack...?**
 Tell the agent "add Linear as a source." It finds public APIs and MCP servers, reads their docs, sets up credentials, and configures everything. No config files, no setup wizards.
-
-[Check out how I just connected to Slack →](https://thecraftagents.com/s/DRNQEiy8w2e1v5LPgKl8b)
 
 **I already have my MCP config JSON.**
 Paste it. The agent handles the rest.
@@ -46,12 +21,10 @@ Fully supported. Stdio-based MCP servers run as local subprocesses on your machi
 Yes. Paste an OpenAPI spec, some endpoint URLs, screenshots of docs, whatever you have. It figures it out and guides you through the rest.
 
 **APIs too? Not just MCPs?**
-Craft Agents connects to anything. We have it hooked up to a direct Postgres DB behind a jumpbox. Skills + Sources = magic.
+MemWise connects to anything. We have it hooked up to a direct Postgres DB behind a jumpbox. Skills + Sources = magic.
 
 **How do I import my Claude Code skills and MCPs?**
 Tell the agent you want to import your skills from Claude Code. It handles the migration.
-
-[Here I imported all my skills in one go →](https://thecraftagents.com/s/gWCFqwhObFWaNJIEJmd6j)
 
 **How do I create a new skill?**
 Describe what the skill should do, give it context. The agent takes care of the rest.
@@ -65,26 +38,23 @@ Yes. That's the core idea behind agent-native software. You describe what you wa
 
 ## Installation
 
-### One-Line Install (Recommended)
-
-**macOS / Linux:**
-```bash
-curl -fsSL https://thecraftagents.com/install-app.sh | bash
-```
-
-**Windows (PowerShell):**
-```powershell
-irm https://thecraftagents.com/install-app.ps1 | iex
-```
+There are no MemWise release builds yet; build from source.
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/lukilabs/craft-agents-oss.git
-cd craft-agents-oss
+git clone https://github.com/deepu/AgentX.git
+cd AgentX
 bun install
 bun run electron:start
 ```
+
+### Coming from Craft Agents
+
+- On first launch MemWise moves `~/.craft-agent` to `~/.memwise` and leaves a link at the old path. Workspaces, sessions and stored credentials carry over, and so do window preferences such as theme and language.
+- Environment variables are renamed from `CRAFT_*` to `MEMWISE_*`. That includes the ones passed to script automations, so scripts that read `CRAFT_*` need updating.
+- The `craftagents://` link scheme is now `memwise://`.
+- Auto-update, page sharing and session sharing are off by default, because they used Craft's hosted services. See `MEMWISE_UPDATE_URL`, `MEMWISE_FEATURE_PAGES_SHARING` and `MEMWISE_FEATURE_SESSION_SHARING`.
 
 ## Features
 
@@ -154,7 +124,7 @@ Use **SHIFT+TAB** to cycle through modes in the chat interface.
 
 ## Remote Server (Headless)
 
-Craft Agents can run as a headless server on a remote machine (e.g., a Linux VPS), with the desktop app connecting as a thin client. This lets you keep long-running sessions alive, access them from multiple machines, and run compute-heavy tasks on a powerful server.
+MemWise can run as a headless server on a remote machine (e.g., a Linux VPS), with the desktop app connecting as a thin client. This lets you keep long-running sessions alive, access them from multiple machines, and run compute-heavy tasks on a powerful server.
 
 ### Quick Start
 
@@ -162,14 +132,14 @@ From the monorepo root:
 
 ```bash
 # Generate a token and start the server
-CRAFT_SERVER_TOKEN=$(openssl rand -hex 32) bun run packages/server/src/index.ts
+MEMWISE_SERVER_TOKEN=$(openssl rand -hex 32) bun run packages/server/src/index.ts
 ```
 
 The server prints the connection details on startup:
 
 ```
-CRAFT_SERVER_URL=ws://203.0.113.5:9100
-CRAFT_SERVER_TOKEN=<generated-token>
+MEMWISE_SERVER_URL=ws://203.0.113.5:9100
+MEMWISE_SERVER_TOKEN=<generated-token>
 ```
 
 Copy these values and use them to connect the desktop app.
@@ -179,7 +149,7 @@ Copy these values and use them to connect the desktop app.
 Launch the Electron app in thin-client mode by passing the server URL and token:
 
 ```bash
-CRAFT_SERVER_URL=wss://203.0.113.5:9100 CRAFT_SERVER_TOKEN=<token> bun run electron:start
+MEMWISE_SERVER_URL=wss://203.0.113.5:9100 MEMWISE_SERVER_TOKEN=<token> bun run electron:start
 ```
 
 In thin-client mode, the desktop app renders the UI but all session logic, tool execution, and LLM calls run on the remote server.
@@ -188,13 +158,13 @@ In thin-client mode, the desktop app renders the UI but all session logic, tool 
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `CRAFT_SERVER_TOKEN` | Yes | — | Bearer token for client authentication |
-| `CRAFT_RPC_HOST` | No | `127.0.0.1` | Bind address (`0.0.0.0` for remote access) |
-| `CRAFT_RPC_PORT` | No | `9100` | Bind port |
-| `CRAFT_RPC_TLS_CERT` | No | — | Path to PEM certificate file (enables `wss://`) |
-| `CRAFT_RPC_TLS_KEY` | No | — | Path to PEM private key file (required with cert) |
-| `CRAFT_RPC_TLS_CA` | No | — | Path to PEM CA chain file (optional, for client cert verification) |
-| `CRAFT_DEBUG` | No | `false` | Enable debug logging |
+| `MEMWISE_SERVER_TOKEN` | Yes | — | Bearer token for client authentication |
+| `MEMWISE_RPC_HOST` | No | `127.0.0.1` | Bind address (`0.0.0.0` for remote access) |
+| `MEMWISE_RPC_PORT` | No | `9100` | Bind port |
+| `MEMWISE_RPC_TLS_CERT` | No | — | Path to PEM certificate file (enables `wss://`) |
+| `MEMWISE_RPC_TLS_KEY` | No | — | Path to PEM private key file (required with cert) |
+| `MEMWISE_RPC_TLS_CA` | No | — | Path to PEM CA chain file (optional, for client cert verification) |
+| `MEMWISE_DEBUG` | No | `false` | Enable debug logging |
 
 ### TLS (Recommended for Remote Access)
 
@@ -210,14 +180,14 @@ When exposing the server over the network, TLS encrypts the WebSocket connection
 **Start the server with TLS:**
 
 ```bash
-CRAFT_SERVER_TOKEN=<token> \
-CRAFT_RPC_HOST=0.0.0.0 \
-CRAFT_RPC_TLS_CERT=certs/cert.pem \
-CRAFT_RPC_TLS_KEY=certs/key.pem \
+MEMWISE_SERVER_TOKEN=<token> \
+MEMWISE_RPC_HOST=0.0.0.0 \
+MEMWISE_RPC_TLS_CERT=certs/cert.pem \
+MEMWISE_RPC_TLS_KEY=certs/key.pem \
 bun run packages/server/src/index.ts
 ```
 
-The server will print `CRAFT_SERVER_URL=wss://<your-public-ip>:9100`.
+The server will print `MEMWISE_SERVER_URL=wss://<your-public-ip>:9100`.
 
 **For production**, use certificates from a trusted CA (e.g., Let's Encrypt) or place the server behind a reverse proxy (nginx, Caddy) that terminates TLS.
 
@@ -226,10 +196,10 @@ The server will print `CRAFT_SERVER_URL=wss://<your-public-ip>:9100`.
 ```bash
 docker run -d \
   -p 9100:9100 \
-  -e CRAFT_SERVER_TOKEN=<token> \
-  -e CRAFT_RPC_HOST=0.0.0.0 \
-  -v craft-data:/root/.craft-agent \
-  craft-agents-server
+  -e MEMWISE_SERVER_TOKEN=<token> \
+  -e MEMWISE_RPC_HOST=0.0.0.0 \
+  -v memwise-data:/root/.memwise \
+  memwise-server
 ```
 
 To enable TLS in Docker, mount your certificates and set the env vars:
@@ -237,18 +207,18 @@ To enable TLS in Docker, mount your certificates and set the env vars:
 ```bash
 docker run -d \
   -p 9100:9100 \
-  -e CRAFT_SERVER_TOKEN=<token> \
-  -e CRAFT_RPC_HOST=0.0.0.0 \
-  -e CRAFT_RPC_TLS_CERT=/certs/cert.pem \
-  -e CRAFT_RPC_TLS_KEY=/certs/key.pem \
+  -e MEMWISE_SERVER_TOKEN=<token> \
+  -e MEMWISE_RPC_HOST=0.0.0.0 \
+  -e MEMWISE_RPC_TLS_CERT=/certs/cert.pem \
+  -e MEMWISE_RPC_TLS_KEY=/certs/key.pem \
   -v ./certs:/certs:ro \
-  -v craft-data:/root/.craft-agent \
-  craft-agents-server
+  -v memwise-data:/root/.memwise \
+  memwise-server
 ```
 
 ## CLI Client
 
-A terminal client that connects to a running Craft Agent server over WebSocket (`ws://` or `wss://`). Use it for scripting, CI/CD pipelines, server validation, or when you prefer the command line.
+A terminal client that connects to a running MemWise server over WebSocket (`ws://` or `wss://`). Use it for scripting, CI/CD pipelines, server validation, or when you prefer the command line.
 
 ### Installation
 
@@ -257,7 +227,7 @@ A terminal client that connects to a running Craft Agent server over WebSocket (
 bun run apps/cli/src/index.ts --help
 
 # Or add to your PATH
-alias craft-cli="bun run $(pwd)/apps/cli/src/index.ts"
+alias memwise-cli="bun run $(pwd)/apps/cli/src/index.ts"
 ```
 
 ### Connection
@@ -266,11 +236,11 @@ The CLI reads connection details from flags or environment variables:
 
 ```bash
 # Via environment (set once)
-export CRAFT_SERVER_URL=ws://127.0.0.1:9100
-export CRAFT_SERVER_TOKEN=<your-token>
+export MEMWISE_SERVER_URL=ws://127.0.0.1:9100
+export MEMWISE_SERVER_TOKEN=<your-token>
 
 # Or via flags
-craft-cli --url ws://127.0.0.1:9100 --token <token> ping
+memwise-cli --url ws://127.0.0.1:9100 --token <token> ping
 ```
 
 For TLS connections (`wss://`), use `--tls-ca <path>` for self-signed certificates.
@@ -317,38 +287,38 @@ The `run` command is fully self-contained — it spawns a headless server, creat
 
 ```bash
 # Quick connectivity check
-craft-cli ping
+memwise-cli ping
 
 # List sessions (human-readable)
-craft-cli sessions
+memwise-cli sessions
 
 # Send a message and stream the AI response
-craft-cli send abc-123 "What files are in the current directory?"
+memwise-cli send abc-123 "What files are in the current directory?"
 
 # Pipe input
-echo "Summarize this" | craft-cli send abc-123
+echo "Summarize this" | memwise-cli send abc-123
 
 # JSON output for scripting
-craft-cli --json workspaces | jq '.[].name'
+memwise-cli --json workspaces | jq '.[].name'
 
 # Self-contained run (spawns its own server)
-craft-cli run "Summarize the README"
-craft-cli run --workspace-dir ./my-project --source github "List open PRs"
+memwise-cli run "Summarize the README"
+memwise-cli run --workspace-dir ./my-project --source github "List open PRs"
 
 # Multi-provider support
-craft-cli run --provider openai --model gpt-4o "Summarize this repo"
-GOOGLE_API_KEY=... craft-cli run --provider google --model gemini-2.0-flash "Hello"
-craft-cli run --provider anthropic --base-url https://openrouter.ai/api/v1 --api-key $OR_KEY "Hello"
+memwise-cli run --provider openai --model gpt-4o "Summarize this repo"
+GOOGLE_API_KEY=... memwise-cli run --provider google --model gemini-2.0-flash "Hello"
+memwise-cli run --provider anthropic --base-url https://openrouter.ai/api/v1 --api-key $OR_KEY "Hello"
 
 # Validate the server (auto-spawns if no --url)
-craft-cli --validate-server
-craft-cli --validate-server --url ws://127.0.0.1:9100 --token <token>
+memwise-cli --validate-server
+memwise-cli --validate-server --url ws://127.0.0.1:9100 --token <token>
 ```
 
 ## Architecture
 
 ```
-craft-agent/
+memwise/
 ├── apps/
 │   ├── cli/                   # Terminal client (CLI)
 │   └── electron/              # Desktop GUI (primary)
@@ -360,7 +330,7 @@ craft-agent/
     ├── core/                  # Shared types
     └── shared/                # Business logic
         └── src/
-            ├── agent/         # CraftAgent, permissions
+            ├── agent/         # MemWiseAgent, permissions
             ├── auth/          # OAuth, tokens
             ├── config/        # Storage, preferences, themes
             ├── credentials/   # AES-256-GCM encrypted storage
@@ -381,7 +351,7 @@ bun run electron:start
 # Type checking
 bun run typecheck:all
 
-# Debug logging (writes to ~/Library/Logs/@craft-agent/electron/)
+# Debug logging (writes to ~/Library/Logs/@memwise/electron/)
 # Logs are automatically enabled in development
 ```
 
@@ -419,7 +389,7 @@ Go to **APIs & Services → Library** and enable the APIs you need:
 1. Go to **APIs & Services → OAuth consent screen**
 2. Select **External** user type (unless you have Google Workspace)
 3. Fill in required fields:
-   - App name: e.g., "My Craft Agent"
+   - App name: e.g., "My MemWise"
    - User support email: your email
    - Developer contact: your email
 4. Add scopes (optional - can leave default)
@@ -430,13 +400,13 @@ Go to **APIs & Services → Library** and enable the APIs you need:
 
 1. Go to **APIs & Services → Credentials**
 2. Click **Create Credentials → OAuth Client ID**
-3. Application type: **Web application** (not "Desktop app" — Craft Agent routes every OAuth flow through a hosted callback, which a Desktop-app client rejects with `redirect_uri_mismatch`)
-4. Name: e.g., "Craft Agent"
+3. Application type: **Web application** (not "Desktop app" — MemWise routes every OAuth flow through a hosted callback, which a Desktop-app client rejects with `redirect_uri_mismatch`)
+4. Name: e.g., "MemWise"
 5. Under **Authorized redirect URIs**, add: `https://thecraftagents.com/auth/callback`
 6. Click **Create**
 7. Note the **Client ID** and **Client Secret**
 
-#### 5. Configure in Craft Agent
+#### 5. Configure in MemWise
 
 When setting up a Google source (Gmail, Calendar, Drive, YouTube, Search Console, etc.), add these fields to your source's `config.json`:
 
@@ -460,7 +430,7 @@ Or simply tell the agent you want to connect Gmail/Calendar/Drive - it will guid
 
 ## Supported LLM Providers
 
-Craft Agents supports multiple ways to connect to LLM providers:
+MemWise supports multiple ways to connect to LLM providers:
 
 ### Direct Connections
 
@@ -484,17 +454,17 @@ Additional providers are supported through the **Claude / Anthropic API Key** co
 
 ### Architecture
 
-Craft Agents uses two agent backends:
+MemWise uses two agent backends:
 
 - **Claude** — powered by the [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk), which natively supports custom base URLs and provider routing. Anthropic API key, Claude Max/Pro OAuth, and all third-party endpoints use this backend.
 - **Pi** — powered by the Pi SDK, which handles Google AI Studio, ChatGPT Plus (Codex OAuth), GitHub Copilot OAuth, and OpenAI API key connections. Pi connections route through their own provider infrastructure.
 
 ## Configuration
 
-Configuration is stored at `~/.craft-agent/`:
+Configuration is stored at `~/.memwise/`:
 
 ```
-~/.craft-agent/
+~/.memwise/
 ├── config.json              # Main config (workspaces, LLM connections)
 ├── credentials.enc          # Encrypted credentials (AES-256-GCM)
 ├── preferences.json         # User preferences
@@ -520,7 +490,7 @@ Automations let you automate workflows by triggering actions when events happen 
 - "Track permission mode changes and summarise them"
 - "Every Friday at 5pm, summarise this week's completed tasks"
 
-Or configure manually in `~/.craft-agent/workspaces/{id}/automations.json`:
+Or configure manually in `~/.memwise/workspaces/{id}/automations.json`:
 
 ```json
 {
@@ -548,7 +518,7 @@ Or configure manually in `~/.craft-agent/workspaces/{id}/automations.json`:
 }
 ```
 
-**Prompt actions** create a new agent session with a prompt. They support `@mentions` for sources and skills, and environment variables like `$CRAFT_LABEL` and `$CRAFT_SESSION_ID` are expanded automatically.
+**Prompt actions** create a new agent session with a prompt. They support `@mentions` for sources and skills, and environment variables like `$MEMWISE_LABEL` and `$MEMWISE_SESSION_ID` are expanded automatically.
 
 **Supported events:** `LabelAdd`, `LabelRemove`, `PermissionModeChange`, `FlagChange`, `SessionStatusChange`, `SchedulerTick`, `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, and more.
 
@@ -562,14 +532,14 @@ Tool responses exceeding ~60KB are automatically summarized using Claude Haiku w
 
 ### Deep Linking
 
-External apps can navigate using `craftagents://` URLs:
+External apps can navigate using `memwise://` URLs:
 
 ```
-craftagents://allSessions                      # All sessions view
-craftagents://allSessions/session/session123   # Specific session
-craftagents://settings                         # Settings
-craftagents://sources/source/github            # Source info
-craftagents://action/new-chat                  # Create new session
+memwise://allSessions                      # All sessions view
+memwise://allSessions/session/session123   # Specific session
+memwise://settings                         # Settings
+memwise://sources/source/github            # Source info
+memwise://action/new-chat                  # Create new session
 ```
 
 ## Tech Stack
@@ -592,23 +562,23 @@ To launch the packaged app with verbose logging enabled, use `-- --debug` (note 
 
 **macOS:**
 ```bash
-/Applications/Craft\ Agents.app/Contents/MacOS/Craft\ Agents -- --debug
+/Applications/MemWise.app/Contents/MacOS/MemWise -- --debug
 ```
 
 **Windows (PowerShell):**
 ```powershell
-& "$env:LOCALAPPDATA\Programs\@craft-agentelectron\Craft Agents.exe" -- --debug
+& "$env:LOCALAPPDATA\Programs\@memwiseelectron\MemWise.exe" -- --debug
 ```
 
 **Linux:**
 ```bash
-./craft-agents -- --debug
+./memwise -- --debug
 ```
 
 Logs are written to:
-- **macOS:** `~/Library/Logs/@craft-agent/electron/main.log`
-- **Windows:** `%APPDATA%\@craft-agent\electron\logs\main.log`
-- **Linux:** `~/.config/@craft-agent/electron/logs/main.log`
+- **macOS:** `~/Library/Logs/@memwise/electron/main.log`
+- **Windows:** `%APPDATA%\@memwise\electron\logs\main.log`
+- **Linux:** `~/.config/@memwise/electron/logs/main.log`
 
 ## License
 
@@ -620,7 +590,7 @@ This project uses the [Claude Agent SDK](https://www.npmjs.com/package/@anthropi
 
 ### Trademark
 
-"Craft" and "Craft Agents" are trademarks of Craft Docs Ltd. See [TRADEMARK.md](TRADEMARK.md) for usage guidelines.
+"Craft" and "Craft Agents" are trademarks of Craft Docs Ltd. MemWise is a renamed fork and does not use them as its own; see [TRADEMARK.md](TRADEMARK.md) for Craft's policy. Attribution for the original code is in [NOTICE](NOTICE).
 
 ## Contributing
 

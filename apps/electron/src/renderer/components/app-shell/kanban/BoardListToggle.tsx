@@ -1,6 +1,6 @@
 import { LayoutGrid, List } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 
 export type BoardListValue = 'list' | 'board'

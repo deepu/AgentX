@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils'
 import { openLabelLink } from '@/lib/open-label-link'
 import { parseDate } from 'chrono-node'
 import { format, parse } from 'date-fns'
-import type { LabelConfig } from '@craft-agent/shared/labels'
+import type { LabelConfig } from '@memwise/shared/labels'
 
 export interface LabelValuePopoverProps {
   /** Label configuration (color, name, valueType) */
@@ -96,7 +96,7 @@ export function LabelValuePopover({
   /** Restore focus to the chat input after the popover closes, so typing can continue. */
   const handleCloseAutoFocus = React.useCallback((e: Event) => {
     e.preventDefault()
-    window.dispatchEvent(new CustomEvent('craft:focus-input', {
+    window.dispatchEvent(new CustomEvent('memwise:focus-input', {
       detail: { sessionId }
     }))
   }, [sessionId])

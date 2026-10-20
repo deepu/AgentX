@@ -12,8 +12,8 @@
  */
 
 import { basename } from 'node:path'
-import type { LargeResultFilter } from '@craft-agent/shared/utils'
-import type { DecisionResult } from '@craft-agent/shared/decisions'
+import type { LargeResultFilter } from '@memwise/shared/utils'
+import type { DecisionResult } from '@memwise/shared/decisions'
 import { openDecisionPoint, recordDecisionFollowUp, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 import { scoreRelevance } from './relevance'
 

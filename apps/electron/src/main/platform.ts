@@ -6,7 +6,7 @@
  */
 
 import type { PlatformServices } from '../runtime/platform'
-import { ensureDecodableImage } from '@craft-agent/server-core/services'
+import { ensureDecodableImage } from '@memwise/server-core/services'
 
 export interface ElectronPlatformOptions {
   app: Electron.App

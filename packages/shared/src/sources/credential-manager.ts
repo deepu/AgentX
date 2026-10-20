@@ -24,11 +24,11 @@ import {
   type MicrosoftService,
 } from './types.ts';
 import { buildAuthorizationHeader } from './api-tools.ts';
-import type { ApiCredential } from '@craft-agent/session-tools-core/api-auth';
-import { isMultiHeaderCredential, parseStoredApiCredential } from '@craft-agent/session-tools-core/api-auth';
+import type { ApiCredential } from '@memwise/session-tools-core/api-auth';
+import { isMultiHeaderCredential, parseStoredApiCredential } from '@memwise/session-tools-core/api-auth';
 import type { CredentialId, StoredCredential } from '../credentials/types.ts';
 import { getCredentialManager } from '../credentials/index.ts';
-import { CraftOAuth, getMcpBaseUrl, prepareMcpOAuth, exchangeMcpOAuth, type OAuthCallbacks, type OAuthTokens } from '../auth/oauth.ts';
+import { MemWiseOAuth, getMcpBaseUrl, prepareMcpOAuth, exchangeMcpOAuth, type OAuthCallbacks, type OAuthTokens } from '../auth/oauth.ts';
 import { type OAuthSessionContext } from '../auth/types.ts';
 import { OAUTH_RELAY_CALLBACK_URL, wrapPreparedOAuthFlowForRelay } from '../auth/oauth-relay.ts';
 import type { PreparedOAuthFlow, OAuthExchangeParams, OAuthExchangeResult, OAuthProvider } from '../auth/oauth-flow-types.ts';
@@ -76,19 +76,19 @@ export interface AuthResult {
 /**
  * API credential types (string for simple auth, object for basic auth or multi-header).
  *
- * Defined in @craft-agent/session-tools-core/api-auth so the source_test
+ * Defined in @memwise/session-tools-core/api-auth so the source_test
  * validator and this runtime share one parser and one header builder (OSS #1067).
  */
 export type {
   ApiCredential,
   BasicAuthCredential,
   MultiHeaderCredential,
-} from '@craft-agent/session-tools-core/api-auth';
+} from '@memwise/session-tools-core/api-auth';
 export {
   isMultiHeaderCredential,
   parseStoredApiCredential,
   serializeHeaderCredential,
-} from '@craft-agent/session-tools-core/api-auth';
+} from '@memwise/session-tools-core/api-auth';
 
 /**
  * SourceCredentialManager - unified credential operations for sources
@@ -239,7 +239,7 @@ export class SourceCredentialManager {
   /**
    * Get API credential for a source, parsed into the shape the request path
    * expects: basic auth object, header map, or bare string. Parsing lives in
-   * @craft-agent/session-tools-core/api-auth and is shared with source_test.
+   * @memwise/session-tools-core/api-auth and is shared with source_test.
    */
   async getApiCredential(source: LoadedSource): Promise<ApiCredential | null> {
     const cred = await this.load(source);
@@ -630,7 +630,7 @@ export class SourceCredentialManager {
     }
 
     try {
-      const oauth = new CraftOAuth(
+      const oauth = new MemWiseOAuth(
         { mcpUrl: source.config.mcp.url },
         callbacks,
         sessionContext
@@ -1219,7 +1219,7 @@ export class SourceCredentialManager {
         return null;
       }
 
-      const oauth = new CraftOAuth(
+      const oauth = new MemWiseOAuth(
         { mcpUrl: source.config.mcp.url },
         {
           onStatus: () => {},

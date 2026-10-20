@@ -90,11 +90,11 @@ mock.module('../../../skills/storage.ts', () => ({
   PROJECT_AGENT_SKILLS_DIR: '.agents/skills',
 }));
 
-let mockCraftAgentsCliFlag = false;
+let mockMemWiseCliFlag = false;
 mock.module('../../../feature-flags.ts', () => ({
   FEATURE_FLAGS: {
-    get craftAgentsCli() {
-      return mockCraftAgentsCliFlag;
+    get memwiseCli() {
+      return mockMemWiseCliFlag;
     },
     get developerFeedback() {
       return false;
@@ -173,7 +173,7 @@ describe('runPreToolUseChecks', () => {
     mockValidateConfigFileContent.mockImplementation(() => null);
     mockReadOnlyBashPatterns = [];
     mockAllowedWritePaths = [];
-    mockCraftAgentsCliFlag = false;
+    mockMemWiseCliFlag = false;
   });
 
   // ============================================================
@@ -381,12 +381,12 @@ describe('runPreToolUseChecks', () => {
 
       const result = runPreToolUseChecks(createInput({
         toolName: 'Bash',
-        input: { command: 'cat ~/.craft-agent/docs/browser-tools.md' },
+        input: { command: 'cat ~/.memwise/docs/browser-tools.md' },
         prerequisiteManager: createMockPrerequisiteManager({ checkBashPrerequisites, checkPrerequisites }),
       }));
 
       expect(result.type).toBe('allow');
-      expect(checkBashPrerequisites).toHaveBeenCalledWith('cat ~/.craft-agent/docs/browser-tools.md');
+      expect(checkBashPrerequisites).toHaveBeenCalledWith('cat ~/.memwise/docs/browser-tools.md');
       expect(checkPrerequisites).not.toHaveBeenCalled();
     });
 
@@ -449,7 +449,7 @@ describe('runPreToolUseChecks', () => {
 
   describe('step 5: input transforms', () => {
     beforeEach(() => {
-      mockCraftAgentsCliFlag = true;
+      mockMemWiseCliFlag = true;
     });
 
     it('expands tilde paths and returns modify', () => {
@@ -532,8 +532,8 @@ describe('runPreToolUseChecks', () => {
       }
     });
 
-    it('blocks direct label folder reads and suggests craft-agent label help when feature is enabled', () => {
-      mockCraftAgentsCliFlag = true;
+    it('blocks direct label folder reads and suggests memwise label help when feature is enabled', () => {
+      mockMemWiseCliFlag = true;
 
       const result = runPreToolUseChecks(createInput({
         toolName: 'Read',
@@ -542,14 +542,14 @@ describe('runPreToolUseChecks', () => {
 
       expect(result.type).toBe('block');
       if (result.type === 'block') {
-        expect(result.reason).toContain('craft-agent label');
-        expect(result.reason).toContain('craft-agent label --help');
+        expect(result.reason).toContain('memwise label');
+        expect(result.reason).toContain('memwise label --help');
         expect(result.reason).toContain('labels/');
       }
     });
 
-    it('blocks direct label config writes and suggests craft-agent label help when feature is enabled', () => {
-      mockCraftAgentsCliFlag = true;
+    it('blocks direct label config writes and suggests memwise label help when feature is enabled', () => {
+      mockMemWiseCliFlag = true;
       mockDetectConfigFileType.mockImplementation(() => ({ type: 'labels', displayFile: 'labels/config.json' }));
 
       const result = runPreToolUseChecks(createInput({
@@ -559,13 +559,13 @@ describe('runPreToolUseChecks', () => {
 
       expect(result.type).toBe('block');
       if (result.type === 'block') {
-        expect(result.reason).toContain('craft-agent label');
-        expect(result.reason).toContain('craft-agent label --help');
+        expect(result.reason).toContain('memwise label');
+        expect(result.reason).toContain('memwise label --help');
       }
     });
 
     it('does not apply config-file CLI redirect when feature is disabled', () => {
-      mockCraftAgentsCliFlag = false;
+      mockMemWiseCliFlag = false;
       mockDetectConfigFileType.mockImplementation(() => ({ type: 'labels', displayFile: 'labels/config.json' }));
 
       const result = runPreToolUseChecks(createInput({
@@ -577,7 +577,7 @@ describe('runPreToolUseChecks', () => {
     });
 
     it('does not block label config writes when feature is disabled', () => {
-      mockCraftAgentsCliFlag = false;
+      mockMemWiseCliFlag = false;
       mockDetectConfigFileType.mockImplementation(() => ({ type: 'labels', displayFile: 'labels/config.json' }));
 
       const result = runPreToolUseChecks(createInput({
@@ -589,7 +589,7 @@ describe('runPreToolUseChecks', () => {
     });
 
     it('does not block bash commands touching automations files when feature is disabled', () => {
-      mockCraftAgentsCliFlag = false;
+      mockMemWiseCliFlag = false;
 
       const result = runPreToolUseChecks(createInput({
         toolName: 'Bash',
@@ -600,8 +600,8 @@ describe('runPreToolUseChecks', () => {
       expect(result.type).toBe('allow');
     });
 
-    it('blocks direct automations config edits and suggests craft-agent automation commands when feature is enabled', () => {
-      mockCraftAgentsCliFlag = true;
+    it('blocks direct automations config edits and suggests memwise automation commands when feature is enabled', () => {
+      mockMemWiseCliFlag = true;
       mockDetectConfigFileType.mockImplementation(() => ({ type: 'automations', displayFile: 'automations.json' }));
 
       const result = runPreToolUseChecks(createInput({
@@ -615,13 +615,13 @@ describe('runPreToolUseChecks', () => {
 
       expect(result.type).toBe('block');
       if (result.type === 'block') {
-        expect(result.reason).toContain('craft-agent automation');
+        expect(result.reason).toContain('memwise automation');
         expect(result.reason).toContain('automations.json');
       }
     });
 
-    it('blocks direct source config edits and suggests craft-agent source commands when feature is enabled', () => {
-      mockCraftAgentsCliFlag = true;
+    it('blocks direct source config edits and suggests memwise source commands when feature is enabled', () => {
+      mockMemWiseCliFlag = true;
       mockDetectConfigFileType.mockImplementation(() => ({
         type: 'source',
         slug: 'linear',
@@ -639,13 +639,13 @@ describe('runPreToolUseChecks', () => {
 
       expect(result.type).toBe('block');
       if (result.type === 'block') {
-        expect(result.reason).toContain('craft-agent source');
+        expect(result.reason).toContain('memwise source');
         expect(result.reason).toContain('sources/linear/config.json');
       }
     });
 
-    it('blocks direct skill file edits and suggests craft-agent skill commands when feature is enabled', () => {
-      mockCraftAgentsCliFlag = true;
+    it('blocks direct skill file edits and suggests memwise skill commands when feature is enabled', () => {
+      mockMemWiseCliFlag = true;
       mockDetectConfigFileType.mockImplementation(() => ({
         type: 'skill',
         slug: 'commit-helper',
@@ -663,13 +663,13 @@ describe('runPreToolUseChecks', () => {
 
       expect(result.type).toBe('block');
       if (result.type === 'block') {
-        expect(result.reason).toContain('craft-agent skill');
+        expect(result.reason).toContain('memwise skill');
         expect(result.reason).toContain('skills/commit-helper/SKILL.md');
       }
     });
 
-    it('blocks bash commands touching labels paths and points to craft-agent label --help when feature is enabled', () => {
-      mockCraftAgentsCliFlag = true;
+    it('blocks bash commands touching labels paths and points to memwise label --help when feature is enabled', () => {
+      mockMemWiseCliFlag = true;
 
       const result = runPreToolUseChecks(createInput({
         toolName: 'Bash',
@@ -679,23 +679,23 @@ describe('runPreToolUseChecks', () => {
 
       expect(result.type).toBe('block');
       if (result.type === 'block') {
-        expect(result.reason).toContain('craft-agent label --help');
-        expect(result.reason).toContain('craft-agent label');
+        expect(result.reason).toContain('memwise label --help');
+        expect(result.reason).toContain('memwise label');
       }
     });
 
-    it('allows bash craft-agent label commands through labels guard', () => {
+    it('allows bash memwise label commands through labels guard', () => {
       const result = runPreToolUseChecks(createInput({
         toolName: 'Bash',
-        input: { command: 'craft-agent label list' },
+        input: { command: 'memwise label list' },
         permissionMode: 'allow-all',
       }));
 
       expect(result.type).toBe('allow');
     });
 
-    it('blocks bash commands touching automations files and points to craft-agent automation --help when feature is enabled', () => {
-      mockCraftAgentsCliFlag = true;
+    it('blocks bash commands touching automations files and points to memwise automation --help when feature is enabled', () => {
+      mockMemWiseCliFlag = true;
 
       const result = runPreToolUseChecks(createInput({
         toolName: 'Bash',
@@ -705,15 +705,15 @@ describe('runPreToolUseChecks', () => {
 
       expect(result.type).toBe('block');
       if (result.type === 'block') {
-        expect(result.reason).toContain('craft-agent automation --help');
-        expect(result.reason).toContain('craft-agent automation');
+        expect(result.reason).toContain('memwise automation --help');
+        expect(result.reason).toContain('memwise automation');
       }
     });
 
-    it('allows bash craft-agent automation commands through config-domain bash guard', () => {
+    it('allows bash memwise automation commands through config-domain bash guard', () => {
       const result = runPreToolUseChecks(createInput({
         toolName: 'Bash',
-        input: { command: 'craft-agent automation list' },
+        input: { command: 'memwise automation list' },
         permissionMode: 'allow-all',
       }));
 
@@ -721,7 +721,7 @@ describe('runPreToolUseChecks', () => {
     });
 
     it('does not apply config-domain bash guard when feature is disabled', () => {
-      mockCraftAgentsCliFlag = false;
+      mockMemWiseCliFlag = false;
 
       const result = runPreToolUseChecks(createInput({
         toolName: 'Bash',
@@ -996,7 +996,7 @@ describe('shouldPromptInAskMode', () => {
     mockValidateConfigFileContent.mockImplementation(() => null);
     mockReadOnlyBashPatterns = [];
     mockAllowedWritePaths = [];
-    mockCraftAgentsCliFlag = false;
+    mockMemWiseCliFlag = false;
   });
 
   // --- File writes ---

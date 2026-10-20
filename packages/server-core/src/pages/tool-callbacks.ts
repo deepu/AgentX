@@ -7,7 +7,7 @@
  * session's workspace, into the session-scoped tool callback registry.
  *
  * Storage flows are the SAME primitives the pages RPC handlers use
- * (@craft-agent/shared/pages) — including deletePageWithUnpublish, shared
+ * (@memwise/shared/pages) — including deletePageWithUnpublish, shared
  * verbatim with the pages:delete RPC so the two delete paths cannot drift.
  * Every mutation calls deps.onPagesMutated so the host can poke the config
  * watcher and broadcast `pages:changed`, exactly like the RPC handlers do.
@@ -22,9 +22,9 @@ import type {
   CreatePageToolInput,
   UpdatePageToolPatch,
   PageDataToolPatch,
-} from '@craft-agent/session-tools-core'
-import type { LoadedPage, PageConfig, PageDataSnapshot, PageKind, PageRefreshSpec, UpdatePagePatch } from '@craft-agent/shared/pages'
-import { isPageGrantUsable } from '@craft-agent/shared/pages/types'
+} from '@memwise/session-tools-core'
+import type { LoadedPage, PageConfig, PageDataSnapshot, PageKind, PageRefreshSpec, UpdatePagePatch } from '@memwise/shared/pages'
+import { isPageGrantUsable } from '@memwise/shared/pages/types'
 
 export interface PagesToolCallbacksDeps {
   workspaceId: string
@@ -136,7 +136,7 @@ export function buildPagesToolCallbacks(deps: PagesToolCallbacksDeps): PagesTool
   const { workspaceId, workspaceRootPath } = deps
 
   async function loadDetails(slug: string, includeContent = false): Promise<PageToolDetails | null> {
-    const { loadPage, loadPageById, readPageDataSnapshot, loadPageContent } = await import('@craft-agent/shared/pages')
+    const { loadPage, loadPageById, readPageDataSnapshot, loadPageContent } = await import('@memwise/shared/pages')
     const page = loadPage(workspaceRootPath, slug) ?? loadPageById(workspaceRootPath, slug)
     if (!page) return null
     return toDetails(page, { includeContent }, {
@@ -155,7 +155,7 @@ export function buildPagesToolCallbacks(deps: PagesToolCallbacksDeps): PagesTool
 
   return {
     async listPages(): Promise<PageToolSummary[]> {
-      const { loadWorkspacePages } = await import('@craft-agent/shared/pages')
+      const { loadWorkspacePages } = await import('@memwise/shared/pages')
       return loadWorkspacePages(workspaceRootPath).map(toSummary)
     },
 
@@ -164,7 +164,7 @@ export function buildPagesToolCallbacks(deps: PagesToolCallbacksDeps): PagesTool
     },
 
     async createPage(input: CreatePageToolInput): Promise<PageToolDetails> {
-      const { createPage } = await import('@craft-agent/shared/pages')
+      const { createPage } = await import('@memwise/shared/pages')
       const config = createPage(workspaceRootPath, {
         name: input.name.trim(),
         description: input.description,
@@ -182,7 +182,7 @@ export function buildPagesToolCallbacks(deps: PagesToolCallbacksDeps): PagesTool
     },
 
     async updatePage(slug: string, patch: UpdatePageToolPatch): Promise<PageToolDetails> {
-      const { updatePage, savePageContent, loadPage } = await import('@craft-agent/shared/pages')
+      const { updatePage, savePageContent, loadPage } = await import('@memwise/shared/pages')
       const existing = loadPage(workspaceRootPath, slug)
       if (!existing) throw new Error(`Page not found: ${slug}`)
 
@@ -211,7 +211,7 @@ export function buildPagesToolCallbacks(deps: PagesToolCallbacksDeps): PagesTool
     },
 
     async writePageData(slug: string, patch: PageDataToolPatch) {
-      const { writePageData } = await import('@craft-agent/shared/pages')
+      const { writePageData } = await import('@memwise/shared/pages')
       const { result } = await writePageData(workspaceRootPath, slug, patch)
       await mutated(slug)
       return {
@@ -225,7 +225,7 @@ export function buildPagesToolCallbacks(deps: PagesToolCallbacksDeps): PagesTool
     },
 
     async deletePage(slug: string) {
-      const { deletePageWithUnpublish, loadPage } = await import('@craft-agent/shared/pages')
+      const { deletePageWithUnpublish, loadPage } = await import('@memwise/shared/pages')
       const existing = loadPage(workspaceRootPath, slug)
       if (!existing) throw new Error(`Page not found: ${slug}`)
       const outcome = await deletePageWithUnpublish(workspaceRootPath, workspaceId, existing.config.slug, { log: deps.log })

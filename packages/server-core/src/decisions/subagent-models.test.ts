@@ -9,7 +9,7 @@ import {
   readDecisionLog,
   resolveDecisionEndpoint,
   type DecisionClientResolution,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 import { buildSubagentModelPicker, buildSubagentTaskRequest, chooseSubagentModelLevel, SUBAGENT_MODEL_MAX_PROMPT_CHARS } from './subagent-models'
 
 /** A provider that rates the task's `demand` at `score` with `confidence`. */

@@ -1,4 +1,4 @@
-import type { MessageEnvelope } from '@craft-agent/shared/protocol'
+import type { MessageEnvelope } from '@memwise/shared/protocol'
 
 const WIRE_TYPE_KEY = '__craftRpcType'
 const WIRE_BASE64_KEY = 'base64'

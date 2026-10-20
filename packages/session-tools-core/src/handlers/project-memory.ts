@@ -8,7 +8,7 @@ export type ProjectMemoryAppendArgs = ProjectMemoryAppendInput;
  * project_memory_append — add a dated note to the session's project MEMORY.md.
  * Append-only by design: sessions that rewrote the file from their start-of-session
  * snapshot dropped notes other sessions had added meanwhile. The file write lives
- * behind ctx.appendProjectMemory (projects storage in @craft-agent/shared).
+ * behind ctx.appendProjectMemory (projects storage in @memwise/shared).
  */
 export async function handleProjectMemoryAppend(
   ctx: SessionToolContext,

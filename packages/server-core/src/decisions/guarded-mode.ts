@@ -2,7 +2,7 @@
  * Guarded permission mode: the risk check via the decision model (feature toggle `guardedMode`).
  *
  * In Guarded mode the agent describes each non-read-only tool call (see
- * `@craft-agent/shared` `core/guarded-mode.ts`); three yes/no questions ask
+ * `@memwise/shared` `core/guarded-mode.ts`); three yes/no questions ask
  * whether it is hard to undo, reaches outside the project, or reaches other
  * people or services. Any "yes" at or above the threshold turns the call into
  * an ordinary permission prompt. Tighten-only: the model can add a prompt,
@@ -10,8 +10,8 @@
  * asks with "could not be checked". Execute mode never gets here.
  */
 
-import type { GuardedModeCheck, GuardedModeCall, GuardedModeRisk, GuardedModeVerdict } from '@craft-agent/shared/agent'
-import { isDecisionFeatureActive, type DecisionRequest, type DecisionResult } from '@craft-agent/shared/decisions'
+import type { GuardedModeCheck, GuardedModeCall, GuardedModeRisk, GuardedModeVerdict } from '@memwise/shared/agent'
+import { isDecisionFeatureActive, type DecisionRequest, type DecisionResult } from '@memwise/shared/decisions'
 import { FOREGROUND_MAX_DEADLINE_MS, openDecisionPoint, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 
 /** "Yes" probability that escalates a call. High, because every escalation costs a prompt the user chose to mostly avoid. */

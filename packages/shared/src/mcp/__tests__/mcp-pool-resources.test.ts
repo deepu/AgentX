@@ -313,7 +313,7 @@ describe('McpClientPool.readResource / getPrompt', () => {
   });
 });
 
-describe('CraftMcpClient resources & prompts over stdio', () => {
+describe('MemWiseMcpClient resources & prompts over stdio', () => {
   const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'mcp-server-resources.mjs');
 
   test(

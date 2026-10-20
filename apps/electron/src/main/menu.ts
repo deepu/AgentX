@@ -1,10 +1,10 @@
 import { Menu, app, shell, BrowserWindow } from 'electron'
-import { i18n } from '@craft-agent/shared/i18n'
+import { i18n } from '@memwise/shared/i18n'
 import { RPC_CHANNELS, type BroadcastEventMap } from '../shared/types'
 import { EDIT_MENU, VIEW_MENU, WINDOW_MENU } from '../shared/menu-schema'
 import type { MenuItem } from '../shared/menu-schema'
 import type { WindowManager } from './window-manager'
-import type { EventSink } from '@craft-agent/server-core/transport'
+import type { EventSink } from '@memwise/server-core/transport'
 import { mainLog, isDebugMode } from './logger'
 
 type ClientResolver = (webContentsId: number) => string | undefined
@@ -16,7 +16,7 @@ let cachedClientResolver: ClientResolver | null = null
 
 /**
  * Creates and sets the application menu for macOS.
- * Includes only relevant items for the Craft Agents app.
+ * Includes only relevant items for the MemWise app.
  *
  * Call rebuildMenu() when update state changes to refresh the menu.
  */
@@ -40,7 +40,7 @@ export function setMenuEventSink(sink: EventSink, resolver: ClientResolver): voi
  * Rebuilds the application menu with current update state.
  * Call this when update availability changes.
  *
- * On Windows/Linux: Menu is hidden - all functionality is in the Craft logo menu.
+ * On Windows/Linux: Menu is hidden - all functionality is in the MemWise logo menu.
  * On macOS: Native menu is required by Apple guidelines, so we keep it synced.
  */
 export async function rebuildMenu(): Promise<void> {
@@ -50,7 +50,7 @@ export async function rebuildMenu(): Promise<void> {
   const isMac = process.platform === 'darwin'
 
   // On Windows/Linux, hide the native menu entirely
-  // Users access menu via the Craft logo dropdown in the app
+  // Users access menu via the MemWise logo dropdown in the app
   if (!isMac) {
     Menu.setApplicationMenu(null)
     return
@@ -79,9 +79,9 @@ export async function rebuildMenu(): Promise<void> {
   const template: Electron.MenuItemConstructorOptions[] = [
     // App menu (macOS only)
     ...(isMac ? [{
-      label: 'Craft Agents',
+      label: 'MemWise',
       submenu: [
-        { role: 'about' as const, label: i18n.t('menu.aboutCraftAgents') },
+        { role: 'about' as const, label: i18n.t('menu.aboutMemWise') },
         updateMenuItem,
         { type: 'separator' as const },
         {
@@ -91,11 +91,11 @@ export async function rebuildMenu(): Promise<void> {
           click: () => sendToRenderer(RPC_CHANNELS.menu.OPEN_SETTINGS)
         },
         { type: 'separator' as const },
-        { role: 'hide' as const, label: i18n.t('menu.hideCraftAgents') },
+        { role: 'hide' as const, label: i18n.t('menu.hideMemWise') },
         { role: 'hideOthers' as const },
         { role: 'unhide' as const },
         { type: 'separator' as const },
-        { role: 'quit' as const, label: i18n.t('menu.quitCraftAgents') }
+        { role: 'quit' as const, label: i18n.t('menu.quitMemWise') }
       ]
     }] : []),
 

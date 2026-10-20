@@ -5,7 +5,7 @@
 
 import * as React from 'react'
 import { ChevronLeft, Circle, CircleCheck, CircleDot, X } from 'lucide-react'
-import type { LabelConfig } from '@craft-agent/shared/labels'
+import type { LabelConfig } from '@memwise/shared/labels'
 import { AppShellProvider } from '@/context/AppShellContext'
 import { ChatHeader } from '@/components/app-shell/chat-header/ChatHeader'
 import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
@@ -60,7 +60,7 @@ function ChatHeaderDemo({ labelCount = 2, longTitle = false, shared = false, wit
     labels,
     sessionStatus: status,
     sharedUrl: shared ? 'https://example.com/s/abc123' : undefined,
-    workingDirectory: withFolder ? '/Users/demo/craft-agents' : undefined,
+    workingDirectory: withFolder ? '/Users/demo/memwise' : undefined,
   }
 
   const context = React.useMemo(() => ({

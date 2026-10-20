@@ -31,7 +31,7 @@ const SLACK_CLIENT_SECRET = process.env.SLACK_OAUTH_CLIENT_SECRET || '';
 const SLACK_AUTH_URL = 'https://slack.com/oauth/v2/authorize';
 
 /**
- * The redirect URI registered in the Craft Agents Slack app. Slack requires
+ * The redirect URI registered in the MemWise Slack app. Slack requires
  * HTTPS, so the agents-router worker relays it to the desktop callback server
  * (`http://localhost:<port>/callback`). The generic relay
  * (`https://thecraftagents.com/auth/callback`) is not registered there, which

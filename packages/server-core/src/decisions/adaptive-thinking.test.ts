@@ -11,7 +11,7 @@ import {
   resolveDecisionEndpoint,
   type DecisionClientResolution,
   type DecisionRecord,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 import { buildDemandRequest, chooseTurnLevel, pickTurnThinkingLevel, recordThinkingFollowUp } from './adaptive-thinking'
 
 /** A provider that rates `demand` at `score` and answers the yes/no questions with `nouls` (default 0). */

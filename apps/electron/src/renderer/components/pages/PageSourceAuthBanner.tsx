@@ -12,13 +12,13 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Spinner } from '@craft-agent/ui'
+import { Spinner } from '@memwise/ui'
 import { SourceAvatar } from '@/components/ui/source-avatar'
 import { deriveConnectionStatus } from '@/components/ui/source-status-indicator'
 import { useNavigation } from '@/contexts/NavigationContext'
 import { routes } from '@/lib/navigate'
 import { cn } from '@/lib/utils'
-import type { LoadedPage } from '@craft-agent/shared/pages/types'
+import type { LoadedPage } from '@memwise/shared/pages/types'
 import type { LoadedSource } from '../../../shared/types'
 
 /**

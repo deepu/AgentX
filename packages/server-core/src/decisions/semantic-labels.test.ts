@@ -2,14 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { LabelConfig } from '@craft-agent/shared/labels'
+import type { LabelConfig } from '@memwise/shared/labels'
 import {
   DecisionRecorder,
   SystemOneClient,
   normalizeDecisionLayerSettings,
   resolveDecisionEndpoint,
   type DecisionClientResolution,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 import { evaluateSemanticLabelsForMessage, hasSemanticAutoLabelRules } from './semantic-labels'
 
 const LABELS: LabelConfig[] = [
@@ -26,7 +26,7 @@ function resolutionWith(fetchImpl: typeof fetch): DecisionClientResolution {
 
 describe('semantic labels hook', () => {
   let dir: string
-  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'craft-semantic-')) })
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'memwise-semantic-')) })
   afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
   it('detects semantic rules in the tree', () => {

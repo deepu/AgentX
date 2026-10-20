@@ -1,7 +1,7 @@
 /**
  * Decision layer — decision records.
  *
- * Every decision call appends one JSON line to `~/.craft-agent/logs/decisions.jsonl`
+ * Every decision call appends one JSON line to `~/.memwise/logs/decisions.jsonl`
  * (same pattern as the pages action audit log). A record holds what is needed to
  * replay and audit the decision — question keys/types, pinned and reported model,
  * probabilities, latency, usage, failure kind — and NEVER the state text: only its
@@ -298,7 +298,7 @@ let defaultRecorder: DecisionRecorder | null = null;
  * stub decisions to the user's real log (they did: most of a real log was test runs).
  */
 export function defaultDecisionsLogPath(env: NodeJS.ProcessEnv = process.env): string {
-  return env.NODE_ENV === 'test' ? join(tmpdir(), `craft-decisions-test-${process.pid}.jsonl`) : DEFAULT_DECISIONS_LOG_PATH;
+  return env.NODE_ENV === 'test' ? join(tmpdir(), `memwise-decisions-test-${process.pid}.jsonl`) : DEFAULT_DECISIONS_LOG_PATH;
 }
 
 /** Process-wide recorder writing to the default log path. */

@@ -78,7 +78,7 @@ describe('models-pi filtering', () => {
     expect(cnIds).toContain('pi/kimi-k3');
   });
 
-  it("keeps Craft's Azure provider id across the Pi 1.0.3 rename (azure-openai-responses -> azure)", () => {
+  it("keeps MemWise's Azure provider id across the Pi 1.0.3 rename (azure-openai-responses -> azure)", () => {
     expect(toPiProviderId('azure-openai-responses')).toBe('azure');
     expect(fromPiProviderId('azure')).toBe('azure-openai-responses');
     expect(toPiProviderId('openai')).toBe('openai');
@@ -86,7 +86,7 @@ describe('models-pi filtering', () => {
 
     // Stored Azure connections keep resolving their catalog…
     expect(getPiModelsForAuthProvider('azure-openai-responses').length).toBeGreaterThan(0);
-    // …and the API-key provider list keeps Craft's key and label.
+    // …and the API-key provider list keeps MemWise's key and label.
     const providers = getPiApiKeyProviders();
     expect(providers.some(p => p.key === 'azure-openai-responses' && p.label === 'Azure OpenAI')).toBe(true);
     expect(providers.some(p => p.key === 'azure')).toBe(false);

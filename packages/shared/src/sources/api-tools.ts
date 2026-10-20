@@ -13,13 +13,13 @@ import { redactUrlForLog } from '../utils/redaction.ts';
 import { guardLargeResult } from '../utils/large-response.ts';
 import { MAX_DOWNLOAD_SIZE, formatBytes } from '../utils/binary-detection.ts';
 import type { ApiCredential } from './credential-manager.ts';
-import { appendQueryAuth, buildApiAuthHeaders } from '@craft-agent/session-tools-core/api-auth';
+import { appendQueryAuth, buildApiAuthHeaders } from '@memwise/session-tools-core/api-auth';
 
 // Re-export for convenience
 export type { ApiCredential, BasicAuthCredential } from './credential-manager.ts';
 
 // Authorization header assembly lives with the rest of the shared auth logic.
-export { buildAuthorizationHeader } from '@craft-agent/session-tools-core/api-auth';
+export { buildAuthorizationHeader } from '@memwise/session-tools-core/api-auth';
 
 /**
  * API credential source — either a static credential value or a function that
@@ -63,7 +63,7 @@ export type SummarizeCallback = (prompt: string) => Promise<string | null>;
 /**
  * Build headers for an API request, injecting authentication and default headers.
  *
- * Thin wrapper over the shared assembly in @craft-agent/session-tools-core/api-auth,
+ * Thin wrapper over the shared assembly in @memwise/session-tools-core/api-auth,
  * which source_test uses as well, so validator and runtime cannot drift (OSS #1067).
  */
 export function buildHeaders(
@@ -210,7 +210,7 @@ export async function executeApiRequest(
   }
 
   // Header VALUES are never logged — Authorization and friends are live
-  // credentials and this line used to put them in main.log under CRAFT_DEBUG.
+  // credentials and this line used to put them in main.log under MEMWISE_DEBUG.
   debug(`[api-tools] ${config.name}: headerNames=[${Object.keys(headers).join(', ')}], bodyLength=${fetchOptions.body ? String(fetchOptions.body).length : 0}`);
 
   const response = await fetch(url, fetchOptions);

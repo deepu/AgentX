@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
-import { getMcpBaseUrl, discoverOAuthMetadata, prepareMcpOAuth, exchangeMcpOAuth, canonicalResourceIdentifier, CraftOAuth } from '../oauth';
+import { getMcpBaseUrl, discoverOAuthMetadata, prepareMcpOAuth, exchangeMcpOAuth, canonicalResourceIdentifier, MemWiseOAuth } from '../oauth';
 
 // ============================================================
 // Unit tests for internal helpers exported only for testing
@@ -1170,9 +1170,9 @@ describe('prepareMcpOAuth', () => {
 
     const result = await prepareMcpOAuth('https://example.com/mcp', { callbackPort: 8914 });
 
-    expect(result.clientId).toBe('craft-agent');
+    expect(result.clientId).toBe('memwise');
     expect(result.clientSecret).toBeUndefined();
-    expect(result.authUrl).toContain('client_id=craft-agent');
+    expect(result.authUrl).toContain('client_id=memwise');
     expect(result.provider).toBe('mcp');
   });
 
@@ -1382,7 +1382,7 @@ describe('RFC 8707 resource indicator', () => {
       code: 'auth-code',
       codeVerifier: 'verifier',
       tokenEndpoint: 'https://notfair.co/api/oauth/token',
-      clientId: 'craft-agent',
+      clientId: 'memwise',
       redirectUri: 'http://localhost:8914/oauth/callback',
       resource: 'https://notfair.co/api/mcp/notfair',
     });
@@ -1405,7 +1405,7 @@ describe('RFC 8707 resource indicator', () => {
       code: 'auth-code',
       codeVerifier: 'verifier',
       tokenEndpoint: 'https://example.com/token',
-      clientId: 'craft-agent',
+      clientId: 'memwise',
       redirectUri: 'http://localhost:8914/oauth/callback',
     });
 
@@ -1445,7 +1445,7 @@ describe('invalid_target fallback on the token step', () => {
     code: 'auth-code',
     codeVerifier: 'verifier',
     tokenEndpoint: 'https://legacy.example.com/token',
-    clientId: 'craft-agent',
+    clientId: 'memwise',
     redirectUri: 'http://localhost:8914/oauth/callback',
     resource,
   });
@@ -1515,8 +1515,8 @@ describe('invalid_target fallback on the token step', () => {
       return Promise.resolve(new Response('Not Found', { status: 404 }));
     });
 
-    const oauth = new CraftOAuth({ mcpUrl: 'https://legacy.example.com/mcp' } as any, { onStatus: () => {} } as any);
-    const tokens = await oauth.refreshAccessToken('refresh-1', 'craft-agent');
+    const oauth = new MemWiseOAuth({ mcpUrl: 'https://legacy.example.com/mcp' } as any, { onStatus: () => {} } as any);
+    const tokens = await oauth.refreshAccessToken('refresh-1', 'memwise');
 
     expect(tokens.accessToken).toBe('refreshed-token');
     expect(tokenBodies).toHaveLength(1);

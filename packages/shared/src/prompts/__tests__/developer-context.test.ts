@@ -20,7 +20,7 @@ afterEach(() => {
 
 describe('git developer context', () => {
   it('returns null outside git repositories', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'craft-prompt-non-git-'));
+    const dir = mkdtempSync(join(tmpdir(), 'memwise-prompt-non-git-'));
     tempDirs.push(dir);
 
     expect(collectGitDeveloperContext(dir)).toBeNull();
@@ -66,7 +66,7 @@ describe('git developer context', () => {
 });
 
 function createGitFixture(): { root: string; packageDir: string } {
-  const root = mkdtempSync(join(tmpdir(), 'craft-prompt-git-'));
+  const root = mkdtempSync(join(tmpdir(), 'memwise-prompt-git-'));
   tempDirs.push(root);
   const packageDir = join(root, 'packages', 'shared');
   mkdirSync(packageDir, { recursive: true });

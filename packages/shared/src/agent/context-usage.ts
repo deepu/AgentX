@@ -1,4 +1,4 @@
-import type { ContextUsageSnapshot } from '@craft-agent/core/types';
+import type { ContextUsageSnapshot } from '@memwise/core/types';
 
 function tokenCount(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0

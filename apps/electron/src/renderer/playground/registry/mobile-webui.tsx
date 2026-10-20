@@ -14,7 +14,7 @@ export const mobileWebUIComponents: ComponentEntry[] = [
     id: 'mobile-webui-app-menu',
     name: 'AppMenu (Mobile)',
     category: 'Mobile WebUI',
-    description: 'TopBar Craft-logo dropdown rendered in compact mode — Settings/Help submenus flatten.',
+    description: 'TopBar MemWise-logo dropdown rendered in compact mode — Settings/Help submenus flatten.',
     component: AppMenuMobilePreview,
     layout: 'top',
     previewOverflow: 'visible',

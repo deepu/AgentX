@@ -7,7 +7,7 @@
  *   the active workspace (local or remote). Workspace switches swap the
  *   workspace client transparently.
  *
- * Thin-client mode (CRAFT_SERVER_URL):
+ * Thin-client mode (MEMWISE_SERVER_URL):
  *   Creates a single WsRpcClient connected to the remote server.
  *   All channels go to the remote server.
  *
@@ -33,8 +33,8 @@ import {
   type SourceOAuthArgs,
   type SourceOAuthResult,
 } from '../transport/source-oauth'
-import { createCallbackServer } from '@craft-agent/shared/auth/callback-server'
-import { CHATGPT_OAUTH_CONFIG } from '@craft-agent/shared/auth/chatgpt-oauth-config'
+import { createCallbackServer } from '@memwise/shared/auth/callback-server'
+import { CHATGPT_OAUTH_CONFIG } from '@memwise/shared/auth/chatgpt-oauth-config'
 import {
   CLIENT_OPEN_EXTERNAL,
   CLIENT_OPEN_PATH,
@@ -43,10 +43,10 @@ import {
   CLIENT_OPEN_FILE_DIALOG,
   CLIENT_BROWSER_INVOKE,
   LOCAL_CLIENT_CAPABILITIES,
-} from '@craft-agent/server-core/transport'
-import type { ConfirmDialogSpec, FileDialogSpec, BrowserCapabilityRequest } from '@craft-agent/server-core/transport'
-import type { RpcClient } from '@craft-agent/server-core/transport'
-import type { RemoteServerConfig } from '@craft-agent/core/types'
+} from '@memwise/server-core/transport'
+import type { ConfirmDialogSpec, FileDialogSpec, BrowserCapabilityRequest } from '@memwise/server-core/transport'
+import type { RpcClient } from '@memwise/server-core/transport'
+import type { RemoteServerConfig } from '@memwise/core/types'
 import type { ElectronAPI } from '../shared/types'
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ interface TransportClient extends RpcClient {
 // ---------------------------------------------------------------------------
 
 const webContentsId: number = ipcRenderer.sendSync('__get-web-contents-id')
-const isClientOnly = !!process.env.CRAFT_SERVER_URL
+const isClientOnly = !!process.env.MEMWISE_SERVER_URL
 
 let client: TransportClient
 
@@ -74,8 +74,8 @@ if (isClientOnly) {
   // Single WsRpcClient connected directly to the remote server.
   // No local server, no routing — all channels go to remote.
 
-  const wsUrl = process.env.CRAFT_SERVER_URL!
-  const wsToken = process.env.CRAFT_SERVER_TOKEN ?? ''
+  const wsUrl = process.env.MEMWISE_SERVER_URL!
+  const wsToken = process.env.MEMWISE_SERVER_TOKEN ?? ''
 
   // Block unencrypted ws:// to non-localhost servers — tokens would be sent in cleartext
   const parsed = new URL(wsUrl)
@@ -84,12 +84,12 @@ if (isClientOnly) {
     throw new Error(
       `Refusing to connect to remote server over unencrypted ws://. ` +
       `Use wss:// (TLS) for non-localhost connections. ` +
-      `Set CRAFT_RPC_TLS_CERT/KEY on the server to enable TLS.`
+      `Set MEMWISE_RPC_TLS_CERT/KEY on the server to enable TLS.`
     )
   }
 
   // Workspace ID is optional — if missing, renderer shows a workspace picker
-  const workspaceId = process.env.CRAFT_WORKSPACE_ID || ipcRenderer.sendSync('__get-workspace-id') || undefined
+  const workspaceId = process.env.MEMWISE_WORKSPACE_ID || ipcRenderer.sendSync('__get-workspace-id') || undefined
 
   const wsClient = new WsRpcClient(wsUrl, {
     token: wsToken,
@@ -457,8 +457,8 @@ async function runSourceOAuth(args: SourceOAuthArgs, signal: AbortSignal): Promi
 // System warnings — expose env-based flags set during main process startup
 // (preload-only: reads env var directly, no IPC round-trip needed)
 ;(api as ElectronAPI).getSystemWarnings = async () => ({
-  vcredistMissing: process.env.CRAFT_VCREDIST_MISSING === '1',
-  downloadUrl: process.env.CRAFT_VCREDIST_URL,
+  vcredistMissing: process.env.MEMWISE_VCREDIST_MISSING === '1',
+  downloadUrl: process.env.MEMWISE_VCREDIST_URL,
 })
 
 // Native window material, passed by the main process as a launch argument (window-manager.ts).

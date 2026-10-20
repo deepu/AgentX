@@ -1,7 +1,8 @@
 /**
  * Page Publisher
  *
- * Client for the Cloudflare pages-share Worker (workers/pages). Owns the
+ * Client for the Cloudflare pages-share Worker (not part of this repository;
+ * the inherited default endpoint is Craft's hosted one). Owns the
  * local half of the publish/update/unpublish flow:
  *
  *   publish    → POST bundle → store admin token in the credential vault →
@@ -26,7 +27,7 @@
  * published page (design §12).
  */
 
-import type { PageConfig, PageShareInfo } from '@craft-agent/core';
+import type { PageConfig, PageShareInfo } from '@memwise/core';
 import { isPagesSharingEnabled } from '../feature-flags.ts';
 import { deletePage, loadPageConfig, setPageShareState } from './storage.ts';
 import { buildPageShareBundle, PageShareError } from './share-bundle.ts';
@@ -35,12 +36,12 @@ import { buildPageShareBundle, PageShareError } from './share-bundle.ts';
 export const DEFAULT_PAGES_SHARE_API_BASE_URL = 'https://thecraftagents.com/p/api';
 
 /**
- * Resolve the publication API base URL. `CRAFT_PAGES_SHARE_API_URL` overrides
+ * Resolve the publication API base URL. `MEMWISE_PAGES_SHARE_API_URL` overrides
  * for local Worker development (e.g. http://localhost:8787/p/api).
  */
 export function resolvePagesShareApiBaseUrl(): string {
   const override =
-    typeof process !== 'undefined' ? process.env?.CRAFT_PAGES_SHARE_API_URL : undefined;
+    typeof process !== 'undefined' ? process.env?.MEMWISE_PAGES_SHARE_API_URL : undefined;
   const base = override?.trim() || DEFAULT_PAGES_SHARE_API_BASE_URL;
   return base.replace(/\/+$/, '');
 }
@@ -331,7 +332,7 @@ export class PagePublisher {
     if (!isPagesSharingEnabled()) {
       throw new PageShareError(
         'PAGE_SHARING_DISABLED',
-        'Pages sharing is disabled (set CRAFT_FEATURE_PAGES_SHARING=1 to enable)',
+        'Pages sharing is disabled (set MEMWISE_FEATURE_PAGES_SHARING=1 to enable)',
       );
     }
   }

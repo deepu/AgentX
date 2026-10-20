@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { PanelRight } from 'lucide-react'
-import { CraftAgentsSymbol } from '@/components/icons/CraftAgentsSymbol'
+import { MemWiseSymbol } from '@/components/icons/MemWiseSymbol'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/context/ThemeContext'
 import {
@@ -21,7 +21,7 @@ const SELECTED_STORAGE_KEY = 'playground-selected-component'
 const VARIANTS_SIDEBAR_KEY = 'playground-variants-sidebar-open'
 
 const FALLBACK_THEME_OPTIONS = [
-  { value: 'default', label: 'Craft Agents' },
+  { value: 'default', label: 'MemWise' },
   { value: 'craft', label: 'Craft' },
   { value: 'paper', label: 'Paper' },
   { value: 'catppuccin', label: 'Catppuccin' },
@@ -211,7 +211,7 @@ export function PlaygroundApp() {
       {/* Header */}
       <header className="h-12 shrink-0 flex items-center justify-between px-4 border-b border-border bg-background">
         <div className="flex items-center gap-3">
-          <CraftAgentsSymbol className="h-5 w-5" />
+          <MemWiseSymbol className="h-5 w-5" />
           <h1 className="font-semibold text-foreground font-sans">
             Design System Playground
           </h1>

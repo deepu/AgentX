@@ -27,7 +27,7 @@ const RESULT: DecisionResult = {
 
 describe('decision records', () => {
   let dir: string;
-  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'craft-decisions-')); });
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'memwise-decisions-')); });
   afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
   it('writes one JSON line per decision with digests, numbers and option keys — never the state', async () => {

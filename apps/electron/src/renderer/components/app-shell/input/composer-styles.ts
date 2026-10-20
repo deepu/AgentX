@@ -1,4 +1,4 @@
-import type { PermissionMode } from '@craft-agent/shared/agent/modes'
+import type { PermissionMode } from '@memwise/shared/agent/modes'
 
 /**
  * Shared composer materials (design spec §7.5, mockup `.composer` / `.cx-bar`).

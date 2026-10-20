@@ -5,8 +5,8 @@ import {
   resolveDecisionEndpoint,
   type DecisionClientResolution,
   type DecisionResult,
-} from '@craft-agent/shared/decisions'
-import type { GuardedModeCall } from '@craft-agent/shared/agent'
+} from '@memwise/shared/decisions'
+import type { GuardedModeCall } from '@memwise/shared/agent'
 import { buildGuardedModeCheck, buildGuardedModeRequest, GUARDED_MODE_MAX_ARGUMENTS_CHARS, readGuardedModeVerdict } from './guarded-mode'
 
 const bashCall: GuardedModeCall = { toolName: 'Bash', promptType: 'bash', description: 'Execute: rm -rf ~/old', command: 'rm -rf ~/old', workingDirectory: '/repo' }

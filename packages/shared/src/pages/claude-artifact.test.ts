@@ -20,7 +20,7 @@ const PAGE = { slug: 'weekly-sales', kind: 'live' as const };
 
 /** Run the injected shim in a minimal window and return what the page would receive. */
 function runShim(html: string): { received: Array<{ type: string; payload: any }>; postToHost: (msg: unknown) => void; flush: () => void } {
-  const script = html.match(/<script data-craft-artifact-bridge>([\s\S]*?)<\/script>/)?.[1];
+  const script = html.match(/<script data-memwise-artifact-bridge>([\s\S]*?)<\/script>/)?.[1];
   if (!script) throw new Error('shim not injected');
   const listeners: Record<string, Array<(event: any) => void>> = {};
   const timers: Array<() => void> = [];
@@ -41,18 +41,18 @@ function runShim(html: string): { received: Array<{ type: string; payload: any }
 describe('buildClaudeArtifactHtml', () => {
   test('injects the bridge shim as the first script inside <head>', () => {
     const html = buildClaudeArtifactHtml('<!doctype html><html><head><title>Sales</title><script>page()</script></head><body></body></html>', PAGE, null);
-    expect(html.indexOf('data-craft-artifact-bridge')).toBeLessThan(html.indexOf('page()'));
-    expect(html.indexOf('<head>')).toBeLessThan(html.indexOf('data-craft-artifact-bridge'));
+    expect(html.indexOf('data-memwise-artifact-bridge')).toBeLessThan(html.indexOf('page()'));
+    expect(html.indexOf('<head>')).toBeLessThan(html.indexOf('data-memwise-artifact-bridge'));
   });
 
   test('adds a head when the page has none', () => {
-    expect(buildClaudeArtifactHtml('<html><body>x</body></html>', PAGE, null)).toContain('<html>\n<head><script data-craft-artifact-bridge>');
-    expect(buildClaudeArtifactHtml('<div>x</div>', PAGE, null).startsWith('<script data-craft-artifact-bridge>')).toBe(true);
+    expect(buildClaudeArtifactHtml('<html><body>x</body></html>', PAGE, null)).toContain('<html>\n<head><script data-memwise-artifact-bridge>');
+    expect(buildClaudeArtifactHtml('<div>x</div>', PAGE, null).startsWith('<script data-memwise-artifact-bridge>')).toBe(true);
   });
 
   test('cannot be broken out of by snapshot content', () => {
     const html = buildClaudeArtifactHtml('<html><head></head></html>', PAGE, { kv: { note: '</script><script>alert(1)</script>' } });
-    const shim = html.match(/<script data-craft-artifact-bridge>([\s\S]*?)<\/script>/)![1]!;
+    const shim = html.match(/<script data-memwise-artifact-bridge>([\s\S]*?)<\/script>/)![1]!;
     expect(shim).not.toContain('</script>');
     expect(shim).toContain('\\u003c/script>');
   });
@@ -204,7 +204,7 @@ describe('runClaudeArtifactPublish', () => {
 
 describe('publishPageAsClaudeArtifact', () => {
   let root: string;
-  beforeAll(() => { root = mkdtempSync(join(tmpdir(), 'craft-claude-artifact-')); });
+  beforeAll(() => { root = mkdtempSync(join(tmpdir(), 'memwise-claude-artifact-')); });
   afterAll(() => rmSync(root, { recursive: true, force: true }));
 
   test('publishes the page with its snapshot, records the pointer, and republishes to the same artifact', async () => {
@@ -232,7 +232,7 @@ describe('publishPageAsClaudeArtifact', () => {
     const authEnv = { CLAUDE_CODE_OAUTH_TOKEN: 'connection-token' };
     const first = await publishPageAsClaudeArtifact({ workspaceRootPath: root, pageSlug: page.slug, model: 'claude-haiku-5-5', authEnv, query });
     expect(first.claudeArtifact).toMatchObject({ url: 'https://claude.ai/artifact/abc', artifactId: 'abc', publishedContentDigest: first.contentDigest });
-    expect(publishedHtml).toContain('data-craft-artifact-bridge');
+    expect(publishedHtml).toContain('data-memwise-artifact-bridge');
     expect(publishedHtml).toContain('"total":42');
     expect(prompts[0]).toContain('"Weekly sales"');
     expect(prompts[0]).toContain('"Sales by week"');

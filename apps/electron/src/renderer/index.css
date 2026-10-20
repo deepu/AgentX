@@ -16,7 +16,7 @@
 @source "../../../../packages/ui/src/lib/**/*.{ts,tsx,jsx}";
 
 /* Design tokens + shared base (packages/ui): the single source for colors, type, radii,
-   elevation, motion and z-index. Also consumed by the viewer and marketing via @craft-agent/ui/styles. */
+   elevation, motion and z-index. Also consumed by the viewer and marketing via @memwise/ui/styles. */
 @import "../../../../packages/ui/src/styles/tokens.css";
 @import "../../../../packages/ui/src/styles/base.css";
 

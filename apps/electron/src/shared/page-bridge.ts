@@ -47,9 +47,11 @@ import type {
   PageActionResult,
   PageDataSnapshot,
   PageKind,
-} from '@craft-agent/shared/pages/types'
-import { hasPathTraversal } from '@craft-agent/shared/pages/types'
+} from '@memwise/shared/pages/types'
+import { hasPathTraversal } from '@memwise/shared/pages/types'
 
+// Wire protocol kept from Craft Agents on purpose: pages already on disk send and
+// check this exact string, so renaming it would break every existing page.
 export const PAGE_BRIDGE_PROTOCOL = 'craft-pages/v1'
 
 // Bounded inputs: anything larger is dropped before further processing.

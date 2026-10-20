@@ -35,7 +35,7 @@ export interface ThemeGridProps {
   options: ThemeGridOption[]
   /** The app's resolved mode — previews follow it */
   mode: 'light' | 'dark'
-  /** ~/.craft-agent/theme.json overrides, layered on every preset like the app does */
+  /** ~/.memwise/theme.json overrides, layered on every preset like the app does */
   overrides?: ThemeOverrides | null
   /** Caption shown on dark-only themes */
   darkOnlyLabel: string

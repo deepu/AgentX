@@ -14,8 +14,8 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react'
-import { SPRING, TWEEN } from '@craft-agent/ui/motion'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
+import { SPRING, TWEEN } from '@memwise/ui/motion'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@memwise/ui'
 import { Button, IconButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -282,7 +282,7 @@ function TooltipPopoverDemo({ open }: { open?: boolean }) {
         <PopoverContent side="bottom" className="flex flex-col gap-2">
           <span className="text-label-lg font-semibold">Working folder</span>
           <span className="text-label text-secondary">Sessions start here unless a project sets its own folder.</span>
-          <Input defaultValue="~/Workspace/craft-agents" aria-label="Working folder" />
+          <Input defaultValue="~/Workspace/memwise" aria-label="Working folder" />
         </PopoverContent>
       </Popover>
     </div>
@@ -469,7 +469,7 @@ export const primitivesComponents: ComponentEntry[] = [
     id: 'primitives-motion',
     name: 'Motion Presets',
     category: 'Primitives',
-    description: 'SPRING.snap/base/panel/gentle/gesture and TWEEN from @craft-agent/ui/motion',
+    description: 'SPRING.snap/base/panel/gentle/gesture and TWEEN from @memwise/ui/motion',
     component: MotionPresetsDemo,
     props: [],
   },

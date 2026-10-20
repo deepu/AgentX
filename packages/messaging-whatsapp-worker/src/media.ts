@@ -100,7 +100,7 @@ export async function extractAttachments(
     const ext = pickExtension(mimeType)
     const fileName =
       (node.fileName as string | undefined) ?? `${type}-${Date.now()}${ext}`
-    const localPath = join(tmpdir(), `craft-wa-${randomUUID()}${ext}`)
+    const localPath = join(tmpdir(), `memwise-wa-${randomUUID()}${ext}`)
 
     try {
       await writeFile(localPath, buffer)

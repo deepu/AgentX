@@ -3,7 +3,7 @@
  * commentary, task description); the error count moved out of the text into a failure chip.
  */
 import i18n from 'i18next'
-import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
+import { isParentTaskTool } from '@memwise/shared/utils/toolNames'
 import type { ActivityItem } from '../TurnCard'
 import { getToolDisplayName } from './tool-display'
 

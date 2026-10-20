@@ -4,7 +4,7 @@ import {
   normalizeDecisionLayerSettings,
   resolveDecisionEndpoint,
   type DecisionClientResolution,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 import { buildTitleDriftRequest, isSmallTalk, SMALL_TALK_MAX_CHARS, titleNoLongerFits, TITLE_DRIFT_MAX_MESSAGE_CHARS } from './smart-titles'
 
 function answering(key: string, noul: number): () => Promise<DecisionClientResolution> {

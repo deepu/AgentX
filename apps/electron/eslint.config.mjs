@@ -50,8 +50,8 @@ export default [
       '@typescript-eslint': tsPlugin,
       react: reactPlugin,
       'react-hooks': reactHooksPlugin,
-      // Custom plugin for Craft Agent rules
-      'craft-agent': {
+      // Custom plugin for MemWise rules
+      'memwise': {
         rules: {
           'no-direct-navigation-state': noDirectNavigationState,
           'no-localstorage': noLocalStorage,
@@ -101,9 +101,9 @@ export default [
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
 
-      // Custom Craft Agent rules
-      'craft-agent/no-direct-navigation-state': 'error',
-      'craft-agent/no-localstorage': 'warn',
+      // Custom MemWise rules
+      'memwise/no-direct-navigation-state': 'error',
+      'memwise/no-localstorage': 'warn',
 
       // Custom platform detection rule
       'craft-platform/no-direct-platform-check': 'error',
@@ -118,10 +118,10 @@ export default [
       'craft-sources/no-inline-source-auth-check': 'error',
 
       // Custom style rule — use z-index token scale instead of hardcoded literals
-      'craft-styles/no-hardcoded-z-index': 'error',
+      'memwise-styles/no-hardcoded-z-index': 'error',
 
       // Custom style rule — enforce approved shadow classes/tokens only
-      'craft-styles/no-nonstandard-shadows': ['error', {
+      'memwise-styles/no-nonstandard-shadows': ['error', {
         allowedClasses: [
           'shadow-none',
           'shadow-xs',
@@ -144,8 +144,8 @@ export default [
       }],
 
       // Design-system guardrails (implementation plan A0): warn until the class codemod (A3–B9) lands
-      'craft-styles/no-motion-antipatterns': 'warn',
-      'craft-styles/no-raw-palette-colors': 'warn',
+      'memwise-styles/no-motion-antipatterns': 'warn',
+      'memwise-styles/no-raw-palette-colors': 'warn',
 
       // Enforce centralized action registry for keyboard shortcuts
       'no-restricted-imports': ['error', {
@@ -169,7 +169,7 @@ export default [
       'src/renderer/playground/**/*.{ts,tsx}',
     ],
     rules: {
-      'craft-styles/no-nonstandard-shadows': 'off',
+      'memwise-styles/no-nonstandard-shadows': 'off',
     },
   },
 
@@ -177,7 +177,7 @@ export default [
   {
     files: ['src/renderer/playground/**/*.{ts,tsx}'],
     rules: {
-      'craft-styles/no-raw-palette-colors': 'off',
+      'memwise-styles/no-raw-palette-colors': 'off',
     },
   },
 
@@ -188,16 +188,16 @@ export default [
       'no-restricted-imports': ['error', {
         paths: [
           {
-            name: '@craft-agent/shared/codex',
-            message: 'Use provider-agnostic APIs from @craft-agent/shared/agent/backend instead.',
+            name: '@memwise/shared/codex',
+            message: 'Use provider-agnostic APIs from @memwise/shared/agent/backend instead.',
           },
           {
-            name: '@craft-agent/shared/agent/claude-agent',
-            message: 'Provider backends must stay behind @craft-agent/shared/agent/backend.',
+            name: '@memwise/shared/agent/claude-agent',
+            message: 'Provider backends must stay behind @memwise/shared/agent/backend.',
           },
           {
-            name: '@craft-agent/shared/agent/pi-agent',
-            message: 'Provider backends must stay behind @craft-agent/shared/agent/backend.',
+            name: '@memwise/shared/agent/pi-agent',
+            message: 'Provider backends must stay behind @memwise/shared/agent/backend.',
           },
         ],
       }],
@@ -211,7 +211,7 @@ export default [
       'no-restricted-syntax': ['error',
         {
           selector: "CallExpression[callee.name='fetch']",
-          message: 'Do not call provider APIs directly in Electron model fetchers. Delegate to fetchBackendModels() from @craft-agent/shared/agent/backend.',
+          message: 'Do not call provider APIs directly in Electron model fetchers. Delegate to fetchBackendModels() from @memwise/shared/agent/backend.',
         },
         {
           selector: "ImportDeclaration[source.value='@anthropic-ai/claude-agent-sdk']",

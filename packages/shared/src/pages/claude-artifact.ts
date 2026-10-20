@@ -10,7 +10,7 @@
  * The outcome is read from the tool's structured output (`tool_use_result.url` /
  * `artifact_id`), never from the model's text.
  *
- * The query authenticates like Craft's chats: the caller passes the Claude
+ * The query authenticates like MemWise's chats: the caller passes the Claude
  * account connection's auth env (`CLAUDE_CODE_OAUTH_TOKEN`), and every other
  * Claude credential in the host env is dropped. SDK sessions get no Artifact
  * tool unless `CLAUDE_CODE_ARTIFACT=1` (Claude Code's `sdk_default_off` gate,
@@ -18,19 +18,19 @@
  * still decide whether the tool appears.
  *
  * The published copy is the page's index.html with a bridge shim injected as its
- * first script. On claude.ai there is no Craft host to answer the
+ * first script. On claude.ai there is no MemWise host to answer the
  * `craft-pages/v1` bridge, so the shim plays that role: it answers `ready` with
  * the page's `init` (the current data snapshot, no grants), declines source
- * actions like Craft's public share does, and opens links in a new tab.
+ * actions like MemWise's public share does, and opens links in a new tab.
  *
- * Node-only (SDK + fs): import from '@craft-agent/shared/pages/claude-artifact',
+ * Node-only (SDK + fs): import from '@memwise/shared/pages/claude-artifact',
  * never from the pages barrel the renderer uses.
  */
 import { query as sdkQuery, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { PageClaudeArtifactInfo, PageConfig, PageKind } from '@craft-agent/core';
+import type { PageClaudeArtifactInfo, PageConfig, PageKind } from '@memwise/core';
 import { getDefaultOptions } from '../agent/options.ts';
 import { isAdaptiveThinkingAlwaysOnModel } from '../config/models.ts';
 import {
@@ -83,14 +83,14 @@ export function buildClaudeArtifactHtml(
   page: { slug: string; kind: PageKind },
   snapshot: unknown,
 ): string {
-  const shim = `<script data-craft-artifact-bridge>
+  const shim = `<script data-memwise-artifact-bridge>
 (function () {
   var P = 'craft-pages/v1';
   var INIT = { page: ${scriptSafeJson({ slug: page.slug, kind: page.kind })}, nonce: 'claude-artifact', snapshot: ${scriptSafeJson(snapshot ?? null)}, grants: [] };
   function deliver(type, payload) {
     window.dispatchEvent(new MessageEvent('message', { data: { protocol: P, type: type, payload: payload } }));
   }
-  // Published copy: no Craft host. Answer the bridge here, view-only.
+  // Published copy: no MemWise host. Answer the bridge here, view-only.
   var host = {
     postMessage: function (msg) {
       if (!msg || msg.protocol !== P) return;
@@ -103,7 +103,7 @@ export function buildClaudeArtifactHtml(
     }
   };
   try { Object.defineProperty(window, 'parent', { value: host, configurable: true }); } catch (e) {}
-  // Like Craft's host, also deliver init once the page has loaded.
+  // Like MemWise's host, also deliver init once the page has loaded.
   window.addEventListener('load', function () { setTimeout(function () { deliver('init', INIT); }, 0); });
 })();
 </script>`;
@@ -176,7 +176,7 @@ export const CLAUDE_AUTH_ENV_KEYS = [
   'CLAUDE_CODE_USE_FOUNDRY',
 ] as const;
 
-/** Inherited when Craft itself runs inside a Claude Code session; they would make the CLI that session's child. */
+/** Inherited when MemWise itself runs inside a Claude Code session; they would make the CLI that session's child. */
 const NESTED_SESSION_ENV_KEYS = ['CLAUDECODE', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ID'] as const;
 
 /**
@@ -410,7 +410,7 @@ export async function publishPageAsClaudeArtifact(options: PublishPageAsClaudeAr
     );
   }
 
-  const dir = mkdtempSync(join(tmpdir(), 'craft-claude-artifact-'));
+  const dir = mkdtempSync(join(tmpdir(), 'memwise-claude-artifact-'));
   try {
     // The basename is the artifact's last-resort title.
     const filePath = join(dir, `${config.slug}.html`);

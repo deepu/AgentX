@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
 import { Key, Monitor } from "lucide-react"
-import { CraftAgentsSymbol } from "@/components/icons/CraftAgentsSymbol"
+import { MemWiseSymbol } from "@/components/icons/MemWiseSymbol"
 import { StepFormLayout } from "./primitives"
 import { ProviderMark } from "./ProviderMark"
 
@@ -82,7 +82,7 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
 
   return (
     <StepFormLayout
-      iconElement={<CraftAgentsSymbol className="h-7 text-accent" />}
+      iconElement={<MemWiseSymbol className="h-7 text-accent" />}
       title={t("onboarding.providerSelect.title")}
       description={t("onboarding.providerSelect.description")}
     >

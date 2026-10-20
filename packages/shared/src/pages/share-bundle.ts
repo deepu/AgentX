@@ -27,7 +27,7 @@
  */
 
 import { existsSync, readFileSync } from 'fs';
-import type { PageKind } from '@craft-agent/core';
+import type { PageKind } from '@memwise/core';
 import { isPageGrantUsable } from './types.ts';
 import { isSensitiveKeyName } from '../utils/redaction.ts';
 import {

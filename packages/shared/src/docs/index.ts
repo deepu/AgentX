@@ -4,7 +4,7 @@
  * Provides access to built-in documentation that Claude can reference
  * when performing configuration tasks (sources, agents, permissions, etc.).
  *
- * Docs are stored at ~/.craft-agent/docs/ and synced from bundled assets.
+ * Docs are stored at ~/.memwise/docs/ and synced from bundled assets.
  * Source content lives in apps/electron/resources/docs/*.md for easier editing.
  */
 
@@ -93,7 +93,7 @@ export function getDocPath(filename: string): string {
 // IMPORTANT: This is intentionally a human-readable, non-instance-aware path.
 // Do NOT use APP_ROOT for real filesystem reads/writes.
 // For runtime filesystem paths, use CONFIG_DIR from config/paths.ts.
-export const APP_ROOT = '~/.craft-agent';
+export const APP_ROOT = '~/.memwise';
 
 /**
  * Documentation file references for use in error messages and tool descriptions.
@@ -121,7 +121,7 @@ export const DOC_REFS = {
   llmTool: `${APP_ROOT}/docs/llm-tool.md`,
   browserTools: `${APP_ROOT}/docs/browser-tools.md`,
   decisions: `${APP_ROOT}/docs/decisions.md`,
-  craftCli: `${APP_ROOT}/docs/craft-cli.md`,
+  craftCli: `${APP_ROOT}/docs/memwise-cli.md`,
   docsDir: `${APP_ROOT}/docs/`,
 } as const;
 

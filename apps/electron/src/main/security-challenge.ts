@@ -9,7 +9,7 @@
  * are minimal by design.
  */
 
-import type { BrowserSecurityChallenge } from '@craft-agent/shared/protocol'
+import type { BrowserSecurityChallenge } from '@memwise/shared/protocol'
 
 export type { BrowserSecurityChallenge }
 

@@ -1,7 +1,7 @@
 {
   "name": "Paper",
   "description": "Warm paper with ink-blue accents",
-  "author": "Craft Agent",
+  "author": "MemWise",
   "license": "MIT",
   "supportedModes": ["light", "dark"],
   "shikiTheme": {

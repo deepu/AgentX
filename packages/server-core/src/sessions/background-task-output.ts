@@ -6,7 +6,7 @@
  */
 
 import { open, stat } from 'node:fs/promises'
-import type { BackgroundTaskOutput, BackgroundTaskStep } from '@craft-agent/shared/protocol'
+import type { BackgroundTaskOutput, BackgroundTaskStep } from '@memwise/shared/protocol'
 
 export type { BackgroundTaskOutput, BackgroundTaskStep }
 

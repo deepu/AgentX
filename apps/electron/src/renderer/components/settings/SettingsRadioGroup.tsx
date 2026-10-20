@@ -6,7 +6,7 @@
  */
 
 import * as React from 'react'
-import { AnimatedCollapsibleContent } from '@craft-agent/ui'
+import { AnimatedCollapsibleContent } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 import { settingsUI } from './SettingsUIConstants'
 import { SettingsCardDivider } from './SettingsCard'

@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import type { Message } from '@craft-agent/core/types'
-import type { AuthRequest } from '@craft-agent/shared/agent'
+import type { Message } from '@memwise/core/types'
+import type { AuthRequest } from '@memwise/shared/agent'
 import { SessionManager, createManagedSession } from './SessionManager.ts'
 
 // Parallel sessions waiting on the same source's OAuth share one sign-in: when it succeeds,

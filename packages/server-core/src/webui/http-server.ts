@@ -20,7 +20,7 @@ import {
   buildSessionCookie,
   buildLogoutCookie,
 } from './auth'
-import { generateCallbackPage } from '@craft-agent/shared/auth'
+import { generateCallbackPage } from '@memwise/shared/auth'
 import type { PlatformServices } from '../runtime/platform'
 import type { IOAuthFlowStore } from '../handlers/oauth-flow-store-interface'
 import type { ISessionManager } from '../handlers/session-manager-interface'
@@ -123,7 +123,7 @@ export interface OAuthCallbackDeps {
 export interface WebuiHandlerOptions {
   /** Path to built web UI dist/ directory. */
   webuiDir: string
-  /** Secret used to sign JWTs — typically CRAFT_SERVER_TOKEN. */
+  /** Secret used to sign JWTs — typically MEMWISE_SERVER_TOKEN. */
   secret: string
   /** Optional separate web UI password. Falls back to `secret` for verification. */
   password?: string
@@ -365,7 +365,7 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
       if (!configSession) {
         return Response.json({ error: 'Unauthorized' }, { status: 401 })
       }
-      const { getActiveWorkspace, getWorkspaces } = await import('@craft-agent/shared/config/storage')
+      const { getActiveWorkspace, getWorkspaces } = await import('@memwise/shared/config/storage')
       const linkedSlug = url.searchParams.get('ws')
       const linked = linkedSlug ? getWorkspaces().find(w => w.slug === linkedSlug) : undefined
       const active = linked ?? getActiveWorkspace()

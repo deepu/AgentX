@@ -1,17 +1,17 @@
 /**
- * Adapts Craft wire credentials to shapes the Pi SDK credential resolver accepts.
+ * Adapts MemWise wire credentials to shapes the Pi SDK credential resolver accepts.
  *
  * Pi SDK ≥0.81 resolves stored credentials strictly by type (pi-ai auth/resolve.ts):
  * a stored credential owns its provider — ambient/env resolution is consulted only
  * when nothing is stored — and a credential type without a matching provider auth
- * handler resolves to undefined. Two Craft wire shapes trip over this:
+ * handler resolves to undefined. Two MemWise wire shapes trip over this:
  *
- * - ChatGPT Plus/Pro (`openai-codex`) is OAuth-only in the SDK catalog, but Craft
+ * - ChatGPT Plus/Pro (`openai-codex`) is OAuth-only in the SDK catalog, but MemWise
  *   performs the OAuth exchange in the main process and ships the bearer access
  *   token as an `api_key` credential — unadapted, every prompt fails with
  *   "No API key found for openai-codex".
  * - Bedrock `iam` credentials match no SDK credential type, and storing them
- *   shadows the ambient AWS env vars Craft injects at spawn — unadapted, the
+ *   shadows the ambient AWS env vars MemWise injects at spawn — unadapted, the
  *   provider reports unconfigured and prompts fail the same way.
  */
 

@@ -4,7 +4,7 @@ import {
   normalizeDecisionLayerSettings,
   resolveDecisionEndpoint,
   type DecisionClientResolution,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 import { buildMidTurnRequest, decideMidTurnDelivery, isContinuation, MID_TURN_MAX_CHARS } from './mid-turn-messages'
 
 function answering(answers: Record<string, unknown>): () => Promise<DecisionClientResolution> {

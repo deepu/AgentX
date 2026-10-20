@@ -10,7 +10,7 @@
  * text; the calls run in parallel.
  */
 
-import { DECISION_MAX_QUESTIONS_PER_CALL, type DecisionQuestion, type DecisionResult } from '@craft-agent/shared/decisions'
+import { DECISION_MAX_QUESTIONS_PER_CALL, type DecisionQuestion, type DecisionResult } from '@memwise/shared/decisions'
 import type { DecisionPointFn } from './decision-point'
 
 /** Part text per call (about 15k tokens). */

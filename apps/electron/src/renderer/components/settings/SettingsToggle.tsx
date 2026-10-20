@@ -8,7 +8,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Info } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@memwise/ui'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { settingsUI } from './SettingsUIConstants'

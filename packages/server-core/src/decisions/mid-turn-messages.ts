@@ -12,7 +12,7 @@
  * two delivery paths that already exist.
  */
 
-import type { DecisionRequest } from '@craft-agent/shared/decisions'
+import type { DecisionRequest } from '@memwise/shared/decisions'
 import { FOREGROUND_MAX_DEADLINE_MS, openDecisionPoint, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 
 /** The steer/queue choice needs this much confidence. */

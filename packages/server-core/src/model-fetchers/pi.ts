@@ -4,9 +4,9 @@
  * Provider-agnostic wrapper that delegates model discovery to backend drivers.
  */
 
-import type { ModelFetcher, ModelFetchResult, ModelFetcherCredentials } from '@craft-agent/shared/config'
-import type { LlmConnection } from '@craft-agent/shared/config'
-import { fetchBackendModels } from '@craft-agent/shared/agent/backend'
+import type { ModelFetcher, ModelFetchResult, ModelFetcherCredentials } from '@memwise/shared/config'
+import type { LlmConnection } from '@memwise/shared/config'
+import { fetchBackendModels } from '@memwise/shared/agent/backend'
 import { getHostRuntime } from './runtime'
 
 export class PiModelFetcher implements ModelFetcher {

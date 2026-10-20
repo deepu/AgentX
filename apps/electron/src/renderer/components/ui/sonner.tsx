@@ -1,7 +1,7 @@
 import { useLayoutEffect, useSyncExternalStore } from "react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react"
-import { Spinner } from "@craft-agent/ui"
+import { Spinner } from "@memwise/ui"
 import { useTheme } from "@/context/ThemeContext"
 
 /** Compact layout (≤ 767px): toasts move to the top because the composer owns the bottom. */

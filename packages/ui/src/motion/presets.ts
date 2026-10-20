@@ -9,7 +9,7 @@
  *   into a 100/10 spring with ~16% overshoot.
  * - Keyboard and high-frequency actions are INSTANT.
  *
- *   import { SPRING, TWEEN } from '@craft-agent/ui/motion'
+ *   import { SPRING, TWEEN } from '@memwise/ui/motion'
  *   <motion.div animate={{ x: 0 }} transition={SPRING.panel} />
  *   <motion.div animate={{ opacity: 1 }} transition={TWEEN.fast} />
  */

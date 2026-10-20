@@ -15,8 +15,8 @@ import { cn } from '@/lib/utils'
 import { EntityIcon, type IconComponent } from '@/components/ui/entity-icon'
 import { useEntityIcon, logoUrlCache } from '@/lib/icon-cache'
 import { McpIcon } from '@/components/icons/McpIcon'
-import type { LoadedSource } from '@craft-agent/shared/sources/types'
-import type { IconSize, ResolvedEntityIcon } from '@craft-agent/shared/icons'
+import type { LoadedSource } from '@memwise/shared/sources/types'
+import type { IconSize, ResolvedEntityIcon } from '@memwise/shared/icons'
 import { SourceStatusIndicator, deriveConnectionStatus } from './source-status-indicator'
 
 // ============================================================================

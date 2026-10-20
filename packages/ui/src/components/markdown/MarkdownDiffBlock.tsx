@@ -22,7 +22,7 @@ import { cn } from '../../lib/utils'
 import { CodeBlock } from './CodeBlock'
 import { ensureUnifiedDiffFormat } from './diff-normalize'
 import { countDiffRows, summarizePatch } from './diff-summary'
-import { registerCraftShikiThemes } from '../code-viewer/registerShikiThemes'
+import { registerMemWiseShikiThemes } from '../code-viewer/registerShikiThemes'
 
 // ── Custom element + theme registration (same as ShikiDiffViewer) ──────────
 // Idempotent: safe to run even if ShikiDiffViewer already registered these.
@@ -39,7 +39,7 @@ if (typeof HTMLElement !== 'undefined' && !customElements.get(DIFFS_TAG_NAME)) {
 }
 
 // Register custom themes once per runtime.
-registerCraftShikiThemes()
+registerMemWiseShikiThemes()
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

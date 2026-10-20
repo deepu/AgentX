@@ -17,7 +17,7 @@ const logger = {
 } as any
 
 function createTestWebuiDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'craft-webui-test-'))
+  const dir = mkdtempSync(join(tmpdir(), 'memwise-webui-test-'))
   TEMP_DIRS.push(dir)
   writeFileSync(join(dir, 'login.html'), '<!doctype html><html><body>login</body></html>')
   writeFileSync(join(dir, 'index.html'), '<!doctype html><html><body>app</body></html>')

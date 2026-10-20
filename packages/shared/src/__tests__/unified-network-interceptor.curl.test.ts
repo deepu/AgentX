@@ -6,11 +6,11 @@ let toCurl: typeof import('../unified-network-interceptor.ts').toCurl;
 const URL_ = 'https://api.example.com/v1/chat/completions';
 
 // Regression for OSS #1033: request bodies (prompts, tool arguments, base64
-// images) were logged in full; they are now omitted unless CRAFT_DEBUG_FULL_BODIES=1.
+// images) were logged in full; they are now omitted unless MEMWISE_DEBUG_FULL_BODIES=1.
 describe('toCurl request body logging', () => {
   beforeAll(async () => {
     // Keep the interceptor from patching globalThis.fetch.
-    process.env.CRAFT_INTERCEPTOR_DISABLE_AUTO_INSTALL = '1';
+    process.env.MEMWISE_INTERCEPTOR_DISABLE_AUTO_INSTALL = '1';
     ({ toCurl } = await import('../unified-network-interceptor.ts'));
   });
 

@@ -9,7 +9,7 @@ import { applyGuardedModeCheck, getGuardedModeCall, needsGuardedModeCheck, type 
 import type { PreToolUseCheckResult, PreToolUseInput } from '../pre-tool-use.ts';
 
 const SESSION = 'guarded-mode-test';
-const originalConfigDir = process.env.CRAFT_CONFIG_DIR;
+const originalConfigDir = process.env.MEMWISE_CONFIG_DIR;
 let configDir: string;
 let workspaceRootPath: string;
 
@@ -24,7 +24,7 @@ beforeEach(() => {
     allowedApiEndpoints: [],
     allowedWritePaths: [],
   }));
-  process.env.CRAFT_CONFIG_DIR = configDir;
+  process.env.MEMWISE_CONFIG_DIR = configDir;
   permissionsConfigCache.clear();
   cleanupModeState(SESSION);
   initializeModeState(SESSION, 'guarded');
@@ -32,8 +32,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (originalConfigDir === undefined) delete process.env.CRAFT_CONFIG_DIR;
-  else process.env.CRAFT_CONFIG_DIR = originalConfigDir;
+  if (originalConfigDir === undefined) delete process.env.MEMWISE_CONFIG_DIR;
+  else process.env.MEMWISE_CONFIG_DIR = originalConfigDir;
   permissionsConfigCache.clear();
   cleanupModeState(SESSION);
   setGuardedModeActiveResolver(null);

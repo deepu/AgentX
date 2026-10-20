@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { OAuthFlowStore, createPendingFlow } from '@craft-agent/shared/auth';
+import { OAuthFlowStore, createPendingFlow } from '@memwise/shared/auth';
 import { createWebuiHandler } from '../http-server';
 
 const TEMP_DIRS: string[] = [];
@@ -16,7 +16,7 @@ const logger = {
 } as any;
 
 function createTestWebuiDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'craft-webui-oauth-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'memwise-webui-oauth-test-'));
   TEMP_DIRS.push(dir);
   writeFileSync(join(dir, 'login.html'), '<!doctype html><html><body>login</body></html>');
   writeFileSync(join(dir, 'index.html'), '<!doctype html><html><body>app</body></html>');

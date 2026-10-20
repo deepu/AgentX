@@ -8,7 +8,7 @@
 import { describe, it, expect, afterEach } from 'bun:test'
 import WebSocket from 'ws'
 import { WsRpcServer } from '../server'
-import { PROTOCOL_VERSION, runtimeMaxMessageBytes } from '@craft-agent/shared/protocol'
+import { PROTOCOL_VERSION, runtimeMaxMessageBytes } from '@memwise/shared/protocol'
 
 const TEST_TOKEN = 'test-token-with-enough-entropy-to-pass'
 

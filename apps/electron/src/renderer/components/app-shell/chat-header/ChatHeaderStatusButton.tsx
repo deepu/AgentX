@@ -80,7 +80,7 @@ export function ChatHeaderStatusButton({
         onCloseAutoFocus={(e) => {
           // Like the composer chip this replaces: typing continues in the composer.
           e.preventDefault()
-          window.dispatchEvent(new CustomEvent('craft:focus-input', { detail: { sessionId } }))
+          window.dispatchEvent(new CustomEvent('memwise:focus-input', { detail: { sessionId } }))
         }}
       >
         <SessionStatusMenu

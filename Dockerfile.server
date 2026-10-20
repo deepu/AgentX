@@ -1,32 +1,32 @@
 # =============================================================================
-# Craft Agents Server — multi-platform Docker image
+# MemWise Server — multi-platform Docker image
 #
 # Build:
-#   docker buildx build -f Dockerfile.server -t craft-agent-server .
+#   docker buildx build -f Dockerfile.server -t memwise-server .
 #
 # Run (use --user to match host UID/GID for volume permissions):
 #   docker run --rm -p 9100:9100 \
 #     --user $(id -u):$(id -g) \
-#     -e HOME=/home/craftagents \
-#     -e CRAFT_SERVER_TOKEN=<secret> \
-#     craft-agent-server
+#     -e HOME=/home/memwise \
+#     -e MEMWISE_SERVER_TOKEN=<secret> \
+#     memwise-server
 #
 # Run with TLS + mounted config:
 #   docker run --rm -p 9100:9100 \
 #     --user $(id -u):$(id -g) \
-#     -e HOME=/home/craftagents \
-#     -e CRAFT_SERVER_TOKEN=<secret> \
-#     -e CRAFT_RPC_TLS_CERT=/certs/cert.pem \
-#     -e CRAFT_RPC_TLS_KEY=/certs/key.pem \
+#     -e HOME=/home/memwise \
+#     -e MEMWISE_SERVER_TOKEN=<secret> \
+#     -e MEMWISE_RPC_TLS_CERT=/certs/cert.pem \
+#     -e MEMWISE_RPC_TLS_KEY=/certs/key.pem \
 #     -v /path/to/certs:/certs:ro \
-#     -v ~/.craft-agent:/home/craftagents/.craft-agent \
-#     craft-agent-server
+#     -v ~/.memwise:/home/memwise/.memwise \
+#     memwise-server
 # =============================================================================
 
 FROM oven/bun:1.3-slim
 
-LABEL org.opencontainers.image.source="https://github.com/lukilabs/craft-agents-oss"
-LABEL org.opencontainers.image.description="Craft Agents Server — headless AI workflow server"
+LABEL org.opencontainers.image.source="https://github.com/deepu/AgentX"
+LABEL org.opencontainers.image.description="MemWise Server — headless AI workflow server"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 # Install system deps + Node.js (required by the WhatsApp worker subprocess;
@@ -41,8 +41,8 @@ RUN apt-get update && \
 
 # Create non-root user (Claude Code SDK refuses to run as root).
 # At runtime, override with --user $(id -u):$(id -g) to match host permissions.
-RUN groupadd -r craftagents && \
-    useradd -r -g craftagents -m -d /home/craftagents -s /bin/bash craftagents
+RUN groupadd -r memwise && \
+    useradd -r -g memwise -m -d /home/memwise -s /bin/bash memwise
 
 WORKDIR /app
 
@@ -58,18 +58,21 @@ COPY packages/server-core/package.json packages/server-core/
 COPY packages/shared/package.json packages/shared/
 COPY packages/core/package.json packages/core/
 COPY packages/session-tools-core/package.json packages/session-tools-core/
+COPY packages/session-mcp-server/package.json packages/session-mcp-server/
 COPY packages/pi-agent-server/package.json packages/pi-agent-server/
-COPY packages/craft-agents-commands/package.json packages/craft-agents-commands/
-COPY packages/craft-cli/package.json packages/craft-cli/
 COPY packages/ui/package.json packages/ui/
+COPY packages/defs/package.json packages/defs/
+COPY packages/db/package.json packages/db/
+COPY packages/policy/package.json packages/policy/
+COPY packages/gateway/package.json packages/gateway/
+COPY packages/step-engine/package.json packages/step-engine/
+COPY packages/runtime/package.json packages/runtime/
 COPY packages/messaging-gateway/package.json packages/messaging-gateway/
 COPY packages/messaging-whatsapp-worker/package.json packages/messaging-whatsapp-worker/
 COPY apps/electron/package.json apps/electron/
 COPY apps/cli/package.json apps/cli/
-COPY apps/marketing/package.json apps/marketing/
 COPY apps/viewer/package.json apps/viewer/
 COPY apps/webui/package.json apps/webui/
-COPY apps/docs-site/package.json apps/docs-site/
 
 RUN bun install --frozen-lockfile
 
@@ -89,28 +92,28 @@ RUN bun run scripts/build-wa-worker.ts
 # so low-RAM build hosts (e.g. 4GB VPS) can complete the build.
 RUN NODE_OPTIONS="--max-old-space-size=4096" bunx vite build --config apps/webui/vite.config.ts
 
-# Pre-create .craft-agent so Docker named volumes inherit the correct permissions.
-RUN mkdir -p /home/craftagents/.craft-agent
+# Pre-create .memwise so Docker named volumes inherit the correct permissions.
+RUN mkdir -p /home/memwise/.memwise
 
-# Make app world-readable so any --user can run it. Home dir is writable for .craft-agent.
+# Make app world-readable so any --user can run it. Home dir is writable for .memwise.
 # Use find to only touch files/dirs missing the read bit — much faster than chmod -R on the
 # entire tree (node_modules alone has hundreds of thousands of entries).
 RUN find /app -not -perm -o=r -exec chmod o+r {} + && \
     find /app -type d -not -perm -o=x -exec chmod o+x {} + && \
-    chmod -R 777 /home/craftagents
+    chmod -R 777 /home/memwise
 
-USER craftagents
+USER memwise
 
-ENV CRAFT_RPC_HOST=0.0.0.0
-ENV CRAFT_RPC_PORT=9100
-ENV CRAFT_WEBUI_DIR=/app/apps/webui/dist
-ENV CRAFT_BUNDLED_ASSETS_ROOT=/app/apps/electron
+ENV MEMWISE_RPC_HOST=0.0.0.0
+ENV MEMWISE_RPC_PORT=9100
+ENV MEMWISE_WEBUI_DIR=/app/apps/webui/dist
+ENV MEMWISE_BUNDLED_ASSETS_ROOT=/app/apps/electron
 # WhatsApp worker — Bun cannot run the CJS worker, so we point the adapter at
-# system `node` (installed above). If CRAFT_BUNDLED_ASSETS_ROOT changes, update
-# CRAFT_MESSAGING_WA_WORKER to match; the default in packages/server resolves
-# against CRAFT_BUNDLED_ASSETS_ROOT, but the layout above flattens to /app.
-ENV CRAFT_MESSAGING_WA_WORKER=/app/packages/messaging-whatsapp-worker/dist/worker.cjs
-ENV CRAFT_MESSAGING_NODE_BIN=node
+# system `node` (installed above). If MEMWISE_BUNDLED_ASSETS_ROOT changes, update
+# MEMWISE_MESSAGING_WA_WORKER to match; the default in packages/server resolves
+# against MEMWISE_BUNDLED_ASSETS_ROOT, but the layout above flattens to /app.
+ENV MEMWISE_MESSAGING_WA_WORKER=/app/packages/messaging-whatsapp-worker/dist/worker.cjs
+ENV MEMWISE_MESSAGING_NODE_BIN=node
 
 EXPOSE 9100
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import * as backend from '@craft-agent/shared/agent/backend'
-import * as config from '@craft-agent/shared/config'
+import * as backend from '@memwise/shared/agent/backend'
+import * as config from '@memwise/shared/config'
 import { SessionManager, createManagedSession, setSessionPlatform } from './SessionManager.ts'
 
 // Run in isolation: setSessionPlatform is process-global and has no reset API.

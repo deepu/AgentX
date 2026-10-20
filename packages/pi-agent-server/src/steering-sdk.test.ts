@@ -1,7 +1,7 @@
 import { expect, it } from 'bun:test';
 import { createAgentSession, createExtensionRuntime, SessionManager, type ModelRuntime, type ResourceLoader } from '@earendil-works/pi-coding-agent';
 import { createAssistantMessageEventStream, type AssistantMessage, type Model } from '@earendil-works/pi-ai';
-import { createCraftSettingsManager } from './session-settings.ts';
+import { createMemWiseSettingsManager } from './session-settings.ts';
 
 it('the installed SDK batches A/B/C at one model boundary and a later steer at the next', async () => {
   const model: Model<'openai-responses'> = {
@@ -17,7 +17,7 @@ it('the installed SDK batches A/B/C at one model boundary and a later steer at t
     getAppendSystemPrompt: () => [], getAppendSystemPromptSources: () => [], extendResources: () => {}, reload: async () => {},
   };
   const { session } = await createAgentSession({
-    cwd: import.meta.dir, model, settingsManager: createCraftSettingsManager(),
+    cwd: import.meta.dir, model, settingsManager: createMemWiseSettingsManager(),
     sessionManager: SessionManager.inMemory(import.meta.dir), resourceLoader, tools: [],
     modelRuntime: {
       hasConfiguredAuth: () => true, getModel: () => model, getAvailableSnapshot: () => [model],

@@ -3,7 +3,7 @@ import { Check, ChevronDown, ChevronRight, Flag, MessageSquare, Pencil, Play, Pl
 import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
 import { formatDistanceToNowStrict, type Locale } from 'date-fns'
-import { AnimatedCollapsibleContent, Spinner } from '@craft-agent/ui'
+import { AnimatedCollapsibleContent, Spinner } from '@memwise/ui'
 import { DEFAULT_MODEL, getModelShortName } from '@config/models'
 import { cn } from '@/lib/utils'
 import { getProviderIcon } from '@/lib/provider-icons'

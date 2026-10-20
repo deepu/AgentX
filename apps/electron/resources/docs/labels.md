@@ -2,13 +2,13 @@
 
 Labels are additive tags that can be applied to sessions. Unlike statuses (which are exclusive — one per session), labels are multi-select (many per session). They support hierarchical organization via nested JSON trees.
 
-> **CLI-first workflow (recommended):** Use `craft-agent label ...` commands instead of editing JSON directly.
-> - `craft-agent label --help`
-> - Canonical command reference: [craft-cli.md](./craft-cli.md)
+> **CLI-first workflow (recommended):** Use `memwise label ...` commands instead of editing JSON directly.
+> - `memwise label --help`
+> - Canonical command reference: [memwise-cli.md](./memwise-cli.md)
 
 ## Storage Locations
 
-- Config: `~/.craft-agent/workspaces/{id}/labels/config.json`
+- Config: `~/.memwise/workspaces/{id}/labels/config.json`
 
 ## No Defaults (Regular Labels)
 
@@ -140,16 +140,16 @@ Values are inferred from the raw string at parse time:
 
 ## Adding Labels
 
-Prefer `craft-agent` commands:
+Prefer `memwise` commands:
 
 ```bash
-craft-agent label create --name "Bug" --color "destructive"
-craft-agent label create --name "Priority" --color "accent" --value-type number
-craft-agent label create --name "Due Date" --color "info" --value-type date
-craft-agent label create --name "Docs" --color "info" --value-type link
-craft-agent label create --name "Project" --color "foreground/60"
-craft-agent label create --name "Alpha" --color "info" --parent-id project
-craft-agent label create --name "Beta" --color "success" --parent-id project
+memwise label create --name "Bug" --color "destructive"
+memwise label create --name "Priority" --color "accent" --value-type number
+memwise label create --name "Due Date" --color "info" --value-type date
+memwise label create --name "Docs" --color "info" --value-type link
+memwise label create --name "Project" --color "foreground/60"
+memwise label create --name "Alpha" --color "info" --parent-id project
+memwise label create --name "Beta" --color "success" --parent-id project
 ```
 
 Use direct JSON edits only for bulk/manual operations where CLI is not sufficient.
@@ -291,8 +291,8 @@ A semantic rule is a yes/no question instead of a regex. The decision model (Jev
 - **Off the critical path**: regex rules run before the turn starts; semantic rules run in the background and their labels appear a moment later. Messages shorter than 20 characters ("ok", "thanks") are skipped, and so are rules whose label the session already has (no model call); a label the user removed while the judgment was in flight is not re-added. System-generated messages (source-activation retries, background nudges) are never evaluated.
 - **Exactly one kind per rule**: a rule carries either `pattern` or `semantic`, never both (validation rejects hybrids).
 - **Automations**: a semantic match fires `LabelAdd` automations like any other label change. That is why the default threshold is high — lower it only for labels that trigger nothing important.
-- **Privacy**: the message (code blocks stripped, cut to 8k characters) is sent to the configured decision provider; every call is recorded in `~/.craft-agent/logs/decisions.jsonl` without the text.
-- **CLI**: `craft-agent label auto-rule-add <id> --semantic "Is …?" [--threshold 0.9] [--value "…"]`
+- **Privacy**: the message (code blocks stripped, cut to 8k characters) is sent to the configured decision provider; every call is recorded in `~/.memwise/logs/decisions.jsonl` without the text.
+- **CLI**: `memwise label auto-rule-add <id> --semantic "Is …?" [--threshold 0.9] [--value "…"]`
 
 ### Full Example
 
