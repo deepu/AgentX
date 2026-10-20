@@ -41,6 +41,14 @@ import { boundPlugins, pluginPolicies, pluginTools, type BoundPlugin } from './p
 import { DOMAIN_POLICIES_KIND, getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef, PLUGIN_POLICIES_KIND, policySourcesOf } from './runs.ts';
 import { ensureSandbox, SAMPLE_PLUGIN } from './sample-tools.ts';
 import { startValueErrors, StartRunError } from './start.ts';
+import { createAuditService } from './audit/trail.ts';
+import { withPasswordRule } from './regulated/passwords.ts';
+import { isRegulatedPlaybook } from './regulated/signatures.ts';
+import { pairAllLinks } from './records/consumers.ts';
+import type { RecordsDeps } from './records/context.ts';
+import { createDomainsService } from './records/domains.ts';
+import { flagInboxItems } from './records/inbox.ts';
+import { createRecordsService } from './records/service.ts';
 import { recordTypesFor, submitStep } from './submit.ts';
 import { defaultTestRunner } from './test-runner.ts';
 import type { Actor, Authoring, EntityRow, Explanation, InboxItem, Kernel, KernelOptions, RunRecord, StartRunInput } from './types.ts';
@@ -125,7 +133,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   // `plugins.*` and `identity.resolve` tools.
   let authoring: Authoring | undefined;
   let pluginServices: PluginServices | undefined;
-  const playbookTools = options.projectDir ? authoringTools(() => authoring, () => pool) : [];
+  const playbookTools = options.projectDir ? authoringTools(() => authoring, () => pool, (id) => isRegulatedPlaybook(indexed?.project, id)) : [];
   // Phase 5: `external.invite`, made with the external service once the DBOS client exists.
   let external: ExternalKernelService | undefined;
   const inviteTool: ToolDefinition = {
@@ -208,7 +216,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     client,
     sourcedProvenance: (db: import('pg').PoolClient, stepRunId: string, values: Record<string, unknown>, sources: Record<string, string>, by: string) =>
       external!.sourcedProvenance(db, stepRunId, values, sources, by),
-    signing: { people, entities: () => entities },
+    signing: { people, entities: () => entities, project: () => indexed?.project },
   };
   const versionStore = new PgVersionStore();
 
@@ -274,23 +282,22 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const entityDef = (name: string): EntityTypeDef | undefined =>
     entities[name] ?? Object.values(entities).find((e) => entityTableName(e) === name || entityTableName(e) === entityTableName(name) || e.entity.toLowerCase() === name.toLowerCase());
 
-  // Phase 6 services (24 §12): placeholders until the pieces land; each method says it isn't built.
+  // Phase 6 services (24 §12): domains, records and audit (the records piece); triggers are the
+  // flow piece's, a placeholder until it is wired.
   const notBuilt = (what: string) => () => { throw new Error(`Phase 6: ${what} is not built yet`); };
-  const phase6 = {
-    domains: { list: notBuilt('domains.list'), workspace: notBuilt('domains.workspace'), grants: notBuilt('domains.grants'), setGrants: notBuilt('domains.setGrants') },
-    records: {
-      page: notBuilt('records.page'), create: notBuilt('records.create'), update: notBuilt('records.update'), transition: notBuilt('records.transition'),
-      query: notBuilt('records.query'), tree: notBuilt('records.tree'), dashboard: notBuilt('records.dashboard'), views: notBuilt('records.views'),
-      saveView: notBuilt('records.saveView'), saveNote: notBuilt('records.saveNote'), flags: notBuilt('records.flags'), events: notBuilt('records.events'),
-      evaluate: notBuilt('records.evaluate'),
-    },
-    triggers: { list: notBuilt('triggers.list'), firings: notBuilt('triggers.firings'), release: notBuilt('triggers.release'), receiveMessage: notBuilt('triggers.receiveMessage'), sweep: notBuilt('triggers.sweep'), settle: notBuilt('triggers.settle') },
-    audit: { trail: notBuilt('audit.trail'), verifyChain: notBuilt('audit.verifyChain'), export: notBuilt('audit.export') },
-  } as unknown as import('./types.ts').KernelPhase6;
+  const recordsDeps: RecordsDeps = {
+    pool, entities: () => entities, project: () => indexed?.project, defs, people, files, emit: (c) => feed.emit(c),
+  };
+  const phase6: import('./types.ts').KernelPhase6 = {
+    domains: createDomainsService(recordsDeps),
+    records: createRecordsService(recordsDeps),
+    triggers: { list: notBuilt('triggers.list'), firings: notBuilt('triggers.firings'), release: notBuilt('triggers.release'), receiveMessage: notBuilt('triggers.receiveMessage'), sweep: notBuilt('triggers.sweep'), settle: notBuilt('triggers.settle') } as unknown as import('./types.ts').TriggersService,
+    audit: createAuditService(recordsDeps),
+  };
 
   const kernel: Kernel = {
     pool,
-    people,
+    people: withPasswordRule(people, () => indexed?.project),
     ...phase6,
 
     async index() {
@@ -319,6 +326,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       entities = project.entities;
       bound = nowBound;
       if (changed) gateway = buildTools();
+      // Records of linked domains pair on index too, not only on their events (24 §4).
+      await pairAllLinks(recordsDeps);
       const notes = appliedSchema.notes;
       const diagnostics = [
         ...loaded.diagnostics, ...notes.map((message): Diagnostic => ({ severity: 'warning', code: 'domain-column-type', message })),
@@ -409,6 +418,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
 
     async inbox(actor) {
       const items: InboxItem[] = await inbox(pool, defs, actor, entities);
+      // Phase 6: open flags, for the owners of their domains.
+      items.push(...(await flagInboxItems(recordsDeps, actor)));
       // Phase 4: uncertain identity matches, for the people who own plugin bindings.
       for (const candidate of (await pluginServices?.identityInbox(actor)) ?? []) {
         items.push({ kind: 'identity', id: `identity:${candidate.id}`, candidate, since: candidate.createdAt });

@@ -35,7 +35,11 @@ const errorsOf = (ds: Diagnostic[]) => ds.filter((d) => d.severity === 'error').
  * The `playbooks.*` tools. Without an Authoring (`memwise check`, example cases that stub them)
  * they are definitions only: names, classes and schemas, and executing one says why it can't.
  */
-export function authoringTools(authoring?: () => Authoring | undefined, pool?: () => pg.Pool): ToolDefinition[] {
+/**
+ * `regulated(workflowId)` (Phase 6): whether a playbook is in a regulated domain; its changes go
+ * live only when this change run's approving review was signed (24 §9).
+ */
+export function authoringTools(authoring?: () => Authoring | undefined, pool?: () => pg.Pool, regulated?: (workflowId: string) => boolean): ToolDefinition[] {
   const source = { plugin: AUTHORING_PLUGIN };
   const need = (): Authoring => {
     const a = authoring?.();
@@ -73,6 +77,14 @@ export function authoringTools(authoring?: () => Authoring | undefined, pool?: (
         `select decided_by from mw.step_runs where run_id = $1 and outcome = 'approved' and decided_by is not null
           order by finished_at desc nulls last, started_at desc limit 1`, [runId]) : undefined;
       const by = approved?.rows[0]?.decided_by as string | undefined;
+      const target = regulated && p ? (await need().getDraft(draft))?.meta.workflowId : undefined;
+      if (target && regulated!(target)) {
+        const signed = await p!.query(
+          `select 1 from mw.signatures g join mw.step_runs s on s.id = g.step_run_id where s.run_id = $1 and s.outcome = 'approved' limit 1`, [runId]);
+        if (!signed.rowCount) {
+          throw new Error(`${target} is a playbook of a regulated domain: it goes live only after its review is signed; ask the reviewer to approve it again with their signature`);
+        }
+      }
       const r = await need().publish(draft, { hash, source: 'app', runId, ...(by ? { by } : {}) });
       if (r.status === 'published') return { outcome: 'published', version: r.version, workflow: r.workflowId, hash: r.hash };
       if (r.status === 'stale') return { outcome: 'stale', message: r.message };

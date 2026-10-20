@@ -5,9 +5,9 @@
 // will be once the step's values are on it. Agents never sign: no tool signs, and only a person
 // step can be signed.
 import { contentHash, PgEntityStore, PgSignatureStore, type PgPeopleStore, type Queryable } from '@memwise/db';
-import { keyOf, type EntityTypeDef, type StepDef, type WorkflowDef } from '@memwise/defs';
+import { DEFAULT_DOMAIN, keyOf, type EntityTypeDef, type ProjectDefs, type StepDef, type WorkflowDef } from '@memwise/defs';
 import { caseFieldOf, isDocumentLike, refTarget, stepReview } from '../records/review.ts';
-import type { PersonActor, SignatureInput, SubmitResult } from '../types.ts';
+import { CHANGE_PLAYBOOK, type PersonActor, type SignatureInput, type SubmitResult } from '../types.ts';
 import { recordContentHash } from './content.ts';
 
 export const SIGN_FAILURES_BEFORE_LOCK = 5;
@@ -17,6 +17,28 @@ export const SIGN_LOCK_MS = 30 * 60_000;
 export interface SigningDeps {
   people: PgPeopleStore;
   entities(): Record<string, EntityTypeDef>;
+  /** The live project (domains, workflows), for the regulated playbook review. */
+  project?(): ProjectDefs | undefined;
+}
+
+/** What signing the review of a change to a regulated domain's playbook means. */
+export const PLAYBOOK_REVIEW_MEANING = 'Reviewed and approved this playbook change for use';
+
+/** Whether a live playbook belongs to a regulated domain (its changes go live only signed, 24 §9). */
+export function isRegulatedPlaybook(project: ProjectDefs | undefined, workflowId: string | undefined): boolean {
+  const wf = workflowId ? project?.workflows[workflowId] : undefined;
+  return !!wf && !!project?.domains?.[wf.domain ?? DEFAULT_DOMAIN]?.regulated;
+}
+
+/**
+ * The step as it must be signed: its own `sign:`, or (24 §9) the approving review of
+ * change-playbook when the playbook it changes is in a regulated domain.
+ */
+export function signingStep(deps: SigningDeps | undefined, workflow: WorkflowDef, step: StepDef, outcome: string,
+  caseValues: Record<string, { value: unknown }>): StepDef {
+  if (step.sign || workflow.id !== CHANGE_PLAYBOOK || step.performer !== 'person' || outcome !== 'approved') return step;
+  const playbook = caseValues.playbook?.value;
+  return isRegulatedPlaybook(deps?.project?.(), typeof playbook === 'string' ? playbook : undefined) ? { ...step, sign: PLAYBOOK_REVIEW_MEANING } : step;
 }
 
 /** The record a signed step covers: its review record, else its first read of a document-like record. */
