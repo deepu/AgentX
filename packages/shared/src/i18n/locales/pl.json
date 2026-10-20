@@ -1238,6 +1238,7 @@
   "memwise.playbook.file": "Plik",
   "memwise.playbook.hideRules": "Ukryj zasady",
   "memwise.playbook.layer.domain": "Twoja domena",
+  "memwise.playbook.layer.workspace": "Zasady przestrzeni roboczej",
   "memwise.playbook.layer.platform": "Domyślne ustawienie platformy",
   "memwise.playbook.layer.plugin": "Wtyczka {{name}}",
   "memwise.playbook.layer.step": "Ten krok",
