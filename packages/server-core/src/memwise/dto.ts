@@ -167,6 +167,7 @@ export function layerName(project: ProjectDefs, origin: RuleOrigin): string {
   switch (origin.layer) {
     case 'platform': return 'Built-in defaults'
     case 'plugin': return `Plugin ${origin.name}`
+    case 'workspace': return 'Workspace house rules'
     case 'domain': return 'Domain policy'
     case 'workflow': {
       const wf = project.workflows[origin.name]

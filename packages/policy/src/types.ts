@@ -7,7 +7,8 @@
 import type { EffectClass, Money, PolicyDoc, Treatment } from '@memwise/defs';
 
 /** Layers, top to bottom. `platform` holds the built-in defaults. */
-export const LAYER_KINDS = ['platform', 'plugin', 'domain', 'workflow', 'step'] as const;
+/** Phase 6 (24 §2): `workspace` (house rules above every domain) sits between plugins and the domain. */
+export const LAYER_KINDS = ['platform', 'plugin', 'workspace', 'domain', 'workflow', 'step'] as const;
 export type LayerKind = (typeof LAYER_KINDS)[number];
 
 export interface PolicyLayer {

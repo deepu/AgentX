@@ -13,7 +13,7 @@ import type { ToolDefinition } from '@memwise/gateway';
 import { compilePolicy, describePolicy, extractDiagnostics, layersFor, pluginLayers, violationsToDiagnostics } from '@memwise/policy';
 import { recallTools } from '@memwise/step-engine';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { format } from 'node:util';
 import { authoringToolDefinitions } from './authoring-tools.ts';
@@ -25,7 +25,10 @@ import { compareVersions } from './plugins/service.ts';
 import { boundPlugins, pluginPolicies, pluginToolEnvironment, toolClass } from './plugins/tools.ts';
 import { domainTools } from './domain-tools.ts';
 import { runExample, type ExampleResult } from './examples.ts';
+import { DEFAULT_ENGINE_VERSION } from './kernel.ts';
+import { renderValidationReport } from './regulated/validation-report.ts';
 import { sampleTools } from './sample-tools.ts';
+import { projectPolicyLayers } from './runs.ts';
 
 const USAGE = `usage:
   memwise check <project>
@@ -39,7 +42,8 @@ const USAGE = `usage:
   memwise convert <task.yaml> <project>
   memwise plugin install <project> <plugin-folder>
   memwise plugin list <project>
-  memwise bind <project> <plugin-id> [--draft]`;
+  memwise bind <project> <plugin-id> [--draft]
+  memwise validation-report <project> [--out <report.md>] [--database-url <admin-url>]`;
 
 /**
  * The tools a project is checked against: the sample set (the CLI's builtins), the recall tools,
@@ -72,7 +76,7 @@ async function diagnose(dir: string): Promise<{ project: ProjectDefs; all: Diagn
   for (const workflow of Object.values(project.workflows)) {
     for (const step of [undefined, ...Object.values(workflow.steps)]) {
       const plugins = pluginLayers(policies, workflow, step);
-      const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
+      const { effective, violations } = compilePolicy(layersFor({ ...projectPolicyLayers(project, workflow), plugins, workflow, step }));
       for (const d of [...violationsToDiagnostics(violations), ...extractDiagnostics(step, effective, tools)]) {
         const key = `${d.file}|${d.path}|${d.message}`;
         if (!seen.has(key)) { seen.add(key); all.push(d); }
@@ -160,6 +164,41 @@ function quietStdout(): () => void {
   return () => Object.assign(console, saved);
 }
 
+/**
+ * The validation pack (24 §9): every workflow's example cases, run as `memwise test` runs them,
+ * with the checks, written as a Markdown report (to `out`, else stdout). Exit 1 when an example
+ * fails or a check has an error; the report is written either way.
+ */
+async function validationReport(dir: string, opts: { out?: string; databaseUrl?: string }): Promise<number> {
+  const log = opts.out ? (line: string) => console.error(line) : (line: string) => process.stderr.write(`${line}\n`);
+  const restore = opts.out ? () => {} : quietStdout();
+  let report: string;
+  let failed: boolean;
+  try {
+    const { project, all } = await diagnose(dir);
+    const results: ExampleResult[] = [];
+    for (const workflow of Object.values(project.workflows)) {
+      for (const example of workflow.examples) {
+        const r = await runExample(project, workflow, example, { adminUrl: opts.databaseUrl });
+        results.push(r);
+        printResult(r, log);
+      }
+    }
+    report = renderValidationReport({
+      project, diagnostics: all, results, engineVersion: DEFAULT_ENGINE_VERSION, at: new Date(),
+      ...(process.env.MEMWISE_RELEASE ? { release: process.env.MEMWISE_RELEASE } : {}),
+    });
+    failed = errorCount(all) > 0 || results.some((r) => r.status === 'fail');
+  } finally {
+    restore();
+  }
+  if (opts.out) {
+    await writeFile(opts.out, report);
+    console.log(`wrote the validation report to ${resolve(opts.out)}${failed ? ' (it records failures)' : ''}`);
+  } else process.stdout.write(report);
+  return failed ? 1 : 0;
+}
+
 async function record(stepRunId: string, databaseUrl: string): Promise<number> {
   const pool = createPool(databaseUrl, { max: 1 });
   try {
@@ -198,7 +237,7 @@ async function policy(dir: string, workflowId: string, stepId: string): Promise<
   const step = workflow.steps[stepId];
   if (!step) { console.log(`workflow ${workflowId} has no step ${stepId}`); return 1; }
   const plugins = pluginLayers(pluginPolicies(boundPlugins(project)), workflow, step);
-  const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
+  const { effective, violations } = compilePolicy(layersFor({ ...projectPolicyLayers(project, workflow), plugins, workflow, step }));
   console.log(describePolicy(effective));
   if (violations.length) {
     console.log('\nviolations:');
@@ -442,6 +481,9 @@ export async function main(argv: string[]): Promise<number> {
         if (positional[0] === 'list' && positional.length === 2) return await pluginList(positional[1]!);
         break;
       case 'bind': if (positional.length === 2) return await bind(positional[0]!, positional[1]!, { draft: flags.draft === 'true' }); break;
+      case 'validation-report': if (positional[0]) {
+        return await validationReport(positional[0], { out: flags.out, databaseUrl: flags['database-url'] ?? process.env.MEMWISE_TEST_DATABASE_URL });
+      } break;
     }
   } catch (e) {
     // Plain-words errors from the file layer (no such draft, a non-empty folder ...) without a stack.

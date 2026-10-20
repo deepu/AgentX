@@ -1,7 +1,7 @@
 // Example cases as acceptance tests (05 §12): each runs on a fresh database with a scripted
 // model, stubbed tools and scripted approval answers, and is compared with its `expect`.
 import { createTestDatabase } from '@memwise/db';
-import { END_STATE, isConversationStep, type ExampleCase, type ExampleSubmission, type ProjectDefs, type StepDef, type WorkflowDef } from '@memwise/defs';
+import { DEFAULT_DOMAIN, END_STATE, isConversationStep, keyOf, type ExampleCase, type ExampleSubmission, type ProjectDefs, type StepDef, type WorkflowDef } from '@memwise/defs';
 import { scriptedProvider, stubTools, type ToolDefinition } from '@memwise/gateway';
 import { isDeepStrictEqual } from 'node:util';
 import { authoringToolDefinitions } from './authoring-tools.ts';
@@ -11,6 +11,7 @@ import { bindingToolDefinitions } from './plugins/kernel-tools.ts';
 import { McpConnections } from './plugins/routes.ts';
 import { boundPlugins, pluginTool, toolClass } from './plugins/tools.ts';
 import { createKernel } from './kernel.ts';
+import { entityByName } from './records/context.ts';
 import { sampleTools } from './sample-tools.ts';
 import type { Actor, Kernel, RunRecord } from './types.ts';
 
@@ -73,8 +74,13 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
       await kernel.index();
       const startAt = example.startAt ?? workflow.start;
       // One person with every role answers the example's person steps.
-      const person = await kernel.people.create({ name: 'Example', email: 'example@memwise.invalid', roles: Object.keys(project.roles ?? {}) });
+      const person = await kernel.people.create({
+        name: 'Example', email: 'example@memwise.invalid', roles: Object.keys(project.roles ?? {}), password: EXAMPLE_PASSWORD,
+      });
       const by: Actor = { kind: 'person', personId: person.id, roles: person.roles };
+      // Phase 6: the records the example starts from, created as the system (with their ids and status).
+      const seeded = await seedRecords(kernel, project, workflow, example);
+      if (seeded.length) return { ...ids, status: 'fail', differences: seeded };
       const { runId, caseId } = await kernel.startRun({ workflowId: workflow.id, workflowHash: workflow.hash, case: example.case, startAt });
       const differences: string[] = [];
       const run = await settle(kernel, runId, workflow, example, opts.timeoutMs ?? 60_000, by, differences);
@@ -101,7 +107,9 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
         }
       }
       for (const [entity, expected] of Object.entries(want.entities ?? {})) {
-        const rows = await kernel.listEntities(entity, { kind: 'system' });
+        const key = entityKeyIn(project, workflow, entity);
+        const rows = key ? await kernel.listEntities(key, { kind: 'system' }) : [];
+        if (!key) { differences.push(`entities.${entity}: there is no entity type ${entity}`); continue; }
         const count = typeof expected === 'number' ? expected : expected.length;
         if (rows.length !== count) differences.push(`entities.${entity}: expected ${count} row(s), got ${rows.length}`);
         if (typeof expected === 'number') continue;
@@ -117,6 +125,32 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
   } finally {
     await db.drop();
   }
+}
+
+/** The example person's password, so signed steps can be answered. */
+const EXAMPLE_PASSWORD = 'example-signature-password';
+
+/** An entity named in an example (a key, or bare in the workflow's domain) as its key. */
+function entityKeyIn(project: ProjectDefs, workflow: WorkflowDef, name: string): string | undefined {
+  const def = entityByName(project.entities, name, workflow.domain ?? DEFAULT_DOMAIN);
+  return def ? keyOf(def) : undefined;
+}
+
+/** Creates the example's `records:` in order, as the system. Returns what went wrong. */
+async function seedRecords(kernel: Kernel, project: ProjectDefs, workflow: WorkflowDef, example: ExampleCase): Promise<string[]> {
+  const problems: string[] = [];
+  for (const [entity, rows] of Object.entries(example.records ?? {})) {
+    const key = entityKeyIn(project, workflow, entity);
+    if (!key) { problems.push(`records.${entity}: there is no entity type ${entity}`); continue; }
+    for (const [i, row] of rows.entries()) {
+      const { id, status, ...values } = row as Record<string, unknown> & { id?: string; status?: string };
+      const r = await kernel.records.create({
+        entity: key, values, ...(typeof status === 'string' ? { status } : {}), ...(typeof id === 'string' ? { id } : {}),
+      }, { kind: 'system' });
+      if (!r.applied) problems.push(`records.${entity}[${i}]: ${r.message ?? r.status}${r.errors ? ` ${show(r.errors)}` : ''}`);
+    }
+  }
+  return problems;
 }
 
 const stepIn = (workflow: WorkflowDef, state: string): StepDef | undefined => {
@@ -227,7 +261,11 @@ async function settle(kernel: Kernel, runId: string, workflow: WorkflowDef, exam
         const link = step?.performer === 'external' ? await openLink(kernel, runId, step.id) : undefined;
         const r = link
           ? await submitThroughLink(kernel, link, step!, answer)
-          : await kernel.submitStep({ stepRunId, outcome: answer.outcome, values: answer.values, comment: answer.comment, by, ...via });
+          : await kernel.submitStep({
+            stepRunId, outcome: answer.outcome, values: answer.values, comment: answer.comment, by, ...via,
+            // A signed step (Phase 6) is signed with the example person's password.
+            ...(step?.sign ? { signature: { password: EXAMPLE_PASSWORD } } : {}),
+          });
         if (!r.applied) {
           differences.push(`submit.${run.state}: ${r.status}${r.message ? ` (${r.message})` : ''}${r.errors ? ` ${show(r.errors)}` : ''}`);
           return run;

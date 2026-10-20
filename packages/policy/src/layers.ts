@@ -1,5 +1,6 @@
 /**
- * Building the layer stack a step runs under (08 §2): platform → plugins → domain → workflow → step.
+ * Building the layer stack a step runs under (08 §2): platform → plugins → workspace → domain →
+ * workflow → step (the workspace layer is Phase 6, 24 §2).
  */
 import type { EffectClass, PolicyDoc, StepDef, Treatment, WorkflowDef } from '@memwise/defs';
 import { compareRate, lowerMoney, stricter } from './order.ts';
@@ -47,6 +48,9 @@ export function stepLayer(step: StepDef, workflowId: string): PolicyLayer {
 }
 
 export interface LayersForInput {
+  /** Phase 6: the workspace house rules (`workspace.yaml` `policy:`), above every domain's. */
+  workspacePolicy?: PolicyDoc;
+  /** The workflow's own domain's `policy.yaml`. */
   domainPolicy?: PolicyDoc;
   /** Plugin layers, top to bottom (see `pluginLayers`). */
   plugins?: PolicyLayer[];
@@ -54,8 +58,11 @@ export interface LayersForInput {
   step?: StepDef;
 }
 
-export function layersFor({ domainPolicy, plugins = [], workflow, step }: LayersForInput): PolicyLayer[] {
+export function layersFor({ workspacePolicy, domainPolicy, plugins = [], workflow, step }: LayersForInput): PolicyLayer[] {
   const layers: PolicyLayer[] = [PLATFORM_DEFAULTS, ...plugins];
+  if (workspacePolicy) {
+    layers.push({ kind: 'workspace', name: workspacePolicy.name ?? 'workspace', source: workspacePolicy.file ?? 'workspace.yaml', doc: workspacePolicy });
+  }
   if (domainPolicy) {
     layers.push({ kind: 'domain', name: domainPolicy.name ?? 'domain', source: domainPolicy.file, doc: domainPolicy });
   }

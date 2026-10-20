@@ -1,0 +1,23 @@
+entity: Report
+title: "{title}"
+parent: batch
+fields:
+  title:      { type: Text, required: true }
+  batch:      { type: Ref<Batch>, required: true }
+  file:       Document
+  result:     Text
+  score:      { type: Number, required: true, description: Percent of the specification met }
+  instrument: Ref<Instrument>
+  remarks:    { type: Text, controlled: false }
+lifecycle:
+  initial: draft
+  states:
+    draft:     { on: { submit: in_review } }
+    in_review: { on: { release: released, reject: draft } }
+    released:  {}
+  transitions:
+    submit:  { by: [role:qa_analyst, step], guard: "result is set" }
+    release: { by: [step], signed: true }
+    reject:  { by: [role:qa_lead, step] }
+invariants:
+  - "score <= 100"

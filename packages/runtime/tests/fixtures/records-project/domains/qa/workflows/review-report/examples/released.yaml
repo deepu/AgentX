@@ -1,0 +1,21 @@
+name: released
+description: A batch's report is reviewed, signed and released.
+records:
+  Batch:
+    - { id: batc_one, code: B-001, product: Saline }
+  Report:
+    - { id: repo_one, title: Sterility, batch: batc_one, score: 98, result: pass, status: in_review }
+case:
+  report: repo_one
+submit:
+  review:
+    outcome: approved
+    values: { review_note: Looks right. }
+expect:
+  state: end
+  writes: { review_note: Looks right. }
+  effects: { qa.report.transition: 1 }
+  entities:
+    Report:
+      - { title: Sterility }
+    lab.Instrument: 0
