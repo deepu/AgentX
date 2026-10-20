@@ -114,12 +114,8 @@ function ImpactView({ report, playbook, live }: { report: MwDraftReport; playboo
   const byState = Object.entries(impact.openCases.byState).filter(([, n]) => n > 0)
   return (
     <Info_Section title={t('memwise.draft.checks.impact.title')} description={t('memwise.draft.checks.impact.description')}>
+      {/* `impact.summary` is the same in English sentences for the chat and the CLI; the list below says it in the app's words. */}
       <div className="space-y-3 px-4 py-3" data-impact>
-        {impact.summary.length > 0 && (
-          <ul className="space-y-1 text-label text-foreground">
-            {impact.summary.map((s, i) => <li key={i}>{s}</li>)}
-          </ul>
-        )}
         <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-label">
           <dt className="text-tertiary">{t('memwise.draft.checks.impact.version')}</dt>
           <dd className="text-secondary">

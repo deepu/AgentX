@@ -137,6 +137,7 @@ import {
   ActingAsSwitcher,
   SidebarStatusNotice,
 } from "@/components/memwise"
+import { isMetaPlaybook } from "@/components/memwise/draft"
 import { memwiseInboxCountAtom, memwiseCasesAtom, memwisePlaybooksAtom, memwiseStartCaseDialogAtom, memwiseNewPlaybookDialogAtom, memwiseCaseFilterAtom, memwisePeopleOnlyAtom, memwiseStatusAtom } from "@/atoms/memwise"
 import type { SettingsSubpage } from "../../../shared/types"
 import { SourcesListPanel } from "./SourcesListPanel"
@@ -2174,7 +2175,8 @@ function AppShellContent({
     {
       id: "nav:playbooks",
       title: t("memwise.nav.playbooks"),
-      label: memwisePlaybooks && memwisePlaybooks.length > 0 ? String(memwisePlaybooks.length) : undefined,
+      // The playbooks that build and change playbooks are tools, not counted with the playbooks
+      label: memwisePlaybooks?.some(p => !isMetaPlaybook(p.id)) ? String(memwisePlaybooks.filter(p => !isMetaPlaybook(p.id)).length) : undefined,
       icon: BookOpen,
       variant: isPlaybooksNavigation(navState) ? "default" : "ghost",
       onClick: handlePlaybooksClick,

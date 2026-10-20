@@ -300,7 +300,7 @@ export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, 
         t('memwise.playbooks.steps', { count: p.stepCount }),
         t('memwise.playbooks.openCases', { count: p.open }),
       ].join(' · ')}
-      subtitleTrailing={p.waitingOnMe > 0 ? (
+      titleTrailing={p.waitingOnMe > 0 ? (
         <EntityListBadge colorClass="bg-info-tint text-info" tooltip={t('memwise.playbooks.waitingOnMeTooltip')}>
           {t('memwise.playbooks.waitingOnMe', { count: p.waitingOnMe })}
         </EntityListBadge>

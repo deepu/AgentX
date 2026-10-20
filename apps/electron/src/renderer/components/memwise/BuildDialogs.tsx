@@ -230,7 +230,8 @@ export function SaveAsExampleDialog({ open, onOpenChange, kase, playbook, save }
                 <span className="block text-label font-medium">{t('memwise.example.whichStep')}</span>
                 <Select value={stepId} onValueChange={v => { setStepId(v); setOutcome(undefined) }} disabled={busy}>
                   <SelectTrigger aria-label={t('memwise.example.whichStep')}><SelectValue placeholder={t('memwise.example.chooseStep')} /></SelectTrigger>
-                  <SelectContent>
+                  {/* Above the dialog (z-modal): the select's own z-dropdown would open behind it. */}
+                  <SelectContent style={{ zIndex: 'var(--z-floating-menu)' }}>
                     {steps.map(s => <SelectItem key={s.stepId} value={s.stepId}>{s.title}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -241,7 +242,7 @@ export function SaveAsExampleDialog({ open, onOpenChange, kase, playbook, save }
                   {step.outcome && <span className="block text-label-sm text-tertiary">{t('memwise.example.itDid', { outcome: humanize(step.outcome) })}</span>}
                   <Select value={outcome} onValueChange={setOutcome} disabled={busy}>
                     <SelectTrigger aria-label={t('memwise.example.shouldHave')}><SelectValue placeholder={t('memwise.example.chooseOutcome')} /></SelectTrigger>
-                    <SelectContent>
+                    <SelectContent style={{ zIndex: 'var(--z-floating-menu)' }}>
                       {step.outcomes.map(o => <SelectItem key={o} value={o}>{outcomeLabel(o, t)}</SelectItem>)}
                     </SelectContent>
                   </Select>

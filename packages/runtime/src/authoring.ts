@@ -512,7 +512,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         const { meta } = await requireDraft(draftId);
         if (meta.workflowId !== workflowId) throw new Error(`draft ${draftId} changes ${meta.workflowId}, but case ${input.caseId} is a ${workflowId} case`);
       } else {
-        const meta = await createDraft(root, { workflowId, title: `Example from case ${input.caseId}`, kind: 'change', createdBy: byLabel(by) });
+        // Named after the example (the name the person gave, or a short one), not the raw case id: the title is shown in the app.
+        const meta = await createDraft(root, { workflowId, title: `Example case “${example.name}”`, kind: 'change', createdBy: byLabel(by) });
         draftId = meta.id;
       }
       const path = `workflows/${workflowId}/examples/${example.name}.yaml`;

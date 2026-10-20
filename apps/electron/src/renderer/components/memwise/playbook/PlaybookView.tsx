@@ -171,10 +171,10 @@ export function PlaybookView({ playbook, onSelectStep, roles, description, selec
       <header className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h2 className="text-title font-semibold tracking-[var(--tracking-title)] text-foreground">{playbook.title}</h2>
-          <span className="flex items-center gap-2 text-label-sm text-tertiary">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-label-sm text-tertiary">
             {versionLine ?? <span>{t('memwise.playbook.version', { version: playbook.version })}</span>}
-            <span aria-hidden>·</span>
-            <span>{t('memwise.playbook.stepCount', { count: stepStates.length })}</span>
+            {/* Kept together so a narrow panel wraps the count as a whole instead of squeezing it into a column. */}
+            <span className="whitespace-nowrap"><span aria-hidden>·</span> {t('memwise.playbook.stepCount', { count: stepStates.length })}</span>
           </span>
         </div>
         <p className="text-copy text-secondary">{summary}</p>

@@ -158,7 +158,8 @@ function FieldControl({ id, field, value, onChange, onUpload, disabled, invalid 
           <SelectTrigger id={id} {...aria}>
             <SelectValue placeholder={t('memwise.form.choose')} />
           </SelectTrigger>
-          <SelectContent>
+          {/* The form also sits in the start-case dialog (z-modal): open above it, not behind. */}
+          <SelectContent style={{ zIndex: 'var(--z-floating-menu)' }}>
             {(field.options ?? []).map(o => <SelectItem key={o} value={o}>{humanize(o)}</SelectItem>)}
           </SelectContent>
         </Select>

@@ -119,7 +119,7 @@ describe('draft screen', () => {
     expect(html).toContain('data-past-status="different"')
     expect(out).toContain('Sunrise Foods')
     expect(html).toContain('data-impact')
-    expect(out).toContain('4 open cases stay on version 2 and finish there.')
+    expect(out).toContain('4 cases, which stay on their version')
     expect(html).not.toContain('data-report-stale')
     expect(html).not.toContain('memwise.')
   })
