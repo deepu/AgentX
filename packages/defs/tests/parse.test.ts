@@ -17,9 +17,9 @@ describe('the sample project (examples/intake)', () => {
     expect(project.roles.manager).toEqual({ id: 'manager', title: 'Manager', description: 'Approves onboarding' });
 
     const wf = project.workflows['client-intake']!;
-    expect(wf).toMatchObject({ id: 'client-intake', version: 1, title: 'Client intake', start: 'fill', dir: 'workflows/client-intake' });
+    expect(wf).toMatchObject({ id: 'client-intake', version: 2, title: 'Client intake', start: 'prepare', dir: 'workflows/client-intake' });
     expect(wf.hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(Object.keys(wf.steps).sort()).toEqual(['check', 'fill', 'onboard', 'verify']);
+    expect(Object.keys(wf.steps).sort()).toEqual(['check', 'fill', 'invite', 'onboard', 'prepare', 'verify']);
     expect(wf.states.needs_person!.step).toBeUndefined();
     expect(wf.states.check!.step).toBe('check');
     expect(wf.owner).toBe('manager');
@@ -32,8 +32,17 @@ describe('the sample project (examples/intake)', () => {
     expect(wf.states.fill!.wait).toEqual({ remindMs: 3 * 86_400_000, timeout: { afterMs: 7 * 86_400_000, target: 'needs_person' } });
     expect(wf.caseType.id).toBe('client_intake');
     expect(wf.caseType.types.Flag!.fields.document!.typeSource).toBe('Text');
-    expect(wf.policy).toEqual({ name: 'client-intake', effects: { irreversible: 'deny' }, budgets: { tokens: 100000 }, file: 'workflows/client-intake/policy.yaml' });
-    expect(wf.examples.map((e) => e.name).sort()).toEqual(['clean-application', 'full-intake', 'onboard-creates-customer', 'pan-mismatch']);
+    expect(wf.policy).toEqual({
+      name: 'client-intake', effects: { irreversible: 'deny' }, approvals: { by: ['staff', 'manager'] }, budgets: { tokens: 100000 },
+      file: 'workflows/client-intake/policy.yaml',
+    });
+    expect(wf.examples.map((e) => e.name).sort()).toEqual(['clean-application', 'full-intake', 'onboard-creates-customer', 'pan-mismatch', 'staff-fill-for-client']);
+    // Phase 5: the client fills the form through a link, and it can read their documents.
+    expect(wf.steps.fill!.extract).toEqual({
+      tool: 'intake.extract_fields', documents: 'documents', fields: { pan: 'pan', gstin: 'gstin', client_name: 'client_name' }, minConfidence: 0.8,
+    });
+    expect(wf.steps.invite!.map!['external.invite']!.step).toEqual({ value: 'fill' });
+    expect(wf.steps.invite!.map!['external.invite']!.via).toEqual({ case: 'contact_by' });
 
     const check = wf.steps.check!;
     expect(check.budget).toEqual({ tokens: 40_000, timeMs: 600_000, modelCalls: 12 });

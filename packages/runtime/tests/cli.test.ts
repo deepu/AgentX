@@ -6,7 +6,7 @@ import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { INTAKE_DIR } from './fixtures/exit-setup.ts';
+import { INTAKE_DIR, SAMPLE_DIR } from './fixtures/exit-setup.ts';
 import { kernelDatabase, runChild, pgAvailable } from './helpers.ts';
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
@@ -18,14 +18,14 @@ describe.skipIf(!pgAvailable)('memwise CLI', () => {
   afterAll(async () => { await db?.drop(); });
 
   test('memwise check: the sample project has no errors', async () => {
-    const r = await runChild(CLI, ['check', INTAKE_DIR], {});
+    const r = await runChild(CLI, ['check', SAMPLE_DIR], {});
     expect(r.code, r.output).toBe(0);
     expect(r.output).toContain('0 error(s)');
   });
 
   test('memwise check: errors print file:line and exit 1', async () => {
     const broken = join(mkdtempSync(join(tmpdir(), 'mw-cli-')), 'intake');
-    cpSync(INTAKE_DIR, broken, { recursive: true });
+    cpSync(SAMPLE_DIR, broken, { recursive: true });
     const shape = join(broken, 'workflows/client-intake/workflow.yaml');
     writeFileSync(shape, readFileSync(shape, 'utf8').replace('checked:      verify', 'checked:      nowhere'));
     const r = await runChild(CLI, ['check', broken], {});
@@ -34,19 +34,20 @@ describe.skipIf(!pgAvailable)('memwise CLI', () => {
   });
 
   test('memwise policy shows each rule with its layer', async () => {
-    const r = await runChild(CLI, ['policy', INTAKE_DIR, 'client-intake', 'check'], {});
+    const r = await runChild(CLI, ['policy', SAMPLE_DIR, 'client-intake', 'check'], {});
     expect(r.code, r.output).toBe(0);
     expect(r.output).toContain('outbound: approve  (domain, domain/policy.yaml)');
   });
 
   test('memwise test runs every example case', async () => {
     const admin = process.env.MEMWISE_TEST_DATABASE_URL;
-    const r = await runChild(CLI, ['test', INTAKE_DIR, ...(admin ? ['--database-url', admin] : [])], {}, 300_000);
+    const r = await runChild(CLI, ['test', SAMPLE_DIR, ...(admin ? ['--database-url', admin] : [])], {}, 300_000);
     expect(r.code, r.output).toBe(0);
     expect(r.output).toContain('PASS client-intake/clean-application');
     expect(r.output).toContain('PASS client-intake/pan-mismatch');
     expect(r.output).toContain('PASS client-intake/onboard-creates-customer');
     expect(r.output).toContain('PASS client-intake/full-intake');
+    expect(r.output).toContain('PASS client-intake/staff-fill-for-client');
     // The meta playbooks' examples run too (their conversation steps are answered by submit:).
     expect(r.output).toContain('PASS create-playbook/');
     expect(r.output).toContain('PASS change-playbook/');

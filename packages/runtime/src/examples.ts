@@ -198,13 +198,22 @@ async function settle(kernel: Kernel, runId: string, workflow: WorkflowDef, exam
     return a[used[state] ?? 0];
   };
   for (;;) {
+    let unanswered = false;
     for (const a of await kernel.pendingApprovals()) {
+      if (!a.stepRunId.startsWith(`${runId}/`)) continue;
       const answer = example.approvals?.[a.tool];
-      if (answer && a.stepRunId.startsWith(`${runId}/`)) {
+      if (answer) {
         await kernel.decideApproval({ id: a.id, status: answer === 'approve' ? 'approved' : 'rejected', by: 'example', at: new Date().toISOString() });
+      } else {
+        unanswered = true;
       }
     }
     const run = (await kernel.getRun(runId))!;
+    // A step waiting on an approval the example doesn't answer waits for a person: the run settles there.
+    if (unanswered && run.status === 'active' && runsItself(workflow, run.state)) {
+      const waiting = (await kernel.pendingApprovals()).some((a) => a.stepRunId === `${runId}/${run.enteredSeq}/${run.state}`);
+      if (waiting) return run;
+    }
     const waits = run.status === 'active' && !runsItself(workflow, run.state);
     const answer = waits ? answerFor(run.state) : undefined;
     if (answer && by.kind === 'person') {

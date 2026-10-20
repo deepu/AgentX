@@ -9,8 +9,8 @@
  *    v1, and a case runs on it through the partner's approval to the recorded Engagement.
  * 2. "Change with chat" on client intake makes `recall.similar_cases` a required tool of `check`
  *    and updates the example cases; the review shows the structural diff (step `check`: tools)
- *    and the impact counts the open intake case; approved, it is v2. The case started before
- *    stays on v1 and finishes there; a new case starts on v2.
+ *    and the impact counts the open intake case; approved, it is v3 (client intake is at v2 since
+ *    Phase 5). The case started before stays on v2 and finishes there; a new case starts on v3.
  * 3. A chat edit is discarded and the file is back; a correction on a case becomes an example case
  *    in a draft; `memwise diff` and `memwise push` work on a plain folder.
  *
@@ -46,7 +46,7 @@ const ch = RPC_CHANNELS.memwise
 const CHECK = 'workflows/client-intake/steps/check.md'
 const EXTRACT_CALL = '        - { name: intake.extract_fields, args: { documents: [pan-card.pdf, gst-certificate.pdf] } }\n'
 const RECALL_CALL = '        - { name: recall.similar_cases, args: { limit: 5 } }\n'
-const CHECKED_EXAMPLES = ['clean-application', 'full-intake', 'pan-mismatch']
+const CHECKED_EXAMPLES = ['clean-application', 'full-intake', 'pan-mismatch', 'staff-fill-for-client']
 
 /** Every file of the fixture, project-relative (what the chat writes into the draft). */
 function fixtureFiles(): { path: string; content: string }[] {
@@ -173,10 +173,15 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     return items.find((i) => i.kind === kind && pick(i as Extract<MwInboxItem, { kind: K }>)) as Extract<MwInboxItem, { kind: K }>
   }
 
-  /** Staff start an intake case and fill the form; the check runs; it waits for the manager. */
+  /** Staff start an intake case, say they fill it for the client, and fill the form; the check runs; it waits for the manager. */
   async function intakeAtVerify(): Promise<MwCase> {
     const started = await api.call<MwCaseSummary>(staff, ch.CASES_START, { workflowId: 'client-intake', values: {} })
-    const form = await inboxItem(staff, 'input', (i) => i.caseId === started.caseId)
+    const prepare = await inboxItem(staff, 'input', (i) => i.caseId === started.caseId && i.stepRunId.endsWith('/prepare'))
+    expect(await api.call<any>(staff, ch.INBOX_SUBMIT, {
+      stepRunId: prepare.stepRunId, outcome: 'fill_for_client',
+      values: { client_name: filledIntake.client_name, client_email: filledIntake.client_email, contact_by: 'email' },
+    })).toEqual({ applied: true })
+    const form = await inboxItem(staff, 'input', (i) => i.caseId === started.caseId && i.stepRunId.endsWith('/fill'))
     const doc = (name: string, text: string) => api.call(staff, ch.FILES_UPLOAD, { name, mime: 'application/pdf', data: Buffer.from(text).toString('base64') })
     const docs = [await doc('pan-card.pdf', 'PAN AAACA1234A'), await doc('gst-certificate.pdf', 'GSTIN 29AAACA1234A1Z5')]
     expect(await api.call<any>(staff, ch.INBOX_SUBMIT, { stepRunId: form.stepRunId, outcome: 'submitted', values: { ...filledIntake, documents: docs } })).toEqual({ applied: true })
@@ -394,7 +399,7 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
 
   it('"Change with chat" on client intake opens a chat on a change draft', async () => {
     oldCase = await intakeAtVerify()
-    expect(oldCase.workflowVersion).toBe(1)
+    expect(oldCase.workflowVersion).toBe(2)
 
     change = await api.call(staff, ch.PLAYBOOKS_BUILD, { workflowId: 'client-intake', request: 'Before deciding, the check should always look at how similar past cases went.' })
     expect(sessions.created.find((s) => s.id === change.sessionId)?.name).toBe('Changing: Client intake')
@@ -409,7 +414,7 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     expect(block).toContain('similar past cases went')
     expect(block).toContain(CHECK)
     const drafts = await api.call(staff, ch.DRAFTS_LIST, { workflowId: 'client-intake' })
-    expect(drafts.find((x: { id: string }) => x.id === changeDraft)).toMatchObject({ kind: 'change', stage: 'draft', baseVersion: 1, runId: change.runId, inChat: true })
+    expect(drafts.find((x: { id: string }) => x.id === changeDraft)).toMatchObject({ kind: 'change', stage: 'draft', baseVersion: 2, runId: change.runId, inChat: true })
   }, 180_000)
 
   it('the chat makes the check require the new tool; the example cases fail until they are updated', async () => {
@@ -434,13 +439,13 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
 
     const diff = await tool('playbook_diff')
     expect(diff.structure.requiredTools).toEqual([{ step: 'check', tool: 'recall.similar_cases', change: 'added' }])
-    expect(diff.structure.version).toEqual({ from: 1, to: 2 })
+    expect(diff.structure.version).toEqual({ from: 2, to: 3 })
 
-    expect(await tool('playbook_finish', { summary: 'The check now always looks at how similar past cases went before deciding, and says so when one was flagged. The example cases do the same. Running cases stay on version 1.' }))
+    expect(await tool('playbook_finish', { summary: 'The check now always looks at how similar past cases went before deciding, and says so when one was flagged. The example cases do the same. Running cases stay on version 2.' }))
       .toMatchObject({ applied: true, draftId: changeDraft })
   }, 300_000)
 
-  it('the review shows the structural diff and the impact on the open intake case; approved, v2 is live', async () => {
+  it('the review shows the structural diff and the impact on the open intake case; approved, v3 is live', async () => {
     await caseAt(manager, change.caseId, 'review')
     const draft = await api.call<MwDraft>(manager, ch.DRAFTS_GET, changeDraft)
     expect(draft.stage).toBe('in_review')
@@ -449,29 +454,29 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     expect(draft.files.map((f) => f.path)).toEqual(expect.arrayContaining([CHECK, 'workflows/client-intake/workflow.yaml', 'workflows/client-intake/examples/clean-application.yaml']))
     expect(draft.report).toMatchObject({ outcome: 'passed' })
     expect(draft.report!.impact).toMatchObject({
-      liveVersion: 1, newVersion: 2,
+      liveVersion: 2, newVersion: 3,
       openCases: { total: 1, byState: { verify: 1 } },
       newRequiredTools: [{ step: 'check', tool: 'recall.similar_cases' }],
     })
 
     await managerApproves(change.caseId)
-    const versions = await until('client-intake v2', () => api.call<MwVersion[]>(staff, ch.PLAYBOOKS_VERSIONS, 'client-intake'), (v) => v.some((x) => x.version === 2 && x.live))
-    expect(versions.find((v) => v.version === 2)).toMatchObject({ source: 'app', publishedByName: 'Ravi', draftId: changeDraft, live: true })
-    expect(versions.find((v) => v.version === 1)).toMatchObject({ live: false, openCases: 1 })
+    const versions = await until('client-intake v3', () => api.call<MwVersion[]>(staff, ch.PLAYBOOKS_VERSIONS, 'client-intake'), (v) => v.some((x) => x.version === 3 && x.live))
+    expect(versions.find((v) => v.version === 3)).toMatchObject({ source: 'app', publishedByName: 'Ravi', draftId: changeDraft, live: true })
+    expect(versions.find((v) => v.version === 2)).toMatchObject({ live: false, openCases: 1 })
     const pb = await api.call(staff, ch.PLAYBOOKS_GET, 'client-intake')
-    expect(pb.version).toBe(2)
+    expect(pb.version).toBe(3)
   }, 300_000)
 
   let newCase: MwCase
 
-  it('the case started before stays on v1 and finishes there; a new case starts on v2', async () => {
+  it('the case started before stays on v2 and finishes there; a new case starts on v3', async () => {
     const verify = await inboxItem(manager, 'decision', (i) => i.caseId === oldCase.caseId)
     expect(await api.call<any>(manager, ch.INBOX_SUBMIT, { stepRunId: verify.stepRunId, outcome: 'approved' })).toEqual({ applied: true })
-    const done = await until('the v1 case done', () => api.call<MwCase>(manager, ch.CASES_GET, oldCase.caseId), (c) => c.status !== 'active')
-    expect(done).toMatchObject({ status: 'done', workflowVersion: 1 })
+    const done = await until('the v2 case done', () => api.call<MwCase>(manager, ch.CASES_GET, oldCase.caseId), (c) => c.status !== 'active')
+    expect(done).toMatchObject({ status: 'done', workflowVersion: 2 })
 
     newCase = await intakeAtVerify()
-    expect(newCase.workflowVersion).toBe(2)
+    expect(newCase.workflowVersion).toBe(3)
     const check = newCase.timeline.find((t) => t.stepId === 'check')!
     const record = await api.call(staff, ch.STEPS_GET, check.stepRunId)
     expect(JSON.stringify(record)).toContain('recall.similar_cases')
@@ -509,7 +514,7 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     })
     expect(r).toMatchObject({ applied: true, path: 'workflows/client-intake/examples/should-send-back.yaml' })
     const draft = await api.call<MwDraft>(manager, ch.DRAFTS_GET, r.draftId)
-    expect(draft).toMatchObject({ kind: 'change', workflowId: 'client-intake', baseVersion: 2 })
+    expect(draft).toMatchObject({ kind: 'change', workflowId: 'client-intake', baseVersion: 3 })
     expect(draft.files.find((f) => f.path === r.path)).toMatchObject({ status: 'added' })
     expect(draft.structure?.examples.added).toEqual(['should-send-back'])
     const text = draft.files.find((f) => f.path === r.path)!.hunks.flatMap((h) => h.lines.map((l) => l.text)).join('\n')
@@ -540,7 +545,7 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     const diff = await runCli(['diff', root, folder])
     expect(diff.code, diff.output).toBe(0)
     expect(diff.output).toContain('+  required: [gst.validate_gstin, recall.similar_cases]')
-    expect(diff.output).toContain('Version 1 → 2.')
+    expect(diff.output).toContain('Version 2 → 3.')
 
     // An app database the push records the version in.
     const pushDb = await createTestDatabase('mw_exit3_push')
@@ -549,11 +554,11 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
       admin.pathname = '/postgres'
       const pushed = await runCli(['push', root, folder, '--database-url', pushDb.url, '--test-database-url', admin.toString()])
       expect(pushed.code, pushed.output).toBe(0)
-      expect(pushed.output).toContain('4 passed, 0 failed')
-      expect(pushed.output).toContain('published client-intake version 2')
+      expect(pushed.output).toContain('5 passed, 0 failed')
+      expect(pushed.output).toContain('published client-intake version 3')
       expect(readFileSync(join(root, CHECK), 'utf8')).toContain('recall.similar_cases]')
       const { rows } = await pushDb.pool.query('select version, source from mw.workflow_versions where workflow_id = $1', ['client-intake'])
-      expect(rows).toEqual([{ version: 2, source: 'cli' }])
+      expect(rows).toEqual([{ version: 3, source: 'cli' }])
     } finally {
       await pushDb.drop()
     }
