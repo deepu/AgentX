@@ -15,5 +15,9 @@
   },
   "dependencies": {
     "@memwise/defs": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "@types/bun": "^1.4.2"
   }
 }

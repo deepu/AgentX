@@ -1,0 +1,54 @@
+name: pan-mismatch
+description: The PAN typed in the form differs from the PAN card, so the client is emailed once and the case goes back to them.
+startAt: check
+case:
+  client_name: Ravi Menon
+  client_email: ravi@menon-exports.example
+  pan: AAACM9999Z
+  gstin: 27AAACM1234M1Z2
+  annual_turnover: { amount: 8500000, currency: INR }
+  documents:
+    - { name: pan-card.pdf, kind: pan_card }
+    - { name: gst-certificate.pdf, kind: gst_certificate }
+tools:
+  gst.validate_gstin: { valid: true, legal_name: Menon Exports LLP }
+  intake.extract_fields:
+    fields:
+      - { name: pan, value: AAACM1234M, document: pan-card.pdf }
+      - { name: gstin, value: 27AAACM1234M1Z2, document: gst-certificate.pdf }
+  email.send: { message_id: sandbox-0001 }
+approvals:
+  email.send: approve
+model:
+  checker:
+    - toolCalls:
+        - { name: gst.validate_gstin, args: { gstin: 27AAACM1234M1Z2 } }
+        - { name: intake.extract_fields, args: { documents: [pan-card.pdf, gst-certificate.pdf] } }
+    - toolCalls:
+        - name: email.send
+          args:
+            to: ravi@menon-exports.example
+            subject: One detail in your intake form
+            body: The PAN you typed (AAACM9999Z) does not match your PAN card (AAACM1234M). Please correct it in the form.
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: needs_info
+            writes:
+              gstin_ok: true
+              legal_name: Menon Exports LLP
+              flags:
+                - { field: pan, problem: Typed PAN does not match the PAN card, document: pan-card.pdf }
+            rationale: The typed PAN differs from the PAN card; the client has been asked to correct it.
+  verifier:
+    - toolCalls:
+        - name: checkpoint.verdict
+          args: { results: [ { rule: 1, passed: true, reason: The only flag cites pan-card.pdf. } ] }
+expect:
+  outcome: needs_info
+  state: fill
+  writes:
+    gstin_ok: true
+    flags:
+      - { field: pan, problem: Typed PAN does not match the PAN card, document: pan-card.pdf }
+  effects: { email.send: 1 }
