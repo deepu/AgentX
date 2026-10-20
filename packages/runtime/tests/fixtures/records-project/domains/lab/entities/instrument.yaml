@@ -1,0 +1,7 @@
+entity: Instrument
+title: "{serial} · {model}"
+fields:
+  serial:   { type: Text, required: true }
+  model:    Text
+  location: Text
+lifecycle: [active, retired]

@@ -1,0 +1,4 @@
+title: Sites by status
+entity: Site
+layout: board                  # one column per status
+columns: [site_number, name, start_up_pack_complete]

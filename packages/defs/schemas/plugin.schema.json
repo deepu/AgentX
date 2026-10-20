@@ -134,6 +134,10 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "controlled": {
+                          "description": "Phase 6: false exempts the field from the regulated reason rule (default true in a regulated domain).",
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -305,7 +309,7 @@
                       },
                       {
                         "type": "string",
-                        "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w)\\s*)+$|^\\s*\\d+\\s*$"
+                        "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w|y)\\s*)+$|^\\s*\\d+\\s*$"
                       }
                     ],
                     "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."
@@ -627,7 +631,7 @@
                 },
                 {
                   "type": "string",
-                  "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w)\\s*)+$|^\\s*\\d+\\s*$"
+                  "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w|y)\\s*)+$|^\\s*\\d+\\s*$"
                 }
               ],
               "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."

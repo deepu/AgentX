@@ -104,7 +104,8 @@ export interface MwPolicyRule {
   /** Its value in plain words: "needs approval", "40,000", "denied". */
   value: string
   /** The layer it came from. */
-  layer: 'platform' | 'plugin' | 'domain' | 'workflow' | 'step'
+  /** Phase 6 adds `workspace` (house rules above every domain). */
+  layer: 'platform' | 'plugin' | 'workspace' | 'domain' | 'workflow' | 'step'
   layerName: string
   source?: string
   /** Shown but not enforced. */

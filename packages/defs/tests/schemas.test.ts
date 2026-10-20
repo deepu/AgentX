@@ -7,7 +7,7 @@ import { SAMPLE } from './fixture.ts';
 
 describe('JSON Schemas', () => {
   test('one per file format, draft 2020-12, with titles', () => {
-    expect(Object.keys(jsonSchemas).sort()).toEqual(['binding', 'case', 'entity', 'example', 'plugin', 'policy', 'roles', 'step', 'workflow']);
+    expect(Object.keys(jsonSchemas).sort()).toEqual(['binding', 'case', 'domain', 'entity', 'example', 'page', 'plugin', 'policy', 'roles', 'step', 'view', 'workflow', 'workspace']);
     for (const schema of Object.values(jsonSchemas)) {
       expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
       expect(schema.type).toBe('object');

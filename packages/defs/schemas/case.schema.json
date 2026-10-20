@@ -35,6 +35,10 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "controlled": {
+                "description": "Phase 6: false exempts the field from the regulated reason rule (default true in a regulated domain).",
+                "type": "boolean"
               }
             },
             "required": [
@@ -81,6 +85,10 @@
                   "items": {
                     "type": "string"
                   }
+                },
+                "controlled": {
+                  "description": "Phase 6: false exempts the field from the regulated reason rule (default true in a regulated domain).",
+                  "type": "boolean"
                 }
               },
               "required": [

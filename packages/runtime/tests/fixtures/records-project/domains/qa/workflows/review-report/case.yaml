@@ -1,0 +1,4 @@
+case: report_review
+fields:
+  report:      { type: Ref<Report>, required: true, description: The report to review }
+  review_note: { type: Text, description: "The reviewer's note" }

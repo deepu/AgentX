@@ -1,0 +1,10 @@
+workspace: Brightwater Labs
+roles:
+  qa_lead:    { title: QA lead, description: Reviews and signs test reports }
+  qa_analyst: { title: QA analyst, description: Writes test reports }
+  lab_tech:   { title: Lab technician, description: Keeps the lab's instruments }
+policy:
+  policy: workspace
+  effects:
+    irreversible: deny
+storm_limit: 40

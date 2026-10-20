@@ -11,7 +11,7 @@
 //                      runs.seq, a transitions row, the step's case writes, timers armed/cancelled
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
-import { crashPoint, END_STATE, type CaseValue, type Provenance, type WorkflowDef } from '@memwise/defs';
+import { crashPoint, domainOf, END_STATE, hasRole, type CaseValue, type Provenance, type WorkflowDef } from '@memwise/defs';
 import type { StepResult, StepRunInput } from '@memwise/step-engine';
 import type pg from 'pg';
 import { transition, type AnyStateMachine } from 'xstate';
@@ -19,6 +19,7 @@ import { stepRunIdOf } from './ids.ts';
 import { answeredBySubmit, compileMachine, REMIND_EVENT, stateKind, type RunEvent } from './machine.ts';
 import { openWaitingStep, prepareAgentStep, type PreparedStep } from './prepare.ts';
 import { closeStepLinks } from './submit.ts';
+import { queueHandoffs } from './flow/handoffs.ts';
 import { PgCaseStore, PgNotificationStore } from '@memwise/db';
 import { loadRunRow, loadWorkflowDef, type Queryable, type RunRow } from './runs.ts';
 import type { Actor, SendEventResult } from './types.ts';
@@ -202,6 +203,9 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
     if (forSeq !== undefined && forSeq !== run.enteredSeq) note = `stale: for entry ${forSeq}, current entry ${run.enteredSeq}`;
     else if (!snap.can(c.event)) {
       if (c.stopIfUnhandled) stop = c.stopIfUnhandled;
+      // Phase 6: an outside `stop` the state has no transition for stops the run (a person
+      // stopping a case, a refused hand-off, the cascade from a stopped parent).
+      else if (c.event.type === STOP_EVENT.type && c.source === 'external') stop = stopReason(c.event);
       else note = `not handled in ${run.state}`;
     } else [next, actions] = transition(machine, snap, c.event);
   }
@@ -276,6 +280,8 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
     await db.query(`update mw.external_links set closed_at = now(), closed_reason = 'left'
                      where run_id = $1 and used_at is null and closed_at is null`, [c.runId]);
   }
+  // Phase 6 hand-offs (24 §8): what entering a block state, ending or stopping hands on, in this transaction.
+  if (workflow) await queueHandoffs(db, workflow, { runId: c.runId, moved, to, status, enteredSeq: moved ? newSeq : run.enteredSeq, event: c.event });
   crashPoint('in-commit', run.state);
   const after = await loadRunRow(db, c.runId);
   if (moved && workflow && status === 'active') {
@@ -287,6 +293,12 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
     }
   }
   return after;
+}
+
+/** Why an outside `stop` stopped the run, in plain words. */
+function stopReason(event: RunEvent): string {
+  if (typeof event.reason === 'string' && event.reason) return event.reason;
+  return typeof event.by === 'string' ? `stopped by ${event.by}` : 'stopped';
 }
 
 /** Keeps mw.cases.tainted_fields in step with the provenance of the fields just written. */
@@ -319,7 +331,7 @@ export function outsideEventRefusal(workflow: WorkflowDef, state: string, by?: A
   }
   if (by?.kind !== 'person') return undefined;
   const roles = [...new Set([assigneeOf(workflow, state), workflow.owner].filter((r): r is string => !!r))];
-  if (roles.length && !roles.some((r) => by.roles.includes(r))) {
+  if (roles.length && !roles.some((r) => hasRole(by, r, domainOf(workflow)))) {
     return { reason: 'forbidden', message: `only someone with the ${roles.join(' or ')} role can decide this` };
   }
   return undefined;

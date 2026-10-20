@@ -5,6 +5,9 @@
  * Codes are stable; tools and editors key on them.
  */
 import { boundPluginTools, checkBindings } from './binding-checks.ts';
+import { checkDomains, checkWorkflowDomain } from './check-domains.ts';
+import { domainOf, scopedEntities } from './domains.ts';
+import { entityTools } from './entity-tools.ts';
 import { shapeFileOf } from './load.ts';
 import { lineOf, type PathKey } from './source.ts';
 import { END_STATE, type CheckEnvironment, type Diagnostic, type EntityTypeDef, type FieldDef, type ProjectDefs, type Severity, type StepDef, type ValueType, type WorkflowDef } from './types.ts';
@@ -17,8 +20,13 @@ export const BUILTIN_OUTCOMES = ['needs_person', 'failed'] as const;
 export const ENGINE_TOOLS = ['step.finish', 'checkpoint.verdict', 'explain.answer'] as const;
 
 export interface CheckOptions {
-  /** Entity types of the project. Without them, `Ref<>` targets and entity-named types aren't checked. */
+  /**
+   * Entity types as the workflow's domain names them (`scopedEntities`). Without them, `Ref<>`
+   * targets and entity-named types aren't checked.
+   */
   entities?: Record<string, EntityTypeDef>;
+  /** Phase 6: the whole project, for checks across workflows and domains (triggers, hand-offs, call loops). */
+  project?: ProjectDefs;
 }
 
 /** The outcome a system step finishes with: its only declared one, `done` when it declares none. */
@@ -98,9 +106,11 @@ export function checkWorkflow(workflow: WorkflowDef, env: CheckEnvironment, opts
     }
 
     const step = state.step ? workflow.steps[state.step] : undefined;
-    const waits = !step || waitsOnSomeone(step);
+    // Phase 6: start, call and for_each states wait on other cases, which have their own timeouts.
+    const handsOver = !step && state.block && state.block.kind !== 'wait_until';
+    const waits = !handsOver && (!step || waitsOnSomeone(step));
     if (waits && !timeout) {
-      const who = !step ? 'waits for an outside event (it has no step file)'
+      const who = !step ? (state.block ? 'waits until its condition holds' : 'waits for an outside event (it has no step file)')
         : isConversationStep(step) ? 'waits for a conversation in chat'
         : `waits for a ${step.performer === 'person' ? 'person' : 'participant outside the business'}`;
       shape('warning', 'wait-without-timeout', `\`${name}\` ${who} but has no timeout: add \`wait: { timeout: 7d → needs_person }\` so it can't stall`, ['steps', name]);
@@ -140,6 +150,9 @@ export function checkWorkflow(workflow: WorkflowDef, env: CheckEnvironment, opts
 
   // ---- example cases
   checkExamples(d, workflow, env, entities);
+
+  // ---- Phase 6: what starts it, block states, signatures and review screens
+  d.list.push(...checkWorkflowDomain(workflow, opts.project, entities, env.roles));
   return d.list;
 }
 
@@ -364,6 +377,24 @@ function checkExamples(d: Diagnostics, workflow: WorkflowDef, env: CheckEnvironm
     for (const entity of Object.keys(ex.expect.entities ?? {})) {
       if (entities && !entities[entity]) at('unknown-entity', `expect.entities: there is no entity type ${entity}`, ['expect', 'entities', entity]);
     }
+    // Phase 6: records made before the run, each with an optional id and status.
+    for (const [entity, rows] of Object.entries(ex.records ?? {})) {
+      const def = entities?.[entity];
+      if (entities && !def) { at('unknown-entity', `records: there is no entity type ${entity}`, ['records', entity]); continue; }
+      if (!def) continue;
+      rows.forEach((row, i) => {
+        for (const [name, value] of Object.entries(row)) {
+          if (name === 'id') continue;
+          if (name === 'status') {
+            if (def.lifecycle && !def.lifecycle.includes(String(value))) at('example-invalid-value', `records.${entity}[${i}].status: \`${value}\` is not a state of ${entity} (${def.lifecycle.join(', ')})`, ['records', entity, i, name]);
+            continue;
+          }
+          const f = def.fields[name];
+          if (!f) { at('example-unknown-field', `records.${entity}[${i}]: \`${name}\` is not a field of ${entity}`, ['records', entity, i, name]); continue; }
+          for (const err of validateValue(f.type, value, records)) at('example-invalid-value', `records.${entity}[${i}].${name}: ${err}`, ['records', entity, i, name]);
+        }
+      });
+    }
 
     const tools: [string, PathKey[]][] = [
       ...Object.keys(ex.tools ?? {}).map((t): [string, PathKey[]] => [t, ['tools', t]]),
@@ -396,6 +427,10 @@ export function checkProject(project: ProjectDefs, env: CheckEnvironment): Diagn
     }
     env = { ...env, tools };
   }
+  // Phase 6: the entity tools the kernel binds for every entity type (24 §3).
+  const tools = { ...env.tools };
+  for (const [name, t] of Object.entries(entityTools(project.entities))) tools[name] ??= { effect: t.effect };
+  env = { ...env, tools };
   const entities = project.entities;
   const declared = Object.keys(project.roles ?? {});
   if (!env.roles && declared.length) env = { ...env, roles: declared };
@@ -406,15 +441,17 @@ export function checkProject(project: ProjectDefs, env: CheckEnvironment): Diagn
     });
   }
   for (const entity of Object.values(entities)) {
+    const scoped = scopedEntities(entities, domainOf(entity));
     for (const [name, field] of Object.entries(entity.fields)) {
-      checkTypeRefs(field.type, {}, entities, (code, message) => d.add('error', code, `${name}: ${message}`, entity.file, entity, ['fields', name]));
-    }
-    for (const [name, rel] of Object.entries(entity.relationships)) {
-      if (!entities[rel.target]) d.add('error', 'unknown-entity', `${name}: there is no entity type ${rel.target}`, entity.file, entity, ['relationships', name]);
+      checkTypeRefs(field.type, {}, scoped, (code, message) => d.add('error', code, `${name}: ${message}`, entity.file, entity, ['fields', name]));
     }
   }
   const out = d.list;
-  for (const workflow of Object.values(project.workflows)) out.push(...checkWorkflow(workflow, env, { entities }));
+  // Phase 6: domains, relationships, calculated fields, links, lifecycles, pages, views (check-domains.ts).
+  out.push(...checkDomains(project, env.roles));
+  for (const workflow of Object.values(project.workflows)) {
+    out.push(...checkWorkflow(workflow, env, { entities: scopedEntities(entities, domainOf(workflow)), project }));
+  }
   if (project.bindings) out.push(...checkBindings(project));
   return out;
 }

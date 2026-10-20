@@ -1385,6 +1385,7 @@
   "memwise.playbook.file": "Datei",
   "memwise.playbook.hideRules": "Regeln ausblenden",
   "memwise.playbook.layer.domain": "Ihre Domäne",
+  "memwise.playbook.layer.workspace": "Hausregeln des Arbeitsbereichs",
   "memwise.playbook.layer.platform": "Plattform-Standard",
   "memwise.playbook.layer.plugin": "Plugin {{name}}",
   "memwise.playbook.layer.step": "Dieser Schritt",

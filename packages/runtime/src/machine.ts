@@ -9,8 +9,10 @@ import { cancel, raise, setup, type AnyStateMachine } from 'xstate';
 /**
  * `conversation-step`: an agent step on the open engine (Phase 3): a chat with a person, so the
  * run waits on it like a person step and only its chat answers it (submitStep with `via`).
+ * `block`: a hand-off (start, call, for_each, wait_until; Phase 6, 24 §8): a wait for the
+ * driver, whose events the dispatcher sends.
  */
-export type StateKind = 'agent-step' | 'person-step' | 'external-step' | 'system-step' | 'conversation-step' | 'wait' | 'final';
+export type StateKind = 'agent-step' | 'person-step' | 'external-step' | 'system-step' | 'conversation-step' | 'block' | 'wait' | 'final';
 
 /** Per-state metadata the driver reads (the spike's `metaOf`). */
 export interface StateMeta {
@@ -34,6 +36,7 @@ export function stateKind(workflow: WorkflowDef, state: string): StateKind {
   if (state === END_STATE) return 'final';
   const def = workflow.states[state];
   if (!def) throw new Error(`workflow ${workflow.id} has no state "${state}"`);
+  if (def.block) return 'block';
   const step = workflow.steps[def.step ?? state];
   if (!step) return 'wait';
   return step.performer === 'agent' && step.engine === 'open' ? 'conversation-step' : KIND_BY_PERFORMER[step.performer];

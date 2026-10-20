@@ -1,0 +1,22 @@
+name: cv-arrives
+description: >
+  The Boston site emails the principal investigator's new CV to the eTMF address. The router says it
+  is documents, and one "File a TMF document" case starts for the attachment.
+case:
+  sender: coordinator@harbor-oncology.example
+  subject: "AST-301 US-012: updated PI CV (Dr. Lena Vogel)"
+  body: Please find attached the updated and signed CV for Dr. Vogel. Kind regards, the study coordinator.
+  documents: [vogel-cv.pdf]
+  received_at: "2026-10-20T08:12:00Z"
+model:
+  router:
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: documents
+            writes: { kind: documents }
+            rationale: The site sent one attachment, a signed CV, for the TMF.
+expect:
+  outcome: documents
+  state: end
+  writes: { kind: documents }

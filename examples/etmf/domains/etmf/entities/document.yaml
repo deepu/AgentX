@@ -1,0 +1,39 @@
+entity: Document
+title: "{artifact}"
+parent: site
+fields:
+  file:          { type: Document, required: true, description: "The original, exactly as it arrived" }
+  artifact:      { type: Text, description: "The artifact in the sponsor's TMF index, like Investigator CV" }
+  study:         Ref<Study>
+  site:          Ref<Site>
+  about:         { type: Ref<Person>, description: The person the document is about }
+  document_date: Date
+  version:       Text
+  language:      Text
+  sender:        Email
+  received_at:   DateTime
+  fills:         { type: Ref<ExpectedDocument>, description: The expected document it ticks off }
+lifecycle:
+  initial: received
+  states:
+    received:   { on: { index: indexed } }
+    indexed:    { on: { send_to_qc: in_qc } }
+    in_qc:      { on: { file: filed, send_back: rejected } }
+    rejected:   { on: { reindex: indexed } }
+    filed:      { on: { supersede: superseded } }
+    superseded: {}
+  transitions:
+    index:      { by: [step] }
+    send_to_qc: { by: [step] }
+    file:       { by: [step], signed: true }      # only with the TMF specialist's signature on it
+    send_back:  { by: [step, role:tmf_specialist] }
+    reindex:    { by: [step, role:tmf_specialist] }
+    supersede:  { by: [step] }
+invariants:
+  - "status = 'filed' implies artifact is set and site is set"
+page:
+  layout: split
+  header: [title, artifact, status, site]
+  left:  [{ viewer: file }]
+  right: [{ fields: [artifact, study, site, about, document_date, version] }, checks, details, { related: [versions, signatures] }]
+  below: [mentions, notes]

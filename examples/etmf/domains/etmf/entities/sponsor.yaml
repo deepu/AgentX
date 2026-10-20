@@ -1,0 +1,6 @@
+entity: Sponsor
+title: "{name}"
+fields:
+  name: { type: Text, required: true }
+relationships:
+  studies: many Study

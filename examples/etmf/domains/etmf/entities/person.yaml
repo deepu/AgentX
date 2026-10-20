@@ -1,0 +1,10 @@
+entity: Person
+title: "{name}"
+parent: site
+fields:
+  name:       { type: PersonName, required: true }
+  role:       { type: Text, description: "Their role on the site's delegation log, like Principal Investigator" }
+  site:       Ref<Site>
+  cv_expires: { type: Date, description: The CV on file must be renewed by then }
+relationships:
+  documents: { many: Document, via: about }

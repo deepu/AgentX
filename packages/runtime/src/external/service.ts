@@ -4,7 +4,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { DBOSClient } from '@dbos-inc/dbos-sdk';
 import {
-  parseDuration, type ApprovalDecision, type CaseValue, type ChannelName, type Delivery, type ExternalComment, type ExternalDocument,
+  domainOf, hasRole, parseDuration, type ApprovalDecision, type CaseValue, type ChannelName, type Delivery, type ExternalComment, type ExternalDocument,
   type ExternalLinkSummary, type ExternalParticipant, type ExternalSubmitInput, type ExternalSubmitResult, type ExtractResult,
   type InboxLinkAnswer, type InboxLinkDecision, type InboxLinkItem, type InboxLinkResult, type LinkRefusal, type Provenance,
   type RecordTypes, type StepDef, type StepToken, type WorkflowDef,
@@ -13,7 +13,7 @@ import { withTransaction, type PgFileStore, type PgPeopleStore, type PgRateCount
 import type { ToolDefinition, ToolGateway } from '@memwise/gateway';
 import type pg from 'pg';
 import { returnedComments } from '../prepare.ts';
-import { answerErrors, cleanValues, closeStepLinks, lockWaitingStep, queueSubmission } from '../submit.ts';
+import { answerErrors, cleanValues, closeStepLinks, lockWaitingStep, queueSubmission, recordTypesFor } from '../submit.ts';
 import { EXTERNAL_INVITE_TOOL, type Actor, type DocumentValue, type ExternalService, type InboxItem, type PersonActor, type PublicRequestInfo, type SubmitResult, type SubmitStepInput } from '../types.ts';
 import { maySee, type DefinitionCache } from '../views.ts';
 import { channelTool, deliver } from './deliver.ts';
@@ -125,7 +125,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
   /** Whether a person may act on links to `stepId`: its assignee's role, or the workflow owner's. */
   function mayManage(by: PersonActor, workflow: WorkflowDef, stepId: string): string | undefined {
     const roles = [...new Set([workflow.steps[stepId]?.assignee, workflow.owner].filter((r): r is string => !!r))];
-    if (!roles.length || roles.some((r) => by.roles.includes(r))) return undefined;
+    if (!roles.length || roles.some((r) => hasRole(by, r, domainOf(workflow)))) return undefined;
     return `only someone with the ${roles.join(' or ')} role can do this`;
   }
 
@@ -386,7 +386,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
     const stepId = item.kind === 'attention' ? undefined : item.stepId;
     const step = stepId ? workflow.steps[stepId] : undefined;
     const fields = (step?.reads ?? []).map((r) => r.replace(/^case\./, '').split('.')[0]!)
-      .filter((f, i, all) => all.indexOf(f) === i && values[f] !== undefined && maySee(actor, workflow.caseType.fields[f]))
+      .filter((f, i, all) => all.indexOf(f) === i && values[f] !== undefined && maySee(actor, workflow.caseType.fields[f], domainOf(workflow)))
       .map((f) => ({ label: plainLabel(f), value: display(values[f]!.value) }));
     if (item.kind === 'approval') {
       const d = (item.approval.preview.detail ?? {}) as { to?: unknown; subject?: unknown; body?: unknown };
@@ -547,7 +547,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
       const r = await runExtraction({
         db: pool, tools: deps.tools(), files: deps.files, workflow: at.workflow, step: at.step, stepRunId: at.stepRunId, run: at.run,
         documents: docs, onBehalfOf: `external:${link.id}`, policy: await stepPolicy(at.workflow, at.step.id),
-        records: { ...deps.entities(), ...at.workflow.caseType.types }, forParticipant: true,
+        records: recordTypesFor(deps.entities(), at.workflow), forParticipant: true,
       });
       if (r.suggestions.length) {
         await pool.query(`update mw.external_links set suggestions = suggestions || $2::jsonb where id = $1`, [link.id, JSON.stringify(r.suggestions)]);
@@ -582,7 +582,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
           if (bad) (errors[field] ??= []).push('this file was not uploaded with this form');
           values[field] = w.type.kind === 'list' ? docs : docs[0];
         }
-        for (const [field, errs] of Object.entries(await answerErrors(db, step, at.run.case_id, values, { ...deps.entities(), ...at.workflow.caseType.types }))) {
+        for (const [field, errs] of Object.entries(await answerErrors(db, step, at.run.case_id, values, recordTypesFor(deps.entities(), at.workflow)))) {
           (errors[field] ??= []).push(...errs);
         }
         if (Object.keys(errors).length) return { status: 'invalid', errors, message: 'Some answers need fixing.' };
@@ -613,7 +613,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
       const workflow = await workflowOf(s.workflow_id, s.workflow_hash);
       const step = workflow.steps[s.step_id];
       if (!step?.extract || (step.performer !== 'person' && step.performer !== 'external')) throw new Error(`${s.step_id} doesn't read documents`);
-      if (step.assignee && !by.roles.includes(step.assignee)) {
+      if (step.assignee && !hasRole(by, step.assignee, domainOf(workflow))) {
         throw Object.assign(new Error(`only someone with the ${step.assignee} role can fill in this step`), { code: 'forbidden' });
       }
       // Only the step's own documents: on the case already, uploaded by this person, or sent
@@ -635,7 +635,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
       const r = await runExtraction({
         db: pool, tools: deps.tools(), files: deps.files, workflow, step, stepRunId, run: { id: s.run_id, case_id: s.case_id },
         documents: docs, onBehalfOf: by.personId, policy: await stepPolicy(workflow, step.id),
-        records: { ...deps.entities(), ...workflow.caseType.types }, forParticipant: false,
+        records: recordTypesFor(deps.entities(), workflow), forParticipant: false,
       });
       if (r.suggestions.length) {
         await pool.query(`update mw.step_runs set suggestions = suggestions || $2::jsonb where id = $1`, [stepRunId, JSON.stringify(r.suggestions)]);
