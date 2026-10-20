@@ -14,10 +14,12 @@ import type {
   MwBindResult, MwBindingVersion, MwBindingView, MwDecideIdentityInput, MwEntityRecord, MwEntityRecordInput, MwGetBindingInput,
   MwIdentityCandidate, MwInboxBinding, MwInstallChoices, MwInstallPluginInput, MwInstallableSource, MwPluginDetail,
   MwPluginSummary,
+  MwChannelName, MwChannelsAvailable, MwDelivery, MwExternalLink, MwExtractInput, MwExtractResult, MwIssueLinkInput, MwIssuedLink,
+  MwNotifySettings, MwRelayConfigureInput, MwRelayStatus, MwResendPreview,
 } from '@memwise/shared/protocol'
 import type { ApprovalDecision, DraftDiff, DraftMeta } from '@memwise/defs'
 import type { CompiledPolicy } from '@memwise/policy'
-import type { Actor, CaseView, IdentityService, InboxItem, PluginsService } from '@memwise/runtime'
+import type { Actor, CaseView, ChannelService, ExternalService, IdentityService, InboxItem, PluginsService } from '@memwise/runtime'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { resolveConfigDir } from '@memwise/shared/config/paths'
@@ -78,6 +80,18 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.IDENTITY_LIST,
   RPC_CHANNELS.memwise.IDENTITY_DECIDE,
   RPC_CHANNELS.memwise.ENTITIES_RECORD,
+  // Phase 5
+  RPC_CHANNELS.memwise.EXTERNAL_LINKS,
+  RPC_CHANNELS.memwise.EXTERNAL_ISSUE,
+  RPC_CHANNELS.memwise.EXTERNAL_REVOKE,
+  RPC_CHANNELS.memwise.EXTERNAL_PREVIEW_RESEND,
+  RPC_CHANNELS.memwise.EXTERNAL_RESEND,
+  RPC_CHANNELS.memwise.EXTERNAL_EXTRACT,
+  RPC_CHANNELS.memwise.RELAY_STATUS,
+  RPC_CHANNELS.memwise.RELAY_CONFIGURE,
+  RPC_CHANNELS.memwise.CHANNELS_AVAILABLE,
+  RPC_CHANNELS.memwise.NOTIFY_GET,
+  RPC_CHANNELS.memwise.NOTIFY_SET,
 ] as const
 
 /** Largest upload accepted through the API (base64 travels inside one WS message). */
@@ -134,6 +148,14 @@ const IDENTITY_MESSAGES: Record<string, string> = {
   invalid: 'Choose "Same record" or "Different".',
   failed: 'The match could not be decided.',
 }
+const LINK_MESSAGES: Record<string, string> = {
+  no_address: 'There is no public address to make a link with yet. Turn on the public address in Settings, then try again.',
+  missing: 'That link was not found.',
+  failed: 'The link could not be changed.',
+}
+/** E.164: a plus, the country code and the number, 8 to 15 digits. */
+const E164 = /^\+[1-9]\d{6,14}$/
+const CHANNEL_NAMES: readonly MwChannelName[] = ['email', 'whatsapp']
 /** The meta playbook that binds a plugin (22 §4); its person steps show the binding review. */
 const BIND_PLUGIN = 'bind-plugin'
 const BIND_STEP_MODE: Record<string, MwInboxBinding['mode']> = { fix: 'edit', review: 'review' }
@@ -166,6 +188,24 @@ function pluginsOf(svc: MemwiseService): PluginsService {
   const plugins = (svc.kernel as { plugins?: PluginsService }).plugins
   if (!plugins) throw new Error('Plugins are not available in this version.')
   return plugins
+}
+
+/** The kernel's external links (Phase 5); refused clearly by a kernel that has none yet. */
+function externalOf(svc: MemwiseService): ExternalService {
+  const external = (svc.kernel as { external?: ExternalService }).external
+  if (!external) throw new Error('Links for clients are not available in this version.')
+  return external
+}
+
+function channelsOf(svc: MemwiseService): ChannelService {
+  const channels = (svc.kernel as { channels?: ChannelService }).channels
+  if (!channels) throw new Error('Sending by email or WhatsApp is not available in this version.')
+  return channels
+}
+
+/** The service's public address (Phase 5), if this service has one. */
+function publicAddressOf(svc: MemwiseService): MemwiseService['publicAddress'] | undefined {
+  return (svc as { publicAddress?: MemwiseService['publicAddress'] }).publicAddress
 }
 
 function identityOf(svc: MemwiseService): IdentityService {
@@ -325,9 +365,10 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
             ?? (binding?.mode === 'edit' ? await sentBackNote(svc, item.stepRunId, stepTitleOf) : undefined)
           if (item.kind === 'input' && wf && step) {
             const fields = d.stepWriteFields(c, wf, step)
+            const extract = d.toInboxExtract(step)
             out.push({
               kind: 'input', ...common, fields, prefill: d.toCaseValues(values, fields.map((f) => f.name).filter((f) => f in values)),
-              ...(returned ? { returned } : {}), ...(binding ? { binding } : {}),
+              ...(returned ? { returned } : {}), ...(binding ? { binding } : {}), ...(extract ? { extract } : {}),
             })
           } else {
             out.push({
@@ -753,7 +794,12 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const { svc, actor, c, d } = await begin(ctx)
       const v = await svc.kernel.getCaseView(caseId, actor)
       if (!v) throw new Error('That case was not found.')
-      return d.toCase(c, v)
+      // Phase 5: the case's client links and the messages sent for it (left out by a kernel without them).
+      const [links, deliveries] = await Promise.all([
+        Promise.resolve().then(() => externalOf(svc).links({ caseId })).catch(() => undefined),
+        Promise.resolve().then(() => channelsOf(svc).deliveries({ caseId })).catch(() => undefined),
+      ])
+      return d.toCase(c, v, { ...(links ? { links } : {}), ...(deliveries ? { deliveries } : {}) })
     },
 
     async startCase(ctx: RequestContext, input: MwStartCaseInput): Promise<MwCaseSummary | MwStartCaseRefusal> {
@@ -1267,7 +1313,154 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (!r) throw new Error('That record was not found.')
       return d.toEntityRecord(r, c.project, await peopleNames(svc))
     },
+
+    // ---------------------------------------------------------------- Phase 5 (23 §9, §11)
+
+    /** A case's links (newest first), for someone who may see the case. */
+    async listLinks(ctx: RequestContext, filter: { caseId?: string; runId?: string } = {}): Promise<MwExternalLink[]> {
+      const { svc, actor, d } = await begin(ctx)
+      const caseId = await caseOfFilter(svc, filter)
+      if (!caseId || !(await svc.kernel.getCaseView(caseId, actor).catch(() => undefined))) throw new Error('That case was not found.')
+      const links = await externalOf(svc).links(filter?.runId ? { runId: filter.runId } : { caseId })
+      return [...links].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(d.toExternalLink)
+    },
+
+    /** A link for staff to send themselves ("Copy link"); it needs a public address to point at. */
+    async issueLink(ctx: RequestContext, input: MwIssueLinkInput): Promise<MwIssuedLink> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.runId || !input.stepId) throw new Error('Choose the step the link is for.')
+      // Checked first, so no open link is left behind that nobody can open (it would also take the
+      // step out of the assignee's inbox).
+      const address = publicAddressOf(svc)
+      if (address && !address.publicUrl()) throw Object.assign(new Error(LINK_MESSAGES.no_address!), { code: 'link.no_address' })
+      const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
+      const name = text(input.participant?.name)
+      const email = text(input.participant?.email)
+      const phone = text(input.participant?.phone)
+      const note = text(input.note)
+      const r = await externalOf(svc).issueLink({
+        runId: input.runId, stepId: input.stepId,
+        participant: { ...(name ? { name } : {}), ...(email ? { email } : {}), ...(phone ? { phone } : {}) },
+        ...(note ? { note } : {}), by: actor,
+      })
+      emitMemwiseChange({ kind: 'external', id: r.link.id, caseId: r.link.caseId })
+      return { link: d.toExternalLink(r.link), ...(r.url ? { url: r.url } : { message: LINK_MESSAGES.no_address }) }
+    },
+
+    async revokeLink(ctx: RequestContext, linkId: string): Promise<MwSubmitResult> {
+      const { svc, actor } = await begin(ctx)
+      if (typeof linkId !== 'string' || !linkId) return refusal('link.missing', LINK_MESSAGES.missing!)
+      const r = await externalOf(svc).revoke(linkId, actor)
+      if (!r.applied) return refusal('link.not_revoked', r.message ?? LINK_MESSAGES.failed!)
+      emitMemwiseChange({ kind: 'external', id: linkId })
+      return { applied: true }
+    },
+
+    /** The exact message "Send again" would send, for the person to confirm. */
+    async previewResend(ctx: RequestContext, input: { linkId: string; via?: MwChannelName }): Promise<MwResendPreview> {
+      const { svc, actor } = await begin(ctx)
+      await requireLinkCase(svc, actor, input?.linkId)
+      const via = input.via && CHANNEL_NAMES.includes(input.via) ? input.via : undefined
+      const r = await externalOf(svc).previewResend({ linkId: input.linkId, ...(via ? { via } : {}) })
+      if (!('body' in r)) throw new Error(r.message)
+      return { to: r.to, via: r.via, ...(r.subject ? { subject: r.subject } : {}), body: r.body }
+    },
+
+    /** Send the link again after the person saw the preview: recorded as their approval. */
+    async resendLink(ctx: RequestContext, input: { linkId: string; via?: MwChannelName }): Promise<MwSubmitResult & { delivery?: MwDelivery }> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.linkId) return refusal('link.missing', LINK_MESSAGES.missing!)
+      const via = input.via && CHANNEL_NAMES.includes(input.via) ? input.via : undefined
+      const r = await externalOf(svc).resend({ linkId: input.linkId, ...(via ? { via } : {}), by: actor })
+      if (!r.applied) return refusal('link.not_sent', r.message ?? 'The link could not be sent again.')
+      emitMemwiseChange({ kind: 'external', id: input.linkId })
+      return { applied: true, ...(r.delivery ? { delivery: d.toDelivery(r.delivery) } : {}) }
+    },
+
+    /** Staff filling a step: read its documents the way the client's form does (23 §5). */
+    async extractForStep(ctx: RequestContext, input: MwExtractInput): Promise<MwExtractResult> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.stepRunId || !Array.isArray(input.documents) || input.documents.some((x) => typeof x !== 'string')) {
+        throw new Error('Choose the documents to read.')
+      }
+      return d.toExtractResult(await externalOf(svc).extractForStep({ stepRunId: input.stepRunId, documents: input.documents, by: actor }))
+    },
+
+    /** Settings → Public address; off while the playbooks aren't running. */
+    async relayStatus(_ctx: RequestContext): Promise<MwRelayStatus> {
+      const svc = getMemwiseService()
+      const address = svc ? publicAddressOf(svc) : undefined
+      return address ? address.status() : { enabled: false, state: 'off' }
+    },
+
+    /** Turn the relay on or off, or change its address: the owner of the install only. */
+    async relayConfigure(ctx: RequestContext, input: MwRelayConfigureInput): Promise<MwRelayStatus> {
+      const { svc, actor } = await begin(ctx)
+      if (!isInstallOwner(svc, ctx, actor)) throw new Error('Only the owner of this install can change the public address.')
+      const address = publicAddressOf(svc)
+      if (!address) throw new Error('The public address is not available in this version.')
+      if (typeof input?.enabled !== 'boolean') throw new Error('Say whether the public address is on or off.')
+      const r = await address.configure({ enabled: input.enabled, ...(typeof input.relayUrl === 'string' ? { relayUrl: input.relayUrl } : {}) })
+      emitMemwiseChange({ kind: 'relay' })
+      return r
+    },
+
+    async channelsAvailable(ctx: RequestContext): Promise<MwChannelsAvailable> {
+      const { svc } = await begin(ctx)
+      const r: Partial<Record<MwChannelName, { tool: string; plugin?: string } | undefined>> = await channelsOf(svc).available().catch(() => ({}))
+      const one = (x: { tool: string; plugin?: string } | undefined) => (x ? { tool: x.tool, ...(x.plugin ? { plugin: x.plugin } : {}) } : null)
+      return { email: one(r.email), whatsapp: one(r.whatsapp) }
+    },
+
+    /** The person's own notification settings. */
+    async notifyGet(ctx: RequestContext): Promise<MwNotifySettings> {
+      const { svc, actor } = await begin(ctx)
+      return plainNotify(await channelsOf(svc).notifySettings(actor.personId))
+    },
+
+    /** A person sets their own notifications: email on or off, and a WhatsApp number in international form. */
+    async notifySet(ctx: RequestContext, input: MwNotifySettings): Promise<MwNotifySettings> {
+      const { svc, actor } = await begin(ctx)
+      if (!input || typeof input !== 'object') throw new Error('Choose how you want to be told about new items.')
+      if (input.email !== undefined && typeof input.email !== 'boolean') throw new Error('Choose whether to get email.')
+      if (input.whatsapp !== undefined && typeof input.whatsapp !== 'string') throw new Error('Enter a WhatsApp number, like +919876543210.')
+      const phone = typeof input.whatsapp === 'string' ? input.whatsapp.replace(/[\s().-]/g, '') : undefined
+      if (phone && !E164.test(phone)) throw new Error('Enter the WhatsApp number in international form, with + and the country code, like +919876543210.')
+      const settings = { ...(typeof input.email === 'boolean' ? { email: input.email } : {}), ...(phone ? { whatsapp: phone } : {}) }
+      const saved = await channelsOf(svc).setNotifySettings(actor.personId, settings, actor)
+      emitMemwiseChange({ kind: 'status' })
+      return plainNotify(saved)
+    },
   }
+
+  /** The case a links filter names (by case, or by run). */
+  async function caseOfFilter(svc: MemwiseService, filter: { caseId?: string; runId?: string }): Promise<string | undefined> {
+    if (typeof filter?.caseId === 'string' && filter.caseId) return filter.caseId
+    if (typeof filter?.runId === 'string' && filter.runId) return (await svc.kernel.getRun(filter.runId).catch(() => undefined))?.caseId
+    return undefined
+  }
+
+  /** The link exists and its case is one this person may see. */
+  async function requireLinkCase(svc: MemwiseService, actor: PersonActor, linkId: string | undefined): Promise<void> {
+    if (typeof linkId !== 'string' || !linkId) throw new Error(LINK_MESSAGES.missing)
+    let caseId: string | undefined
+    try {
+      const r = await svc.kernel.pool.query('select case_id from mw.external_links where id = $1', [linkId])
+      caseId = (r.rows[0] as { case_id?: string } | undefined)?.case_id
+    } catch {
+      caseId = undefined
+    }
+    if (!caseId || !(await svc.kernel.getCaseView(caseId, actor).catch(() => undefined))) throw new Error(LINK_MESSAGES.missing)
+  }
+
+  /** The install's owner: their own connection (desktop, the server's admin token), or signed in as the owner. */
+  function isInstallOwner(svc: MemwiseService, ctx: RequestContext, actor: PersonActor): boolean {
+    return svc.canActAs(clientOf(ctx)) || actor.personId === svc.owner.id
+  }
+}
+
+function plainNotify(s: MwNotifySettings | undefined): MwNotifySettings {
+  return { ...(typeof s?.email === 'boolean' ? { email: s.email } : {}), ...(typeof s?.whatsapp === 'string' && s.whatsapp ? { whatsapp: s.whatsapp } : {}) }
 }
 
 export type MemwiseApi = ReturnType<typeof createMemwiseApi>
@@ -1322,6 +1515,18 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.IDENTITY_LIST, (ctx, _ws: string, filter) => api.listIdentityCandidates(ctx, filter ?? {}))
   server.handle(ch.IDENTITY_DECIDE, (ctx, _ws: string, input) => api.decideIdentity(ctx, input))
   server.handle(ch.ENTITIES_RECORD, (ctx, _ws: string, input) => api.getEntityRecord(ctx, input))
+  // Phase 5
+  server.handle(ch.EXTERNAL_LINKS, (ctx, _ws: string, filter) => api.listLinks(ctx, filter ?? {}))
+  server.handle(ch.EXTERNAL_ISSUE, (ctx, _ws: string, input) => api.issueLink(ctx, input))
+  server.handle(ch.EXTERNAL_REVOKE, (ctx, _ws: string, linkId: string) => api.revokeLink(ctx, linkId))
+  server.handle(ch.EXTERNAL_PREVIEW_RESEND, (ctx, _ws: string, input) => api.previewResend(ctx, input))
+  server.handle(ch.EXTERNAL_RESEND, (ctx, _ws: string, input) => api.resendLink(ctx, input))
+  server.handle(ch.EXTERNAL_EXTRACT, (ctx, _ws: string, input) => api.extractForStep(ctx, input))
+  server.handle(ch.RELAY_STATUS, (ctx) => api.relayStatus(ctx))
+  server.handle(ch.RELAY_CONFIGURE, (ctx, _ws: string, input) => api.relayConfigure(ctx, input))
+  server.handle(ch.CHANNELS_AVAILABLE, (ctx) => api.channelsAvailable(ctx))
+  server.handle(ch.NOTIFY_GET, (ctx) => api.notifyGet(ctx))
+  server.handle(ch.NOTIFY_SET, (ctx, _ws: string, input) => api.notifySet(ctx, input))
 
   onMemwiseChange((change) => {
     pushTyped(server, RPC_CHANNELS.memwise.CHANGED, { to: 'all' }, change)
