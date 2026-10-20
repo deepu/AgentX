@@ -141,7 +141,9 @@ export function startRelayTunnel(opts: RelayTunnelOptions & RelayTunnelTestOptio
       lastHeard = Date.now();
       const text = typeof event.data === 'string' ? event.data : new TextDecoder().decode(event.data as ArrayBuffer);
       const frame = parseFrame<RelayToCore>(text);
-      if (frame) void onFrame(socket, frame, (why) => (refused = why));
+      if (frame) {
+        onFrame(socket, frame, (why) => (refused = why)).catch((err) => log.error('[relay] could not handle a frame from the relay', err));
+      }
     };
     socket.onerror = () => {
       // The close event that follows says what to do.
@@ -179,8 +181,16 @@ export function startRelayTunnel(opts: RelayTunnelOptions & RelayTunnelTestOptio
         pingTimer = setInterval(() => {
           if (ws !== socket) return stopPing();
           if (Date.now() - lastHeard > pingEvery * 2.5) {
+            // A dead connection may never finish closing, so stop waiting on it now.
             log.warn('[relay] no answer from the relay; reconnecting');
-            socket.close(4002, 'no pong');
+            ws = null;
+            abortAll('the tunnel stopped answering');
+            try {
+              socket.close(4002, 'no pong');
+            } catch {
+              // already gone
+            }
+            scheduleRetry();
             return;
           }
           if (socket.readyState === WebSocket.OPEN) socket.send(PING_FRAME);
@@ -243,6 +253,11 @@ export function startRelayTunnel(opts: RelayTunnelOptions & RelayTunnelTestOptio
 
   async function run(socket: WebSocket, r: Incoming) {
     r.started = true;
+    if (!r.path.startsWith('/') || r.path.startsWith('//')) {
+      requests.delete(r.id);
+      send(socket, { t: 'res', id: r.id, status: 400, headers: [['content-type', 'text/plain; charset=utf-8']] });
+      return;
+    }
     const target = `${publicUrl}${r.path}${r.query ? '?' + r.query : ''}`;
     const hasBody = r.method !== 'GET' && r.method !== 'HEAD';
     let response: Response;

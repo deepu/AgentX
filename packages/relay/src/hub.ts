@@ -327,22 +327,30 @@ export class InstallHub {
       this.log.info(`[relay] ${this.installId} connected (${frame.client ?? 'unknown client'})`);
       return;
     }
-    switch (frame.t) {
-      case 'ping':
-        socket.send(PONG_FRAME);
-        return;
-      case 'pong':
-      case 'hello':
-        return;
-      case 'res':
-        return this.onRes(socket, frame);
-      case 'res.body':
-        return this.onResBody(socket, frame);
-      case 'cancel': {
-        const f = this.inflight.get(frame.id);
-        if (f && f.socket === socket) this.fail(f, 502, 'The app could not answer this request.');
-        return;
+    try {
+      switch (frame.t) {
+        case 'ping':
+          socket.send(PONG_FRAME);
+          return;
+        case 'pong':
+        case 'hello':
+          return;
+        case 'res':
+          return this.onRes(socket, frame);
+        case 'res.body':
+          return this.onResBody(socket, frame);
+        case 'cancel': {
+          const f = this.inflight.get(frame.id);
+          if (f && f.socket === socket) this.fail(f, 502, 'The app could not answer this request.');
+          return;
+        }
       }
+    } catch (err) {
+      // A frame the relay can't use (bad base64, odd shapes) ends that request, not the relay.
+      const id = (frame as { id?: unknown }).id;
+      const f = typeof id === 'string' ? this.inflight.get(id) : undefined;
+      if (f && f.socket === socket) this.fail(f, 502, 'The app sent an answer the relay cannot pass on.');
+      this.log.warn(`[relay] bad frame from ${this.installId}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -358,8 +366,7 @@ export class InstallHub {
 
   /** Forwards a request over the current tunnel and resolves with the core's answer. */
   async forward(req: ForwardRequest): Promise<Response> {
-    const socket = this.current;
-    if (!socket) return offlineResponse(req.path, req.method);
+    if (!this.current) return offlineResponse(req.path, req.method);
 
     const wait = this.perIp.take(req.clientIp);
     if (wait) {
@@ -379,6 +386,8 @@ export class InstallHub {
       req = { ...req, body: inlineBody };
     }
     if (inlineBody && inlineBody.length > this.limits.requestBodyBytes) return tooLarge();
+    const socket = this.current; // again: reading the body took time
+    if (!socket) return offlineResponse(req.path, req.method);
 
     const id = `${(++this.seq).toString(36)}.${toBase64Url(randomBytes(6))}`;
     return new Promise<Response>((resolve) => {
@@ -441,8 +450,11 @@ export class InstallHub {
     if (!f || f.socket !== socket || !f.head) return;
     const status = Number(frame.status);
     if (!Number.isInteger(status) || status < 200 || status > 599) return this.fail(f, 502, 'The app sent an answer the relay cannot pass on.');
-    const headers = filterResponseHeaders(Array.isArray(frame.headers) ? frame.headers : []);
-    const declared = Number(frame.headers?.find?.(([n]) => n.toLowerCase() === 'content-length')?.[1] ?? NaN);
+    const pairs = (Array.isArray(frame.headers) ? frame.headers : []).filter(
+      (h): h is [string, string] => Array.isArray(h) && typeof h[0] === 'string' && typeof h[1] === 'string',
+    );
+    const headers = filterResponseHeaders(pairs);
+    const declared = Number(pairs.find(([n]) => n.toLowerCase() === 'content-length')?.[1] ?? NaN);
     if (declared > this.limits.responseBodyBytes) {
       this.send(socket, { t: 'cancel', id: f.id });
       return this.fail(f, 502, 'The answer from the app is too large.');

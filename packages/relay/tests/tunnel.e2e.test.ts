@@ -309,6 +309,54 @@ describe('offline, replacement and reconnects', () => {
     expect(CLOSE_REFUSED).toBe(4001);
   });
 
+  test('pings keep the tunnel up, and a relay that stops answering is left for a new connection', async () => {
+    // A stand-in relay that welcomes anyone and then never answers a ping.
+    let connections = 0;
+    const silent = Bun.serve({
+      port: 0,
+      fetch(req, srv) {
+        return srv.upgrade(req) ? undefined : new Response('no', { status: 400 });
+      },
+      websocket: {
+        open(ws) {
+          connections++;
+          ws.send(JSON.stringify({ t: 'challenge', nonce: 'n' }));
+        },
+        message(ws, msg) {
+          if (String(msg).includes('"hello"')) ws.send(JSON.stringify({ t: 'welcome', installId: 'x', publicUrl: 'http://x' }));
+        },
+      },
+    });
+    cleanup.push(() => silent.stop(true));
+    const t = startRelayTunnel({
+      relayUrl: `http://localhost:${silent.port}`,
+      identity: await generateIdentity(),
+      handle: async () => new Response('x'),
+      log: quietLog,
+      pingEveryMs: 40,
+      backoff: { minMs: 20, maxMs: 40 },
+    });
+    cleanup.push(() => t.close());
+    await waitFor(() => connections >= 2, 3_000, 'the tunnel to give up on the silent relay and dial again');
+
+    // The real relay answers pings, so the same settings stay connected.
+    const r = relay();
+    cleanup.push(() => r.stop());
+    const live = startRelayTunnel({
+      relayUrl: r.url,
+      identity: await generateIdentity(),
+      handle: async () => new Response('x'),
+      log: quietLog,
+      pingEveryMs: 40,
+    });
+    cleanup.push(() => live.close());
+    await waitFor(() => live.status().state === 'connected', 3_000, 'the live tunnel');
+    const since = live.status().since;
+    await Bun.sleep(400);
+    expect(live.status().state).toBe('connected');
+    expect(live.status().since).toBe(since);
+  });
+
   test('close() turns the tunnel off and the install goes offline', async () => {
     const { base, tunnel: t, relay: r, identity } = await setup();
     await t.close();
