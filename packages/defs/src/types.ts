@@ -311,6 +311,11 @@ export interface ProjectDefs {
   plugins?: Record<string, import('./plugin-types.ts').InstalledPlugin>;
   /** Phase 4: frozen bindings (`domain/bindings/*.yaml`), by plugin id. */
   bindings?: Record<string, import('./plugin-types.ts').BindingDef>;
+  /**
+   * Phase 4: every installed version of every plugin, by id then version (a binding pins a
+   * version, which need not be the newest in `plugins`).
+   */
+  pluginVersions?: Record<string, Record<string, import('./plugin-types.ts').InstalledPlugin>>;
 }
 
 // ---------------------------------------------------------------- checks (05 §8)

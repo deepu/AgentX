@@ -1,0 +1,25 @@
+workflow: client-intake
+version: 1
+title: Client intake
+owner: manager                 # stopped cases and cases that need a person go to a manager
+case: ./case.yaml
+policy: ./policy.yaml
+start: fill
+steps:
+  fill:
+    on: { submitted: check }
+    wait: { remind: 3d, timeout: 7d → needs_person }
+  check:
+    on:
+      checked:      verify
+      needs_info:   fill
+      failed:       needs_person
+      needs_person: needs_person
+  verify:
+    on: { approved: onboard, sent_back: fill }
+    wait: { remind: 1d, timeout: 3d → needs_person }
+  onboard: { on: { done: end } }
+  needs_person:
+    on: { resolved: check }
+    assignee: manager
+    wait: { timeout: 7d → end }

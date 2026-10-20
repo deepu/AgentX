@@ -16,7 +16,8 @@ import type { Actor, Kernel as KernelPhase1, KernelOptions, KernelPhase2, Person
 import type { DtoContext, ToolInfo } from './dto'
 import { emitMemwiseChange, getMemwiseHostStatus, setMemwiseHostStatus, setMemwiseService, type MemwiseHostStatus } from './host'
 import { defaultModelResolver, projectModelRoles, type ModelResolver } from './models'
-import { addMissingMetaPlaybooks, affectsIndex, findExampleProject, seedProject } from './seed'
+import { addMissingMetaPlaybooks, affectsIndex, findExampleProject, findExamplePlugins, META_PLAYBOOK_DIRS, seedProject } from './seed'
+import { createConnectorBridge, type SourcePluginFolder } from './connectors'
 import { toDiagnostic } from './dto'
 
 export interface MemwiseLogger {
@@ -52,6 +53,11 @@ export interface MemwiseServiceOptions {
   pgBinDir?: string
   /** Tools beyond the sample set (caller tools win by name). */
   tools?: ToolDefinition[]
+  /**
+   * The workspace whose connectors (MCP sources) plugins may use as `{ source: <slug> }` servers.
+   * Default `MEMWISE_WORKSPACE_DIR`, else the app's active workspace, looked up at each use.
+   */
+  workspaceRoot?: string | (() => string | undefined)
   /** Re-index when project files change. Default true. */
   watch?: boolean
   /** Tests: rethrow a startup failure instead of only reporting it. */
@@ -73,6 +79,13 @@ export interface MemwiseService {
   readonly modelConfigured: boolean
   /** Whether the project was seeded from the example on this start. */
   readonly seeded: boolean
+  /** The bundled example plugins folder (`examples/plugins`), for "Install an example plugin". */
+  readonly examplePluginsDir?: string
+  /**
+   * The workspace's enabled MCP connectors as installable plugin folders (`source/<slug>`), each
+   * ready for `kernel.plugins.install(dir)`. Empty without a workspace or sources.
+   */
+  sourcePlugins(): Promise<SourcePluginFolder[]>
   status(): MemwiseHostStatus
   /** The indexed definitions with what the DTO mappers need. */
   context(): Promise<DtoContext>
@@ -150,15 +163,18 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     const exampleDir = findExampleProject(opts.exampleRoots)
     const seeded = seedProject(projectDir, exampleDir)
     if (seeded) log.info(`[memwise] set up the playbooks folder ${projectDir} from the example`)
-    // Phase 3: building and changing playbooks are themselves playbooks; earlier installs lack them.
+    const defs = await import('@memwise/defs')
+    // Phase 3: building and changing playbooks are themselves playbooks; earlier installs lack
+    // them. Phase 4 adds binding plugins (bind-plugin).
     try {
-      const added = addMissingMetaPlaybooks(projectDir, exampleDir)
+      const metaIds = [...new Set<string>([...META_PLAYBOOK_DIRS, ...defs.META_PLAYBOOKS])]
+      const added = addMissingMetaPlaybooks(projectDir, exampleDir, metaIds)
       if (added.length) log.info(`[memwise] added the playbooks ${added.join(', ')} to ${projectDir}`)
     } catch (e) {
       log.warn(`[memwise] could not add the meta playbooks: ${errorMessage(e)}`)
     }
-    const { loadProject } = await import('@memwise/defs')
-    const loaded = await loadProject(projectDir)
+    const loaded = await defs.loadProject(projectDir)
+    const examplePluginsDir = findExamplePlugins(opts.exampleRoots)
 
     // ---- models and tools
     const models = await (opts.modelResolver ?? defaultModelResolver)({ roles: projectModelRoles(loaded.project), project: loaded.project })
@@ -167,9 +183,21 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     // Scripted mode keeps the sample extractor (the scripted checker calls it with document
     // names); otherwise the kernel binds the quarantined reader on the extractor role.
     const sampleOpts = { databaseUrl, ...(models.example ? {} : { stubExtractor: false }) } as Parameters<typeof runtime.sampleTools>[0]
-    const tools: ToolDefinition[] = [...(opts.tools ?? []), ...runtime.sampleTools(sampleOpts)]
+    // Phase 4 (22 §3): the same sample implementations back plugin tools on `run: { builtin }`
+    // routes. A project that binds plugins (it has domain/bindings/) gets them only that way, so
+    // nothing is bound until a binding freezes; earlier projects keep them always bound.
+    const builtins = runtime.sampleTools(sampleOpts)
+    const usesBindings = existsSync(join(projectDir, 'domain', 'bindings'))
+    const tools: ToolDefinition[] = [...(opts.tools ?? []), ...(usesBindings ? [] : builtins)]
+    const connectors = createConnectorBridge({
+      configDir: opts.configDir,
+      ...(opts.workspaceRoot ? { workspaceRoot: opts.workspaceRoot } : {}),
+      logger: log,
+    })
     const toolInfo = new Map<string, ToolInfo>()
-    for (const t of tools) {
+    // Builtins describe the plugin tools bound to them too; a directly passed tool wins by name.
+    for (const t of [...tools, ...builtins]) {
+      if (toolInfo.has(t.name)) continue
       toolInfo.set(t.name, {
         name: t.name,
         ...(t.description ? { description: t.description } : {}),
@@ -188,6 +216,8 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       databaseUrl,
       projectDir,
       tools,
+      builtins,
+      resolveMcpSource: (slug) => connectors.resolveMcpSource(slug),
       modelRoles: models.modelRoles,
       providers: models.providers,
       filesDir: opts.filesDir ?? join(opts.configDir, 'files'),
@@ -278,6 +308,8 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       owner: ownerPerson,
       modelConfigured: models.configured,
       seeded,
+      ...(examplePluginsDir ? { examplePluginsDir } : {}),
+      sourcePlugins: () => connectors.sourcePluginFolders(),
       status: getMemwiseHostStatus,
       async context() {
         const { valueTypeToJsonSchema } = await import('@memwise/defs')

@@ -1,0 +1,54 @@
+# The client intake playbook as a MemWise plugin (docs/memwise/22-phase-4-interfaces.md §2).
+# Everything here is in the plugin's own terms: a `Client`, the roles `staff` and `manager`,
+# and `email.send` for whatever tool the domain binds to send email. Binding it maps those onto
+# the domain (for example `Client → Customer`, `tax_id → gstin`).
+id: memwise/client-intake
+version: 1.0.0
+title: Client intake
+description: >
+  Staff fill the intake form for a new client, an agent checks it against the uploaded PAN card
+  and GST certificate, a manager approves, and the client is written into the domain's records.
+trust: first-party
+
+requires:
+  capabilities:
+    email_send: { as: email.send }     # in the workflow, `email.send` is the domain's email_send provider
+  entities:
+    Client:
+      fields:
+        name:   { type: PersonName, required: true }
+        email:  Email
+        tax_id: Identifier(GSTIN)
+        pan:    Identifier(PAN)
+  roles:
+    staff:   { title: Staff, description: Runs intakes and fills forms for clients }
+    manager: { title: Manager, description: Approves onboarding }
+
+tools:
+  gst.validate_gstin:
+    description: "Look up a GSTIN in the GST registry: whether it is valid and the legal name it is registered to."
+    effect: read
+    input:
+      type: object
+      properties: { gstin: { type: string } }
+      required: [gstin]
+      additionalProperties: false
+    run: { builtin: gst.validate_gstin }
+  intake.extract_fields:
+    description: "Extract the fields printed on the client's uploaded documents (PAN card, GST certificate)."
+    effect: read
+    quarantine: true                   # document text is untrusted: reading it taints the session
+    input:
+      type: object
+      properties: { documents: { type: array, items: { type: string } } }
+      required: [documents]
+      additionalProperties: false
+    run: { builtin: intake.extract_fields }
+
+# The plugin's default policy layer; the domain may tighten it in the binding, never loosen it.
+policy:
+  tools:
+    rules:
+      intake.extract_fields: { rateLimit: 30/min }
+
+workflows: [client-intake]

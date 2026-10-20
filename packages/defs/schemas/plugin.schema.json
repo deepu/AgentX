@@ -1,0 +1,753 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "<publisher>/<name>, lower case."
+    },
+    "version": {
+      "type": "string",
+      "description": "Semver, e.g. 1.0.0."
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "trust": {
+      "description": "Default local.",
+      "type": "string",
+      "enum": [
+        "first-party",
+        "verified",
+        "community",
+        "local"
+      ]
+    },
+    "imported_from": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "claude-plugin"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "provides": {
+      "type": "object",
+      "properties": {
+        "capabilities": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "tool": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "requires": {
+      "type": "object",
+      "properties": {
+        "capabilities": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "as": {
+                "type": "string",
+                "description": "The tool name the plugin's workflows use for it."
+              },
+              "optional": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "as"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "entities": {
+          "description": "Entities in the plugin's own terms, mapped to the domain's at binding.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "A value type: Text, Money, Identifier(GSTIN), Quantity(kg), Enum[a, b], List<T>, Ref<Entity>, or a record type name."
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "description": "A value type: Text, Money, Identifier(GSTIN), Quantity(kg), Enum[a, b], List<T>, Ref<Entity>, or a record type name."
+                        },
+                        "required": {
+                          "type": "boolean"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "access": {
+                          "description": "Roles allowed to see the field.",
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "fields"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "roles": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tools": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "effect": {
+            "description": "Absent: unclassified (irreversible until a binding classifies it).",
+            "type": "string",
+            "enum": [
+              "read",
+              "draft",
+              "write",
+              "outbound",
+              "irreversible"
+            ]
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {},
+            "description": "A JSON Schema."
+          },
+          "output": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {},
+            "description": "A JSON Schema."
+          },
+          "quarantine": {
+            "type": "boolean"
+          },
+          "idempotent": {
+            "type": "boolean"
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "annotations": {
+            "type": "object",
+            "properties": {
+              "readOnlyHint": {
+                "type": "boolean"
+              },
+              "destructiveHint": {
+                "type": "boolean"
+              },
+              "idempotentHint": {
+                "type": "boolean"
+              },
+              "openWorldHint": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "capability": {
+            "type": "string"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "builtin": {
+                    "type": "string",
+                    "description": "First-party code shipped with the app, by name."
+                  }
+                },
+                "required": [
+                  "builtin"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mcp": {
+                    "type": "string",
+                    "description": "A server under mcp_servers."
+                  },
+                  "tool": {
+                    "type": "string",
+                    "description": "The tool name on that server."
+                  }
+                },
+                "required": [
+                  "mcp",
+                  "tool"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "A subprocess per call: JSON arguments on stdin, a JSON result on stdout."
+                  },
+                  "timeout": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w)\\s*)+$|^\\s*\\d+\\s*$"
+                      }
+                    ],
+                    "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."
+                  }
+                },
+                "required": [
+                  "command"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "run"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "mcp_servers": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "env": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "cwd": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "command"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "http",
+                  "sse"
+                ]
+              },
+              "url": {
+                "type": "string"
+              },
+              "headers": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "description": "A connector set up in the app; the host resolves it with its credentials."
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "workflows": {
+      "description": "Folders under workflows/.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "skills": {
+      "description": "Folders under skills/ with a SKILL.md.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "records": {
+      "description": "Record kinds a connector exposes, for bindings to map onto domain entities.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "list": {
+            "type": "object",
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "items": {
+                "type": "string"
+              },
+              "args": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "tool"
+            ],
+            "additionalProperties": false
+          },
+          "get": {
+            "type": "object",
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "arg": {
+                "type": "string"
+              },
+              "item": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool",
+              "arg"
+            ],
+            "additionalProperties": false
+          },
+          "key": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "description": "A value type: Text, Money, Identifier(GSTIN), Quantity(kg), Enum[a, b], List<T>, Ref<Entity>, or a record type name."
+            }
+          }
+        },
+        "required": [
+          "list",
+          "key",
+          "fields"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "description": "The layer name.",
+          "type": "string"
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "read": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            },
+            "draft": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            },
+            "write": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            },
+            "outbound": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            },
+            "irreversible": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "tools": {
+          "type": "object",
+          "properties": {
+            "allow": {
+              "description": "If set, only these tools.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "deny": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "require": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rules": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "treatment": {
+                    "type": "string",
+                    "enum": [
+                      "allow",
+                      "preview",
+                      "approve",
+                      "deny"
+                    ]
+                  },
+                  "rateLimit": {
+                    "type": "string",
+                    "pattern": "^\\s*\\d+\\s*\\/\\s*(\\d+(\\.\\d+)?\\s*)?(ms|s|m|h|d|w|sec|second|min|minute|hr|hour|day|week)\\s*$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "budgets": {
+          "type": "object",
+          "properties": {
+            "tokens": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\s*\\d+(\\.\\d+)?\\s*[kKmM]?\\s*$"
+                }
+              ],
+              "description": "A count: 12, 40k, 1.5m (million)."
+            },
+            "time": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w)\\s*)+$|^\\s*\\d+\\s*$"
+                }
+              ],
+              "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."
+            },
+            "modelCalls": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\s*\\d+(\\.\\d+)?\\s*[kKmM]?\\s*$"
+                }
+              ],
+              "description": "A count: 12, 40k, 1.5m (million)."
+            },
+            "money": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number"
+                },
+                "currency": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{3}$"
+                }
+              },
+              "required": [
+                "amount",
+                "currency"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "modelRoles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "taint": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "outboundWhenTainted": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "approvals": {
+          "type": "object",
+          "properties": {
+            "by": {
+              "description": "Roles that may decide effect approvals.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "title": "MemWise policy layer",
+      "description": "domain/policy.yaml, workflows/<id>/policy.yaml, or the policy block of a step."
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "runtime": {
+          "type": "string"
+        },
+        "lockfile": {
+          "type": "string"
+        },
+        "network": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "triggers": {
+      "type": "array",
+      "items": {}
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "title"
+  ],
+  "additionalProperties": false,
+  "title": "MemWise plugin",
+  "description": "memwise-plugin.yaml: a plugin's manifest."
+}

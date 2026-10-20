@@ -43,6 +43,47 @@ export function findExampleProject(roots: (string | undefined)[] = []): string |
   return undefined
 }
 
+const EXAMPLE_PLUGINS = join('examples', 'plugins')
+
+const isPluginDir = (dir: string) =>
+  existsSync(join(dir, 'memwise-plugin.yaml')) || existsSync(join(dir, '.claude-plugin', 'plugin.json'))
+
+/** The plugin folders (MemWise or Claude plugins) directly in `pluginsDir`, by name. */
+export function listExamplePlugins(pluginsDir: string | undefined): { name: string; dir: string }[] {
+  if (!pluginsDir) return []
+  try {
+    return readdirSync(pluginsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && isPluginDir(join(pluginsDir, e.name)))
+      .map((e) => ({ name: e.name, dir: join(pluginsDir, e.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  } catch {
+    return []
+  }
+}
+
+const hasPlugins = (dir: string) => listExamplePlugins(dir).length > 0
+
+/**
+ * The bundled example plugins (`examples/plugins`: client-intake, sample-email, sample-crm,
+ * connectors), for "Install an example plugin": `MEMWISE_EXAMPLE_PLUGINS_DIR`, then
+ * `<root>/examples/plugins` under each root, then next to the example project
+ * (`findExampleProject`, which also walks up from cwd). Undefined when none is there.
+ */
+export function findExamplePlugins(roots: (string | undefined)[] = []): string | undefined {
+  const env = process.env.MEMWISE_EXAMPLE_PLUGINS_DIR
+  if (env && hasPlugins(env)) return resolve(env)
+  for (const root of [...roots.filter((r): r is string => !!r), process.cwd()]) {
+    const direct = join(root, EXAMPLE_PLUGINS)
+    if (hasPlugins(direct)) return resolve(direct)
+  }
+  const project = findExampleProject(roots)
+  if (project) {
+    const sibling = join(dirname(project), 'plugins')
+    if (hasPlugins(sibling)) return resolve(sibling)
+  }
+  return undefined
+}
+
 /** Seeds `projectDir` from the example when it is missing or empty. Returns whether it seeded. */
 export function seedProject(projectDir: string, exampleDir: string | undefined): boolean {
   const empty = !existsSync(projectDir) || readdirSync(projectDir).filter((f) => !f.startsWith('.')).length === 0
@@ -53,18 +94,27 @@ export function seedProject(projectDir: string, exampleDir: string | undefined):
   return true
 }
 
-/** The meta playbooks that build and change playbooks (20 §3); shipped with the example project. */
-export const META_PLAYBOOK_DIRS = ['create-playbook', 'change-playbook'] as const
+/**
+ * The meta playbooks shipped with the example project: building and changing playbooks (20 §3)
+ * and binding plugins (22 §4). Mirrors `META_PLAYBOOKS` of `@memwise/defs`, which the service
+ * passes in as well (this module stays free of the kernel packages).
+ */
+export const META_PLAYBOOK_DIRS: readonly string[] = ['create-playbook', 'change-playbook', 'bind-plugin']
 
 /**
  * Adds the meta playbooks to a project that lacks them (installs seeded in Phase 2 got only
- * client-intake). Copies `workflows/<id>/` from the example when the project has no folder of
- * that name; never touches one that is there. Returns the ids it added.
+ * client-intake, Phase 3 ones no bind-plugin). Copies `workflows/<id>/` from the example when the
+ * example has it and the project has no folder of that name; never touches one that is there.
+ * Returns the ids it added.
  */
-export function addMissingMetaPlaybooks(projectDir: string, exampleDir: string | undefined): string[] {
+export function addMissingMetaPlaybooks(
+  projectDir: string,
+  exampleDir: string | undefined,
+  ids: readonly string[] = META_PLAYBOOK_DIRS,
+): string[] {
   if (!exampleDir || !existsSync(projectDir)) return []
   const added: string[] = []
-  for (const id of META_PLAYBOOK_DIRS) {
+  for (const id of new Set(ids)) {
     const from = join(exampleDir, 'workflows', id)
     const to = join(projectDir, 'workflows', id)
     if (!existsSync(from) || existsSync(to)) continue

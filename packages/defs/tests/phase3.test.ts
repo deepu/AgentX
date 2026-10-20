@@ -134,7 +134,7 @@ describe('initProject', () => {
   test('empty: roles, policy, workflows/; it checks clean', async () => {
     const dir = fresh();
     const files = await initProject(dir, { template: 'empty', source: join(tmpdir(), 'no-such-template') });
-    expect(files).toEqual(['domain/policy.yaml', 'domain/roles.yaml']);
+    expect(files).toEqual(['domain/bindings/.gitkeep', 'domain/policy.yaml', 'domain/roles.yaml']);
     expect(readdirSync(join(dir, 'workflows'))).toEqual([]);
     const { project, diagnostics } = await loadProject(dir);
     expect(diagnostics).toEqual([]);

@@ -1,0 +1,11 @@
+id: test/sample-email
+version: 1.0.0
+title: Sample email
+provides:
+  capabilities: { email_send: { tool: mail.send_message } }
+tools:
+  mail.send_message:
+    description: Send an email (sandbox).
+    effect: outbound
+    input: { type: object, properties: { to: { type: string }, body: { type: string } }, required: [to, body] }
+    run: { builtin: email.send }

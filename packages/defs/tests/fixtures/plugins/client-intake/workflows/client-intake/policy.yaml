@@ -1,0 +1,4 @@
+tools:
+  rules:
+    email.send: { treatment: approve }
+approvals: { by: [approver] }

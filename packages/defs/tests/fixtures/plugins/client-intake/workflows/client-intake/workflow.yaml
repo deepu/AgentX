@@ -1,0 +1,15 @@
+workflow: client-intake
+version: 1
+title: Client intake
+owner: approver
+start: check
+steps:
+  check: { on: { checked: approve, needs_info: end } }
+  approve:
+    on: { approved: onboard }
+    wait: { timeout: 3d → needs_person }
+  onboard: { on: { done: end } }
+  needs_person:
+    on: { resolved: check }
+    assignee: approver
+    wait: { timeout: 7d → end }

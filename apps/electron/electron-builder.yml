@@ -122,6 +122,8 @@ mac:
       to: memwise/migrations
     - from: ../../examples/intake
       to: examples/intake
+    - from: ../../examples/plugins
+      to: examples/plugins
     # Bundled Postgres 18 (D37); main/memwise-kernel.ts looks in memwise/postgres/bin.
     - from: ../../node_modules/@embedded-postgres/darwin-${arch}/native
       to: memwise/postgres
@@ -195,6 +197,8 @@ win:
       to: memwise/migrations
     - from: ../../examples/intake
       to: examples/intake
+    - from: ../../examples/plugins
+      to: examples/plugins
     # Bundled Postgres 18 (D37); main/memwise-kernel.ts looks in memwise/postgres/bin.
     - from: ../../node_modules/@embedded-postgres/windows-x64/native
       to: memwise/postgres
@@ -230,6 +234,8 @@ linux:
       to: memwise/migrations
     - from: ../../examples/intake
       to: examples/intake
+    - from: ../../examples/plugins
+      to: examples/plugins
     # Bundled Postgres 18 (D37); main/memwise-kernel.ts looks in memwise/postgres/bin.
     - from: ../../node_modules/@embedded-postgres/linux-x64/native
       to: memwise/postgres

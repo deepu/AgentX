@@ -1,0 +1,513 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "plugin": {
+      "type": "string"
+    },
+    "plugin_version": {
+      "type": "string"
+    },
+    "plugin_hash": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "frozen": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        },
+        "run": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "by",
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "tools": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "effect": {
+            "type": "string",
+            "enum": [
+              "read",
+              "draft",
+              "write",
+              "outbound",
+              "irreversible"
+            ]
+          },
+          "off": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "capabilities": {
+      "description": "Required capability → the bound tool that provides it.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "entities": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "entity": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "entity"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "roles": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "records": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "entity": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "transform": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "trim",
+                              "lower",
+                              "upper",
+                              "digits",
+                              "squash"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "default": {}
+                            },
+                            "required": [
+                              "default"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "map": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            },
+                            "required": [
+                              "map"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "money": {
+                                "type": "string",
+                                "pattern": "^[A-Z]{3}$"
+                              }
+                            },
+                            "required": [
+                              "money"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "template": {
+                                "type": "string",
+                                "description": "Text from several source fields: \"{first} {last}\"."
+                              }
+                            },
+                            "required": [
+                              "template"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "read",
+                        "write",
+                        "both"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "identity": {
+            "type": "object",
+            "properties": {
+              "keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "fuzzy": {
+                "type": "object",
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "auto": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "review": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "field",
+                  "auto",
+                  "review"
+                ],
+                "additionalProperties": false
+              },
+              "create_missing": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "entity",
+          "fields"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "description": "The layer name.",
+          "type": "string"
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "read": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            },
+            "draft": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            },
+            "write": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            },
+            "outbound": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            },
+            "irreversible": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "tools": {
+          "type": "object",
+          "properties": {
+            "allow": {
+              "description": "If set, only these tools.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "deny": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "require": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rules": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "treatment": {
+                    "type": "string",
+                    "enum": [
+                      "allow",
+                      "preview",
+                      "approve",
+                      "deny"
+                    ]
+                  },
+                  "rateLimit": {
+                    "type": "string",
+                    "pattern": "^\\s*\\d+\\s*\\/\\s*(\\d+(\\.\\d+)?\\s*)?(ms|s|m|h|d|w|sec|second|min|minute|hr|hour|day|week)\\s*$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "budgets": {
+          "type": "object",
+          "properties": {
+            "tokens": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\s*\\d+(\\.\\d+)?\\s*[kKmM]?\\s*$"
+                }
+              ],
+              "description": "A count: 12, 40k, 1.5m (million)."
+            },
+            "time": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w)\\s*)+$|^\\s*\\d+\\s*$"
+                }
+              ],
+              "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."
+            },
+            "modelCalls": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\s*\\d+(\\.\\d+)?\\s*[kKmM]?\\s*$"
+                }
+              ],
+              "description": "A count: 12, 40k, 1.5m (million)."
+            },
+            "money": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number"
+                },
+                "currency": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{3}$"
+                }
+              },
+              "required": [
+                "amount",
+                "currency"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "modelRoles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "taint": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "outboundWhenTainted": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "preview",
+                "approve",
+                "deny"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "approvals": {
+          "type": "object",
+          "properties": {
+            "by": {
+              "description": "Roles that may decide effect approvals.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "title": "MemWise policy layer",
+      "description": "domain/policy.yaml, workflows/<id>/policy.yaml, or the policy block of a step."
+    },
+    "dry_run": {
+      "type": "object",
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "hash",
+        "passed",
+        "summary"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "plugin",
+    "plugin_version"
+  ],
+  "additionalProperties": false,
+  "title": "MemWise binding",
+  "description": "domain/bindings/<slug>.yaml: how one plugin is bound into this domain."
+}

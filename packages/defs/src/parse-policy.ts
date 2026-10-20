@@ -77,3 +77,31 @@ export function parsePolicyFile(text: string, file: string): ParseResult<PolicyD
   report.validate(policyFormat, src.data);
   return { value: toPolicyDoc(src.data, file), diagnostics: report.diagnostics };
 }
+
+/** Milliseconds in the largest unit that divides them: 86400000 → `1d`, 90000 → `90s`. */
+export function formatDuration(ms: number): string {
+  for (const [unit, size] of [['w', 604_800_000], ['d', 86_400_000], ['h', 3_600_000], ['m', 60_000], ['s', 1000]] as const) {
+    if (ms >= size && ms % size === 0) return `${ms / size}${unit}`;
+  }
+  return `${ms}ms`;
+}
+
+/**
+ * A PolicyDoc back as the YAML it is written in (`rateLimit: 30/min`, `time: 10m`), for files
+ * MemWise writes itself (plugin manifests, bindings). `toPolicyDoc(policyToRaw(p))` gives `p`
+ * back, apart from `file`.
+ */
+export function policyToRaw(doc: PolicyDoc): Record<string, unknown> {
+  const rules = doc.tools?.rules
+    ? Object.fromEntries(Object.entries(doc.tools.rules).map(([tool, r]) => [tool, compact({
+        treatment: r.treatment,
+        rateLimit: r.rateLimit ? `${r.rateLimit.count}/${r.rateLimit.perMs === 60_000 ? 'min' : formatDuration(r.rateLimit.perMs)}` : undefined,
+      })]))
+    : undefined;
+  const tools = doc.tools ? compact({ allow: doc.tools.allow, deny: doc.tools.deny, require: doc.tools.require, rules }) : undefined;
+  const b = doc.budgets;
+  const budgets = b ? compact({ tokens: b.tokens, time: b.timeMs !== undefined ? formatDuration(b.timeMs) : undefined, modelCalls: b.modelCalls, money: b.money }) : undefined;
+  return compact({
+    policy: doc.name, effects: doc.effects, tools, budgets, modelRoles: doc.modelRoles, taint: doc.taint, approvals: doc.approvals,
+  }) as Record<string, unknown>;
+}

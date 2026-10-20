@@ -1,0 +1,15 @@
+name: onboard-creates-client
+description: An approved case is onboarded by the system step, which writes the client into the domain's client records.
+startAt: onboard
+case:
+  client_name: Asha Rao
+  client_email: asha@acme-traders.example
+  pan: AAACA1234A
+  gstin: 29AAACA1234A1Z5
+expect:
+  outcome: done
+  state: end
+  effects: { domain.client.create: 1 }
+  entities:
+    Client:
+      - { name: Asha Rao, email: asha@acme-traders.example, tax_id: 29AAACA1234A1Z5, pan: AAACA1234A }
