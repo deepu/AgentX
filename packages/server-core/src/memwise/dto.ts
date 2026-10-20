@@ -62,7 +62,7 @@ export function stateTitle(wf: WorkflowDef | undefined, state: string): string {
   return wf?.steps[state]?.title ?? humanize(state)
 }
 
-/** A readable case title: the client's name, the legal name, the first text value, else the case id. */
+/** A readable case title: the client's name, the legal name, the first text value, else a short reference. */
 export function caseTitle(values: Record<string, unknown>, caseId: string, caseType?: CaseTypeDef): string {
   const plain = (v: unknown) => (v && typeof v === 'object' && 'value' in (v as object) ? (v as { value: unknown }).value : v)
   for (const key of ['client_name', 'legal_name']) {
@@ -75,7 +75,8 @@ export function caseTitle(values: Record<string, unknown>, caseId: string, caseT
     const texty = !type || (type.kind === 'scalar' && (type.name === 'Text' || type.name === 'PersonName'))
     if (texty && typeof v === 'string' && v.trim()) return v.trim()
   }
-  return caseId
+  // Nothing typed yet: a short, readable reference rather than the full id.
+  return `New case ${caseId.slice(-6)}`
 }
 
 export function waitingOn(wf: WorkflowDef | undefined, state: string, status: string): MwCaseSummary['waitingOn'] {

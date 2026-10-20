@@ -13,4 +13,4 @@ writes:
 outcomes: [submitted]
 ---
 The client enters their details and uploads their PAN card and GST certificate.
-Until the client can be sent a link (Phase 5), a member of staff fills the form for them.
+Until clients can be sent a link to the form, a member of staff fills it in for them.
