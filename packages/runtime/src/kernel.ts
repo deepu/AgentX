@@ -9,7 +9,7 @@ import {
   PgStepRecorder, PgStepRecordReader, PgVersionStore, withActor, withTransaction,
 } from '@memwise/db';
 import {
-  indexProject, sha256, type ApprovalRequest, type CaseValue, type Diagnostic, type EntityTypeDef, type IndexedDefinition,
+  domainOf, indexProject, sha256, type ApprovalRequest, type CaseValue, type Diagnostic, type EntityTypeDef, type IndexedDefinition,
   type ProjectDefs,
 } from '@memwise/defs';
 import {
@@ -30,6 +30,7 @@ import { EXPLAINER_ROLE, explainStep } from './explain.ts';
 import { createChannelService } from './external/channels.ts';
 import { createExternalService, externalInviteShape, type ExternalKernelService } from './external/service.ts';
 import { createFlow, queueHandoffs } from './flow/index.ts';
+import { recordConsumers } from './records/consumers.ts';
 import { DEFAULT_STORM_LIMIT } from './flow/triggers.ts';
 import { EXTRACTOR_ROLE, quarantinedExtractTool, readFieldSchema } from './extract.ts';
 import { driverIdOf, newCaseId, newRunId } from './ids.ts';
@@ -40,10 +41,10 @@ import { loadProjectAt } from './plugins/load.ts';
 import { McpConnections } from './plugins/routes.ts';
 import { createPluginServices, type PluginServices } from './plugins/service.ts';
 import { boundPlugins, pluginPolicies, pluginTools, type BoundPlugin } from './plugins/tools.ts';
-import { getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef, PLUGIN_POLICIES_KIND } from './runs.ts';
+import { DOMAIN_POLICIES_KIND, getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef, PLUGIN_POLICIES_KIND, policySourcesOf } from './runs.ts';
 import { ensureSandbox, SAMPLE_PLUGIN } from './sample-tools.ts';
 import { startValueErrors, StartRunError } from './start.ts';
-import { submitStep } from './submit.ts';
+import { recordTypesFor, submitStep } from './submit.ts';
 import { defaultTestRunner } from './test-runner.ts';
 import type { Actor, Authoring, EntityRow, Explanation, InboxItem, Kernel, KernelOptions, RunRecord, StartRunInput } from './types.ts';
 import { approverRoles, DefinitionCache, getCaseView, heldTriggerItems, inbox, listCases, liveCounts, mayApprove } from './views.ts';
@@ -148,13 +149,16 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   /** Identifies what the bound plugins bind: rebuilt when a binding or the version it pins changes. */
   const boundKey = (b: BoundPlugin[]) => JSON.stringify(b.map((x) => [x.binding.plugin, x.binding.hash, x.plugin.hash]));
 
+  // Phase 6: what the entity tools need at run time (24 §3).
+  const entityToolRuntime = { pool, project: () => indexed?.project, defs, people, emit: (c: import('./types.ts').KernelChange) => feed.emit(c) };
+
   // Rebuilt when indexing changes the entity types or the bindings; the step engine always calls the current one.
   // Precedence: the caller's tools, the kernel's, then plugin tools (a clash is not bound). The
   // extractor bound under its name is the caller's builtin when it gives one (the stub, scripted),
   // so a plugin tool routed to that builtin runs the same code whether or not a plugin binds it.
   const boundExtractor = builtins.get(extractor.name) ?? extractor;
   const buildTools = () => {
-    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools]);
+    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => entityToolRuntime), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools]);
     const taken = new Map(base.map((t) => [t.name, t]));
     const fromPlugins = options.projectDir
       ? pluginTools(bound, taken, { root: options.projectDir, builtins, mcp })
@@ -207,6 +211,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     client,
     sourcedProvenance: (db: import('pg').PoolClient, stepRunId: string, values: Record<string, unknown>, sources: Record<string, string>, by: string) =>
       external!.sourcedProvenance(db, stepRunId, values, sources, by),
+    signing: { people, entities: () => entities },
   };
   const versionStore = new PgVersionStore();
 
@@ -243,7 +248,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       ? await loadWorkflowDef(pool, input.workflowId, input.workflowHash)
       : await latestWorkflowDef(pool, input.workflowId);
     if (!workflow) throw new Error(`workflow ${input.workflowId} is not indexed`);
-    const errors = startValueErrors(workflow, input.case, { ...entities, ...workflow.caseType.types }, input.startAt, { anyField: internal });
+    const errors = startValueErrors(workflow, input.case, recordTypesFor(entities, workflow), input.startAt, { anyField: internal });
     if (Object.keys(errors).length) throw new StartRunError(errors);
     const runId = input.runId ?? newRunId();
     const caseId = await withTransaction(pool, async (db) => {
@@ -308,8 +313,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     emit: (change) => feed.emit(change),
     log: (m) => { if ((options.logLevel ?? process.env.DBOS_LOG ?? 'warn') !== 'error') console.warn(`[memwise] ${m}`); },
   }, () => phase6Consumers());
-  /** The records piece's event consumers (link pairing, invariants), once that piece is wired. */
-  const phase6Consumers = (): import('./flow/index.ts').EventConsumer[] => [];
+  /** The records piece's event consumers (link pairing, invariant flags), run before the flow's own. */
+  const recordEventConsumers = recordConsumers({ pool, entities: () => entities, emit: (change) => feed.emit(change) });
+  const phase6Consumers = (): import('./flow/index.ts').EventConsumer[] => recordEventConsumers;
 
   /** The live workflows: the latest indexed definitions (those of the loaded project, when there is one). */
   let liveCache: { mark: string; workflows: import('@memwise/defs').WorkflowDef[] } | undefined;
@@ -339,7 +345,10 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       const nowBound = boundPlugins(project);
       const policies = pluginPolicies(nowBound);
       const policiesRow = { kind: PLUGIN_POLICIES_KIND, id: 'domain', hash: sha256(JSON.stringify(policies)), path: 'domain/bindings', body: policies };
-      await new PgDefinitionStore(pool).upsert([policiesRow as unknown as IndexedDefinition], []);
+      // Phase 6 (24 §2): the workspace house rules and each domain's policy, also read at run time.
+      const sources = policySourcesOf(project);
+      const sourcesRow = { kind: DOMAIN_POLICIES_KIND, id: 'workspace', hash: sha256(JSON.stringify(sources)), path: 'workspace.yaml', body: sources };
+      await new PgDefinitionStore(pool).upsert([policiesRow, sourcesRow] as unknown as IndexedDefinition[], []);
       await people.syncRoles(project.roles);
       const creators = domainCreators(project.entities, project.workflows);
       const schemaKey = JSON.stringify([project.entities, creators]);
@@ -401,7 +410,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         if (by) {
           const s = step.rows[0];
           const wf = await defs.workflow(s.workflow_id, s.workflow_hash);
-          if (!mayApprove(by, approverRoles(await defs.policy(wf, s.step_id), wf, s.step_id))) {
+          if (!mayApprove(by, approverRoles(await defs.policy(wf, s.step_id), wf, s.step_id), domainOf(wf))) {
             return { applied: false, status: 'forbidden' as const };
           }
         }
@@ -442,7 +451,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     submitStep: (input) => submitStep(submitDeps, input),
 
     async inbox(actor) {
-      const items: InboxItem[] = await inbox(pool, defs, actor);
+      const items: InboxItem[] = await inbox(pool, defs, actor, entities);
       // Phase 6: firings the storm guard held, for the workflow's owner role (24 §7).
       items.push(...(await heldTriggerItems(pool, defs, actor)));
       // Phase 4: uncertain identity matches, for the people who own plugin bindings.

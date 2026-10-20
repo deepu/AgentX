@@ -86,6 +86,26 @@ export function findInResults(evidence: Evidence[], tool: string, value: unknown
   return undefined;
 }
 
+/**
+ * Where an extraction read a value (24 §11): a result with `fields: [{ name, value, document,
+ * confidence, page, quote }]` (the quarantined reader's) says it for each field it read. Kept on
+ * the write's provenance so a document review can show it and highlight the quote.
+ */
+export function readAt(result: unknown, field: string, value: unknown): { document?: string; confidence?: number; page?: number; quote?: string } {
+  const fields = (parsed(result) as { fields?: unknown } | undefined)?.fields ?? (result as { fields?: unknown } | undefined)?.fields;
+  if (!Array.isArray(fields)) return {};
+  const name = field.split('.').at(-1);
+  const hit = fields.find((f) => f && typeof f === 'object' && (f as { name?: unknown }).name === name && deepEqual((f as { value?: unknown }).value, value)) as
+    { document?: unknown; confidence?: unknown; page?: unknown; quote?: unknown } | undefined;
+  if (!hit) return {};
+  return {
+    ...(typeof hit.document === 'string' ? { document: hit.document } : {}),
+    ...(typeof hit.confidence === 'number' ? { confidence: hit.confidence } : {}),
+    ...(typeof hit.page === 'number' ? { page: hit.page } : {}),
+    ...(typeof hit.quote === 'string' ? { quote: hit.quote } : {}),
+  };
+}
+
 // ---------------------------------------------------------------- structural checks
 
 export function structuralChecks(
@@ -138,7 +158,10 @@ export function structuralChecks(
         continue;
       }
       checks.push(pass(rule));
-      writes[field] = { value, provenance: { kind: 'tool', at, stepRunId: input.stepRunId, tool: hit.tool, callId: hit.callId, ...(hit.tainted ? { tainted: true } : {}) } };
+      writes[field] = {
+        value,
+        provenance: { kind: 'tool', at, stepRunId: input.stepRunId, tool: hit.tool, callId: hit.callId, ...(hit.tainted ? { tainted: true } : {}), ...readAt(hit.result, w.from.field ?? field, value) },
+      };
     } else {
       writes[field] = { value, provenance: { kind: 'judgement', at, stepRunId: input.stepRunId, rationale: args.rationale, ...(sessionTainted ? { tainted: true } : {}) } };
     }

@@ -21,7 +21,7 @@ import { PUBLISH_DRAFT_TOOL } from './authoring-tools.ts';
 import { boundPlugins, pluginPolicies, pluginToolEnvironment } from './plugins/tools.ts';
 import { newRunId } from './ids.ts';
 import { exampleNameFor } from './replay.ts';
-import { getTransitions, latestWorkflowDef } from './runs.ts';
+import { getTransitions, latestWorkflowDef, projectPolicyLayers } from './runs.ts';
 import {
   CHANGE_PLAYBOOK, CREATE_PLAYBOOK, type Actor, type Authoring, type KernelChange, type RunRecord, type StartRunInput, type TestRunner,
   type Vocabulary,
@@ -193,7 +193,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       const policies = pluginPolicies(boundPlugins(project));
       for (const step of [undefined, ...Object.values(workflow.steps)]) {
         const plugins = pluginLayers(policies, workflow, step);
-        const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
+        const { effective, violations } = compilePolicy(layersFor({ ...projectPolicyLayers(project, workflow), plugins, workflow, step }));
         for (const d of [...violationsToDiagnostics(violations), ...extractDiagnostics(step, effective, env.tools)]) {
           const key = `${d.file}|${d.path}|${d.message}`;
           if (!seen.has(key)) { seen.add(key); all.push(d); }
@@ -273,7 +273,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       let treatment: ImpactTool['treatment'];
       if (isBound) {
         const plugins = pluginLayers(pluginPolicies(boundPlugins(draft.project)), after, step);
-        const { effective } = compilePolicy(layersFor({ domainPolicy: draft.project.domainPolicy, plugins, workflow: after, step }));
+        const { effective } = compilePolicy(layersFor({ ...projectPolicyLayers(draft.project, after), plugins, workflow: after, step }));
         treatment = decide(effective, { tool: name, effect: effect ?? 'irreversible', classified: !!effect, tainted: false }).verdict;
       }
       return { name, bound: isBound, ...(effect ? { effect } : {}), ...(treatment ? { treatment } : {}), ...(def?.source?.plugin ? { plugin: def.source.plugin } : {}) };

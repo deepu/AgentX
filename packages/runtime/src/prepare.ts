@@ -1,10 +1,10 @@
 // Everything a step run needs, read and fixed once inside a journaled DBOS step, so a replay
 // after a crash hands the step workflow byte-identical input (D38, D39).
-import type { CaseSnapshot, StepDef, StepToken, WorkflowDef } from '@memwise/defs';
+import { domainOf, type CaseSnapshot, type StepDef, type StepToken, type WorkflowDef } from '@memwise/defs';
 import { compilePolicy, layersFor, pluginLayers } from '@memwise/policy';
 import type { StepRunInput } from '@memwise/step-engine';
 import { PgCaseStore } from '@memwise/db';
-import { loadDomainPolicy, loadPluginPolicies, type Queryable, type RunRow } from './runs.ts';
+import { loadPluginPolicies, loadPolicySources, policyLayersFor, type Queryable, type RunRow } from './runs.ts';
 
 const DEFAULT_TOKEN_TTL_MS = 3600_000;
 
@@ -14,7 +14,7 @@ export async function prepareAgentStep(db: Queryable, run: RunRow, workflow: Wor
   const step = workflow.steps[run.state];
   if (!step) throw new Error(`state ${run.state} has no step`);
   const plugins = pluginLayers(await loadPluginPolicies(db), workflow, step);
-  const { effective, violations } = compilePolicy(layersFor({ domainPolicy: await loadDomainPolicy(db), plugins, workflow, step }));
+  const { effective, violations } = compilePolicy(layersFor({ ...policyLayersFor(await loadPolicySources(db), domainOf(workflow)), plugins, workflow, step }));
   if (violations.length) {
     return { stop: `policy violations: ${violations.map((v) => `${v.source ?? v.name} ${v.path}: ${v.message}`).join('; ')}` };
   }
