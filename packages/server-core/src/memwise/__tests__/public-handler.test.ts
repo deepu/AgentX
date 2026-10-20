@@ -213,6 +213,12 @@ describe('the form API', () => {
     expect((await r.json() as any).message).toContain('15 MB')
     const declared = await req('POST', `/f/${TOKEN}/api/files?name=big.pdf`, { body: 'x', headers: { 'content-length': String(20 * 1024 * 1024) } })
     expect(declared.status).toBe(413)
+    // Not a token at all: refused before the body is read.
+    let pulled = 0
+    const unread = new ReadableStream<Uint8Array>({ pull(c) { pulled++; c.enqueue(new Uint8Array(1024 * 1024)) } })
+    const bad = await req('POST', '/f/bad/api/files?name=big.pdf', { body: unread })
+    expect(await bad.json()).toMatchObject({ status: 'unknown' })
+    expect(pulled).toBeLessThanOrEqual(1)
     expect(calls).toEqual([])
   })
 

@@ -258,6 +258,8 @@ export interface InstallHubOptions {
 export class InstallHub {
   private current: TunnelSocket | null = null;
   private inflight = new Map<string, InFlight>();
+  /** Requests still reading their small body before they are sent on (they count toward the cap). */
+  private reading = 0;
   private seq = 0;
   private readonly limits: Limits;
   private readonly log: RelayLog;
@@ -372,7 +374,8 @@ export class InstallHub {
     if (wait) {
       return refusal(req.path, req.method, 429, 'rate_limited', 'Too many requests', 'Please wait a minute and try again.', [['retry-after', String(wait)]]);
     }
-    if (this.inflight.size >= this.limits.concurrentPerInstall) {
+    // Requests whose small body is still being read count too, so slow senders can't pile up past the cap.
+    if (this.inflight.size + this.reading >= this.limits.concurrentPerInstall) {
       return refusal(req.path, req.method, 429, 'busy', 'Too many requests', 'The app is busy; please try again in a moment.', [['retry-after', '1']]);
     }
     const declared = Number(req.headers.find(([n]) => n === 'content-length')?.[1] ?? NaN);
@@ -381,7 +384,12 @@ export class InstallHub {
     // A small body goes over in the `req` frame itself; a larger one streams.
     let inlineBody = req.body instanceof Uint8Array ? req.body : null;
     if (req.body instanceof ReadableStream && declared <= CHUNK_BYTES) {
-      inlineBody = await readLimited(req.body, CHUNK_BYTES);
+      this.reading++;
+      try {
+        inlineBody = await readLimited(req.body, CHUNK_BYTES);
+      } finally {
+        this.reading--;
+      }
       if (!inlineBody) return tooLarge();
       req = { ...req, body: inlineBody };
     }

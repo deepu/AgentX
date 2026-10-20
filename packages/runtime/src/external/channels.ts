@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import type { ChannelName, InboundEvent, NotifySettings, WebhookSummary } from '@memwise/defs';
 import { ulid, withTransaction, type PgPeopleStore } from '@memwise/db';
 import type { ToolGateway } from '@memwise/gateway';
+import type { EffectivePolicy } from '@memwise/policy';
 import type pg from 'pg';
 import type { Actor, ChannelService, InboxItem, KernelChange, PersonActor } from '../types.ts';
 import { CHANNEL_TOOLS, deliver, deliveryOf } from './deliver.ts';
@@ -29,6 +30,8 @@ export interface ChannelDeps {
   external: ExternalKernelService;
   inbox: (actor: Actor) => Promise<InboxItem[]>;
   subscribe: (listener: (c: KernelChange) => void) => () => void;
+  /** The policy a notification about `item` is sent under (its playbook's); undefined: none to check. */
+  policyFor?: (item: InboxItem) => Promise<EffectivePolicy | undefined>;
 }
 
 export interface ChannelKernelService extends ChannelService {
@@ -37,6 +40,9 @@ export interface ChannelKernelService extends ChannelService {
   /** Starts following the change feed; returns the stop function. */
   startNotifier(): () => void;
 }
+
+/** A failed notification is tried again on a sweep at least this long after. */
+const NOTIFY_RETRY_AFTER_MS = 2 * 60_000;
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 const lower = (h: Record<string, string>) => Object.fromEntries(Object.entries(h).map(([k, v]) => [k.toLowerCase(), v]));
@@ -140,11 +146,17 @@ export function createChannelService(deps: ChannelDeps): ChannelKernelService {
       for (const item of items) {
         for (const { channel, to } of via) {
           const idemKey = `notify:${p.id}:${item.id}:${channel}`;
-          const done = await pool.query(`select status from mw.deliveries where idem_key = $1`, [idemKey]);
-          if (done.rows[0] && done.rows[0].status !== 'pending') continue;
+          // Sent once. A send that failed is tried again on a later sweep, for a day.
+          const done = await pool.query(
+            `select status, at > now() - interval '1 day' and updated_at < now() - make_interval(secs => $2) as retry
+               from mw.deliveries where idem_key = $1`, [idemKey, NOTIFY_RETRY_AFTER_MS / 1000]);
+          const prior = done.rows[0];
+          if (prior && prior.status !== 'pending' && !(prior.status === 'failed' && prior.retry)) continue;
           try {
+            const policy = await deps.policyFor?.(item);
             const link = await deps.external.issueInboxLink({ personId: p.id, item, via: channel, idemKey: `inbox:${idemKey}` });
-            if (!link) continue;
+            // The same key gives the same link back: one already used or closed is not sent again.
+            if (!link || link.link.status !== 'open') continue;
             const message = notificationMessage(channel, to, { name: p.name, title: link.title, url: link.url, expiresAt: link.link.expiresAt });
             const token = {
               runId: 'runId' in item ? item.runId : '', caseId: 'caseId' in item ? item.caseId : '', stepId: 'stepId' in item ? item.stepId : '',
@@ -153,7 +165,7 @@ export function createChannelService(deps: ChannelDeps): ChannelKernelService {
               expiresAt: new Date(Date.now() + 600_000).toISOString(),
             };
             await deliver(pool, deps.tools(), {
-              message, idemKey, purpose: 'notification', token, linkId: link.link.id,
+              message, idemKey, purpose: 'notification', token, linkId: link.link.id, ...(policy ? { policy } : {}),
               ...('caseId' in item ? { caseId: item.caseId } : {}), personId: p.id, itemId: item.id,
             });
             sent++;
@@ -277,11 +289,12 @@ export function createChannelService(deps: ChannelDeps): ChannelKernelService {
       const body = req.body ?? new Uint8Array();
       const secret = hook.secret_enc ? unseal(await hooksKey(), hook.secret_enc) : undefined;
       const header = hook.scheme === 'meta' ? headers['x-hub-signature-256'] : headers['x-memwise-signature'];
-      const verified = !!secret && signatureOk(header, secret, body);
+      // Verified first: a request without a good signature is refused and nothing of it is kept,
+      // so knowing a hook's address is not a way to fill the database.
+      if (!secret || !signatureOk(header, secret, body)) return { status: 401, body: 'bad signature', contentType: 'text/plain' };
       const event = inboundOf((await pool.query(
-        `insert into mw.inbound_events (id, hook_id, verified, headers, body) values ($1, $2, $3, $4, $5) returning *`,
-        [`inb_${ulid()}`, hookId, verified, JSON.stringify(keptHeaders(headers)), JSON.stringify(parseBody(body))])).rows[0]);
-      if (!verified) return { status: 401, body: 'bad signature', contentType: 'text/plain' };
+        `insert into mw.inbound_events (id, hook_id, verified, headers, body) values ($1, $2, true, $3, $4) returning *`,
+        [`inb_${ulid()}`, hookId, JSON.stringify(keptHeaders(headers)), JSON.stringify(parseBody(body))])).rows[0]);
       if (hook.scheme === 'meta') {
         for (const s of whatsappStatuses(event.body)) {
           const status = s.status === 'failed' ? 'failed' : STATUS_ORDER.includes(s.status) ? s.status : undefined;

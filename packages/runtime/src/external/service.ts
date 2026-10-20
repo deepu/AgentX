@@ -207,6 +207,14 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
     return (await defs.policy(workflow, stepId)).effective;
   }
 
+  /**
+   * What a channel send is checked against: the playbook's policy without the step layer (the
+   * invite step allows only `external.invite`; the send is the kernel delivering it).
+   */
+  async function channelPolicy(workflow: WorkflowDef) {
+    return (await defs.policy(workflow)).effective;
+  }
+
   async function caseTitle(workflow: WorkflowDef, caseId: string): Promise<string> {
     const values = await caseValues(pool, caseId);
     const fields = workflow.caseType.fields;
@@ -261,6 +269,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
       const message = inviteMessage(args.via, p.to, { ...p.text, url: `${base}/f/${token}`, expiresAt: row.expires_at });
       await deliver(pool, deps.tools(), {
         message, idemKey: `${ctx.idempotencyKey}:send`, purpose: 'invite', token: ctx.token, linkId: row.id, caseId: p.run.case_id,
+        policy: await channelPolicy(p.workflow),
       });
       await pool.query(`update mw.external_links set sent_at = coalesce(sent_at, now()) where id = $1`, [row.id]);
       return { link_id: row.id, sent: true, via: args.via, expires_at: iso(row.expires_at) };
@@ -465,7 +474,7 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
       try {
         const delivery = await deliver(pool, deps.tools(), {
           message: parts.message, idemKey: `resend:${linkId}:${Date.now()}`, purpose: 'invite', token, linkId, caseId: m.link.case_id,
-          approvedBy: by.personId,
+          approvedBy: by.personId, policy: await channelPolicy(m.workflow),
         });
         await pool.query(`update mw.external_links set sent_at = now(), via = $2 where id = $1`, [linkId, parts.message.via]);
         return { applied: true, delivery };
@@ -606,8 +615,19 @@ export function createExternalService(deps: ExternalDeps): ExternalKernelService
       if (step.assignee && !by.roles.includes(step.assignee)) {
         throw Object.assign(new Error(`only someone with the ${step.assignee} role can fill in this step`), { code: 'forbidden' });
       }
+      // Only the step's own documents: on the case already, uploaded by this person, or sent
+      // through a link to this step. Any other file id is left out, whoever's it is.
+      const wanted = documents.slice(0, MAX_FILES);
+      const current = (await caseValues(pool, s.case_id))[step.extract.documents]?.value;
+      const onCase = (Array.isArray(current) ? current : current ? [current] : []).map((d) => (d as DocumentValue | undefined)?.id);
+      const { rows: mine } = await pool.query(
+        `select f.id from mw.files f where f.id = any($1) and (f.created_by = $2 or exists (
+           select 1 from mw.external_links l where l.run_id = $3 and l.step_id = $4 and l.files ? f.id))`,
+        [wanted, by.personId, s.run_id, s.step_id]);
+      const allowed = new Set([...onCase, ...mine.map((r: { id: string }) => r.id)].filter(Boolean));
       const docs: DocumentValue[] = [];
-      for (const id of documents.slice(0, MAX_FILES)) {
+      for (const id of wanted) {
+        if (!allowed.has(id)) continue;
         const meta = await deps.files.meta(pool, id);
         if (meta) docs.push(meta);
       }

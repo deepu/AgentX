@@ -10,6 +10,7 @@
 import type { MwRelayConfigureInput, MwRelayStatus } from '@memwise/shared/protocol'
 import type { RelayIdentity, RelayTunnel, RelayTunnelOptions, RelayTunnelStatus } from '@memwise/relay/protocol'
 import type { PublicHandler } from '../public'
+import { MAX_UPLOAD_BYTES } from '../public/limits'
 import { loadOrCreateIdentity } from './identity'
 import { effectiveRelaySettings, normalizeRelayUrl, relayIdentityFile, writeRelaySettings, type RelaySettings } from './settings'
 
@@ -162,6 +163,8 @@ export function createPublicAddress(opts: PublicAddressOptions): PublicAddress {
       const start = opts.startTunnel ?? (await import('@memwise/relay/client')).startRelayTunnel
       const t = await start({
         relayUrl, identity, handle: opts.handler, client: opts.client ?? `memwise-${opts.mode}`, log,
+        // The largest body the public handler takes (an upload), with room for its headers.
+        maxRequestBodyBytes: MAX_UPLOAD_BYTES + 64 * 1024,
       })
       if (mine !== generation || stopped) { await t.close().catch(() => {}); return }
       tunnel = t

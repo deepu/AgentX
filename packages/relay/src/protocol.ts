@@ -83,6 +83,10 @@ export interface RelayTunnelOptions {
   /** Shown to the relay in `hello` (`memwise-desktop/0.16.0`). */
   client?: string;
   log?: { info(...a: unknown[]): void; warn(...a: unknown[]): void; error(...a: unknown[]): void };
+  /** Largest request body the core takes (default the relay's limit); bigger ones get a 413. */
+  maxRequestBodyBytes?: number;
+  /** Request bodies held at once across all requests before new ones get a 503 (default 64 MiB). */
+  maxBufferedBytes?: number;
 }
 
 export interface RelayTunnel {

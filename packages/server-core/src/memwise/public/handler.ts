@@ -168,34 +168,34 @@ export function createPublicHandler(opts: PublicHandlerOptions): PublicHandler {
         return json(await k.external.form(token, info))
       case 'draft': {
         if (req.method !== 'PUT') return methodNotAllowed('PUT')
+        if (!TOKEN_RE.test(token)) return unknownLink() // before any body is read
         const body = await readJson(req)
         if (!isObject(body.values)) throw new BadRequest(MESSAGES.badJson)
-        if (!TOKEN_RE.test(token)) return unknownLink()
         return json(await k.external.saveDraft(token, body.values, info))
       }
       case 'files': {
         if (req.method !== 'POST') return methodNotAllowed('POST')
+        if (!TOKEN_RE.test(token)) return unknownLink() // before any body is read
         const name = cleanFileName(new URL(req.url).searchParams.get('name'))
         if (!name) return json({ status: 'invalid', message: MESSAGES.noName }, 400)
         const data = await readBody(req, MAX_UPLOAD_BYTES)
-        if (!TOKEN_RE.test(token)) return unknownLink()
         const mime = (req.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase() || 'application/octet-stream'
         return json(await k.external.upload(token, { name, mime, data }, info))
       }
       case 'extract': {
         if (req.method !== 'POST') return methodNotAllowed('POST')
+        if (!TOKEN_RE.test(token)) return unknownLink() // before any body is read
         const body = await readJson(req)
         const docs = body.documents
         if (!Array.isArray(docs) || docs.length > MAX_DOCUMENTS || docs.some((d) => typeof d !== 'string' || !d)) throw new BadRequest(MESSAGES.badJson)
-        if (!TOKEN_RE.test(token)) return unknownLink()
         return json(await k.external.extract(token, { documents: docs as string[] }, info))
       }
       case 'submit': {
         if (req.method !== 'POST') return methodNotAllowed('POST')
+        if (!TOKEN_RE.test(token)) return unknownLink() // before any body is read
         const body = await readJson(req)
         if (!isObject(body.values) || (body.outcome !== undefined && typeof body.outcome !== 'string')) throw new BadRequest(MESSAGES.badJson)
         const sources = stringRecord(body.sources)
-        if (!TOKEN_RE.test(token)) return unknownLink()
         return json(await k.external.submit(token, {
           values: body.values, ...(typeof body.outcome === 'string' ? { outcome: body.outcome } : {}), ...(sources ? { sources } : {}),
         }, info))
@@ -214,11 +214,11 @@ export function createPublicHandler(opts: PublicHandlerOptions): PublicHandler {
         return json(await k.external.inboxItem(token, info))
       case 'decide': {
         if (req.method !== 'POST') return methodNotAllowed('POST')
+        if (!TOKEN_RE.test(token)) return json({ status: 'unknown', message: MESSAGES.unknown }) // before any body is read
         const body = await readJson(req)
         if (typeof body.outcome !== 'string' || !body.outcome || (body.comment !== undefined && typeof body.comment !== 'string')) {
           throw new BadRequest(MESSAGES.badJson)
         }
-        if (!TOKEN_RE.test(token)) return json({ status: 'unknown', message: MESSAGES.unknown })
         return json(await k.external.decideInboxItem(token, {
           outcome: body.outcome, ...(typeof body.comment === 'string' ? { comment: body.comment } : {}),
         }, info))

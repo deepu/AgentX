@@ -24,7 +24,7 @@ export async function tunnel(
   relayUrl: string,
   handle: (req: Request) => Promise<Response>,
   identity?: RelayIdentity,
-  extra: { minBackoffMs?: number; wait?: boolean } = {},
+  extra: { minBackoffMs?: number; wait?: boolean; maxRequestBodyBytes?: number; maxBufferedBytes?: number } = {},
 ): Promise<{ tunnel: RelayTunnel; identity: RelayIdentity }> {
   const id = identity ?? (await generateIdentity());
   const t = startRelayTunnel({
@@ -34,6 +34,8 @@ export async function tunnel(
     client: 'memwise-test/0',
     log: quietLog,
     backoff: { minMs: extra.minBackoffMs ?? 50, maxMs: 400, stableAfterMs: 1_000 },
+    ...(extra.maxRequestBodyBytes ? { maxRequestBodyBytes: extra.maxRequestBodyBytes } : {}),
+    ...(extra.maxBufferedBytes ? { maxBufferedBytes: extra.maxBufferedBytes } : {}),
   });
   if (extra.wait !== false) await waitFor(() => t.status().state === 'connected', 5_000, 'the tunnel to connect');
   return { tunnel: t, identity: id };

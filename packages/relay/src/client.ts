@@ -20,6 +20,8 @@ const MAX_BACKOFF_MS = 60_000;
 const STABLE_AFTER_MS = 30_000;
 /** Bytes queued on the socket before sending waits for it to drain. */
 const HIGH_WATER_BYTES = 4 * 1024 * 1024;
+/** Request bodies held at once, across requests. */
+const MAX_BUFFERED_BYTES = 64 * 1024 * 1024;
 
 export interface RelayTunnelTestOptions {
   /** Shorter waits for tests. */
@@ -56,6 +58,10 @@ export function startRelayTunnel(opts: RelayTunnelOptions & RelayTunnelTestOptio
   const maxBackoff = opts.backoff?.maxMs ?? MAX_BACKOFF_MS;
   const stableAfter = opts.backoff?.stableAfterMs ?? STABLE_AFTER_MS;
   const pingEvery = opts.pingEveryMs ?? LIMITS.pingEveryMs;
+  const maxBody = Math.min(opts.maxRequestBodyBytes ?? LIMITS.requestBodyBytes, LIMITS.requestBodyBytes);
+  const maxBuffered = opts.maxBufferedBytes ?? MAX_BUFFERED_BYTES;
+  /** Bytes of request bodies held in memory now, across requests (they are buffered until complete). */
+  let buffered = 0;
   const listeners = new Set<(s: RelayTunnelStatus) => void>();
   const url = tunnelUrl(opts.relayUrl, opts.identity.installId);
 
@@ -99,7 +105,10 @@ export function startRelayTunnel(opts: RelayTunnelOptions & RelayTunnelTestOptio
   }
 
   function abortAll(why: string) {
-    for (const r of requests.values()) r.abort.abort(new Error(why));
+    for (const r of requests.values()) {
+      release(r);
+      r.abort.abort(new Error(why));
+    }
     requests.clear();
   }
 
@@ -233,6 +242,7 @@ export function startRelayTunnel(opts: RelayTunnelOptions & RelayTunnelTestOptio
         const r = requests.get(frame.id);
         if (r) {
           requests.delete(r.id);
+          release(r);
           r.abort.abort(new Error('cancelled by the relay'));
         }
         return;
@@ -243,12 +253,21 @@ export function startRelayTunnel(opts: RelayTunnelOptions & RelayTunnelTestOptio
   function addPart(socket: WebSocket, r: Incoming, chunk: string) {
     const bytes = fromBase64(chunk);
     r.size += bytes.length;
-    if (r.size > LIMITS.requestBodyBytes) {
+    const refuse = (status: number, text: string) => {
       requests.delete(r.id);
-      send(socket, { t: 'res', id: r.id, status: 413, headers: [['content-type', 'text/plain; charset=utf-8']], body: toBase64(new TextEncoder().encode('Request body too large')) });
-      return;
-    }
+      release(r);
+      send(socket, { t: 'res', id: r.id, status, headers: [['content-type', 'text/plain; charset=utf-8']], body: toBase64(new TextEncoder().encode(text)) });
+    };
+    if (r.size > maxBody) return refuse(413, 'Request body too large');
+    if (buffered + bytes.length > maxBuffered) return refuse(503, 'Too busy right now; please try again in a moment');
     r.parts.push(bytes);
+    buffered += bytes.length;
+  }
+
+  /** Frees what a request's body held. */
+  function release(r: Incoming) {
+    for (const p of r.parts) buffered -= p.length;
+    r.parts = [];
   }
 
   async function run(socket: WebSocket, r: Incoming) {
@@ -262,13 +281,9 @@ export function startRelayTunnel(opts: RelayTunnelOptions & RelayTunnelTestOptio
     const hasBody = r.method !== 'GET' && r.method !== 'HEAD';
     let response: Response;
     try {
-      const request = new Request(target, {
-        method: r.method,
-        headers: r.headers,
-        body: hasBody ? new Uint8Array(concatBytes(r.parts)) : undefined,
-        signal: r.abort.signal,
-      });
-      r.parts = [];
+      const body = hasBody ? new Uint8Array(concatBytes(r.parts)) : undefined;
+      release(r);
+      const request = new Request(target, { method: r.method, headers: r.headers, body, signal: r.abort.signal });
       response = await opts.handle(request);
     } catch (err) {
       if (r.abort.signal.aborted) return;

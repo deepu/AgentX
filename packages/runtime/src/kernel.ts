@@ -490,6 +490,12 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   });
   const channels = createChannelService({
     pool, tools: () => gateway, people, external, inbox: (actor) => kernel.inbox(actor), subscribe: (l) => feed.subscribe(l),
+    async policyFor(item) {
+      if (item.kind === 'identity') return undefined;
+      // The playbook's policy without a step layer, as for an invite (a step's allow list is for its own calls).
+      const wf = await defs.latest(item.workflowId);
+      return wf ? (await defs.policy(wf)).effective : undefined;
+    },
   });
   const stopNotifier = channels.startNotifier();
   // Without a project folder there are no plugins: every call says so.

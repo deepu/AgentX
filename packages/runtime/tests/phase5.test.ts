@@ -382,7 +382,13 @@ describe.skipIf(!pgAvailable)('Phase 5 kernel', () => {
 
     await kernel.external.revoke(link.link.id, priya);
     await expect(kernel.external.extractForStep({ stepRunId: sr, documents: [doc.document.id], by: finn })).rejects.toThrow(/staff role/);
-    const r = await kernel.external.extractForStep({ stepRunId: sr, documents: [doc.document.id], by: priya });
+    // A file from somewhere else (another case, another person) is not read, even by its id.
+    const elsewhere = await kernel.saveFile({ name: 'other-gst.txt', mime: 'text/plain', data: new TextEncoder().encode('GSTIN 27AAACM1234M1Z2') }, ravi);
+    const calls = extractCalls.length;
+    expect(await kernel.external.extractForStep({ stepRunId: sr, documents: [elsewhere.id], by: priya })).toMatchObject({ suggestions: [], notes: [expect.stringContaining('Upload a document first')] });
+    expect(extractCalls.length).toBe(calls);
+    const r = await kernel.external.extractForStep({ stepRunId: sr, documents: [doc.document.id, elsewhere.id], by: priya });
+    expect(extractCalls.at(-1)!.args).toMatchObject({ documents: [doc.document.id] });
     const gstin = r.suggestions.find((s) => s.field === 'gstin')!;
     expect(gstin).toMatchObject({ value: '29AAACA1234A1Z5', confidence: 0.9, found: true, prefill: true });
     expect(extractCalls.at(-1)!.token).toMatchObject({ agentRole: 'client-intake.fill.form', onBehalfOf: priya.personId });
@@ -430,6 +436,13 @@ describe.skipIf(!pgAvailable)('Phase 5 kernel', () => {
     // Once per item and channel, however often the notifier looks.
     await (kernel.channels as ChannelKernelService).notifyNow();
     expect((await kernel.channels.deliveries({ personId: ravi.personId })).filter((x) => x.itemId === `step:${sr}`)).toHaveLength(1);
+    // A send that failed is tried again on a later sweep (here the ledger has it, so it is not sent twice).
+    const key = `notify:${ravi.personId}:step:${sr}:email`;
+    const fail = () => db.pool.query(`update mw.deliveries set status = 'failed', updated_at = now() - interval '10 minutes' where idem_key = $1`, [key]);
+    const statusOf = async () => (await db.pool.query(`select status from mw.deliveries where idem_key = $1`, [key])).rows[0].status;
+    await fail();
+    await (kernel.channels as ChannelKernelService).notifyNow();
+    expect(await statusOf()).toBe('sent');
     const mail = (await outbox(`notify:${ravi.personId}:step:${sr}:email`))[0];
     expect(mail.subject).toBe('Waiting for you: Manager approves onboarding (Client intake for Meera Iyer)');
     const token = INBOX_TOKEN.exec(mail.body)![1]!;
@@ -443,6 +456,10 @@ describe.skipIf(!pgAvailable)('Phase 5 kernel', () => {
     const decided = await kernel.external.decideInboxItem(token, { outcome: 'approved' });
     expect(decided).toMatchObject({ status: 'applied', message: expect.stringContaining('recorded as you (via email link)') });
     expect(await kernel.external.decideInboxItem(token, { outcome: 'approved' })).toMatchObject({ status: 'used' });
+    // Its link is used now: a failed row for it is not sent again.
+    await fail();
+    await (kernel.channels as ChannelKernelService).notifyNow();
+    expect(await statusOf()).toBe('failed');
     await kernel.waitForRun(started.runId, { until: (r) => r.state !== 'verify', timeoutMs: 30_000 });
     const row = await db.pool.query(`select decided_by, decided_via, outcome from mw.step_runs where id = $1`, [sr]);
     expect(row.rows[0]).toEqual({ decided_by: ravi.personId, decided_via: 'email', outcome: 'approved' });
@@ -519,10 +536,11 @@ describe.skipIf(!pgAvailable)('Phase 5 kernel', () => {
     expect(bad.status).toBe(401);
     expect((await kernel.channels.receiveWebhook('hk_nope', { method: 'POST', query: {}, headers: {}, body })).status).toBe(404);
     const events = await kernel.channels.inbound({ hookId: hook.id });
-    expect(events.map((e) => e.verified)).toEqual([false, true]);
-    expect(events[1]).toMatchObject({ body: { hello: 'world' } });
-    expect(events[1]!.headers.cookie).toBeUndefined();
-    expect(seen).toEqual([events[1]!.id]);
+    // Only the signed one is kept.
+    expect(events.map((e) => e.verified)).toEqual([true]);
+    expect(events[0]).toMatchObject({ body: { hello: 'world' } });
+    expect(events[0]!.headers.cookie).toBeUndefined();
+    expect(seen).toEqual([events[0]!.id]);
     stop();
 
     // Meta (WhatsApp): the GET handshake, and delivery statuses.

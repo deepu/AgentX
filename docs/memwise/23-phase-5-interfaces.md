@@ -181,4 +181,10 @@ New case fields `client_phone: Phone`, `contact_by: Enum[email, whatsapp]`, `cli
 - **Values sent back unchanged.** A value the client sends exactly as the case already has it (the form shows it to them) keeps its provenance; only what the client changed or added is `external`. A saved draft value that still matches a suggestion keeps that suggestion as its source.
 - **Form app build.** `apps/external-form` writes its files under `dist/assets/form/` and points at `../assets/form/<file>`; the core serves `/assets/form/<file>` from there.
 - **Scripted mode.** The stand-in `intake.extract_fields` reads documents by name or file id and returns what the scripted example's tool stub says, so the form's extraction works in demos.
+- **Channel sends and policy.** The invite, "Send again" and notifications call `email.send` or `whatsapp.send` checked against the playbook's policy without the step layer (the invite step allows only `external.invite`). A denied channel tool is not called; its rate limit counts; `approve` is met by the approval already given.
+- **Webhooks.** A request is verified before anything is stored; one without a good signature is refused and not kept.
+- **Staff extraction** reads only the step's documents: on the case already, uploaded by that person, or sent through a link to that step.
+- **Bodies.** The public handler checks the token before reading a body. The tunnel client takes bodies up to the handler's upload limit and holds at most 64 MiB of request bodies at once (a 503 past that).
+- **Notifications.** A failed notification is tried again on a later sweep for a day; one whose inbox link is used or closed is not sent again.
+- **Headers.** The public pages' CSP also allows inline styles (`style-src 'self' 'unsafe-inline'`). Uploads recognised only as plain text keep their name but are always served as `text/plain` with `nosniff`.
 

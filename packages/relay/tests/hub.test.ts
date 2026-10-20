@@ -202,3 +202,24 @@ describe('handshake', () => {
     expect(b.last('refused')?.reason).toBe('no hello in time');
   });
 });
+
+describe('the concurrent cap', () => {
+  test('requests still reading a small body count toward it', async () => {
+    const id = await generateIdentity();
+    const hub = new InstallHub(id.installId, { publicUrl: 'x', helloTimeoutMs: 0, limits: { concurrentPerInstall: 2 } });
+    const a = new FakeSocket();
+    hub.open(a);
+    await hub.message(a, JSON.stringify(await signHello(id, a.last('challenge')!.nonce)));
+    // Two senders that never finish their (declared small) bodies.
+    const dribble = () => new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array(10)); } });
+    const req = (n: number) => ({
+      method: 'POST', path: `/f/t/${n}`, query: '', headers: [['content-length', '100']] as [string, string][], body: dribble(), clientIp: `10.0.0.${n}`,
+    });
+    void hub.forward(req(1));
+    void hub.forward(req(2));
+    await Bun.sleep(10);
+    const third = await hub.forward(req(3));
+    expect(third.status).toBe(429);
+  });
+});
+

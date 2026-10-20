@@ -1390,9 +1390,11 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     },
 
     /** Settings → Public address; off while the playbooks aren't running. */
-    async relayStatus(_ctx: RequestContext): Promise<MwRelayStatus> {
-      const svc = getMemwiseService()
-      const address = svc ? publicAddressOf(svc) : undefined
+    async relayStatus(ctx: RequestContext): Promise<MwRelayStatus> {
+      if (!getMemwiseService()) return { enabled: false, state: 'off' }
+      // Signed-in people only: the status names the install and its public address.
+      const { svc } = await begin(ctx)
+      const address = publicAddressOf(svc)
       return address ? address.status() : { enabled: false, state: 'off' }
     },
 

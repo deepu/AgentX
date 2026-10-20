@@ -5,6 +5,10 @@ import { foundInText, ground } from '../src/external/ground.ts';
 import { sniffType } from '../src/external/form.ts';
 import { DEFAULT_EXPIRY_MS, expiryMs, isToken, MAX_EXPIRY_MS, tokenFor } from '../src/external/links.ts';
 import { inviteMessage } from '../src/external/messages.ts';
+import { deliver } from '../src/external/deliver.ts';
+import type { PolicyDoc } from '@memwise/defs';
+import type { GatewayDecision, ToolGateway } from '@memwise/gateway';
+import { compilePolicy, decide, PLATFORM_DEFAULTS, rateLimitOf, type EffectivePolicy } from '@memwise/policy';
 
 const bytes = (...b: number[]) => new Uint8Array([...b, ...new Array(16).fill(0)]);
 
@@ -66,4 +70,45 @@ test('the invite says who asks, what for, the link, until when, and the note', (
   } finally {
     if (prev === undefined) delete process.env.WHATSAPP_INVITE_TEMPLATE; else process.env.WHATSAPP_INVITE_TEMPLATE = prev;
   }
+});
+
+describe('delivery under policy', () => {
+  const message = { to: 'asha@example.com', via: 'email' as const, subject: 'Hi', body: 'Hello' };
+  const token = {
+    runId: 'run_1', caseId: 'case_1', stepId: 'invite', stepRunId: 'run_1/2/invite', workflowId: 'client-intake', workflowVersion: 1,
+    agentRole: 'client-intake.invite', issuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  };
+  const policyWith = (doc: PolicyDoc) => compilePolicy([PLATFORM_DEFAULTS, { kind: 'domain', name: 'domain', doc }]).effective;
+
+  /** A gateway around one `email.send`, deciding with the real policy rules. */
+  function gateway() {
+    const calls: GatewayDecision[] = [];
+    const def = { name: 'email.send', description: 'send', inputSchema: { type: 'object' }, effect: 'outbound' as const, execute: async () => ({ message_id: 'm1' }) };
+    const tools = {
+      get: (n: string) => (n === 'email.send' ? def : undefined),
+      async check(req: { tool: string }, policy: EffectivePolicy) {
+        const out: GatewayDecision = { tool: req.tool, effect: 'outbound', classified: true, decision: decide(policy, { tool: req.tool, effect: 'outbound', classified: true, tainted: false }) };
+        const rl = rateLimitOf(policy, req.tool);
+        if (rl) out.rateLimit = rl;
+        return out;
+      },
+      async execute(_req: unknown, d: GatewayDecision) {
+        calls.push(d);
+        return d.decision.verdict === 'deny' ? { status: 'denied', reason: d.decision.reason } : { status: 'ok', result: { message_id: 'm1' }, effect: 'outbound', replayed: false };
+      },
+    } as unknown as ToolGateway;
+    const db = { query: async (sql: string) => ({ rows: sql.startsWith('update') ? [{ id: 'dlv_1', channel: 'email', to: message.to, purpose: 'invite', status: 'sent', at: new Date() }] : [], rowCount: 1 }) };
+    return { tools, db, calls };
+  }
+
+  test('a channel tool the policy denies is not sent; approve counts as already approved; its rate limit is kept', async () => {
+    const denied = gateway();
+    await expect(deliver(denied.db as never, denied.tools, { message, idemKey: 'k1', purpose: 'invite', token, policy: policyWith({ tools: { deny: ['email.send'] } }) }))
+      .rejects.toThrow(/was not sent/);
+    expect(denied.calls[0]!.decision.verdict).toBe('deny');
+
+    const approved = gateway();
+    await deliver(approved.db as never, approved.tools, { message, idemKey: 'k2', purpose: 'invite', token, policy: policyWith({ tools: { rules: { 'email.send': { rateLimit: { count: 5, perMs: 60_000 } } } } }) });
+    expect(approved.calls[0]).toMatchObject({ decision: { verdict: 'allow' }, rateLimit: { count: 5, perMs: 60_000 } });
+  });
 });
