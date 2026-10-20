@@ -69,6 +69,8 @@ The smallest kernel that runs one trustworthy agent step ([07 §10](07-agent-run
 - **CLI:** `memwise check` and `memwise test` (run example cases).
 - **Exit test:** the intake "Check answers" step runs from its files against a sample case. Killed mid-step, it resumes without repeating any model call, and a test `outbound` effect happens exactly once. Its step record and the context it saw are queryable.
 
+**Status (October 2026).** Built as five parallel pieces plus the run engine against the interfaces in [18](18-kernel-interfaces.md). The exit test is `packages/runtime/tests/exit.test.ts`: the check step from [`examples/intake`](../../examples/intake) is killed at five points (after a model call, while waiting for approval, after the email is sent but before the ledger records it, after the ledger records it, and before the step finishes), and every restart resumes without repeating a model call and sends the email once. `memwise check` and `memwise test` run on the project folder; `validate-kernel.yml` runs both in CI with the kernel tests. Deferred to Phase 2 as planned: mechanical steps, person-step forms and the inbox, RLS from policy, rate limits and full taint handling.
+
 ## Phase 2 · Client intake, internal users
 
 The first usable workflow (D6), in the app.

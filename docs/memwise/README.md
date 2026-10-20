@@ -2,7 +2,7 @@
 
 MemWise is an agentic platform for **workflows and policies**: a domain expert turns their process into working software by talking to an agent, and the result is dependable where it matters and flexible where judgment is needed. It is built on this repo, our fork of the open-source Craft Agents app.
 
-This folder is the design, as agreed in the October 2026 discussions. It replaces the earlier `docs/membase` set, which is still in git history. **Nothing here is built yet.** Where a statement describes today's code, it names the file.
+This folder is the design, as agreed in the October 2026 discussions. It replaces the earlier `docs/membase` set, which is still in git history. Phase 0 (rename and spikes) and Phase 1 (the kernel) are built; the rest is design. Where a statement describes today's code, it names the file.
 
 ## The idea in one paragraph
 
@@ -39,6 +39,7 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 | 15 | [Decision log](15-decisions.md) | Every decision made so far, with its reason |
 | 16 | [Open questions](16-open-questions.md) | What's left, including the spikes that start the build |
 | 17 | [Build plan](17-build-plan.md) | Phases 0–6, each with an exit test, the spikes and the risks |
+| 18 | [Kernel interfaces](18-kernel-interfaces.md) | The Phase 1 package boundaries, contracts and conventions |
 
 ## Status labels
 
@@ -48,4 +49,4 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 
 ## Next
 
-The [build plan](17-build-plan.md): rename and spikes first, then the kernel, then client intake.
+The [build plan](17-build-plan.md): Phase 2, client intake for internal users, built on the kernel.
