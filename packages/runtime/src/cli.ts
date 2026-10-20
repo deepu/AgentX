@@ -26,6 +26,7 @@ import { boundPlugins, pluginPolicies, pluginToolEnvironment, toolClass } from '
 import { domainTools } from './domain-tools.ts';
 import { runExample, type ExampleResult } from './examples.ts';
 import { sampleTools } from './sample-tools.ts';
+import { projectPolicyLayers } from './runs.ts';
 
 const USAGE = `usage:
   memwise check <project>
@@ -72,7 +73,7 @@ async function diagnose(dir: string): Promise<{ project: ProjectDefs; all: Diagn
   for (const workflow of Object.values(project.workflows)) {
     for (const step of [undefined, ...Object.values(workflow.steps)]) {
       const plugins = pluginLayers(policies, workflow, step);
-      const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
+      const { effective, violations } = compilePolicy(layersFor({ ...projectPolicyLayers(project, workflow), plugins, workflow, step }));
       for (const d of [...violationsToDiagnostics(violations), ...extractDiagnostics(step, effective, tools)]) {
         const key = `${d.file}|${d.path}|${d.message}`;
         if (!seen.has(key)) { seen.add(key); all.push(d); }
@@ -198,7 +199,7 @@ async function policy(dir: string, workflowId: string, stepId: string): Promise<
   const step = workflow.steps[stepId];
   if (!step) { console.log(`workflow ${workflowId} has no step ${stepId}`); return 1; }
   const plugins = pluginLayers(pluginPolicies(boundPlugins(project)), workflow, step);
-  const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
+  const { effective, violations } = compilePolicy(layersFor({ ...projectPolicyLayers(project, workflow), plugins, workflow, step }));
   console.log(describePolicy(effective));
   if (violations.length) {
     console.log('\nviolations:');

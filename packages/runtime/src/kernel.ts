@@ -9,7 +9,7 @@ import {
   PgStepRecorder, PgStepRecordReader, PgVersionStore, withActor, withTransaction,
 } from '@memwise/db';
 import {
-  indexProject, sha256, type ApprovalRequest, type CaseValue, type Diagnostic, type EntityTypeDef, type IndexedDefinition,
+  domainOf, indexProject, sha256, type ApprovalRequest, type CaseValue, type Diagnostic, type EntityTypeDef, type IndexedDefinition,
   type ProjectDefs,
 } from '@memwise/defs';
 import {
@@ -38,10 +38,10 @@ import { loadProjectAt } from './plugins/load.ts';
 import { McpConnections } from './plugins/routes.ts';
 import { createPluginServices, type PluginServices } from './plugins/service.ts';
 import { boundPlugins, pluginPolicies, pluginTools, type BoundPlugin } from './plugins/tools.ts';
-import { getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef, PLUGIN_POLICIES_KIND } from './runs.ts';
+import { DOMAIN_POLICIES_KIND, getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef, PLUGIN_POLICIES_KIND, policySourcesOf } from './runs.ts';
 import { ensureSandbox, SAMPLE_PLUGIN } from './sample-tools.ts';
 import { startValueErrors, StartRunError } from './start.ts';
-import { submitStep } from './submit.ts';
+import { recordTypesFor, submitStep } from './submit.ts';
 import { defaultTestRunner } from './test-runner.ts';
 import type { Actor, Authoring, EntityRow, Explanation, InboxItem, Kernel, KernelOptions, RunRecord, StartRunInput } from './types.ts';
 import { approverRoles, DefinitionCache, getCaseView, inbox, listCases, liveCounts, mayApprove } from './views.ts';
@@ -238,7 +238,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       ? await loadWorkflowDef(pool, input.workflowId, input.workflowHash)
       : await latestWorkflowDef(pool, input.workflowId);
     if (!workflow) throw new Error(`workflow ${input.workflowId} is not indexed`);
-    const errors = startValueErrors(workflow, input.case, { ...entities, ...workflow.caseType.types }, input.startAt, { anyField: internal });
+    const errors = startValueErrors(workflow, input.case, recordTypesFor(entities, workflow), input.startAt, { anyField: internal });
     if (Object.keys(errors).length) throw new StartRunError(errors);
     const runId = input.runId ?? newRunId();
     const caseId = await withTransaction(pool, async (db) => {
@@ -298,7 +298,10 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       const nowBound = boundPlugins(project);
       const policies = pluginPolicies(nowBound);
       const policiesRow = { kind: PLUGIN_POLICIES_KIND, id: 'domain', hash: sha256(JSON.stringify(policies)), path: 'domain/bindings', body: policies };
-      await new PgDefinitionStore(pool).upsert([policiesRow as unknown as IndexedDefinition], []);
+      // Phase 6 (24 §2): the workspace house rules and each domain's policy, also read at run time.
+      const sources = policySourcesOf(project);
+      const sourcesRow = { kind: DOMAIN_POLICIES_KIND, id: 'workspace', hash: sha256(JSON.stringify(sources)), path: 'workspace.yaml', body: sources };
+      await new PgDefinitionStore(pool).upsert([policiesRow, sourcesRow] as unknown as IndexedDefinition[], []);
       await people.syncRoles(project.roles);
       const creators = domainCreators(project.entities, project.workflows);
       const schemaKey = JSON.stringify([project.entities, creators]);
@@ -360,7 +363,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         if (by) {
           const s = step.rows[0];
           const wf = await defs.workflow(s.workflow_id, s.workflow_hash);
-          if (!mayApprove(by, approverRoles(await defs.policy(wf, s.step_id), wf, s.step_id))) {
+          if (!mayApprove(by, approverRoles(await defs.policy(wf, s.step_id), wf, s.step_id), domainOf(wf))) {
             return { applied: false, status: 'forbidden' as const };
           }
         }
@@ -401,7 +404,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     submitStep: (input) => submitStep(submitDeps, input),
 
     async inbox(actor) {
-      const items: InboxItem[] = await inbox(pool, defs, actor);
+      const items: InboxItem[] = await inbox(pool, defs, actor, entities);
       // Phase 4: uncertain identity matches, for the people who own plugin bindings.
       for (const candidate of (await pluginServices?.identityInbox(actor)) ?? []) {
         items.push({ kind: 'identity', id: `identity:${candidate.id}`, candidate, since: candidate.createdAt });

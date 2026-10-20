@@ -11,7 +11,7 @@
 //                      runs.seq, a transitions row, the step's case writes, timers armed/cancelled
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
-import { crashPoint, END_STATE, type CaseValue, type Provenance, type WorkflowDef } from '@memwise/defs';
+import { crashPoint, domainOf, END_STATE, hasRole, type CaseValue, type Provenance, type WorkflowDef } from '@memwise/defs';
 import type { StepResult, StepRunInput } from '@memwise/step-engine';
 import type pg from 'pg';
 import { transition, type AnyStateMachine } from 'xstate';
@@ -319,7 +319,7 @@ export function outsideEventRefusal(workflow: WorkflowDef, state: string, by?: A
   }
   if (by?.kind !== 'person') return undefined;
   const roles = [...new Set([assigneeOf(workflow, state), workflow.owner].filter((r): r is string => !!r))];
-  if (roles.length && !roles.some((r) => by.roles.includes(r))) {
+  if (roles.length && !roles.some((r) => hasRole(by, r, domainOf(workflow)))) {
     return { reason: 'forbidden', message: `only someone with the ${roles.join(' or ')} role can decide this` };
   }
   return undefined;

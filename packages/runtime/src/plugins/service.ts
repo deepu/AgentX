@@ -22,7 +22,7 @@ import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type pg from 'pg';
 import { domainTools } from '../domain-tools.ts';
-import { loadDomainPolicy } from '../runs.ts';
+import { loadDomainPolicy, projectPolicyLayers } from '../runs.ts';
 import {
   BIND_PLUGIN, type Actor, type BindingView, type EntityRecordView, type IdentityService, type KernelChange, type PersonActor,
   type PluginDetail, type PluginsService, type PluginSummary, type RunRecord, type StartRunInput, type TestRunner,
@@ -461,7 +461,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
     const seen = new Set<string>();
     for (const wf of Object.values(project.workflows)) {
       for (const step of [undefined, ...Object.values(wf.steps)]) {
-        const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins: pluginLayers(policies, wf, step), workflow: wf, step }));
+        const { effective, violations } = compilePolicy(layersFor({ ...projectPolicyLayers(project, wf), plugins: pluginLayers(policies, wf, step), workflow: wf, step }));
         for (const x of [...violationsToDiagnostics(violations), ...extractDiagnostics(step, effective, tools)]) {
           const key = `${x.file}|${x.path}|${x.message}`;
           if (!seen.has(key)) { seen.add(key); all.push(x); }

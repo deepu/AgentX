@@ -4,7 +4,7 @@
 // the outcome is accepted by the run.
 import type { DBOSClient } from '@dbos-inc/dbos-sdk';
 import { PgCaseStore, type Queryable } from '@memwise/db';
-import { validateValue, type Provenance, type RecordTypes, type StepDef, type WorkflowDef } from '@memwise/defs';
+import { domainOf, hasRole, scopedEntities, validateValue, type EntityTypeDef, type Provenance, type RecordTypes, type StepDef, type WorkflowDef } from '@memwise/defs';
 import type pg from 'pg';
 import { driverIdOf } from './ids.ts';
 import type { Submission, SubmissionMessage } from './driver.ts';
@@ -104,6 +104,13 @@ export async function closeStepLinks(db: Queryable, runId: string, stepId: strin
       where kind = 'step' and run_id = $1 and step_id = $2 and used_at is null and closed_at is null`, [runId, stepId, reason]);
 }
 
+/**
+ * The record types a workflow's values are checked against: its domain's entities by bare name,
+ * every other one by key (24 §2), and its case file's own `types:`.
+ */
+export const recordTypesFor = (entities: RecordTypes, workflow: WorkflowDef): RecordTypes =>
+  ({ ...scopedEntities(entities as Record<string, EntityTypeDef>, domainOf(workflow)), ...workflow.caseType.types });
+
 /** Values with nothing in them left out (a cleared field is not written). */
 export const cleanValues = (values: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined && v !== null));
@@ -130,7 +137,7 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput, opts:
       return { applied: false, status: 'invalid', errors: { via: ['the chat id is missing'] }, message: 'some values need fixing' };
     }
     const role = step.assignee ?? s.assignee ?? undefined;
-    if (role && !input.by.roles.includes(role)) {
+    if (role && !hasRole(input.by, role, domainOf(workflow))) {
       return { applied: false, status: 'forbidden', message: `only someone with the ${role} role can answer this step` };
     }
     if (!step.outcomes.includes(input.outcome)) {
@@ -138,7 +145,7 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput, opts:
     }
 
     const values = input.values ?? {};
-    const errors = await answerErrors(db, step, s.case_id, values, { ...deps.entities(), ...workflow.caseType.types });
+    const errors = await answerErrors(db, step, s.case_id, values, recordTypesFor(deps.entities(), workflow));
     if (Object.keys(errors).length) return { applied: false, status: 'invalid', errors, message: 'some values need fixing' };
 
     const clean = cleanValues(values);
