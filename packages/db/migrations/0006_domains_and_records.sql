@@ -337,7 +337,7 @@ create trigger page_versions_append_only before update or delete on mw.page_vers
 -- person's own views.
 grant select on mw.record_versions, mw.entity_events, mw.grants, mw.auth_events to memwise_app;
 grant select, insert on mw.signatures, mw.record_notes, mw.page_versions to memwise_app;
-grant select, insert, delete on mw.mentions to memwise_app;
+grant select, insert, update, delete on mw.mentions to memwise_app;
 grant select, insert, update on mw.record_flags, mw.pages to memwise_app;
 grant select, insert, update, delete on mw.views to memwise_app;
 grant select (locked_until) on mw.people to memwise_app;
