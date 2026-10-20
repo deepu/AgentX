@@ -136,9 +136,12 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const boundKey = (b: BoundPlugin[]) => JSON.stringify(b.map((x) => [x.binding.plugin, x.binding.hash, x.plugin.hash]));
 
   // Rebuilt when indexing changes the entity types or the bindings; the step engine always calls the current one.
-  // Precedence: the caller's tools, the kernel's, then plugin tools (a clash is not bound).
+  // Precedence: the caller's tools, the kernel's, then plugin tools (a clash is not bound). The
+  // extractor bound under its name is the caller's builtin when it gives one (the stub, scripted),
+  // so a plugin tool routed to that builtin runs the same code whether or not a plugin binds it.
+  const boundExtractor = builtins.get(extractor.name) ?? extractor;
   const buildTools = () => {
-    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), extractor, ...playbookTools, ...pluginKernelTools]);
+    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), boundExtractor, ...playbookTools, ...pluginKernelTools]);
     const taken = new Map(base.map((t) => [t.name, t]));
     const fromPlugins = options.projectDir
       ? pluginTools(bound, taken, { root: options.projectDir, builtins, mcp })

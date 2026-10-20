@@ -102,7 +102,7 @@ function pathObject(path: string, value: unknown): Record<string, unknown> {
  * Compiles one record source's mapping (22 §5) into a pure function. Each domain field is read
  * through its mapping; values are checked against the entity's field types when `entity` is given;
  * source fields no mapping uses are kept under `<pluginNamespace>.<field>` in `extra`; `write` and
- * `both` fields get a round-trip check.
+ * `both` fields get a round-trip check. `raw` is a copy of the source record (the review's "before").
  */
 export function compileRecordMapping(
   binding: RecordBinding, source: RecordSourceDef, pluginNamespace: string,
@@ -133,6 +133,6 @@ export function compileRecordMapping(
     }
     const extra: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(record)) if (!used.has(k)) extra[`${pluginNamespace}.${k}`] = v;
-    return { source: source.name, externalId: isBlank(key) ? '' : String(key), values, extra, errors, roundTrip };
+    return { source: source.name, externalId: isBlank(key) ? '' : String(key), raw: structuredClone(record), values, extra, errors, roundTrip };
   };
 }

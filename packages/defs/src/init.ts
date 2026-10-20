@@ -34,8 +34,10 @@ export interface InitOptions {
 /**
  * Makes a project in `dir` (created if missing; refused when it has anything in it but `.git`).
  * `empty`: domain/roles.yaml, domain/policy.yaml, workflows/ with the meta playbooks when the
- * source has them. `intake`: a copy of the sample project. Both get an empty domain/bindings/
- * (with a `.gitkeep`). Returns the files written, relative.
+ * source has them, and an empty domain/bindings/ (with a `.gitkeep`): a fresh domain binds plugin
+ * tools only through frozen bindings (22 §3). `intake`: a copy of the sample project, whose own
+ * client-intake uses the app's sample tools, so it gets no bindings folder. Returns the files
+ * written, relative.
  */
 export async function initProject(dir: string, opts: InitOptions = {}): Promise<string[]> {
   const abs = resolve(dir);
@@ -65,11 +67,10 @@ export async function initProject(dir: string, opts: InitOptions = {}): Promise<
       const from = join(source, 'workflows', id);
       if (existsSync(join(from, 'workflow.yaml'))) await cp(from, join(abs, 'workflows', id), { recursive: true });
     }
+    // `.gitkeep` keeps the empty bindings folder in git; the loaders skip dotfiles.
+    await mkdir(join(abs, BINDINGS_DIR), { recursive: true });
+    await writeFile(join(abs, BINDINGS_DIR, '.gitkeep'), '');
   }
-  // An empty bindings folder: the domain binds plugin tools only through frozen bindings (22 §3).
-  // `.gitkeep` keeps it in git; the loaders skip dotfiles.
-  await mkdir(join(abs, BINDINGS_DIR), { recursive: true });
-  if (!(await readdir(join(abs, BINDINGS_DIR))).length) await writeFile(join(abs, BINDINGS_DIR, '.gitkeep'), '');
   return listRelative(abs);
 }
 

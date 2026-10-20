@@ -252,6 +252,8 @@ export interface BindingProposal {
 export interface MappedRecord {
   source: string;
   externalId: string;
+  /** The record as the source returned it ("before", for the binding review). */
+  raw?: Record<string, unknown>;
   /** Domain field → value after the transforms. */
   values: Record<string, unknown>;
   /** Fields of the record no mapping uses, kept under the plugin's namespace. */

@@ -57,12 +57,13 @@ describe('mappings', () => {
 
   test('a record mapped onto the entity: values, extra, errors, round trips', () => {
     const map = compileRecordMapping(BINDING, SOURCE, 'crm', CUSTOMER);
-    const out = map({
+    const record = {
       id: 'c-1', company_name: '  Acme   Traders ', email: ' Asha@Acme.Example ', gst_number: '29aaaca1234a1z5',
       limit: 500000, level: 'G', first: 'A', last: 'R', phone: '+91 98450 12345', notes: { vip: true },
-    });
+    };
+    const out = map(record);
     expect(out).toEqual({
-      source: 'contact', externalId: 'c-1',
+      source: 'contact', externalId: 'c-1', raw: record,
       values: {
         name: 'Acme Traders', email: 'asha@acme.example', gstin: '29AAACA1234A1Z5',
         credit_limit: { amount: 500000, currency: 'INR' }, tier: 'gold', code: 'A-R',
