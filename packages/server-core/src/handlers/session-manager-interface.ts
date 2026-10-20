@@ -56,6 +56,11 @@ export interface ISessionManager {
    *  the orchestrator's cwd). */
   getSessionWorkingDirectory(sessionId: string): string | undefined
   deleteSession(sessionId: string): Promise<void>
+  /**
+   * MemWise anchored chat: the per-session `<memwise_context>` system-prompt block (and, for a
+   * conversation step, the `playbook_*` tools). Set before the session's first turn.
+   */
+  setMemwiseContext(sessionId: string, ctx: Omit<import('@memwise/shared/sessions').SessionMemwiseContext, 'setAt'>): boolean
 
   // ---------------------------------------------------------------------------
   // Session state

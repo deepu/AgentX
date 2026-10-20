@@ -8,6 +8,7 @@ import { atom } from 'jotai'
 import type {
   MwCaseSummary,
   MwChange,
+  MwDraftSummary,
   MwInboxItem,
   MwPerson,
   MwPlaybookSummary,
@@ -32,12 +33,17 @@ export const memwiseRolesAtom = atom<MwRole[]>([])
 export const memwiseInboxAtom = atom<MwInboxItem[] | null>(null)
 export const memwiseCasesAtom = atom<MwCaseSummary[] | null>(null)
 export const memwisePlaybooksAtom = atom<MwPlaybookSummary[] | null>(null)
+/** Every draft (Phase 3); the screens show the open ones. Null while loading, or when the host has no drafts. */
+export const memwiseDraftsAtom = atom<MwDraftSummary[] | null>(null)
 
 /** The last `memwise:changed` push, with a sequence number so equal payloads still notify. */
 export const memwiseLastChangeAtom = atom<{ seq: number; change: MwChange } | null>(null)
 
 /** Cases list filter (playbook, status). */
 export const memwiseCaseFilterAtom = atom<CaseFilter>({})
+
+/** The "New playbook" dialog (asks what it should do, then opens the chat that builds it). */
+export const memwiseNewPlaybookDialogAtom = atom<boolean>(false)
 
 /** The "Start a case" dialog, openable from the cases list and a playbook. */
 export const memwiseStartCaseDialogAtom = atom<{ open: boolean; workflowId?: string }>({ open: false })

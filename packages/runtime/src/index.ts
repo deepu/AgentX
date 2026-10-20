@@ -16,3 +16,13 @@ export { compileMachine, metaOf, stateKind, stateMeta, remindTimerId, REMIND_EVE
 export { newCaseId, newRunId, stepRunIdOf, driverIdOf, ulid } from './ids.ts';
 export { sampleTools, ensureSandbox, SAMPLE_PLUGIN, type SampleToolsOptions } from './sample-tools.ts';
 export type * from './types.ts';
+// Phase 3 (docs/memwise/20-phase-3-interfaces.md)
+export { createAuthoring, type AuthoringDeps } from './authoring.ts';
+export {
+  authoringTools, authoringToolDefinitions, AUTHORING_PLUGIN, CHAT_TOOLS, CHECK_DRAFT_TOOL, PUBLISH_DRAFT_TOOL, type CheckDraftResult,
+} from './authoring-tools.ts';
+export { defaultTestRunner, cliCommand, parseOutcomes, type TestRunnerOptions } from './test-runner.ts';
+export { caseToExample, exampleNameFor, type Correction } from './replay.ts';
+export { returnedComments } from './prepare.ts';
+export { answeredBySubmit } from './machine.ts';
+export { CREATE_PLAYBOOK, CHANGE_PLAYBOOK } from './types.ts';

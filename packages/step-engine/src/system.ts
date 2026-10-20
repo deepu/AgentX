@@ -169,7 +169,9 @@ export async function systemStepWorkflow(input: StepRunInput): Promise<StepResul
     const hit = results[w.from.tool];
     const value = hit ? valueAt(hit.result, w.from.field) : undefined;
     if (value === undefined) {
-      if (w.required || hit) problems.push(`${w.from.tool} returned no ${w.from.field ?? 'value'} for ${field}`);
+      // With `outcomeFrom` the result's shape follows its outcome (a stale publish has no
+      // version), so only a required write must be there.
+      if (w.required || (hit && !step.outcomeFrom)) problems.push(`${w.from.tool} returned no ${w.from.field ?? 'value'} for ${field}`);
       continue;
     }
     const errors = validateValue(w.type, value, input.recordTypes);

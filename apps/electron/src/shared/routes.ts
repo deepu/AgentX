@@ -214,6 +214,9 @@ export const routes = {
         ? `playbooks/playbook/${encodeURIComponent(playbookId)}` as const
         : 'playbooks' as const,
 
+    /** A draft of a playbook (Phase 3): its changes, steps, map and checks */
+    draft: (draftId: string) => `playbooks/draft/${encodeURIComponent(draftId)}` as const,
+
     /** Kanban board view (sessions navigator, board view mode, all sessions) */
     board: () => 'board' as const,
   },

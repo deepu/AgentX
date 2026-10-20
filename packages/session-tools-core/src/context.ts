@@ -394,6 +394,18 @@ export interface SessionToolContext {
   decide?: DecisionToolCallbacks;
 
   // ============================================================
+  // MemWise playbooks (playbook_vocabulary / playbook_read / playbook_write /
+  //   playbook_diff / playbook_check / playbook_finish)
+  // ============================================================
+
+  /**
+   * Building and changing a playbook by chat (docs/memwise/20-phase-3-interfaces.md §4).
+   * Grouped like pages. Injected by SessionManager only for chats anchored to a
+   * conversation step; undefined elsewhere — the handlers say the tools are not available.
+   */
+  memwise?: MemwiseToolCallbacks;
+
+  // ============================================================
   // Inter-Session Messaging
   // ============================================================
 
@@ -825,6 +837,77 @@ export type DecisionToolResult =
  */
 export interface DecisionToolCallbacks {
   decide(request: DecisionToolRequest): Promise<DecisionToolResult>;
+}
+
+// ============================================================
+// MemWise playbook tool types
+// ============================================================
+// Plain JSON shapes — this package stays free of @memwise/* kernel types; the
+// backend (server-core memwise/chat-tools.ts) maps the kernel's results onto these.
+
+/** One whole-file write into the chat's draft; `content: null` deletes the file. */
+export interface PlaybookFileWrite {
+  /** Project-relative: `workflows/<id>/...` or `domain/...`. */
+  path: string;
+  content: string | null;
+}
+
+export interface PlaybookReadInput {
+  /** A file to read; without it, the list of files. */
+  path?: string;
+  /** Read the live project instead of the draft (default: the draft when there is one). */
+  live?: boolean;
+  /** Another live playbook to read (e.g. as a model to follow). */
+  playbook?: string;
+}
+
+export interface PlaybookWriteInput {
+  files: PlaybookFileWrite[];
+  /** One line, plain words: what this edit does. */
+  summary: string;
+  /** New playbooks: the playbook's id (kebab-case), needed on the first write. */
+  playbook?: string;
+  /** New playbooks: its title. */
+  title?: string;
+}
+
+export interface PlaybookCheckInput {
+  /** How many recent finished cases to replay on the draft (default 5; 0 = none). */
+  pastCases?: number;
+}
+
+export interface PlaybookFinishInput {
+  /** What the change does, in a few plain sentences (goes on the case and the review card). */
+  summary: string;
+  /** The playbook's (or the change's) title, when it should differ from the draft's. */
+  title?: string;
+  /** Default: the conversation step's only outcome (`drafted`). */
+  outcome?: string;
+  /** Why it is ready, for the step record. */
+  rationale?: string;
+}
+
+/** A diagnostic as the tools report it. */
+export interface PlaybookToolDiagnostic {
+  severity: 'error' | 'warning';
+  code: string;
+  message: string;
+  file?: string;
+  line?: number;
+}
+
+/**
+ * MemWise playbook tool callbacks, injected by SessionManager for chats anchored to a
+ * conversation step. They act as the person in the chat. Results are plain JSON the
+ * handlers return to the model; a thrown error becomes an error result.
+ */
+export interface MemwiseToolCallbacks {
+  vocabulary(): Promise<unknown>;
+  read(input: PlaybookReadInput): Promise<unknown>;
+  write(input: PlaybookWriteInput): Promise<{ draftId: string; editId: string; diagnostics: PlaybookToolDiagnostic[]; [k: string]: unknown }>;
+  diff(): Promise<unknown>;
+  check(input: PlaybookCheckInput): Promise<unknown>;
+  finish(input: PlaybookFinishInput): Promise<{ applied: boolean; message?: string; [k: string]: unknown }>;
 }
 
 export interface SessionInfo {

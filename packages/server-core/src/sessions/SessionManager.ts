@@ -79,6 +79,8 @@ import { listTaskSlugs, parseTaskSpec, uniqueTaskSlug } from '@memwise/shared/ta
 import { createTaskFromSpec, resolveCreateTaskProjectId } from '../tasks'
 import { buildPagesToolCallbacks } from '../pages/tool-callbacks'
 import { buildDecisionToolCallbacks } from '../decisions/tool-callbacks'
+import { buildMemwiseToolCallbacks } from '../memwise/chat-tools'
+import { sessionHasPlaybookTools, writeSessionMemwiseContext, type SessionMemwiseContext } from '@memwise/shared/sessions'
 import { buildServersFromSources as buildServersFromSourcesShared } from '../sources/build-servers'
 import { buildMcpSourceToolCallbacks } from '../sources/mcp-source-tool-callbacks'
 import { ConfigWatcher, type ConfigWatcherCallbacks } from '@memwise/shared/config'
@@ -3057,6 +3059,24 @@ export class SessionManager implements ISessionManager {
    * Used for lazy loading session messages when session is selected.
    * Messages are loaded from disk on first access to reduce memory usage.
    */
+  /**
+   * MemWise anchored chat (docs/memwise/20-phase-3-interfaces.md §4): the per-session
+   * `<memwise_context>` system-prompt block, kept next to the transcript. Set it before the
+   * session's first turn (both backends pin it then). A conversation-step chat also gets the
+   * `playbook_*` tools. Returns false when the session is unknown.
+   */
+  setMemwiseContext(sessionId: string, ctx: Omit<SessionMemwiseContext, 'setAt'>): boolean {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return false
+    writeSessionMemwiseContext(managed.workspace.rootPath, sessionId, ctx)
+    if (ctx.conversation) {
+      mergeSessionScopedToolCallbacks(sessionId, {
+        memwise: buildMemwiseToolCallbacks({ sessionId, log: (message: string) => sessionLog.info(message) }),
+      })
+    }
+    return true
+  }
+
   async getSession(sessionId: string): Promise<Session | null> {
     const m = this.sessions.get(sessionId)
     if (!m) return null
@@ -5043,6 +5063,11 @@ export class SessionManager implements ISessionManager {
           sessionId: managed.id,
           log: (message: string) => sessionLog.info(message),
         }),
+        // MemWise playbook tools (playbook_*): only for a chat anchored to a conversation
+        // step (building or changing a playbook); the anchor is resolved at call time.
+        ...(sessionHasPlaybookTools(managed.workspace.rootPath, managed.id)
+          ? { memwise: buildMemwiseToolCallbacks({ sessionId: managed.id, log: (message: string) => sessionLog.info(message) }) }
+          : {}),
         getSessionInfoFn: (sessionId?: string) => {
           const targetId = sessionId ?? managed.id
           const session = this.sessions.get(targetId)

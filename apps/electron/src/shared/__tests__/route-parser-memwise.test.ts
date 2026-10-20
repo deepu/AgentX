@@ -30,6 +30,7 @@ describe('memwise route builders', () => {
     expect(routes.view.cases('case_1')).toBe('cases/case/case_1')
     expect(routes.view.playbooks()).toBe('playbooks')
     expect(routes.view.playbooks('client-intake')).toBe('playbooks/playbook/client-intake')
+    expect(routes.view.draft('drf_1')).toBe('playbooks/draft/drf_1')
   })
 
   test('encode ids with reserved characters', () => {
@@ -67,6 +68,10 @@ describe('memwise route parsing', () => {
     const pb = parseRouteToNavigationState('playbooks/playbook/client-intake')
     expect(pb).toEqual({ navigator: 'playbooks', details: { type: 'playbook', playbookId: 'client-intake' } })
     expect(pb && isPlaybooksNavigation(pb)).toBe(true)
+
+    const draft = parseRouteToNavigationState('playbooks/draft/drf_1')
+    expect(draft).toEqual({ navigator: 'playbooks', details: { type: 'draft', draftId: 'drf_1' } })
+    expect(parseRoute('playbooks/draft/drf_1')).toEqual({ type: 'view', name: 'draft-info', id: 'drf_1', params: {} })
   })
 
   test('decodes encoded ids', () => {
@@ -81,6 +86,8 @@ describe('memwise route parsing', () => {
     expect(parseCompoundRoute('inbox/item')).toBeNull()
     expect(parseCompoundRoute('cases/item/x')).toBeNull()
     expect(parseCompoundRoute('playbooks/playbook/x/extra')).toBeNull()
+    expect(parseCompoundRoute('cases/draft/x')).toBeNull()
+    expect(parseCompoundRoute('playbooks/draft')).toBeNull()
     expect(parseCompoundRoute('cases/case/%E0%A4%A')).toBeNull()
   })
 
@@ -106,6 +113,8 @@ describe('memwise round trips', () => {
     'cases/case/case_9',
     'playbooks',
     'playbooks/playbook/client-intake',
+    'playbooks/draft/drf_1',
+    routes.view.draft('drf/2'),
   ]
 
   test('route ⇄ navigation state', () => {
@@ -129,6 +138,7 @@ describe('memwise round trips', () => {
       { navigator: 'cases', details: { type: 'case', caseId: 'case_9' } },
       { navigator: 'playbooks', details: null },
       { navigator: 'playbooks', details: { type: 'playbook', playbookId: 'client-intake' } },
+      { navigator: 'playbooks', details: { type: 'draft', draftId: 'drf_1' } },
     ]
     for (const state of states) {
       expect(parseNavigationStateKey(getNavigationStateKey(state))).toEqual(state)

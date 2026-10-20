@@ -93,6 +93,17 @@ export {
   createSessionHeader,
 } from './jsonl.ts';
 
+// MemWise anchored-chat context (system-prompt block, kept next to the transcript)
+export {
+  MEMWISE_CONTEXT_FILE,
+  MEMWISE_CONTEXT_MAX_CHARS,
+  memwiseContextPath,
+  writeSessionMemwiseContext,
+  readSessionMemwiseContext,
+  sessionHasPlaybookTools,
+  type SessionMemwiseContext,
+} from './memwise-context.ts';
+
 // Field utilities
 export { pickSessionFields } from './utils.ts';
 

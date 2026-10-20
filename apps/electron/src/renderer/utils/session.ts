@@ -33,6 +33,14 @@ function normalizeTitleCasing(title: string): string {
  * Priority: custom name > first user message > preview (from metadata) > "New chat"
  * Works with both Session (full) and SessionMeta (lightweight)
  */
+/**
+ * The first user message a person would see. Hidden messages (a chat's kick-off turn, background
+ * nudges) reach the model but never show, so they never name or preview the session either.
+ */
+export function firstVisibleUserMessage(messages: Message[]): Message | undefined {
+  return messages.find(m => m.role === 'user' && !m.hidden)
+}
+
 export function getSessionTitle(session: SessionLike | SessionMeta): string {
   if (session.name) {
     return normalizeTitleCasing(session.name)
@@ -40,7 +48,7 @@ export function getSessionTitle(session: SessionLike | SessionMeta): string {
 
   // Check loaded messages first (only available on full Session)
   if ('messages' in session && session.messages) {
-    const firstUserMessage = session.messages.find(m => m.role === 'user')
+    const firstUserMessage = firstVisibleUserMessage(session.messages)
     if (firstUserMessage?.content) {
       const sanitized = sanitizePreview(firstUserMessage.content)
       if (sanitized) {
@@ -71,7 +79,7 @@ export function getSessionTitle(session: SessionLike | SessionMeta): string {
 export function getSessionPreviewText(session: SessionLike | SessionMeta, maxLength = 88): string | null {
   const source = session.preview
     || (('messages' in session && session.messages)
-      ? session.messages.find(m => m.role === 'user')?.content
+      ? firstVisibleUserMessage(session.messages)?.content
       : undefined)
 
   if (!source) return null

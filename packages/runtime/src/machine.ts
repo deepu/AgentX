@@ -6,7 +6,11 @@
 import { END_STATE, type Performer, type StateDef, type WaitDef, type WorkflowDef } from '@memwise/defs';
 import { cancel, raise, setup, type AnyStateMachine } from 'xstate';
 
-export type StateKind = 'agent-step' | 'person-step' | 'external-step' | 'system-step' | 'wait' | 'final';
+/**
+ * `conversation-step`: an agent step on the open engine (Phase 3): a chat with a person, so the
+ * run waits on it like a person step and only its chat answers it (submitStep with `via`).
+ */
+export type StateKind = 'agent-step' | 'person-step' | 'external-step' | 'system-step' | 'conversation-step' | 'wait' | 'final';
 
 /** Per-state metadata the driver reads (the spike's `metaOf`). */
 export interface StateMeta {
@@ -31,8 +35,12 @@ export function stateKind(workflow: WorkflowDef, state: string): StateKind {
   const def = workflow.states[state];
   if (!def) throw new Error(`workflow ${workflow.id} has no state "${state}"`);
   const step = workflow.steps[def.step ?? state];
-  return step ? KIND_BY_PERFORMER[step.performer] : 'wait';
+  if (!step) return 'wait';
+  return step.performer === 'agent' && step.engine === 'open' ? 'conversation-step' : KIND_BY_PERFORMER[step.performer];
 }
+
+/** States a person answers through submitStep: person, external and conversation steps. */
+export const answeredBySubmit = (kind: StateKind) => kind === 'person-step' || kind === 'external-step' || kind === 'conversation-step';
 
 export function stateMeta(workflow: WorkflowDef, state: string): StateMeta {
   const kind = stateKind(workflow, state);

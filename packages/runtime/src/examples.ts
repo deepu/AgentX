@@ -1,11 +1,11 @@
 // Example cases as acceptance tests (05 §12): each runs on a fresh database with a scripted
 // model, stubbed tools and scripted approval answers, and is compared with its `expect`.
 import { createTestDatabase } from '@memwise/db';
-import type { ExampleCase, ExampleSubmission, ProjectDefs, WorkflowDef } from '@memwise/defs';
+import { END_STATE, isConversationStep, type ExampleCase, type ExampleSubmission, type ProjectDefs, type StepDef, type WorkflowDef } from '@memwise/defs';
 import { scriptedProvider, stubTools, type ToolDefinition } from '@memwise/gateway';
 import { isDeepStrictEqual } from 'node:util';
+import { authoringToolDefinitions } from './authoring-tools.ts';
 import { createKernel } from './kernel.ts';
-import { stateKind } from './machine.ts';
 import { sampleTools } from './sample-tools.ts';
 import type { Actor, Kernel, RunRecord } from './types.ts';
 
@@ -25,16 +25,19 @@ const show = (v: unknown) => JSON.stringify(v);
 
 export async function runExample(project: ProjectDefs, workflow: WorkflowDef, example: ExampleCase, opts: RunExampleOptions = {}): Promise<ExampleResult> {
   const ids = { workflow: workflow.id, example: example.name };
-  const startKind = stateKind(workflow, example.startAt ?? workflow.start);
-  // Without a model script only an example that never reaches an agent step can run (e.g. onboard).
-  if (!example.model && (startKind === 'agent-step' || example.submit)) return { ...ids, status: 'skip', reason: 'no model script; it needs a live model' };
+  // Without a model script only an example that can't reach an agent step on our own engine can
+  // run (e.g. onboard, or a meta playbook whose only agent step is a conversation answered by `submit:`).
+  if (!example.model && reachesModelStep(workflow, example)) return { ...ids, status: 'skip', reason: 'no model script; it needs a live model' };
   if (opts.adminUrl) process.env.MEMWISE_TEST_DATABASE_URL = opts.adminUrl;
   const db = await createTestDatabase('mw_example');
   try {
+    // The playbooks.* definitions too, so meta-playbook examples can stub check_draft and publish_draft.
+    const tools = new Map<string, ToolDefinition>();
+    for (const t of [...(opts.tools ?? ((url) => sampleTools({ databaseUrl: url })))(db.url), ...authoringToolDefinitions()]) if (!tools.has(t.name)) tools.set(t.name, t);
     const kernel = await createKernel({
       databaseUrl: db.url,
       projectDir: project.root,
-      tools: stubTools((opts.tools ?? ((url) => sampleTools({ databaseUrl: url })))(db.url), example.tools ?? {}),
+      tools: stubTools([...tools.values()], example.tools ?? {}),
       modelRoles: Object.fromEntries(Object.keys(example.model ?? {}).map((role) => [role, { provider: 'scripted', model: 'scripted' }])),
       providers: [scriptedProvider(example.model ?? {})],
       logLevel: 'error', // the run is left waiting at shutdown on purpose; DBOS warns about that
@@ -89,10 +92,36 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
   }
 }
 
-const runsItself = (workflow: WorkflowDef, state: string) => {
-  const kind = stateKind(workflow, state);
-  return kind === 'agent-step' || kind === 'system-step';
+const stepIn = (workflow: WorkflowDef, state: string): StepDef | undefined => {
+  const def = workflow.states[state];
+  return def ? workflow.steps[def.step ?? state] : undefined;
 };
+
+/** Whether the run moves on by itself in `state`: an agent step on our engine, or a system step. Conversations wait. */
+const runsItself = (workflow: WorkflowDef, state: string) => {
+  const step = stepIn(workflow, state);
+  return !!step && (step.performer === 'system' || (step.performer === 'agent' && !isConversationStep(step)));
+};
+
+/**
+ * Whether the example's run can reach an agent step that needs a model (not a conversation):
+ * from its start, through steps that run by themselves and the waits the example answers.
+ */
+function reachesModelStep(workflow: WorkflowDef, example: ExampleCase): boolean {
+  const seen = new Set<string>();
+  const queue = [example.startAt ?? workflow.start];
+  while (queue.length) {
+    const name = queue.shift()!;
+    if (seen.has(name) || name === END_STATE) continue;
+    seen.add(name);
+    const step = stepIn(workflow, name);
+    if (step?.performer === 'agent' && !isConversationStep(step)) return true;
+    // A wait without an answer is where the run stops (timeouts don't fire within an example).
+    if (!runsItself(workflow, name) && !example.submit?.[name]) continue;
+    queue.push(...Object.values(workflow.states[name]?.on ?? {}));
+  }
+  return false;
+}
 
 /**
  * Until the run waits (a state that is not an agent or system step) without an answer left in
@@ -122,7 +151,10 @@ async function settle(kernel: Kernel, runId: string, workflow: WorkflowDef, exam
       const stepRunId = `${runId}/${run.enteredSeq}/${run.state}`;
       const record = await kernel.getStepRecord(stepRunId);
       if (record?.status === 'waiting') {
-        const r = await kernel.submitStep({ stepRunId, outcome: answer.outcome, values: answer.values, comment: answer.comment, by });
+        // A conversation step is answered by its chat; here the example plays the chat.
+        const step = stepIn(workflow, run.state);
+        const via = step && isConversationStep(step) ? { via: { chatId: 'example', ...(answer.comment ? { rationale: answer.comment } : {}) } } : {};
+        const r = await kernel.submitStep({ stepRunId, outcome: answer.outcome, values: answer.values, comment: answer.comment, by, ...via });
         if (!r.applied) {
           differences.push(`submit.${run.state}: ${r.status}${r.message ? ` (${r.message})` : ''}${r.errors ? ` ${show(r.errors)}` : ''}`);
           return run;

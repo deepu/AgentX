@@ -31,6 +31,12 @@ export interface KernelOptions {
   extractorRole?: string;
   /** Phase 3: runs example cases for draft checks; default spawns the `memwise` CLI. */
   testRunner?: TestRunner;
+  /**
+   * Phase 3: admin URL of the Postgres server the default TestRunner makes its throwaway
+   * databases on (`memwise test --database-url`); default `MEMWISE_TEST_DATABASE_URL`, else a
+   * throwaway cluster of the CLI's own.
+   */
+  testDatabaseUrl?: string;
 }
 
 export type RunStatus = 'active' | 'done' | 'stopped';

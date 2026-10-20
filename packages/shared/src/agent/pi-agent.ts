@@ -90,6 +90,8 @@ import { homedir } from 'os';
 
 // Session storage (plans folder path)
 import { getSessionDataPath, getSessionPath, getSessionPlansPath } from '../sessions/storage.ts';
+import { readSessionMemwiseContext, sessionHasPlaybookTools } from '../sessions/memwise-context.ts';
+import type { SessionMemwiseContext } from '../sessions/memwise-context.ts';
 
 // Error typing
 import { parseError, type AgentError } from './errors.ts';
@@ -209,6 +211,8 @@ export class PiAgent extends BaseAgent {
   private pinnedPreferencesPrompt: string | null = null;
   private pinnedIncludeCoAuthoredBy: boolean | null = null;
   private pinnedProjectContext: ProjectPromptContext | null = null;
+  /** MemWise anchored-chat block (sessions/{id}/memwise-context.json), pinned on the first turn. */
+  private pinnedMemwiseContext: SessionMemwiseContext | null = null;
   private promptDriftNotified = false;
 
   /**
@@ -614,7 +618,10 @@ export class PiAgent extends BaseAgent {
     // These tools (SubmitPlan, config_validate, source auth, call_llm, etc.)
     // are executed in the main process when the LLM calls them.
     this.assertBackendSessionToolParity();
-    let sessionToolDefs = getSessionToolProxyDefs();
+    // The playbook_* tools are advertised only in a chat anchored to a MemWise conversation step.
+    let sessionToolDefs = getSessionToolProxyDefs({
+      includePlaybookTools: sessionHasPlaybookTools(this.config.workspace.rootPath, this.config.session?.id),
+    });
 
     // Mirror Claude's gate: hide `browser_tool` when the user has disabled
     // the built-in browser tool. Without this filter, Pi would still advertise
@@ -2132,6 +2139,7 @@ export class PiAgent extends BaseAgent {
         this.pinnedPreferencesPrompt = currentPreferencesPrompt;
         this.pinnedIncludeCoAuthoredBy = currentIncludeCoAuthoredBy;
         this.pinnedProjectContext = currentProjectContext;
+        this.pinnedMemwiseContext = readSessionMemwiseContext(this.config.workspace.rootPath, this.config.session?.id || this._sessionId);
       } else {
         const preferencesDrifted = currentPreferencesPrompt !== this.pinnedPreferencesPrompt;
         const coAuthorDrifted = currentIncludeCoAuthoredBy !== this.pinnedIncludeCoAuthoredBy;
@@ -2154,6 +2162,7 @@ export class PiAgent extends BaseAgent {
         'MemWise Backend', // backendName
         this.pinnedIncludeCoAuthoredBy ?? undefined,
         this.pinnedProjectContext ?? undefined,
+        this.pinnedMemwiseContext,
       );
 
       // Build context from sources

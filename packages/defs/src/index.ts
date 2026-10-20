@@ -21,3 +21,12 @@ export { checkWorkflow, checkProject, systemOutcome, isConversationStep, BUILTIN
 export { validateValue, valueTypeToJsonSchema, IDENTIFIER_PATTERNS, type RecordTypes } from './values.ts';
 export { jsonSchemas, formats, type FormatName } from './formats.ts';
 export { indexProject, DOMAIN_POLICY_ID } from './index-project.ts';
+export { lineDiff, structuralDiff, describeStructuralDiff, stepParts, splitLines } from './diff.ts';
+export {
+  createDraft, listDrafts, readDraft, updateDraftMeta, writeDraftFiles, setDraftEditStatus, discardDraftEdit,
+  draftContentHash, loadDraft, diffDraft, applyDraft, writeDraftReport, draftDir, badDraftPath, setWorkflowVersion,
+  DraftConflictError, DraftStaleError, type CreateDraftInput, type DraftFiles, type WriteDraftOptions,
+} from './drafts.ts';
+export { exampleToYaml } from './example-yaml.ts';
+export { initProject, INTAKE_TEMPLATE_DIR, META_PLAYBOOKS, type InitOptions } from './init.ts';
+export { convertTaskYaml, type ConvertOptions } from './convert.ts';

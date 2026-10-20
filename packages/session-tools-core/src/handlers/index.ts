@@ -115,4 +115,12 @@ export type {
 
 // Decision model
 export { handleDecide } from './decide.ts';
+export {
+  handlePlaybookVocabulary,
+  handlePlaybookRead,
+  handlePlaybookWrite,
+  handlePlaybookDiff,
+  handlePlaybookCheck,
+  handlePlaybookFinish,
+} from './playbooks.ts';
 export type { DecideArgs } from './decide.ts';

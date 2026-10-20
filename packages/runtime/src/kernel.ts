@@ -6,7 +6,7 @@ import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
 import {
   actorLabel, applyDomainSchema, createPool, domainCreators, entityTableName, migrate, PgApprovalStore, PgCaseStore,
   PgDefinitionStore, PgEffectLedger, PgEntityStore, PgExplanationStore, PgFileStore, PgPeopleStore, PgRateCounter,
-  PgStepRecorder, PgStepRecordReader, withActor, withTransaction,
+  PgStepRecorder, PgStepRecordReader, PgVersionStore, withActor, withTransaction,
 } from '@memwise/db';
 import {
   indexProject, loadProject, type ApprovalRequest, type CaseValue, type Diagnostic, type EntityTypeDef, type ProjectDefs,
@@ -20,6 +20,8 @@ import {
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { initialTransition } from 'xstate';
+import { createAuthoring } from './authoring.ts';
+import { authoringTools } from './authoring-tools.ts';
 import { ChangeFeed } from './changes.ts';
 import { domainTools } from './domain-tools.ts';
 import { applyTimerActions, outsideEventRefusal, registerRunDriver } from './driver.ts';
@@ -27,11 +29,13 @@ import { EXPLAINER_ROLE, explainStep } from './explain.ts';
 import { EXTRACTOR_ROLE, quarantinedExtractTool } from './extract.ts';
 import { driverIdOf, newCaseId, newRunId } from './ids.ts';
 import { compileMachine, type RunEvent } from './machine.ts';
+import { caseToExample } from './replay.ts';
 import { getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef } from './runs.ts';
 import { ensureSandbox, SAMPLE_PLUGIN } from './sample-tools.ts';
 import { startValueErrors, StartRunError } from './start.ts';
 import { submitStep } from './submit.ts';
-import type { Actor, EntityRow, Explanation, Kernel, KernelOptions, RunRecord } from './types.ts';
+import { defaultTestRunner } from './test-runner.ts';
+import type { Actor, Authoring, EntityRow, Explanation, Kernel, KernelOptions, RunRecord, StartRunInput } from './types.ts';
 import { approverRoles, DefinitionCache, getCaseView, inbox, listCases, liveCounts, mayApprove } from './views.ts';
 
 export const DEFAULT_ENGINE_VERSION = 'memwise-kernel-1';
@@ -104,9 +108,14 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     },
   });
 
+  // Drafts and change control (Phase 3), when the kernel has a project folder; its `playbooks.*`
+  // tools are bound after the caller's, so an example case's stubs win.
+  let authoring: Authoring | undefined;
+  const playbookTools = options.projectDir ? authoringTools(() => authoring, () => pool) : [];
+
   // Rebuilt when indexing changes the entity types; the step engine always calls the current one.
   const buildTools = () => createToolGateway({
-    tools: uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), extractor]),
+    tools: uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), extractor, ...playbookTools]),
     ledger: new PgEffectLedger(pool),
     secrets: options.secrets,
     rates: new PgRateCounter(pool),
@@ -144,6 +153,64 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const client = await DBOSClient.create({ systemDatabaseUrl: url });
 
   const getRun = (runId: string) => getRunRecord(pool, runId);
+  const versionStore = new PgVersionStore();
+
+  /**
+   * Records live hashes the version index hasn't seen as `files` (first start, or a file edited
+   * outside MemWise), and warns when one reuses a version number another hash already had.
+   */
+  async function recordVersions(project: ProjectDefs): Promise<Diagnostic[]> {
+    const live = Object.values(project.workflows);
+    await versionStore.recordFound(pool, live.map((w) => ({ workflowId: w.id, version: w.version, hash: w.hash })));
+    const { rows } = await pool.query(
+      `select workflow_id, version, hash from mw.workflow_versions where workflow_id = any($1::text[])`, [live.map((w) => w.id)]);
+    const out: Diagnostic[] = [];
+    for (const w of live) {
+      const reused = rows.find((r) => r.workflow_id === w.id && r.version === w.version && r.hash !== w.hash);
+      if (!reused) continue;
+      out.push({
+        severity: 'warning', code: 'version-not-bumped', file: `${w.dir}/workflow.yaml`, path: 'version',
+        message: `${w.id} changed outside review without a new version: version ${w.version} was already published with different content; set \`version: ${Math.max(...rows.filter((r) => r.workflow_id === w.id).map((r) => r.version as number)) + 1}\``,
+      });
+    }
+    return out;
+  }
+
+  /** startRun; `internal`: the kernel itself starting a case may set any field (a change run's draft). */
+  async function start(input: StartRunInput, internal = false): Promise<{ runId: string; caseId: string }> {
+    const workflow = input.workflowHash
+      ? await loadWorkflowDef(pool, input.workflowId, input.workflowHash)
+      : await latestWorkflowDef(pool, input.workflowId);
+    if (!workflow) throw new Error(`workflow ${input.workflowId} is not indexed`);
+    const errors = startValueErrors(workflow, input.case, { ...entities, ...workflow.caseType.types }, input.startAt, { anyField: internal });
+    if (Object.keys(errors).length) throw new StartRunError(errors);
+    const runId = input.runId ?? newRunId();
+    const caseId = await withTransaction(pool, async (db) => {
+      const existing = await db.query('select case_id from mw.runs where id = $1', [runId]);
+      if (existing.rows[0]) return existing.rows[0].case_id as string;
+      const id = newCaseId();
+      const at = new Date().toISOString();
+      const values: Record<string, CaseValue> = {};
+      for (const [k, v] of Object.entries(input.case)) {
+        if (v === null || v === undefined) continue;
+        values[k] = { value: v, provenance: { kind: 'input', at, ...(input.by ? { by: input.by } : {}) } };
+      }
+      await cases.create(db, { id, caseType: workflow.caseType.id, workflowId: workflow.id, workflowHash: workflow.hash, values });
+      // Entering the first state can arm timers, exactly like any later entry.
+      const machine = compileMachine(workflow, input.startAt ?? workflow.start);
+      const [snap, actions] = initialTransition(machine);
+      await db.query(
+        `insert into mw.runs (id, workflow_id, workflow_version, workflow_hash, case_id, state, status, snapshot, driver_wf_id)
+         values ($1, $2, $3, $4, $5, $6, 'active', $7, $8)`,
+        [runId, workflow.id, workflow.version, workflow.hash, id, String(snap.value),
+          JSON.stringify(machine.getPersistedSnapshot(snap)), driverIdOf(runId)]);
+      await applyTimerActions(db, runId, 0, actions);
+      return id;
+    });
+    // Fixed workflow id: starting twice returns the same driver.
+    await DBOS.startWorkflow(driver, { workflowID: driverIdOf(runId) })(runId);
+    return { runId, caseId };
+  }
   const entityDef = (name: string): EntityTypeDef | undefined =>
     entities[name] ?? Object.values(entities).find((e) => entityTableName(e.entity) === name || e.entity.toLowerCase() === name.toLowerCase());
 
@@ -158,7 +225,10 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       await indexProject(project, new PgDefinitionStore(pool));
       await people.syncRoles(project.roles);
       const notes = await applyDomainSchema(pool, project.entities, { creators: domainCreators(project.entities, project.workflows) });
-      const diagnostics = [...loaded.diagnostics, ...notes.map((message): Diagnostic => ({ severity: 'warning', code: 'domain-column-type', message }))];
+      const diagnostics = [
+        ...loaded.diagnostics, ...notes.map((message): Diagnostic => ({ severity: 'warning', code: 'domain-column-type', message })),
+        ...(await recordVersions(project)),
+      ];
       indexed = { project, diagnostics };
       // The domain tools capture each entity's definition (its fields, the create tool's schema):
       // rebuild them when any entity type is added, removed or changed, not only added.
@@ -169,40 +239,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       return diagnostics;
     },
 
-    async startRun(input) {
-      const workflow = input.workflowHash
-        ? await loadWorkflowDef(pool, input.workflowId, input.workflowHash)
-        : await latestWorkflowDef(pool, input.workflowId);
-      if (!workflow) throw new Error(`workflow ${input.workflowId} is not indexed`);
-      const errors = startValueErrors(workflow, input.case, { ...entities, ...workflow.caseType.types }, input.startAt);
-      if (Object.keys(errors).length) throw new StartRunError(errors);
-      const runId = input.runId ?? newRunId();
-      const caseId = await withTransaction(pool, async (db) => {
-        const existing = await db.query('select case_id from mw.runs where id = $1', [runId]);
-        if (existing.rows[0]) return existing.rows[0].case_id as string;
-        const id = newCaseId();
-        const at = new Date().toISOString();
-        const values: Record<string, CaseValue> = {};
-        for (const [k, v] of Object.entries(input.case)) {
-          if (v === null || v === undefined) continue;
-          values[k] = { value: v, provenance: { kind: 'input', at, ...(input.by ? { by: input.by } : {}) } };
-        }
-        await cases.create(db, { id, caseType: workflow.caseType.id, workflowId: workflow.id, workflowHash: workflow.hash, values });
-        // Entering the first state can arm timers, exactly like any later entry.
-        const machine = compileMachine(workflow, input.startAt ?? workflow.start);
-        const [snap, actions] = initialTransition(machine);
-        await db.query(
-          `insert into mw.runs (id, workflow_id, workflow_version, workflow_hash, case_id, state, status, snapshot, driver_wf_id)
-           values ($1, $2, $3, $4, $5, $6, 'active', $7, $8)`,
-          [runId, workflow.id, workflow.version, workflow.hash, id, String(snap.value),
-            JSON.stringify(machine.getPersistedSnapshot(snap)), driverIdOf(runId)]);
-        await applyTimerActions(db, runId, 0, actions);
-        return id;
-      });
-      // Fixed workflow id: starting twice returns the same driver.
-      await DBOS.startWorkflow(driver, { workflowID: driverIdOf(runId) })(runId);
-      return { runId, caseId };
-    },
+    startRun: (input) => start(input),
 
     async sendEvent(runId, event, { idemKey, forSeq, by }) {
       const ev: RunEvent = typeof event === 'string' ? { type: event } : { ...event };
@@ -334,6 +371,21 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
 
     onChange: (listener) => feed.subscribe(listener),
 
+    // ---------------------------------------------------------------- Phase 3
+
+    async versions(workflowId) {
+      const rows = await versionStore.list(pool, workflowId);
+      const open = await pool.query(
+        `select workflow_hash, count(*)::int as n from mw.runs where workflow_id = $1 and status = 'active' group by workflow_hash`, [workflowId]);
+      const openBy = new Map(open.rows.map((r) => [r.workflow_hash as string, r.n as number]));
+      const liveHash = indexed?.project.workflows[workflowId]?.hash ?? (await latestWorkflowDef(pool, workflowId))?.hash;
+      return rows.map((v) => ({ ...v, openCases: openBy.get(v.hash) ?? 0, live: v.hash === liveHash }));
+    },
+
+    get authoring() { return authoring; },
+
+    caseToExample: (caseId, opts) => caseToExample(pool, defs, caseId, opts),
+
     async shutdown() {
       await feed.close();
       await DBOS.shutdown({ deregister: true });
@@ -341,6 +393,20 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       await pool.end();
     },
   };
+  if (options.projectDir) {
+    authoring = createAuthoring({
+      projectDir: options.projectDir,
+      pool,
+      tools: () => gateway,
+      project: () => kernel.project(),
+      index: () => kernel.index(),
+      startRun: (input) => start(input, true),
+      getRun,
+      caseToExample: (caseId, opts) => kernel.caseToExample(caseId, opts),
+      testRunner: options.testRunner ?? defaultTestRunner({ adminUrl: options.testDatabaseUrl }),
+      emit: (change) => feed.emit(change),
+    });
+  }
   return kernel;
 }
 
