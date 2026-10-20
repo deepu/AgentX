@@ -1,0 +1,3 @@
+case: cv_expiry
+fields:
+  person: { type: Ref<Person>, required: true, description: Whose CV expires }

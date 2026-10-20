@@ -1,0 +1,64 @@
+name: files-a-pi-cv
+description: >
+  Dr. Lena Vogel's CV arrives for site US-012. The agent indexes it as the Investigator CV that the
+  site's start-up pack still misses, the TMF specialist approves and signs it, and it is filed: the
+  expected document is ticked off.
+records:
+  Sponsor:
+    - { id: spon_aster, name: Aster Bio }
+  Study:
+    - { id: stud_ast301, code: AST-301, title: "Aster-1 in advanced solid tumours", sponsor: spon_aster }
+  Site:
+    - { id: site_us012, site_number: US-012, study: stud_ast301, status: activating }
+  Person:
+    - { id: pers_vogel, name: Dr. Lena Vogel, role: Principal Investigator, site: site_us012, cv_expires: "2028-03-14" }
+  ExpectedDocument:
+    - { id: expe_us012_pi_cv, site: site_us012, study: stud_ast301, artifact: Investigator CV, phase: start_up, status: missing }
+case:
+  original: vogel-cv.pdf
+  sender: coordinator@harbor-oncology.example
+  received_at: "2026-10-20T08:12:00Z"
+model:
+  classifier:
+    - toolCalls:
+        - { name: etmf.site.list, args: {} }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: classified
+            writes:
+              artifact: Investigator CV
+              study: stud_ast301
+              site: site_us012
+              about: pers_vogel
+              document_date: "2026-03-14"
+              version: "2026-03"
+              expected_document: expe_us012_pi_cv
+            rationale: >
+              A curriculum vitae of Dr. med. Lena Vogel, Principal Investigator (page 1), signed and dated
+              14 Mar 2026 (page 2). The email names site US-012, whose start-up pack still misses the PI CV.
+  verifier:
+    - toolCalls:
+        - name: checkpoint.verdict
+          args:
+            results:
+              - { rule: 1, passed: true, reason: The Investigator CV is a missing expected document of US-012. }
+              - { rule: 2, passed: true, reason: The name and date are on pages 1 and 2; the site number is in the email subject. }
+submit:
+  qc:
+    outcome: approved
+    values:
+      artifact: Investigator CV
+      site: site_us012
+      about: pers_vogel
+      document_date: "2026-03-14"
+      version: "2026-03"
+      qc_comment: Signed and dated on page 2.
+expect:
+  outcome: done
+  state: end
+  writes: { artifact: Investigator CV, site: site_us012, expected_document: expe_us012_pi_cv }
+  effects: { etmf.document.create: 1, etmf.document.update: 1, etmf.expected_document.transition: 1 }
+  entities:
+    Document:
+      - { artifact: Investigator CV, site: site_us012, about: pers_vogel, fills: expe_us012_pi_cv }

@@ -1,0 +1,13 @@
+entity: Study
+title: "{code} · {title}"
+parent: sponsor
+fields:
+  code:    { type: Text, required: true, description: "The sponsor's study code, like AST-301" }
+  title:   Text
+  sponsor: { type: Ref<Sponsor>, required: true }
+relationships:
+  sites:              many Site
+  documents:          many Document
+  expected_documents: many ExpectedDocument
+calculated:
+  tmf_complete: { percent: expected_documents, where: "status = 'filed'", description: Expected documents filed }

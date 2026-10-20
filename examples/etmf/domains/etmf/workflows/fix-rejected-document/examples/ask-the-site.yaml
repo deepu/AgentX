@@ -1,0 +1,19 @@
+name: ask-the-site
+description: The unsigned PI CV of US-012 was sent back; the TMF specialist asks the site for a signed one.
+records:
+  Sponsor:
+    - { id: spon_aster, name: Aster Bio }
+  Study:
+    - { id: stud_ast301, code: AST-301, sponsor: spon_aster }
+  Site:
+    - { id: site_us012, site_number: US-012, study: stud_ast301, status: activating }
+  Document:
+    - { id: docu_vogel_cv, file: vogel-cv.pdf, artifact: Investigator CV, site: site_us012, status: rejected }
+case:
+  document: docu_vogel_cv
+  note: The CV isn't signed. Please ask Dr. Vogel to sign and date the last page and send it again.
+submit:
+  ask_site: { outcome: asked }
+expect:
+  outcome: asked
+  state: end

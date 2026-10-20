@@ -150,7 +150,7 @@ export async function loadWorkflow(dir: string, projectRoot: string): Promise<{ 
     dir: relDir,
     hash: h.digest('hex'),
     ...(forkOrigin(shape.forkedFrom) ? { origin: forkOrigin(shape.forkedFrom)! } : {}),
-    ...(shape.startsOn?.length ? { startsOn: shape.startsOn } : {}),
+    ...(shape.startsOn ? { startsOn: shape.startsOn } : {}),
   };
   rememberLocator(workflow, locatorOf(shape)!);
   diagnostics.push(...report.diagnostics);

@@ -139,7 +139,8 @@ export interface StepRecord {
 
 // ---------------------------------------------------------------- store interfaces (implemented by @memwise/db)
 
-export type DefinitionKind = 'workflow' | 'step' | 'case_type' | 'entity_type' | 'policy';
+/** Phase 6 adds `domain` (a domain.yaml), `page` and `view` (`<domain>/<id>`). */
+export type DefinitionKind = 'workflow' | 'step' | 'case_type' | 'entity_type' | 'policy' | 'domain' | 'page' | 'view';
 
 export interface IndexedDefinition {
   kind: DefinitionKind;
