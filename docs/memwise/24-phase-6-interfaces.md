@@ -325,6 +325,67 @@ memwise:audit:export          { entity, id, format }     → { name, mime, dataB
 8. The CV's `expires_on` makes the `watch-expiries` date trigger list a next firing for that person; the automations list shows it.
 9. The Document's audit trail exports as JSON and PDF, with the signature manifest; tampering with a version row (as superuser) makes `verifyChain` fail.
 
-## 16. As built
+## 16. Storage API (`@memwise/db`), for the pieces that build on it
+
+So the kernel pieces can be written beside the storage piece, `@memwise/db` exports these (names and shapes fixed; bodies are the storage piece's):
+
+```ts
+// naming (tables.ts)
+entityTableName(def: EntityTypeDef | string): string             // '<domain>__<snake>'; a bare string = default domain
+domainToolNames(def: EntityTypeDef | string): { create; get; update; transition; list }   // '<domain>.<snake>.<verb>'
+applyDomainSchema(pool, entities /* by key */, opts: RlsOptions & { domains?: Record<string, DomainDef> }): Promise<string[]>
+                                                                   // tables, renames, version + event triggers, views (calculated, followed), RLS
+
+// conditions → SQL (conditions.ts)
+compileCondition(ast: ConditionNode, ctx: { column(name: string): string | undefined; param(v: unknown): string }): string
+                                                                   // throws ConditionCompileError(message, pos) for unknown names / bad types
+evaluateCondition(db: Queryable, def: EntityTypeDef, entities, recordId: string, condition: string)
+  : Promise<{ holds: boolean; values: Record<string, unknown> }>   // reads domain_read (RLS of db's actor); values = the names it read
+
+// writes and reads (domain/entities.ts, PgEntityStore; pass a client from withActor)
+create(db, def, values, opts: CreateEntityOptions & { reason?: string; id?: string }): Promise<string>
+update(db, def, id, values, opts?: { reason?: string; expectedVersion?: number }): Promise<{ version: number; changed: string[] }>
+transition(db, def, id, opts: { to: string; transition: string; reason?: string }): Promise<{ version: number; from?: string }>
+get(db, def, id): Promise<StoredEntityRow | undefined>             // StoredEntityRow gains version, updatedAt, values incl. calculated + followed
+query(db, def, entities, q: { filter?: string; sort?; group?; columns?; limit?; offset? })
+  : Promise<{ rows: StoredEntityRow[]; total: number; groups?: { key: string | null; count: number }[] }>
+aggregate(db, def, entities, a: { kind: 'count' | 'sum' | 'avg' | 'percent'; field?: string; where?: string; of?: string })
+  : Promise<number | null>
+withRecordContext(db, ctx: { reason?: string; via?: string; transition?: string; by?: string }): Promise<void>   // set_config(..., true)
+
+// history and integrity (stores/records.ts)
+PgRecordVersions.list(db, entityKey, recordId): Promise<RecordVersionRow[]>    // oldest first
+PgRecordVersions.verifyChain(db, entityKey, recordId): Promise<{ ok: boolean; brokenAt?: number; message?: string }>
+contentHash(input: { entity: string; recordId: string; fileSha256?: string; values: Record<string, unknown> }): string
+PgSignatureStore.add(db, s: NewSignature): Promise<string>;  forRecord(db, entityKey, id); forCase(db, caseId); forStepRun(db, stepRunId)
+PgEntityEvents.after(db, seq: number, limit: number): Promise<EntityEvent[]>;  latestSeq(db)
+PgGrantStore.list(db, personId); set(db, personId, grants: Grant[])
+PgPeopleStore.recordAuthEvent(personId, kind: 'signature-ok' | 'signature-failed' | 'locked', detail?)
+PgPeopleStore.lockState(personId): Promise<{ lockedUntil?: string; recentFailures: number }>
+PgNoteStore.get / save(db, entityKey, id, body, by) → version;  PgMentionStore.add / forTarget
+PgFlagStore.raise(db, { entity, recordId, invariant, message }) / close(db, entity, recordId, invariant) / list(filter)
+PgViewStore.listPersonal(db, personId, domain) / save;  PgPageStore (written pages) get / save / list
+```
+
+Tables owned by the storage piece (migration `0006_domains_and_records.sql`): `mw.grants`, `mw.record_versions`, `mw.signatures`, `mw.auth_events` (+ `mw.people.locked_until`), `mw.record_notes`, `mw.mentions`, `mw.record_flags`, `mw.views`, `mw.pages`, `mw.entity_events`:
+
+```sql
+create table mw.entity_events (
+  seq        bigserial primary key,
+  id         text not null unique,          -- evt_<ulid>
+  entity     text not null,                 -- entity key
+  record_id  text not null,
+  kind       text not null,                 -- created | changed | entered
+  data       jsonb not null default '{}',   -- { fields } | { state, from, transition }
+  by         text,
+  at         timestamptz not null default clock_timestamp()
+);
+-- written by the generated row trigger of every domain table, in the writing transaction;
+-- `pg_notify('mw_changes', '{"kind":"entity"}')` on insert.
+```
+
+Tables owned by the flow piece (migration `0007_flow.sql`): `mw.event_deliveries`, `mw.trigger_firings`, `mw.trigger_state`, `mw.inbound_messages`, `mw.case_links`, `mw.run_outbox`, `mw.entity_timers`.
+
+## 17. As built
 
 (Filled in at the end of the phase: where the code differs from this contract.)
