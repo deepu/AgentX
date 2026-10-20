@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createPool, createTestDatabase, migrate, postgresAvailable, withTransaction, type TestDatabase } from '../src/index.ts';
 
-const ALL = ['0001_kernel.sql', '0002_people_and_domain.sql', '0003_change_control.sql', '0004_plugins.sql', '0005_external.sql'];
+const ALL = ['0001_kernel.sql', '0002_people_and_domain.sql', '0003_change_control.sql', '0004_plugins.sql', '0005_external.sql', '0006_domains_and_records.sql'];
 
 describe.skipIf(!postgresAvailable())('migrate', () => {
   let db: TestDatabase;
