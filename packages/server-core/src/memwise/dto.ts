@@ -8,13 +8,21 @@ import type {
 } from '@memwise/defs'
 import type { CompiledPolicy, RuleOrigin, Sourced } from '@memwise/policy'
 import type {
-  CaseSummary, CaseView, EntityRow, Person, Role, StepRunSummary, TransitionRecord,
+  BindingDef, BindingGap, BindingReport, IdentityCandidate, IdentityLink, MappedRecord, McpServerDef, PluginToolDef,
+  PolicyDoc, WorkflowOrigin,
+} from '@memwise/defs'
+import type {
+  BindingState, BindingView, CaseSummary, CaseView, EntityRecordView, EntityRow, Person, PluginDetail, PluginSummary, Role,
+  StepRunSummary, TransitionRecord,
 } from '@memwise/runtime'
 import type {
   MwCase, MwCaseSummary, MwCaseValue, MwDiagnostic, MwEffectClass, MwEntityRow, MwEntityType, MwField, MwJournalEntry,
   MwPerformer, MwPerson, MwPlaybook, MwPolicyRule, MwRole, MwState, MwStep, MwStepRecord, MwStepRunSummary, MwToolRef,
   MwTransition, MwDraftStage, MwDraftSummary, MwDraftEdit, MwFileChange, MwStructuralDiff, MwImpact, MwDraftReport, MwVersion,
   MwTreatment,
+  MwBinding, MwBindingGap, MwBindingReport, MwBindingState, MwBindingVersion, MwBindingView, MwClassSource, MwEntityLinkBadge,
+  MwEntityRecord, MwIdentityCandidate, MwIdentityLink, MwInboxItem, MwMappedRecord, MwMatchMethod, MwPluginDetail,
+  MwPluginSummary, MwPluginTool, MwPolicyDoc, MwPolicyLine, MwTransform, MwWorkflowOrigin,
 } from '@memwise/shared/protocol'
 
 type JsonSchemaFn = (type: FieldDef['type'], recordTypes?: Record<string, { fields: Record<string, FieldDef> }>) => Record<string, unknown>
@@ -310,6 +318,7 @@ export function toPlaybook(ctx: DtoContext, wf: WorkflowDef, policies: Record<st
     steps: Object.fromEntries(Object.values(wf.steps).map((st) => [st.id, toStep(ctx, wf, st, policies[st.id])])),
     caseFields: caseFields(ctx, wf.caseType),
     diagnostics: workflowDiagnostics(ctx, wf),
+    ...(wf.origin ? { origin: toWorkflowOrigin(ctx.project, wf.origin) } : {}),
   }
 }
 
@@ -566,6 +575,7 @@ export function toDraftSummary(f: DraftFacts): MwDraftSummary {
     workflowId: m.workflowId,
     playbookTitle: f.playbookTitle,
     kind: m.kind,
+    ...(m.plugin ? { plugin: { id: m.plugin.id, version: m.plugin.version } } : {}),
     stage: draftStage(f),
     createdBy: m.createdBy,
     ...(createdByName ? { createdByName } : {}),
@@ -661,5 +671,397 @@ export function toVersion(v: WorkflowVersion, names: Map<string, string>): MwVer
     ...(v.publishedBy ? { publishedBy: v.publishedBy } : {}), ...(publishedByName ? { publishedByName } : {}),
     source: v.source, ...(v.draftId ? { draftId: v.draftId } : {}), ...(v.runId ? { runId: v.runId } : {}),
     openCases: v.openCases, live: v.live,
+  }
+}
+
+// ---------------------------------------------------------------- Phase 4: plugins, bindings, identity (22 §9)
+
+const EFFECT_SET = new Set<string>(EFFECTS)
+const asEffect = (e: unknown): MwEffectClass | undefined => (typeof e === 'string' && EFFECT_SET.has(e) ? e as MwEffectClass : undefined)
+const plain = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)) as T)
+
+/** A plugin's title from the indexed project, else its id. */
+export function pluginTitle(project: Pick<ProjectDefs, 'plugins'>, pluginId: string): string {
+  return project.plugins?.[pluginId]?.manifest.title ?? pluginId
+}
+
+/** "from Client intake 1.0.0" */
+export function toWorkflowOrigin(project: Pick<ProjectDefs, 'plugins'>, o: WorkflowOrigin): MwWorkflowOrigin {
+  return {
+    kind: o.kind, plugin: o.plugin, pluginTitle: pluginTitle(project, o.plugin), pluginVersion: o.pluginVersion,
+    ...(o.bindingVersion !== undefined ? { bindingVersion: o.bindingVersion } : {}),
+  }
+}
+
+export function toBindingState(b: BindingState, names: Map<string, string>): MwBindingState {
+  switch (b.status) {
+    case 'unbound': return { status: 'unbound' }
+    case 'binding': return { status: 'binding', runId: b.runId, caseId: b.caseId, ...(b.draftId ? { draftId: b.draftId } : {}) }
+    case 'bound': {
+      const frozenByName = b.frozenBy ? names.get(b.frozenBy) : undefined
+      return {
+        status: 'bound', version: b.version, pluginVersion: b.pluginVersion,
+        ...(b.frozenAt ? { frozenAt: b.frozenAt } : {}), ...(b.frozenBy ? { frozenBy: b.frozenBy } : {}),
+        ...(frozenByName ? { frozenByName } : {}),
+      }
+    }
+  }
+}
+
+export function toPluginSummary(p: PluginSummary, names: Map<string, string>): MwPluginSummary {
+  return {
+    id: p.id, version: p.version, versions: [...p.versions], title: p.title,
+    ...(p.description ? { description: p.description } : {}),
+    trust: p.trust, ...(p.imported ? { imported: p.imported } : {}),
+    tools: p.tools, workflows: [...p.workflows], provides: [...p.provides], requires: [...p.requires],
+    binding: toBindingState(p.binding, names),
+    ...(p.upgradeAvailable ? { upgradeAvailable: true } : {}),
+  }
+}
+
+/** The class MCP annotations suggest (06 §3): read-only → read, destructive → irreversible, otherwise none. */
+export function classFromAnnotations(a: PluginToolDef['annotations']): MwEffectClass | undefined {
+  if (!a) return undefined
+  if (a.readOnlyHint) return 'read'
+  if (a.destructiveHint) return 'irreversible'
+  return undefined
+}
+
+function routeKind(t: PluginToolDef | undefined): MwPluginTool['route'] {
+  if (!t) return 'builtin'
+  return 'mcp' in t.run ? 'mcp' : 'command' in t.run ? 'command' : 'builtin'
+}
+
+/**
+ * One tool for the screens: its effective class, where that came from, and what the manifest and
+ * MCP hints said (so the review can show "declared read" next to the binding's choice).
+ */
+export function toPluginTool(
+  name: string,
+  def: PluginToolDef | undefined,
+  effective: { effect?: EffectClass; from: MwClassSource; off?: boolean; description?: string },
+  bound?: BindingDef['tools'][string],
+  capability?: string,
+): MwPluginTool {
+  const effect = asEffect(effective.effect)
+  const declared = asEffect(def?.effect)
+  const hinted = classFromAnnotations(def?.annotations)
+  const cap = capability ?? def?.capability
+  return {
+    name, description: effective.description ?? def?.description ?? '',
+    ...(effect ? { effect } : {}), from: effective.from,
+    ...(effective.off || bound?.off ? { off: true } : {}),
+    ...(declared ? { declared } : {}), ...(hinted ? { hinted } : {}),
+    ...(bound?.reason ? { reason: bound.reason } : {}),
+    route: routeKind(def),
+    ...(cap ? { capability: cap } : {}),
+  }
+}
+
+function serverOf(name: string, s: McpServerDef): MwPluginDetail['servers'][number] {
+  if ('source' in s) return { name, kind: 'source', detail: s.source }
+  if ('url' in s) return { name, kind: 'url', detail: s.url }
+  return { name, kind: 'command', detail: [s.command, ...(s.args ?? [])].join(' ') }
+}
+
+/** Tool name → the capability it provides, from the manifest's `provides`. */
+function providedBy(provides: Record<string, { tool: string }>): Map<string, string> {
+  return new Map(Object.entries(provides).map(([cap, p]) => [p.tool, cap]))
+}
+
+export interface PluginDetailFacts {
+  project: Pick<ProjectDefs, 'workflows' | 'bindings' | 'plugins'>
+  names: Map<string, string>
+  history: MwBindingVersion[]
+}
+
+export function toPluginDetail(p: PluginDetail, f: PluginDetailFacts): MwPluginDetail {
+  const m = p.manifest
+  const binding = f.project.bindings?.[p.id]
+  const caps = providedBy(m.provides.capabilities)
+  const live = new Set(Object.values(f.project.workflows).filter((w) => w.origin?.plugin === p.id).map((w) => w.id))
+  return {
+    ...toPluginSummary(p, f.names),
+    dir: p.dir, hash: p.hash,
+    toolList: p.toolClasses.map((tc) => toPluginTool(tc.name, m.tools[tc.name], tc, binding?.tools[tc.name], caps.get(tc.name))),
+    workflowList: m.workflows.map((id) => ({ id, title: f.project.workflows[id]?.title ?? humanize(id), live: live.has(id) })),
+    skills: p.skills.map((s) => ({ name: s.name, ...(s.description ? { description: s.description } : {}) })),
+    providesList: Object.entries(m.provides.capabilities).map(([name, x]) => ({ name, tool: x.tool })),
+    requiresList: Object.entries(m.requires.capabilities).map(([name, x]) => ({
+      name, as: x.as, ...(x.optional ? { optional: true } : {}),
+      ...(binding?.capabilities[name] ? { boundTo: binding.capabilities[name] } : {}),
+    })),
+    entities: Object.values(m.requires.entities).map((e) => ({
+      name: e.name,
+      fields: Object.entries(e.fields).map(([name, x]) => ({ name, type: x.typeSource, ...(x.required ? { required: true } : {}) })),
+    })),
+    roles: Object.entries(m.requires.roles).map(([id, r]) => ({ id, title: r.title ?? humanize(id) })),
+    records: Object.values(m.records).map((r) => ({ name: r.name, ...(r.title ? { title: r.title } : {}), key: r.key, fields: { ...r.fields } })),
+    servers: Object.entries(m.mcpServers).map(([name, s]) => serverOf(name, s)),
+    notes: [...p.notes],
+    ...(m.environment && (m.environment.runtime || m.environment.network) ? {
+      environment: {
+        ...(m.environment.runtime ? { runtime: m.environment.runtime } : {}),
+        ...(m.environment.network ? { network: [...m.environment.network] } : {}),
+      },
+    } : {}),
+    bindingHistory: f.history,
+  }
+}
+
+/** A row of `mw.binding_versions`, newest first by the caller. */
+export function toBindingVersion(r: {
+  version: number; plugin_version: string; hash: string; frozen_by?: string | null; run_id?: string | null; draft_id?: string | null;
+  frozen_at: string | Date
+}, names: Map<string, string>): MwBindingVersion {
+  const name = r.frozen_by ? names.get(r.frozen_by) : undefined
+  return {
+    version: Number(r.version), pluginVersion: r.plugin_version, hash: r.hash,
+    ...(r.frozen_by ? { frozenBy: r.frozen_by } : {}), ...(name ? { frozenByName: name } : {}),
+    ...(r.run_id ? { runId: r.run_id } : {}), ...(r.draft_id ? { draftId: r.draft_id } : {}),
+    frozenAt: r.frozen_at instanceof Date ? r.frozen_at.toISOString() : String(r.frozen_at),
+  }
+}
+
+export function toPolicyDoc(d: PolicyDoc): MwPolicyDoc {
+  const { name: _name, file: _file, ...rest } = d
+  return plain(rest) as MwPolicyDoc
+}
+
+/** A policy layer in plain words (the plugin's defaults, the binding's tightening). */
+export function policyDocLines(d: PolicyDoc | MwPolicyDoc | undefined): MwPolicyLine[] {
+  if (!d) return []
+  const out: MwPolicyLine[] = []
+  const words = (t: string) => TREATMENT_WORDS[t] ?? t
+  for (const cls of EFFECTS) {
+    const t = d.effects?.[cls]
+    if (t) out.push({ subject: cls, value: words(t) })
+  }
+  if (d.tools?.allow) out.push({ subject: 'tools allowed', value: d.tools.allow.join(', ') || 'none' })
+  for (const t of d.tools?.deny ?? []) out.push({ subject: t, value: 'denied' })
+  for (const t of d.tools?.require ?? []) out.push({ subject: t, value: 'must be used' })
+  for (const [tool, rule] of Object.entries(d.tools?.rules ?? {})) {
+    if (rule.treatment) out.push({ subject: tool, value: words(rule.treatment) })
+    if (rule.rateLimit) out.push({ subject: `${tool} rate limit`, value: `${num(rule.rateLimit.count)} per ${duration(rule.rateLimit.perMs)}` })
+  }
+  const b = d.budgets
+  if (b?.tokens) out.push({ subject: 'tokens', value: num(b.tokens) })
+  if (b?.timeMs) out.push({ subject: 'time', value: duration(b.timeMs) })
+  if (b?.modelCalls) out.push({ subject: 'model calls', value: num(b.modelCalls) })
+  if (b?.money) out.push({ subject: 'money', value: `${num(b.money.amount)} ${b.money.currency}` })
+  if (d.modelRoles) out.push({ subject: 'model roles', value: d.modelRoles.join(', ') || 'none' })
+  if (d.taint?.enabled !== undefined) out.push({ subject: 'taint', value: d.taint.enabled ? 'on' : 'off' })
+  if (d.taint?.outboundWhenTainted) out.push({ subject: 'outbound when tainted', value: words(d.taint.outboundWhenTainted) })
+  if (d.approvals?.by) out.push({ subject: 'approvals by', value: d.approvals.by.join(', ') || 'nobody' })
+  return out
+}
+
+export function toBinding(b: BindingDef, names: Map<string, string>): MwBinding {
+  const byName = b.frozen ? names.get(b.frozen.by) : undefined
+  return {
+    plugin: b.plugin, pluginVersion: b.pluginVersion, pluginHash: b.pluginHash, version: b.version,
+    ...(b.frozen ? { frozen: { by: b.frozen.by, ...(byName ? { byName } : {}), at: b.frozen.at, ...(b.frozen.runId ? { runId: b.frozen.runId } : {}) } } : {}),
+    tools: Object.fromEntries(Object.entries(b.tools).map(([k, v]) => [k, {
+      ...(asEffect(v.effect) ? { effect: asEffect(v.effect)! } : {}), ...(v.off ? { off: true } : {}), ...(v.reason ? { reason: v.reason } : {}),
+    }])),
+    capabilities: { ...b.capabilities },
+    entities: Object.fromEntries(Object.entries(b.entities).map(([k, v]) => [k, { entity: v.entity, fields: { ...v.fields } }])),
+    roles: { ...b.roles },
+    records: Object.fromEntries(Object.entries(b.records).map(([k, r]) => [k, {
+      entity: r.entity,
+      fields: Object.fromEntries(Object.entries(r.fields).map(([f, m]) => [f, {
+        ...(m.from !== undefined ? { from: m.from } : {}),
+        ...(m.transform ? { transform: plain(m.transform) as MwTransform[] } : {}),
+        ...(m.direction ? { direction: m.direction } : {}),
+      }])),
+      identity: {
+        keys: [...r.identity.keys],
+        ...(r.identity.fuzzy ? { fuzzy: { ...r.identity.fuzzy } } : {}),
+        ...(r.identity.createMissing !== undefined ? { createMissing: r.identity.createMissing } : {}),
+      },
+    }])),
+    ...(b.policy ? { policy: toPolicyDoc(b.policy) } : {}),
+    ...(b.dryRun ? { dryRun: { ...b.dryRun } } : {}),
+  }
+}
+
+export function toBindingGap(g: BindingGap): MwBindingGap {
+  return { kind: g.kind, subject: g.subject, message: g.message, ...(g.suggestions?.length ? { suggestions: [...g.suggestions] } : {}) }
+}
+
+export function toMappedRecord(r: MappedRecord & { raw?: unknown }): MwMappedRecord {
+  const raw = r.raw && typeof r.raw === 'object' && !Array.isArray(r.raw) ? plain(r.raw as Record<string, unknown>) : undefined
+  return {
+    source: r.source, externalId: r.externalId, ...(raw ? { raw } : {}),
+    values: plain(r.values), extra: plain(r.extra), errors: [...r.errors], roundTrip: [...r.roundTrip],
+  }
+}
+
+export function toBindingReport(r: BindingReport, project: Pick<ProjectDefs, 'workflows'>): MwBindingReport {
+  return {
+    hash: r.hash, at: r.at,
+    diagnostics: r.diagnostics.map(toDiagnostic), errors: r.errors, warnings: r.warnings,
+    examples: r.examples.map((e) => ({ name: e.name, status: e.status, differences: [...e.differences], ...(e.reason ? { reason: e.reason } : {}) })),
+    records: r.records.map(toMappedRecord),
+    ...(r.impact?.length ? {
+      impact: r.impact.map((d) => ({ workflowId: d.workflowId, title: project.workflows[d.workflowId]?.title ?? humanize(d.workflowId), diff: toStructuralDiff(d) })),
+    } : {}),
+    outcome: r.outcome, summary: r.summary,
+  }
+}
+
+export interface BindingViewFacts {
+  project: Pick<ProjectDefs, 'entities' | 'plugins' | 'bindings' | 'workflows'>
+  names: Map<string, string>
+  /** The plugin as installed (the version the binding pins, else the newest). */
+  plugin?: PluginDetail
+  /** The draft is open. */
+  editable: boolean
+  run?: { runId: string; caseId: string; state: string }
+  /** The binding draft's content hash now, to tell whether the report is stale. */
+  contentHash?: string
+}
+
+/** The review screen's view of a binding: the binding, what the plugin needs, and what the domain offers. */
+export function toBindingView(v: BindingView, f: BindingViewFacts): MwBindingView {
+  const m = f.plugin?.manifest ?? f.project.plugins?.[v.pluginId]?.manifest
+  const caps = providedBy(m?.provides.capabilities ?? {})
+  const classes = new Map((f.plugin?.toolClasses ?? []).map((t) => [t.name, t]))
+  const toolNames = [...new Set([...Object.keys(m?.tools ?? {}), ...Object.keys(v.binding.tools)])]
+  const tools = toolNames.map((name) => {
+    const def = m?.tools[name]
+    const bound = v.binding.tools[name]
+    // A draft's choice wins over what the installed plugin reports for the live binding.
+    const effective = bound?.effect || bound?.off
+      ? { effect: bound.effect, from: 'binding' as const, ...(bound.off ? { off: true } : {}) }
+      : classes.get(name) ?? (def?.effect ? { effect: def.effect, from: 'declared' as const }
+        : classFromAnnotations(def?.annotations) ? { effect: classFromAnnotations(def?.annotations), from: 'annotations' as const }
+          : { from: 'none' as const })
+    return toPluginTool(name, def, effective, bound, caps.get(name))
+  })
+  // Providers of each required capability: tools that bound (or this) plugin(s) say provide it.
+  const providers = (cap: string): string[] => {
+    const out = new Set<string>()
+    for (const p of Object.values(f.project.plugins ?? {})) {
+      const tool = p.manifest.provides.capabilities[cap]?.tool
+      if (tool && (p.manifest.id === v.pluginId || f.project.bindings?.[p.manifest.id])) out.add(tool)
+    }
+    const current = v.binding.capabilities[cap]
+    if (current) out.add(current)
+    return [...out].sort()
+  }
+  return {
+    pluginId: v.pluginId,
+    pluginTitle: m?.title ?? v.pluginId,
+    pluginVersion: v.binding.pluginVersion || m?.version || '',
+    ...(v.draftId ? { draftId: v.draftId } : {}),
+    editable: !!v.draftId && f.editable,
+    binding: toBinding(v.binding, f.names),
+    text: v.text,
+    path: v.path,
+    gaps: v.gaps.map(toBindingGap),
+    ...(v.report ? { report: toBindingReport(v.report, f.project) } : {}),
+    reportStale: !!v.report && !!f.contentHash && v.report.hash !== f.contentHash,
+    tools,
+    capabilities: Object.entries(m?.requires.capabilities ?? {}).map(([name, x]) => ({
+      name, as: x.as, ...(x.optional ? { optional: true } : {}), providers: providers(name),
+    })),
+    entities: Object.values(m?.requires.entities ?? {}).map((e) => ({
+      name: e.name,
+      fields: Object.entries(e.fields).map(([name, x]) => ({ name, type: x.typeSource, ...(x.required ? { required: true } : {}) })),
+    })),
+    domainEntities: Object.values(f.project.entities).map((e) => ({
+      name: e.entity, fields: Object.entries(e.fields).map(([name, x]) => ({ name, type: x.typeSource })),
+    })),
+    roles: Object.entries(m?.requires.roles ?? {}).map(([id, r]) => ({ id, title: r.title ?? humanize(id) })),
+    records: Object.values(m?.records ?? {}).map((r) => ({ name: r.name, ...(r.title ? { title: r.title } : {}), key: r.key, fields: { ...r.fields } })),
+    pluginPolicy: policyDocLines(m?.policy),
+    bindingPolicy: policyDocLines(v.binding.policy),
+    ...(f.run ? { run: { ...f.run } } : {}),
+  }
+}
+
+export function toIdentityCandidate(c: IdentityCandidate, project: Pick<ProjectDefs, 'plugins'>, names: Map<string, string>, recordTitle?: string): MwIdentityCandidate {
+  const decidedByName = c.decidedBy ? names.get(c.decidedBy) : undefined
+  return {
+    id: c.id, entity: c.entity, recordId: c.recordId, ...(recordTitle ? { recordTitle } : {}),
+    plugin: c.plugin, pluginTitle: pluginTitle(project, c.plugin), source: c.source, externalId: c.externalId,
+    score: c.score, reasons: [...c.reasons], external: plain(c.external), status: c.status,
+    ...(c.decidedBy ? { decidedBy: c.decidedBy } : {}), ...(decidedByName ? { decidedByName } : {}),
+    ...(c.decidedAt ? { decidedAt: c.decidedAt } : {}), createdAt: c.createdAt,
+  }
+}
+
+export function toEntityLinkBadge(l: Pick<IdentityLink, 'plugin' | 'source' | 'method'>, project: Pick<ProjectDefs, 'plugins'>): MwEntityLinkBadge {
+  return { plugin: l.plugin, pluginTitle: pluginTitle(project, l.plugin), source: l.source, method: l.method as MwMatchMethod }
+}
+
+export function toIdentityLink(
+  l: IdentityLink & { values?: Record<string, unknown>; extra?: Record<string, unknown>; error?: string },
+  project: Pick<ProjectDefs, 'plugins'>,
+  names: Map<string, string>,
+): MwIdentityLink {
+  const linkedByName = l.linkedBy ? names.get(l.linkedBy) : undefined
+  return {
+    ...toEntityLinkBadge(l, project),
+    id: l.id, externalId: l.externalId, score: l.score, reasons: [...l.reasons],
+    ...(l.linkedBy ? { linkedBy: l.linkedBy } : {}), ...(linkedByName ? { linkedByName } : {}), at: l.at,
+    ...(l.values ? { values: plain(l.values) } : {}), ...(l.extra ? { extra: plain(l.extra) } : {}),
+    ...(l.error ? { error: l.error } : {}),
+  }
+}
+
+/** A domain record's title: its name-like field, else the entity and a short id. */
+export function recordTitle(entity: string, id: string, values: Record<string, unknown>): string {
+  for (const key of ['name', 'legal_name', 'title', 'client_name', 'full_name', 'email']) {
+    const v = values[key]
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  const first = Object.values(values).find((v): v is string => typeof v === 'string' && !!v.trim())
+  return first?.trim() ?? `${entity} ${id.slice(-6)}`
+}
+
+export function toEntityRecord(r: EntityRecordView, project: Pick<ProjectDefs, 'plugins'>, names: Map<string, string>): MwEntityRecord {
+  const hidden = new Set(r.hidden)
+  const provenance = { kind: 'system' as const, at: r.createdAt }
+  const values: Record<string, MwCaseValue> = {}
+  for (const [k, v] of Object.entries(r.values)) values[k] = hidden.has(k) ? { value: null, provenance, hidden: true } : { value: plain(v), provenance }
+  for (const k of hidden) values[k] ??= { value: null, provenance, hidden: true }
+  const visible = Object.fromEntries(Object.entries(r.values).filter(([k]) => !hidden.has(k)))
+  return {
+    entity: r.entity, id: r.id, title: recordTitle(r.entity, r.id, visible), values, createdAt: r.createdAt,
+    links: r.links.map((l) => toIdentityLink(l, project, names)),
+    readThrough: Object.fromEntries(Object.entries(r.readThrough).filter(([k]) => !hidden.has(k)).map(([k, x]) => [k, {
+      plugin: x.plugin, pluginTitle: pluginTitle(project, x.plugin), value: plain(x.value),
+    }])),
+  }
+}
+
+/** Fields an identity card compares: the identity keys and fuzzy field first, then the rest both sides have. */
+export function identityFields(binding: BindingDef | undefined, source: string, record: Record<string, unknown>, external: Record<string, unknown>): string[] {
+  const rules = binding?.records[source]?.identity
+  const first = [...(rules?.keys ?? []), ...(rules?.fuzzy ? [rules.fuzzy.field] : [])]
+  const mapped = Object.keys(binding?.records[source]?.fields ?? {})
+  const rest = [...mapped, ...Object.keys(external), ...Object.keys(record)]
+  return [...new Set([...first, ...rest])].filter((f) => f in record || f in external)
+}
+
+/** An `identity` inbox item from a pending candidate and the domain record's visible values. */
+export function toIdentityInboxItem(
+  item: { id: string; candidate: IdentityCandidate; since: string },
+  project: Pick<ProjectDefs, 'plugins' | 'bindings'>,
+  record: Record<string, unknown>,
+): Extract<MwInboxItem, { kind: 'identity' }> {
+  const c = item.candidate
+  const external = plain(c.external)
+  const entityTitle = humanize(c.entity)
+  return {
+    kind: 'identity', id: item.id, candidateId: c.id,
+    caseTitle: recordTitle(c.entity, c.recordId, record),
+    stepTitle: `Same ${entityTitle.toLowerCase()}?`,
+    entity: c.entity, recordId: c.recordId, plugin: c.plugin, pluginTitle: pluginTitle(project, c.plugin),
+    source: c.source, externalId: c.externalId, score: c.score, reasons: [...c.reasons],
+    record, external, fields: identityFields(project.bindings?.[c.plugin], c.source, record, external),
+    since: item.since,
   }
 }

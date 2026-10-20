@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { StepCheckpoint, StepDetail, StepFields, StepNext, StepTools } from './StepDetail'
 import { PerformerTag } from './Tags'
 import { performerLabel, stateTitle, stepOf } from './labels'
+import { originLabel } from '../plugins/plugin-model'
 
 export interface PlaybookViewProps {
   playbook: MwPlaybook
@@ -20,6 +21,8 @@ export interface PlaybookViewProps {
   selectedStepId?: string
   /** Replaces the plain "Version N" (the playbook page shows who published it, and the other versions). */
   versionLine?: React.ReactNode
+  /** Opens the plugin a playbook came from (its "from Client intake 1.0.0" line is then a link). */
+  onOpenPlugin?: (pluginId: string) => void
   className?: string
 }
 
@@ -149,7 +152,7 @@ function StepEntry({
 }
 
 /** The playbook read as a document: numbered steps, who does each, and what happens next. */
-export function PlaybookView({ playbook, onSelectStep, roles, description, selectedStepId, versionLine, className }: PlaybookViewProps) {
+export function PlaybookView({ playbook, onSelectStep, roles, description, selectedStepId, versionLine, onOpenPlugin, className }: PlaybookViewProps) {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState<Set<string>>(() => new Set(selectedStepId ? [selectedStepId] : []))
   React.useEffect(() => {
@@ -175,6 +178,18 @@ export function PlaybookView({ playbook, onSelectStep, roles, description, selec
             {versionLine ?? <span>{t('memwise.playbook.version', { version: playbook.version })}</span>}
             <span aria-hidden>·</span>
             <span>{t('memwise.playbook.stepCount', { count: stepStates.length })}</span>
+            {playbook.origin && (
+              <>
+                <span aria-hidden>·</span>
+                {onOpenPlugin ? (
+                  <button type="button" className="hover:text-foreground hover:underline" onClick={() => onOpenPlugin(playbook.origin!.plugin)} data-origin={playbook.origin.plugin}>
+                    {originLabel(playbook.origin, t)}
+                  </button>
+                ) : (
+                  <span data-origin={playbook.origin.plugin}>{originLabel(playbook.origin, t)}</span>
+                )}
+              </>
+            )}
           </span>
         </div>
         <p className="text-copy text-secondary">{summary}</p>

@@ -19,7 +19,7 @@ import type { NavigationState } from '../../shared/types'
  * - sessions: a session is selected
  * - settings: a subpage is selected (bare `settings` route → false)
  * - sources / skills / automations: a detail item is selected
- * - inbox / cases / playbooks: an item, case or playbook is selected
+ * - inbox / cases / playbooks / plugins: an item, case, playbook, plugin or record list is selected
  * - pages: always — both the library grid and a page render in the content
  *   panel (pages has no navigator list to fall back to)
  */
@@ -40,6 +40,7 @@ export function isDetailNavState(navState: NavigationState | null): boolean {
     case 'inbox':
     case 'cases':
     case 'playbooks':
+    case 'plugins':
       return navState.details !== null
   }
 }

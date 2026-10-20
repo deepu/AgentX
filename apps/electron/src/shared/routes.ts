@@ -217,6 +217,15 @@ export const routes = {
     /** A draft of a playbook (Phase 3): its changes, steps, map and checks */
     draft: (draftId: string) => `playbooks/draft/${encodeURIComponent(draftId)}` as const,
 
+    /** MemWise plugins (Phase 4): the list, or one plugin with its binding */
+    plugins: (pluginId?: string) =>
+      pluginId
+        ? `plugins/plugin/${encodeURIComponent(pluginId)}` as const
+        : 'plugins' as const,
+
+    /** The domain's records of one entity, with the outside records linked to them (Phase 4) */
+    records: (entity: string) => `plugins/records/${encodeURIComponent(entity)}` as const,
+
     /** Kanban board view (sessions navigator, board view mode, all sessions) */
     board: () => 'board' as const,
   },

@@ -6,7 +6,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { AlertTriangle, Bell, BookOpen, Briefcase, CheckCircle2, ClipboardCheck, ClipboardList, FilePen, MessagesSquare, Play, ShieldCheck, Sparkles, Wrench } from 'lucide-react'
+import { AlertTriangle, Bell, BookOpen, Briefcase, CheckCircle2, ClipboardCheck, ClipboardList, FilePen, Link2, MessagesSquare, Play, ShieldCheck, Sparkles, Wrench } from 'lucide-react'
 import type { MwCaseSummary, MwDraftSummary, MwInboxItem, MwPlaybookSummary, MwRole, MwRunStatus } from '@memwise/shared/protocol'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { EntityRow } from '@/components/ui/entity-row'
@@ -26,6 +26,7 @@ import {
   memwiseStartCaseDialogAtom,
 } from '@/atoms/memwise'
 import { MemwiseStatusBanner } from './MemwiseStatus'
+import { originLabel } from './plugins/plugin-model'
 import { isMetaPlaybook, isOpenDraft, sortDrafts, stageLabel, stageTone } from './draft/draft-model'
 import {
   absoluteTime,
@@ -46,6 +47,7 @@ const KIND_ICON: Record<MwInboxItem['kind'], React.ComponentType<{ className?: s
   attention: AlertTriangle,
   reminder: Bell,
   conversation: MessagesSquare,
+  identity: Link2,
 }
 
 function ListSkeleton() {
@@ -276,7 +278,8 @@ export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, 
 }) {
   const { t, i18n } = useTranslation()
   if (playbooks === null) return <ListSkeleton />
-  const openDrafts = onSelectDraft ? sortDrafts((drafts ?? []).filter(isOpenDraft)) : []
+  // A binding draft belongs to its plugin's page, not here
+  const openDrafts = onSelectDraft ? sortDrafts((drafts ?? []).filter(d => isOpenDraft(d) && d.kind !== 'binding')) : []
   if (playbooks.length === 0 && openDrafts.length === 0) {
     return (
       <EntityListEmptyScreen
@@ -287,8 +290,10 @@ export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, 
       />
     )
   }
-  const regular = playbooks.filter(p => !isMetaPlaybook(p.id))
-  const meta = playbooks.filter(p => isMetaPlaybook(p.id))
+  // The playbooks that build things (playbooks, plugin bindings) sit in their own quieter group
+  const building = (id: string) => isMetaPlaybook(id) || id === 'bind-plugin'
+  const regular = playbooks.filter(p => !building(p.id))
+  const meta = playbooks.filter(p => building(p.id))
   const row = (p: MwPlaybookSummary, quiet: boolean) => (
     <EntityRow
       key={p.id}
@@ -299,6 +304,7 @@ export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, 
       subtitle={[
         t('memwise.playbooks.steps', { count: p.stepCount }),
         t('memwise.playbooks.openCases', { count: p.open }),
+        ...(p.origin ? [originLabel(p.origin, t)] : []),
       ].join(' · ')}
       subtitleTrailing={p.waitingOnMe > 0 ? (
         <EntityListBadge colorClass="bg-info-tint text-info" tooltip={t('memwise.playbooks.waitingOnMeTooltip')}>

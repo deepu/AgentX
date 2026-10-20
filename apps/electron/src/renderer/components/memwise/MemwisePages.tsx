@@ -8,7 +8,8 @@ import { useTranslation } from 'react-i18next'
 import i18n from 'i18next'
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai'
 import { toast } from 'sonner'
-import { BookmarkPlus, BookOpen, FilePen, MessageSquare, MessagesSquare, PencilLine, Play } from 'lucide-react'
+import { BookmarkPlus, BookOpen, FilePen, MessageSquare, MessagesSquare, PencilLine, Play, Puzzle } from 'lucide-react'
+import { Info_Alert } from '@/components/info/Info_Alert'
 import { Info_Page } from '@/components/info/Info_Page'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -28,6 +29,7 @@ import {
 } from '@/atoms/memwise'
 import {
   getMemwiseApi,
+  useMemwiseBinding,
   useMemwiseBuildPlaybook,
   useMemwiseCase,
   useMemwiseDraft,
@@ -111,6 +113,9 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
   // A playbook change's review whose card does not name its draft: read it from the case.
   const needsCase = item?.kind === 'decision' && isMetaPlaybook(item.workflowId) && typeof item.context.draft?.value !== 'string'
   const { data: reviewCase } = useMemwiseCase(needsCase ? item!.caseId : null)
+  // A bind-plugin step: the binding review, read from its draft
+  const binding = item && (item.kind === 'input' || item.kind === 'decision') ? item.binding : undefined
+  const { data: bindingView, error: bindingError, reload: reloadBinding } = useMemwiseBinding(binding?.pluginId ?? null, binding?.draftId)
 
   const actions = React.useMemo<InboxActions>(() => {
     const api = getMemwiseApi()
@@ -124,6 +129,19 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
       uploadFile: upload,
       openCase: caseId => navigate(routes.view.cases(caseId)),
       openDraft: draftId => navigate(routes.view.draft(draftId)),
+      openPlugin: pluginId => navigate(routes.view.plugins(pluginId)),
+      ...(api?.memwiseDecideIdentity ? {
+        decideIdentity: input => (workspaceId ? api.memwiseDecideIdentity(workspaceId, input) : Promise.resolve(notAvailable())),
+      } : {}),
+      ...(api?.memwiseWriteDraft ? {
+        writeDraft: async (draftId, { path, content, summary }) => {
+          if (!workspaceId) return { applied: false, diagnostics: [], message: i18n.t('memwise.notAvailable') }
+          const r = await api.memwiseWriteDraft(workspaceId, { draftId, files: [{ path, content }], summary })
+          if (r.applied) toast.success(t('memwise.editor.saved'))
+          reloadBinding()
+          return r
+        },
+      } : {}),
       continueChat: (conv: Extract<MwInboxItem, { kind: 'conversation' }>) => {
         if (conv.sessionId && store.get(sessionMetaMapAtom).has(conv.sessionId)) {
           navigate(routes.view.allSessions(conv.sessionId), { newPanel: true })
@@ -139,7 +157,7 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
         navigate(routes.view.inbox(rest[0]?.id))
       },
     }
-  }, [workspaceId, upload, inbox, itemId, item, refresh, t, store, openChatBeside])
+  }, [workspaceId, upload, inbox, itemId, item, refresh, t, store, openChatBeside, reloadBinding])
 
   if (!itemId) {
     return (
@@ -152,7 +170,18 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
   return (
     <Info_Page loading={inbox === null} empty={inbox !== null && !item ? t('memwise.inbox.itemGone') : undefined}>
       <Info_Page.Header title={t('memwise.nav.inbox')} />
-      {item && <InboxItemView key={item.id} item={item} actions={actions} people={people} roles={roles} reviewDraftId={caseDraftId(reviewCase)} />}
+      {item && (
+        <InboxItemView
+          key={item.id}
+          item={item}
+          actions={actions}
+          people={people}
+          roles={roles}
+          reviewDraftId={caseDraftId(reviewCase)}
+          bindingView={binding ? bindingView : undefined}
+          bindingError={binding ? bindingError : undefined}
+        />
+      )}
     </Info_Page>
   )
 }
@@ -354,6 +383,7 @@ export function PlaybookPage({ playbookId }: { playbookId: string | null }) {
                 selectedStepId={selectedStep}
                 onSelectStep={setSelectedStep}
                 versionLine={<VersionLine versions={versions} version={playbook.version} />}
+                onOpenPlugin={id => navigate(routes.view.plugins(id))}
               />
             </TabsContent>
             <TabsContent value="map" className="mt-4">
@@ -487,7 +517,21 @@ export function DraftPage({ draftId }: { draftId: string }) {
   return (
     <Info_Page loading={loading && !draft} error={!draft && error ? error : !ready ? t('memwise.notAvailable') : undefined}>
       <Info_Page.Header title={draft?.title ?? t('memwise.draft.title')} />
-      {draft && (
+      {draft?.kind === 'binding' && (
+        <Info_Page.Content>
+          <Info_Alert variant="info" icon={<Puzzle />}>
+            <Info_Alert.Title>{t('memwise.draft.bindingTitle')}</Info_Alert.Title>
+            <Info_Alert.Description>{t('memwise.draft.bindingDescription')}</Info_Alert.Description>
+            {draft.plugin && (
+              <Button variant="primary" size="sm" className="mt-2" onClick={() => navigate(routes.view.plugins(draft.plugin!.id))} data-action="open-plugin">
+                <Puzzle />
+                {t('memwise.inbox.binding.openPlugin')}
+              </Button>
+            )}
+          </Info_Alert>
+        </Info_Page.Content>
+      )}
+      {draft && draft.kind !== 'binding' && (
         <DraftView
           draft={draft}
           live={live}

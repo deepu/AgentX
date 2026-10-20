@@ -11,14 +11,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAtomValue, useSetAtom, useStore } from 'jotai'
 import i18n from 'i18next'
 import type {
+  MwBindingView,
   MwBuildPlaybookInput,
   MwBuildPlaybookResult,
   MwCase,
   MwChange,
   MwDraft,
   MwDraftSummary,
+  MwEntityRecord,
+  MwEntityRow,
   MwLiveCounts,
   MwPlaybook,
+  MwPluginDetail,
   MwStatus,
   MwStepRecord,
   MwVersion,
@@ -28,10 +32,12 @@ import {
   memwiseAvailableAtom,
   memwiseCasesAtom,
   memwiseDraftsAtom,
+  memwiseEntityTypesAtom,
   memwiseInboxAtom,
   memwiseLastChangeAtom,
   memwisePeopleAtom,
   memwisePlaybooksAtom,
+  memwisePluginsAtom,
   memwiseRolesAtom,
   memwiseStatusAtom,
   memwiseWorkspaceIdAtom,
@@ -49,24 +55,27 @@ export function getMemwiseApi(): MemwiseApi | null {
   return api as MemwiseApi
 }
 
-export interface AffectedLists { status: boolean; inbox: boolean; cases: boolean; playbooks: boolean; drafts: boolean }
+export interface AffectedLists { status: boolean; inbox: boolean; cases: boolean; playbooks: boolean; drafts: boolean; plugins: boolean }
+
+const NO_LISTS: AffectedLists = { status: false, inbox: false, cases: false, playbooks: false, drafts: false, plugins: false }
 
 /** Which lists a pushed change affects. */
 export function affectedByChange(change: MwChange): AffectedLists {
   switch (change.kind) {
-    case 'status': return { status: true, inbox: true, cases: true, playbooks: true, drafts: true }
-    // Publishing a draft changes the definitions; the draft's stage changes with it.
-    case 'definitions': return { status: true, inbox: false, cases: false, playbooks: true, drafts: true }
-    case 'inbox': return { status: false, inbox: true, cases: false, playbooks: true, drafts: false }
+    case 'status': return { status: true, inbox: true, cases: true, playbooks: true, drafts: true, plugins: true }
+    // Publishing a draft changes the definitions; the draft's stage changes with it. A freeze
+    // re-indexes too, which changes the plugins' binding state and their workflows.
+    case 'definitions': return { ...NO_LISTS, status: true, playbooks: true, drafts: true, plugins: true }
+    case 'inbox': return { ...NO_LISTS, inbox: true, playbooks: true }
     case 'run':
-    case 'case': return { status: false, inbox: true, cases: true, playbooks: true, drafts: false }
+    case 'case': return { ...NO_LISTS, inbox: true, cases: true, playbooks: true }
     // A conversation item carries its draft, so the inbox follows the drafts too.
-    case 'drafts': return { status: false, inbox: true, cases: false, playbooks: false, drafts: true }
-    default: return { status: false, inbox: false, cases: false, playbooks: false, drafts: false }
+    case 'drafts': return { ...NO_LISTS, inbox: true, drafts: true }
+    // Installs, binding freezes and identity links; pending matches are inbox items.
+    case 'plugins': return { ...NO_LISTS, inbox: true, plugins: true }
+    default: return { ...NO_LISTS }
   }
 }
-
-const NO_LISTS: AffectedLists = { status: false, inbox: false, cases: false, playbooks: false, drafts: false }
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -90,6 +99,8 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
   const setCases = useSetAtom(memwiseCasesAtom)
   const setPlaybooks = useSetAtom(memwisePlaybooksAtom)
   const setDrafts = useSetAtom(memwiseDraftsAtom)
+  const setPlugins = useSetAtom(memwisePluginsAtom)
+  const setEntityTypes = useSetAtom(memwiseEntityTypesAtom)
   const setLastChange = useSetAtom(memwiseLastChangeAtom)
 
   const loadStatus = useCallback(async (ws: string, api: MemwiseApi) => {
@@ -139,6 +150,18 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
     }
   }, [setDrafts])
 
+  const loadPlugins = useCallback(async (ws: string, api: MemwiseApi) => {
+    // An older server has no plugins: leave the lists empty.
+    if (typeof api.memwiseListPlugins !== 'function') { setPlugins([]); setEntityTypes([]); return }
+    const [plugins, types] = await Promise.allSettled([api.memwiseListPlugins(ws), api.memwiseListEntityTypes(ws)])
+    if (plugins.status === 'fulfilled') setPlugins(plugins.value)
+    else {
+      console.warn('[memwise] plugins:', errorMessage(plugins.reason))
+      setPlugins(prev => prev ?? [])
+    }
+    setEntityTypes(prev => (types.status === 'fulfilled' ? types.value : prev ?? []))
+  }, [setPlugins, setEntityTypes])
+
   // Initial load per workspace
   useEffect(() => {
     setWorkspaceId(workspaceId ?? null)
@@ -146,6 +169,8 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
     setCases(null)
     setPlaybooks(null)
     setDrafts(null)
+    setPlugins(null)
+    setEntityTypes(null)
     setStatus(null)
     if (!workspaceId) return
     const api = getMemwiseApi()
@@ -155,16 +180,18 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
       setCases([])
       setPlaybooks([])
       setDrafts([])
+      setPlugins([])
+      setEntityTypes([])
       return
     }
     let stale = false
     void (async () => {
       await loadStatus(workspaceId, api)
       if (stale) return
-      await Promise.all([loadInbox(workspaceId, api), loadCases(workspaceId, api), loadPlaybooks(workspaceId, api), loadDrafts(workspaceId, api)])
+      await Promise.all([loadInbox(workspaceId, api), loadCases(workspaceId, api), loadPlaybooks(workspaceId, api), loadDrafts(workspaceId, api), loadPlugins(workspaceId, api)])
     })()
     return () => { stale = true }
-  }, [workspaceId, setWorkspaceId, setAvailable, setStatus, setInbox, setCases, setPlaybooks, setDrafts, loadStatus, loadInbox, loadCases, loadPlaybooks, loadDrafts])
+  }, [workspaceId, setWorkspaceId, setAvailable, setStatus, setInbox, setCases, setPlaybooks, setDrafts, setPlugins, setEntityTypes, loadStatus, loadInbox, loadCases, loadPlaybooks, loadDrafts, loadPlugins])
 
   // While the kernel starts, poll the status until it's ready (pushes may not flow yet).
   const status = useAtomValue(memwiseStatusAtom)
@@ -175,11 +202,11 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
     const timer = setTimeout(async () => {
       const next = await loadStatus(workspaceId, api)
       if (next?.ready) {
-        await Promise.all([loadInbox(workspaceId, api), loadCases(workspaceId, api), loadPlaybooks(workspaceId, api), loadDrafts(workspaceId, api)])
+        await Promise.all([loadInbox(workspaceId, api), loadCases(workspaceId, api), loadPlaybooks(workspaceId, api), loadDrafts(workspaceId, api), loadPlugins(workspaceId, api)])
       }
     }, 3000)
     return () => clearTimeout(timer)
-  }, [workspaceId, status, loadStatus, loadInbox, loadCases, loadPlaybooks, loadDrafts])
+  }, [workspaceId, status, loadStatus, loadInbox, loadCases, loadPlaybooks, loadDrafts, loadPlugins])
 
   // Live updates: one subscription; bursts of pushes are coalesced into one refetch per list.
   const pending = useRef<AffectedLists>({ ...NO_LISTS })
@@ -199,6 +226,7 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
       if (p.cases) void loadCases(workspaceId, api)
       if (p.playbooks) void loadPlaybooks(workspaceId, api)
       if (p.drafts) void loadDrafts(workspaceId, api)
+      if (p.plugins) void loadPlugins(workspaceId, api)
     }
     const off = api.onMemwiseChanged((change: MwChange) => {
       setLastChange({ seq: ++seq.current, change })
@@ -210,6 +238,7 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
         cases: p.cases || a.cases,
         playbooks: p.playbooks || a.playbooks,
         drafts: p.drafts || a.drafts,
+        plugins: p.plugins || a.plugins,
       }
       if (!timer.current) timer.current = setTimeout(flush, 150)
     })
@@ -218,7 +247,7 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
       if (timer.current) clearTimeout(timer.current)
       timer.current = null
     }
-  }, [workspaceId, store, setLastChange, loadStatus, loadInbox, loadCases, loadPlaybooks, loadDrafts])
+  }, [workspaceId, store, setLastChange, loadStatus, loadInbox, loadCases, loadPlaybooks, loadDrafts, loadPlugins])
 }
 
 /** Reload the inbox and cases now (after the person acted), without waiting for a push. */
@@ -228,21 +257,24 @@ export function useMemwiseRefresh(): () => Promise<void> {
   const setCases = useSetAtom(memwiseCasesAtom)
   const setPlaybooks = useSetAtom(memwisePlaybooksAtom)
   const setDrafts = useSetAtom(memwiseDraftsAtom)
+  const setPlugins = useSetAtom(memwisePluginsAtom)
   return useCallback(async () => {
     const ws = store.get(memwiseWorkspaceIdAtom)
     const api = getMemwiseApi()
     if (!ws || !api) return
-    const [inbox, cases, playbooks, drafts] = await Promise.allSettled([
+    const [inbox, cases, playbooks, drafts, plugins] = await Promise.allSettled([
       api.memwiseListInbox(ws),
       api.memwiseListCases(ws, {}),
       api.memwiseListPlaybooks(ws),
       typeof api.memwiseListDrafts === 'function' ? api.memwiseListDrafts(ws, {}) : Promise.resolve([]),
+      typeof api.memwiseListPlugins === 'function' ? api.memwiseListPlugins(ws) : Promise.resolve([]),
     ])
     if (inbox.status === 'fulfilled') setInbox(inbox.value)
     if (cases.status === 'fulfilled') setCases(cases.value)
     if (playbooks.status === 'fulfilled') setPlaybooks(playbooks.value)
     if (drafts.status === 'fulfilled') setDrafts(drafts.value)
-  }, [store, setInbox, setCases, setPlaybooks, setDrafts])
+    if (plugins.status === 'fulfilled') setPlugins(plugins.value)
+  }, [store, setInbox, setCases, setPlaybooks, setDrafts, setPlugins])
 }
 
 /** Switch who the desktop acts as, then reload what depends on it. */
@@ -400,6 +432,48 @@ export function useMemwiseStepRecord(stepRunId: string | null): MemwiseQuery<MwS
     stepRunId ? `step:${stepRunId}` : null,
     (api, ws) => api.memwiseGetStepRecord(ws, stepRunId!),
     (c, cur) => stepChangeMatches(c, cur),
+  )
+}
+
+// ---------------------------------------------------------------- plugins, bindings, records (Phase 4)
+
+/** Whether a push may change a plugin or its binding (installs, freezes, the bind run moving on). */
+export function pluginChangeMatches(c: MwChange): boolean {
+  return c.kind === 'plugins' || c.kind === 'definitions' || c.kind === 'status'
+}
+
+export function useMemwisePlugin(pluginId: string | null): MemwiseQuery<MwPluginDetail> {
+  return useMemwiseQuery<MwPluginDetail>(
+    pluginId ? `plugin:${pluginId}` : null,
+    (api, ws) => api.memwiseGetPlugin(ws, pluginId!),
+    c => pluginChangeMatches(c) || c.kind === 'run',
+  )
+}
+
+/** A plugin's binding for the review screen: a draft (being bound), else the live one. */
+export function useMemwiseBinding(pluginId: string | null, draftId?: string): MemwiseQuery<MwBindingView> {
+  return useMemwiseQuery<MwBindingView>(
+    pluginId ? `binding:${pluginId}:${draftId ?? ''}` : null,
+    (api, ws) => api.memwiseGetBinding(ws, { pluginId: pluginId!, ...(draftId ? { draftId } : {}) }),
+    // The dry run writes its report into the case; the draft changes on every save.
+    (c, cur) => pluginChangeMatches(c) || draftChangeMatches(c, draftId ?? cur?.draftId)
+      || (!!cur?.run && (c.kind === 'run' || c.kind === 'case') && (c.id === cur.run.runId || c.caseId === cur.run.caseId)),
+  )
+}
+
+export function useMemwiseEntityRows(entity: string | null): MemwiseQuery<MwEntityRow[]> {
+  return useMemwiseQuery<MwEntityRow[]>(
+    entity ? `rows:${entity}` : null,
+    (api, ws) => api.memwiseListEntities(ws, entity!),
+    c => c.kind === 'plugins' || c.kind === 'run' || c.kind === 'definitions',
+  )
+}
+
+export function useMemwiseEntityRecord(entity: string | null, id: string | null): MemwiseQuery<MwEntityRecord> {
+  return useMemwiseQuery<MwEntityRecord>(
+    entity && id ? `record:${entity}:${id}` : null,
+    (api, ws) => api.memwiseGetEntityRecord(ws, { entity: entity!, id: id! }),
+    c => c.kind === 'plugins',
   )
 }
 

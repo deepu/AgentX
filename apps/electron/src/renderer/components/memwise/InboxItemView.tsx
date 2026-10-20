@@ -7,15 +7,18 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { AlertTriangle, Bell, CheckCircle2, ClipboardList, FilePen, Mail, MessagesSquare, ShieldCheck, Undo2 } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCircle2, ClipboardList, FilePen, Link2, Mail, MessagesSquare, Puzzle, ShieldCheck, Undo2 } from 'lucide-react'
 import type {
+  MwBindingView,
   MwCaseValue,
   MwDecideApprovalInput,
+  MwDecideIdentityInput,
   MwInboxItem,
   MwRole,
   MwSendEventInput,
   MwSubmitResult,
   MwSubmitStepInput,
+  MwWriteDraftResult,
 } from '@memwise/shared/protocol'
 import { Info_Alert } from '@/components/info/Info_Alert'
 import { Info_Badge } from '@/components/info/Info_Badge'
@@ -29,6 +32,8 @@ import { cn } from '@/lib/utils'
 import { CaseFieldList } from './CaseValues'
 import { isMetaPlaybook } from './draft/draft-model'
 import { GeneratedForm, type UploadFile } from './GeneratedForm'
+import { BindingReview } from './plugins/BindingReview'
+import { identityRows, matchMethodLabel, scorePercent } from './plugins/plugin-model'
 import { buildSubmission, initialFormValues, type FormError, type FormValues } from './form-model'
 import {
   absoluteTime,
@@ -63,6 +68,12 @@ export interface InboxActions {
   continueChat?: (item: Extract<MwInboxItem, { kind: 'conversation' }>) => void
   /** Open a draft's review screen. */
   openDraft?: (draftId: string) => void
+  /** Answer an identity match: the same record, or a different one. */
+  decideIdentity?: (input: MwDecideIdentityInput) => Promise<MwSubmitResult>
+  /** Open a plugin's page. */
+  openPlugin?: (pluginId: string) => void
+  /** Save edits into a draft (the binding review's edits; `memwise:drafts:write`). */
+  writeDraft?: (draftId: string, input: { path: string; content: string; summary: string }) => Promise<MwWriteDraftResult>
 }
 
 export interface InboxItemViewProps {
@@ -72,6 +83,10 @@ export interface InboxItemViewProps {
   roles?: MwRole[]
   /** For a playbook change's review step: the draft it reviews, when the item's context does not name it. */
   reviewDraftId?: string
+  /** For a bind-plugin step (`item.binding`): the binding under review, loaded by the container. */
+  bindingView?: MwBindingView | null
+  /** The binding could not be loaded. */
+  bindingError?: string | null
   now?: number
 }
 
@@ -82,6 +97,7 @@ const KIND_ICON: Record<MwInboxItem['kind'], React.ReactNode> = {
   attention: <AlertTriangle />,
   reminder: <Bell />,
   conversation: <MessagesSquare />,
+  identity: <Link2 />,
 }
 
 /** The draft a playbook change's decision is about: the case value `draft`. */
@@ -154,7 +170,7 @@ function CommentBox({ value, onChange, error, placeholder, disabled }: {
   )
 }
 
-export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId, now }: InboxItemViewProps) {
+export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId, bindingView, bindingError, now }: InboxItemViewProps) {
   const { t, i18n } = useTranslation()
   const since = relativeTime(item.since, now, i18n.language)
   const dueAt = 'dueAt' in item ? item.dueAt : undefined
@@ -167,20 +183,30 @@ export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId
         meta={
           <>
             <Info_Badge color={item.kind === 'attention' ? 'warning' : 'default'}>{inboxKindLabel(item.kind, t)}</Info_Badge>
-            <button type="button" className="font-medium text-foreground hover:underline" onClick={() => actions.openCase(item.caseId)}>
-              {item.caseTitle}
-            </button>
+            {item.kind === 'identity' ? (
+              actions.openPlugin
+                ? <button type="button" className="font-medium text-foreground hover:underline" onClick={() => actions.openPlugin!(item.plugin)}>{item.caseTitle}</button>
+                : <span className="font-medium text-foreground">{item.caseTitle}</span>
+            ) : (
+              <button type="button" className="font-medium text-foreground hover:underline" onClick={() => actions.openCase(item.caseId)}>
+                {item.caseTitle}
+              </button>
+            )}
             <span title={absoluteTime(item.since, i18n.language)}>{t('memwise.inbox.waitingSince', { time: since })}</span>
             {dueAt && <span>{t('memwise.inbox.due', { time: relativeTime(dueAt, now, i18n.language) })}</span>}
           </>
         }
       />
-      {item.kind === 'input' && <InputBody item={item} actions={actions} people={people} />}
-      {item.kind === 'decision' && <DecisionBody item={item} actions={actions} people={people} roles={roles} draftId={reviewDraftOf(item) ?? reviewDraftId} />}
+      {(item.kind === 'input' || item.kind === 'decision') && item.binding && (
+        <BindingBody item={item} binding={item.binding} actions={actions} roles={roles} view={bindingView} error={bindingError} now={now} />
+      )}
+      {item.kind === 'input' && !item.binding && <InputBody item={item} actions={actions} people={people} />}
+      {item.kind === 'decision' && !item.binding && <DecisionBody item={item} actions={actions} people={people} roles={roles} draftId={reviewDraftOf(item) ?? reviewDraftId} />}
       {item.kind === 'conversation' && <ConversationBody item={item} actions={actions} roles={roles} />}
       {item.kind === 'approval' && <ApprovalBody item={item} actions={actions} />}
       {item.kind === 'attention' && <AttentionBody item={item} actions={actions} />}
       {item.kind === 'reminder' && <ReminderBody item={item} actions={actions} />}
+      {item.kind === 'identity' && <IdentityBody item={item} actions={actions} />}
     </Info_Page.Content>
   )
 }
@@ -546,6 +572,174 @@ function ReminderBody({ item, actions }: { item: Extract<MwInboxItem, { kind: 'r
         <Button variant="primary" onClick={() => actions.openCase(item.caseId)}>{t('memwise.inbox.openCase')}</Button>
       </div>
       {result && !result.applied && <ResultMessage result={result} />}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------- binding (the bind-plugin steps)
+
+type BindingItem = Extract<MwInboxItem, { kind: 'input' | 'decision' }>
+
+/**
+ * The bind-plugin `fix` step (edit: the choices are editable and saved into the binding draft,
+ * then Done) and its `review` step (Approve / Ask for changes), on the binding review screen.
+ */
+function BindingBody({ item, binding, actions, roles, view, error, now }: {
+  item: BindingItem
+  binding: NonNullable<BindingItem['binding']>
+  actions: InboxActions
+  roles?: MwRole[]
+  view?: MwBindingView | null
+  error?: string | null
+  now?: number
+}) {
+  const { t } = useTranslation()
+  const [comment, setComment] = React.useState('')
+  const [commentError, setCommentError] = React.useState<string | undefined>()
+  const { busy, result, run } = useAnswer(actions.onDone)
+  const editing = binding.mode === 'edit'
+  const instructions = item.kind === 'decision' ? item.instructions : ''
+  const outcomes = item.outcomes.length ? item.outcomes : [editing ? 'done' : 'approved']
+  const draftId = binding.draftId ?? view?.draftId
+  const writeDraft = actions.writeDraft
+  const onSave = draftId && writeDraft ? (input: { path: string; content: string; summary: string }) => writeDraft(draftId, input) : undefined
+
+  const answer = async (outcome: string, ctx: { dirty: boolean; save: () => Promise<boolean> }) => {
+    if (outcomeNeedsComment(outcome) && !comment.trim()) {
+      setCommentError(t('memwise.inbox.commentRequired'))
+      return
+    }
+    setCommentError(undefined)
+    // Unsaved edits go into the draft before the step is answered
+    if (ctx.dirty && !(await ctx.save())) return
+    void run(outcome, () => actions.submitStep({ stepRunId: item.stepRunId, outcome, values: {}, comment: comment.trim() || undefined }))
+  }
+
+  const sorted = editing ? outcomes : [...outcomes].sort((a, b) => Number(isNegativeOutcome(b)) - Number(isNegativeOutcome(a)))
+
+  return (
+    <>
+      <Info_Alert variant="info" icon={<Puzzle />} data-binding-mode={binding.mode}>
+        <Info_Alert.Title>{t(editing ? 'memwise.inbox.binding.editTitle' : 'memwise.inbox.binding.reviewTitle', { title: view?.pluginTitle ?? binding.pluginId })}</Info_Alert.Title>
+        <Info_Alert.Description>{t(editing ? 'memwise.inbox.binding.editDescription' : 'memwise.inbox.binding.reviewDescription')}</Info_Alert.Description>
+        {actions.openPlugin && (
+          <Button variant="secondary" size="sm" className="mt-2" onClick={() => actions.openPlugin!(binding.pluginId)} data-action="open-plugin">
+            <Puzzle />
+            {t('memwise.inbox.binding.openPlugin')}
+          </Button>
+        )}
+      </Info_Alert>
+      {instructions.trim() && (
+        <Info_Section title={t('memwise.inbox.instructions')}>
+          <div className="px-4 py-3 text-label">
+            <Markdown mode="minimal">{instructions}</Markdown>
+          </div>
+        </Info_Section>
+      )}
+      {error && (
+        <Info_Alert variant="error" icon={<AlertTriangle />}>
+          <Info_Alert.Title>{t('memwise.inbox.binding.loadFailed')}</Info_Alert.Title>
+          <Info_Alert.Description>{error}</Info_Alert.Description>
+        </Info_Alert>
+      )}
+      {!view && !error && <p className="px-1 text-label text-tertiary">{t('memwise.inbox.binding.loading')}</p>}
+      {view && (
+        <BindingReview
+          view={view}
+          roles={roles}
+          mode={editing ? 'edit' : 'review'}
+          onSave={onSave}
+          now={now}
+          actions={ctx => (
+            <div className="space-y-3" data-binding-actions>
+              {(!editing || outcomes.some(outcomeNeedsComment)) && (
+                <CommentBox
+                  value={comment}
+                  onChange={v => { setComment(v); if (commentError) setCommentError(undefined) }}
+                  error={commentError}
+                  placeholder={t('memwise.inbox.commentPlaceholder')}
+                  disabled={!!busy || ctx.busy || result?.applied}
+                />
+              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                {sorted.map((o, i) => (
+                  <Button
+                    key={o}
+                    variant={editing ? (i === 0 ? 'primary' : 'secondary') : isNegativeOutcome(o) ? 'secondary' : 'primary'}
+                    onClick={() => void answer(o, ctx)}
+                    disabled={!!busy || ctx.busy || result?.applied}
+                    data-outcome={o}
+                  >
+                    {busy === o ? t('memwise.inbox.sending') : outcomeLabel(o, t)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+        />
+      )}
+      <ResultMessage result={result} />
+    </>
+  )
+}
+
+// ---------------------------------------------------------------- identity
+
+/** "Is this the same client?": the domain's record beside the outside one, field by field. */
+function IdentityBody({ item, actions }: { item: Extract<MwInboxItem, { kind: 'identity' }>; actions: InboxActions }) {
+  const { t, i18n } = useTranslation()
+  const { busy, result, run } = useAnswer(actions.onDone)
+  const decide = actions.decideIdentity
+  const rows = identityRows(item)
+  return (
+    <>
+      <Info_Alert variant="info" icon={<Link2 />}>
+        <Info_Alert.Title>{t('memwise.inbox.identity.title', { entity: humanize(item.entity).toLowerCase(), plugin: item.pluginTitle })}</Info_Alert.Title>
+        <Info_Alert.Description>
+          {t('memwise.inbox.identity.description', { score: scorePercent(item.score), source: item.source })}
+        </Info_Alert.Description>
+      </Info_Alert>
+      <Info_Section title={t('memwise.inbox.identity.compare')}>
+        <table className="w-full text-label" data-identity-table>
+          <thead>
+            <tr className="border-b border-separator text-left text-label-sm text-tertiary">
+              <th className="px-4 py-2 font-medium">{t('memwise.inbox.identity.field')}</th>
+              <th className="px-4 py-2 font-medium">{t('memwise.inbox.identity.ours')}</th>
+              <th className="px-4 py-2 font-medium">{t('memwise.inbox.identity.theirs', { plugin: item.pluginTitle })}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.field} className="border-b border-separator last:border-0" data-same={r.same === null ? 'unknown' : String(r.same)}>
+                <td className="px-4 py-2 text-secondary">{humanize(r.field)}</td>
+                <td className={cn('px-4 py-2', r.same === false && 'text-warning')}>{formatValueInline(r.ours, t, i18n.language)}</td>
+                <td className={cn('px-4 py-2', r.same === false && 'text-warning')}>{formatValueInline(r.theirs, t, i18n.language)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Info_Section>
+      {item.reasons.length > 0 && (
+        <Info_Section title={t('memwise.inbox.identity.why')}>
+          <ul className="list-disc space-y-1 px-8 py-3 text-label text-secondary">
+            {item.reasons.map(r => <li key={r}>{r}</li>)}
+          </ul>
+        </Info_Section>
+      )}
+      <p className="px-1 text-label-sm text-tertiary">{t('memwise.inbox.identity.ifSame', { method: matchMethodLabel('person', t) })}</p>
+      <div className="flex flex-wrap justify-end gap-2">
+        {decide && (
+          <>
+            <Button variant="secondary" onClick={() => void run('reject', () => decide({ candidateId: item.candidateId, decision: 'reject' }))} disabled={!!busy || result?.applied} data-decision="reject">
+              {busy === 'reject' ? t('memwise.inbox.sending') : t('memwise.inbox.identity.different')}
+            </Button>
+            <Button variant="primary" onClick={() => void run('confirm', () => decide({ candidateId: item.candidateId, decision: 'confirm' }))} disabled={!!busy || result?.applied} data-decision="confirm">
+              {busy === 'confirm' ? t('memwise.inbox.sending') : t('memwise.inbox.identity.same')}
+            </Button>
+          </>
+        )}
+      </div>
+      <ResultMessage result={result} />
     </>
   )
 }

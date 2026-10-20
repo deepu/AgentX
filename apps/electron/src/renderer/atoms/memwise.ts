@@ -9,9 +9,11 @@ import type {
   MwCaseSummary,
   MwChange,
   MwDraftSummary,
+  MwEntityType,
   MwInboxItem,
   MwPerson,
   MwPlaybookSummary,
+  MwPluginSummary,
   MwRole,
   MwStatus,
 } from '@memwise/shared/protocol'
@@ -35,6 +37,13 @@ export const memwiseCasesAtom = atom<MwCaseSummary[] | null>(null)
 export const memwisePlaybooksAtom = atom<MwPlaybookSummary[] | null>(null)
 /** Every draft (Phase 3); the screens show the open ones. Null while loading, or when the host has no drafts. */
 export const memwiseDraftsAtom = atom<MwDraftSummary[] | null>(null)
+
+/** Installed plugins (Phase 4). Null while loading, or when the host has no plugins API. */
+export const memwisePluginsAtom = atom<MwPluginSummary[] | null>(null)
+/** The domain's entity types, for the Records group under Plugins (Phase 4). */
+export const memwiseEntityTypesAtom = atom<MwEntityType[] | null>(null)
+/** The "Install a plugin" dialog. */
+export const memwiseInstallPluginDialogAtom = atom<boolean>(false)
 
 /** The last `memwise:changed` push, with a sequence number so equal payloads still notify. */
 export const memwiseLastChangeAtom = atom<{ seq: number; change: MwChange } | null>(null)
