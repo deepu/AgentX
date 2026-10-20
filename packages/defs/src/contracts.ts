@@ -53,6 +53,11 @@ export interface StepToken {
   agentRole: string;
   /** The person the step acts for, when there is one. */
   onBehalfOf?: string;
+  /**
+   * Phase 6 (24 §7): the role a triggered case's steps act for (the trigger's `as`, else the
+   * workflow's owner), so `role:` rules treat them as a person in that role would be.
+   */
+  actsFor?: string;
   issuedAt: string;
   expiresAt: string;
 }

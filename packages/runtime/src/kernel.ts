@@ -4,7 +4,7 @@
 import { DBOS, DBOSClient } from '@dbos-inc/dbos-sdk';
 import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
 import {
-  actorLabel, applyDomainSchema, createPool, domainCreators, entityTableName, migrate, PgApprovalStore, PgCaseStore,
+  actorLabel, applyDomainSchema, createPool, domainCreators, entityTableName, evaluateCondition, migrate, PgApprovalStore, PgCaseStore,
   PgDefinitionStore, PgEffectLedger, PgEntityStore, PgExplanationStore, PgFileStore, PgPeopleStore, PgRateCounter,
   PgStepRecorder, PgStepRecordReader, PgVersionStore, withActor, withTransaction,
 } from '@memwise/db';
@@ -29,6 +29,8 @@ import { applyTimerActions, outsideEventRefusal, registerRunDriver } from './dri
 import { EXPLAINER_ROLE, explainStep } from './explain.ts';
 import { createChannelService } from './external/channels.ts';
 import { createExternalService, externalInviteShape, type ExternalKernelService } from './external/service.ts';
+import { createFlow, queueHandoffs } from './flow/index.ts';
+import { DEFAULT_STORM_LIMIT } from './flow/triggers.ts';
 import { EXTRACTOR_ROLE, quarantinedExtractTool, readFieldSchema } from './extract.ts';
 import { driverIdOf, newCaseId, newRunId } from './ids.ts';
 import { compileMachine, type RunEvent } from './machine.ts';
@@ -44,7 +46,7 @@ import { startValueErrors, StartRunError } from './start.ts';
 import { submitStep } from './submit.ts';
 import { defaultTestRunner } from './test-runner.ts';
 import type { Actor, Authoring, EntityRow, Explanation, InboxItem, Kernel, KernelOptions, RunRecord, StartRunInput } from './types.ts';
-import { approverRoles, DefinitionCache, getCaseView, inbox, listCases, liveCounts, mayApprove } from './views.ts';
+import { approverRoles, DefinitionCache, getCaseView, heldTriggerItems, inbox, listCases, liveCounts, mayApprove } from './views.ts';
 
 export const DEFAULT_ENGINE_VERSION = 'memwise-kernel-1';
 
@@ -74,6 +76,12 @@ export function defaultFilesDir(): string {
 /** Identifies a set of entity definitions: names and content, so any edit changes it. */
 function entitiesKey(entities: Record<string, EntityTypeDef>): string {
   return JSON.stringify(Object.keys(entities).sort().map((name) => [name, entities[name]]));
+}
+
+/** The latest indexed bodies of one definition kind, by id (Phase 6: domains, the workspace). */
+async function indexedBodies<T = any>(pool: import('pg').Pool, kind: string): Promise<Record<string, T>> {
+  const { rows } = await pool.query(`select distinct on (id) id, body from mw.definitions where kind = $1 order by id, indexed_at desc`, [kind]);
+  return Object.fromEntries(rows.map((r) => [r.id, r.body]));
 }
 
 /** Entity types as last indexed, for a kernel started without a project folder. */
@@ -232,8 +240,11 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     return out;
   }
 
-  /** startRun; `internal`: the kernel itself starting a case may set any field (a change run's draft). */
-  async function start(input: StartRunInput, internal = false): Promise<{ runId: string; caseId: string }> {
+  /**
+   * startRun; `internal`: the kernel itself starting a case may set any field (a change run's draft).
+   * `actsFor` (Phase 6): the role a triggered case's steps act for.
+   */
+  async function start(input: StartRunInput, internal = false, opts: { actsFor?: string } = {}): Promise<{ runId: string; caseId: string }> {
     const workflow = input.workflowHash
       ? await loadWorkflowDef(pool, input.workflowId, input.workflowHash)
       : await latestWorkflowDef(pool, input.workflowId);
@@ -256,11 +267,13 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       const machine = compileMachine(workflow, input.startAt ?? workflow.start);
       const [snap, actions] = initialTransition(machine);
       await db.query(
-        `insert into mw.runs (id, workflow_id, workflow_version, workflow_hash, case_id, state, status, snapshot, driver_wf_id)
-         values ($1, $2, $3, $4, $5, $6, 'active', $7, $8)`,
+        `insert into mw.runs (id, workflow_id, workflow_version, workflow_hash, case_id, state, status, snapshot, driver_wf_id, acts_for)
+         values ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $9)`,
         [runId, workflow.id, workflow.version, workflow.hash, id, String(snap.value),
-          JSON.stringify(machine.getPersistedSnapshot(snap)), driverIdOf(runId)]);
+          JSON.stringify(machine.getPersistedSnapshot(snap)), driverIdOf(runId), opts.actsFor ?? null]);
       await applyTimerActions(db, runId, 0, actions);
+      // A case that starts in a block state hands off like one that enters it (24 §8).
+      await queueHandoffs(db, workflow, { runId, moved: true, to: String(snap.value), status: 'active', enteredSeq: 0, event: { type: 'start' } });
       return id;
     });
     // Fixed workflow id: starting twice returns the same driver.
@@ -280,14 +293,48 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       saveView: notBuilt('records.saveView'), saveNote: notBuilt('records.saveNote'), flags: notBuilt('records.flags'), events: notBuilt('records.events'),
       evaluate: notBuilt('records.evaluate'),
     },
-    triggers: { list: notBuilt('triggers.list'), firings: notBuilt('triggers.firings'), release: notBuilt('triggers.release'), receiveMessage: notBuilt('triggers.receiveMessage'), sweep: notBuilt('triggers.sweep'), settle: notBuilt('triggers.settle') },
     audit: { trail: notBuilt('audit.trail'), verifyChain: notBuilt('audit.verifyChain'), export: notBuilt('audit.export') },
-  } as unknown as import('./types.ts').KernelPhase6;
+  } as unknown as Omit<import('./types.ts').KernelPhase6, 'triggers'>;
+
+  // Phase 6 flow (24 §7, §8, §10): the dispatcher, triggers, hand-offs, incoming email, entity timers.
+  const flow = createFlow({
+    pool, client,
+    workflows: () => liveWorkflows(),
+    entities: () => entities,
+    domains: async () => indexed?.project.domains ?? (await indexedBodies(pool, 'domain')),
+    stormLimit: async () => indexed?.project.workspace?.stormLimit ?? (await indexedBodies<{ stormLimit?: number }>(pool, 'workspace')).workspace?.stormLimit ?? DEFAULT_STORM_LIMIT,
+    start: (input, opts) => start(input, true, opts),
+    saveFile: (input, actor) => kernel.saveFile(input, actor),
+    evaluate: (key, id, condition) => {
+      const def = entities[key];
+      if (!def) throw new Error(`no entity type ${key}`);
+      return evaluateCondition(pool, def, entities, id, condition);
+    },
+    transition: (input) => kernel.records.transition(input, { kind: 'system' }),
+    emit: (change) => feed.emit(change),
+    log: (m) => { if ((options.logLevel ?? process.env.DBOS_LOG ?? 'warn') !== 'error') console.warn(`[memwise] ${m}`); },
+  }, () => phase6Consumers());
+  /** The records piece's event consumers (link pairing, invariants), once that piece is wired. */
+  const phase6Consumers = (): import('./flow/index.ts').EventConsumer[] => [];
+
+  /** The live workflows: the latest indexed definitions (those of the loaded project, when there is one). */
+  let liveCache: { mark: string; workflows: import('@memwise/defs').WorkflowDef[] } | undefined;
+  async function liveWorkflows() {
+    const mark = (await pool.query(`select coalesce(max(indexed_at)::text, '') as m, count(*)::int as n from mw.definitions where kind = 'workflow'`)).rows[0];
+    const key = `${mark.m}|${mark.n}`;
+    if (liveCache?.mark !== key) {
+      const { rows } = await pool.query(`select distinct on (id) body from mw.definitions where kind = 'workflow' order by id, indexed_at desc`);
+      liveCache = { mark: key, workflows: rows.map((r) => r.body) };
+    }
+    const ids = indexed ? new Set(Object.keys(indexed.project.workflows)) : undefined;
+    return ids ? liveCache.workflows.filter((w) => ids.has(w.id)) : liveCache.workflows;
+  }
 
   const kernel: Kernel = {
     pool,
     people,
     ...phase6,
+    triggers: flow.triggers,
 
     async index() {
       if (!options.projectDir) throw new Error('createKernel({ projectDir }) is needed to index');
@@ -402,6 +449,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
 
     async inbox(actor) {
       const items: InboxItem[] = await inbox(pool, defs, actor);
+      // Phase 6: firings the storm guard held, for the workflow's owner role (24 §7).
+      items.push(...(await heldTriggerItems(pool, defs, actor)));
       // Phase 4: uncertain identity matches, for the people who own plugin bindings.
       for (const candidate of (await pluginServices?.identityInbox(actor)) ?? []) {
         items.push({ kind: 'identity', id: `identity:${candidate.id}`, candidate, since: candidate.createdAt });
@@ -409,7 +458,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       return items;
     },
     listCases: (filter, actor) => listCases(pool, defs, filter, actor),
-    getCaseView: (caseId, actor) => getCaseView(pool, defs, caseId, actor),
+    getCaseView: (caseId, actor) => getCaseView(pool, defs, caseId, actor, flow.handoffs),
     liveCounts: (workflowId) => liveCounts(pool, workflowId),
 
     async explain({ stepRunId, question, by }): Promise<Explanation> {
@@ -483,6 +532,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     get channels() { return channels; },
 
     async shutdown() {
+      stopFlow();
+      await flow.stop();
       stopNotifier();
       await mcp.closeAll();
       await feed.close();
@@ -513,6 +564,15 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     },
   });
   const stopNotifier = channels.startNotifier();
+  // Phase 6: email to a domain's intake address arrives as a webhook (24 §10); entity events and
+  // queued hand-offs wake the dispatcher.
+  const stopInbound = channels.onInbound((event) => flow.onInbound(event));
+  const stopWake = feed.subscribe((change) => {
+    const kind = (change as { kind: string }).kind;
+    if (kind === 'entity' || kind === 'flow') flow.dispatcher.wake();
+  });
+  const stopFlow = () => { stopInbound(); stopWake(); };
+  flow.start();
   // Without a project folder there are no plugins: every call says so.
   const refuse = async (): Promise<never> => { throw new Error('createKernel({ projectDir }) is needed for plugins'); };
   const withoutProject = {

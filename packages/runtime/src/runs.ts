@@ -18,6 +18,8 @@ export interface RunRow {
   seq: number;
   enteredSeq: number;
   snapshot: { value: string; status: string; context: unknown };
+  /** Phase 6: the role its steps act for (a triggered case; mw.runs.acts_for). */
+  actsFor?: string;
   /** Pending timers, earliest first. */
   timers: { timerId: string; armedSeq: number; event: RunEvent; fireAtMs: number }[];
 }
@@ -26,7 +28,7 @@ const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
 
 export async function loadRunRow(db: Queryable, runId: string): Promise<RunRow> {
   const { rows } = await db.query(
-    `select id, workflow_id, workflow_hash, case_id, state, status, seq, entered_seq, snapshot from mw.runs where id = $1`, [runId]);
+    `select id, workflow_id, workflow_hash, case_id, state, status, seq, entered_seq, snapshot, acts_for from mw.runs where id = $1`, [runId]);
   const r = rows[0];
   if (!r) throw new Error(`no run ${runId}`);
   const t = await db.query(
@@ -34,7 +36,7 @@ export async function loadRunRow(db: Queryable, runId: string): Promise<RunRow> 
        from mw.timers where run_id = $1 and status = 'pending' order by fire_at, timer_id`, [runId]);
   return {
     id: r.id, workflowId: r.workflow_id, workflowHash: r.workflow_hash, caseId: r.case_id, state: r.state,
-    status: r.status, seq: r.seq, enteredSeq: r.entered_seq, snapshot: r.snapshot,
+    status: r.status, seq: r.seq, enteredSeq: r.entered_seq, snapshot: r.snapshot, ...(r.acts_for ? { actsFor: r.acts_for } : {}),
     timers: t.rows.map((x) => ({ timerId: x.timer_id, armedSeq: x.armed_seq, event: x.event, fireAtMs: Number(x.fire_at_ms) })),
   };
 }

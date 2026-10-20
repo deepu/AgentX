@@ -1,14 +1,15 @@
 // What people see (19 §4, §8): the inbox, the case list, a case with its values (hidden fields
 // nulled for roles that lack access), timeline and path, and live counts for the map.
 import { PgNotificationStore } from '@memwise/db';
-import { END_STATE, type ApprovalRequest, type CaseValue, type FieldDef, type PolicyDoc, type WorkflowDef } from '@memwise/defs';
+import { END_STATE, hasRole, type ApprovalRequest, type CaseValue, type FieldDef, type PolicyDoc, type WorkflowDef } from '@memwise/defs';
 import { compilePolicy, layersFor, pluginLayers, type CompiledPolicy, type PluginPolicy } from '@memwise/policy';
 import type pg from 'pg';
 import { assigneeOf } from './driver.ts';
 import { REMIND_EVENT, stateKind } from './machine.ts';
 import { getTransitions, latestWorkflowDef, loadDomainPolicy, loadPluginPolicies, loadWorkflowDef } from './runs.ts';
+import { heldWords } from './flow/describe.ts';
 import type {
-  Actor, CaseSummary, CaseView, InboxItem, LiveCounts, RunStatus, StepRunSummary, TransitionRecord,
+  Actor, CaseLinkView, CaseSummary, CaseView, InboxItem, LiveCounts, RunStatus, StepRunSummary, TransitionRecord, WaitingCondition,
 } from './types.ts';
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
@@ -94,7 +95,13 @@ export function pathOf(first: string, transitions: TransitionRecord[]): string[]
   return path;
 }
 
-export async function getCaseView(pool: pg.Pool, defs: DefinitionCache, caseId: string, actor: Actor): Promise<CaseView | undefined> {
+/** Phase 6: the hand-off links and the wait_until condition of a case (flow/handoffs.ts). */
+export interface CaseFlowView {
+  links(caseId: string, workflow: (id: string, hash: string) => Promise<WorkflowDef>): Promise<CaseLinkView[]>;
+  waiting(runId: string): Promise<WaitingCondition | undefined>;
+}
+
+export async function getCaseView(pool: pg.Pool, defs: DefinitionCache, caseId: string, actor: Actor, flow?: CaseFlowView): Promise<CaseView | undefined> {
   const { rows } = await pool.query(
     `select r.*, c.values, c.tainted_fields from mw.runs r join mw.cases c on c.id = r.case_id
       where r.case_id = $1 order by r.created_at desc limit 1`, [caseId]);
@@ -119,10 +126,14 @@ export async function getCaseView(pool: pg.Pool, defs: DefinitionCache, caseId: 
     tainted: s.tainted, startedAt: iso(s.started_at), ...(s.finished_at ? { finishedAt: iso(s.finished_at) } : {}),
   }));
   const transitions = await getTransitions(pool, r.id);
+  const links = flow ? await flow.links(caseId, (id, hash) => defs.workflow(id, hash)) : [];
+  const waiting = flow && r.status === 'active' && workflow.states[r.state]?.block?.kind === 'wait_until' ? await flow.waiting(r.id) : undefined;
   return {
     summary: summary(r, r.values ?? {}, workflow, actor),
     values, stepRuns, transitions,
     path: pathOf(transitions[0]?.from ?? r.state, transitions),
+    ...(links.length ? { links } : {}), ...(waiting ? { waiting } : {}),
+    ...(workflow.domain ? { domain: workflow.domain } : {}),
   };
 }
 
@@ -241,3 +252,25 @@ export function visibleValues(values: Record<string, CaseValue>, fields: Record<
   return Object.fromEntries(Object.entries(values).filter(([k]) => maySee(actor, fields[k])));
 }
 
+
+/**
+ * Phase 6 (24 §7): one item per trigger whose firings the storm guard held, for the workflow's
+ * owner role ("300 cases would start from Activate a site").
+ */
+export async function heldTriggerItems(pool: pg.Pool, defs: DefinitionCache, actor: Actor): Promise<InboxItem[]> {
+  if (!isPerson(actor)) return [];
+  const { rows } = await pool.query(
+    `select trigger_id, workflow_id, count(*)::int as n, min(at) as since from mw.trigger_firings
+      where status = 'held' group by trigger_id, workflow_id order by min(at), trigger_id`);
+  const out: InboxItem[] = [];
+  for (const r of rows) {
+    const wf = await defs.latest(r.workflow_id);
+    const role = wf?.owner;
+    if (role && !hasRole(actor, role, wf?.domain)) continue;
+    out.push({
+      kind: 'trigger-hold', id: `trigger-hold:${r.trigger_id}`, triggerId: r.trigger_id, workflowId: r.workflow_id, held: r.n,
+      description: heldWords(r.n, wf?.title ?? r.workflow_id), since: iso(r.since),
+    });
+  }
+  return out;
+}

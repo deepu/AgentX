@@ -121,7 +121,7 @@ export function tokenFor(run: RunRow, workflow: WorkflowDef, stepRunId: string, 
   return {
     runId: run.id, caseId: run.caseId, stepId: run.state, stepRunId,
     workflowId: workflow.id, workflowVersion: workflow.version,
-    agentRole: `${workflow.id}.${run.state}`,
+    agentRole: `${workflow.id}.${run.state}`, ...(run.actsFor ? { actsFor: run.actsFor } : {}),
     issuedAt: new Date(now).toISOString(), expiresAt: new Date(now + ttlMs).toISOString(),
   };
 }
