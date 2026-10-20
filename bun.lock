@@ -181,6 +181,23 @@
         "@types/ws": "^8.18.1",
       },
     },
+    "apps/external-form": {
+      "name": "@memwise/external-form",
+      "version": "0.0.0",
+      "dependencies": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+      },
+      "devDependencies": {
+        "@memwise/defs": "workspace:*",
+        "@types/bun": "^1.4.2",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0",
+        "@vitejs/plugin-react": "^5.1.2",
+        "typescript": "^5.8.2",
+        "vite": "^6.2.4",
+      },
+    },
     "apps/viewer": {
       "name": "@memwise/viewer",
       "version": "0.15.3",
@@ -331,6 +348,14 @@
       "dependencies": {
         "@memwise/defs": "workspace:*",
       },
+      "devDependencies": {
+        "@types/bun": "^1.4.2",
+        "typescript": "^5.8.2",
+      },
+    },
+    "packages/relay": {
+      "name": "@memwise/relay",
+      "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "^1.4.2",
         "typescript": "^5.8.2",
@@ -1016,6 +1041,8 @@
 
     "@memwise/electron": ["@memwise/electron@workspace:apps/electron"],
 
+    "@memwise/external-form": ["@memwise/external-form@workspace:apps/external-form"],
+
     "@memwise/gateway": ["@memwise/gateway@workspace:packages/gateway"],
 
     "@memwise/messaging-gateway": ["@memwise/messaging-gateway@workspace:packages/messaging-gateway"],
@@ -1025,6 +1052,8 @@
     "@memwise/pi-agent-server": ["@memwise/pi-agent-server@workspace:packages/pi-agent-server"],
 
     "@memwise/policy": ["@memwise/policy@workspace:packages/policy"],
+
+    "@memwise/relay": ["@memwise/relay@workspace:packages/relay"],
 
     "@memwise/runtime": ["@memwise/runtime@workspace:packages/runtime"],
 

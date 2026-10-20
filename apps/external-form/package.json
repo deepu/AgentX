@@ -1,0 +1,29 @@
+{
+  "name": "@memwise/external-form",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "description": "The page a business's client opens from a MemWise link: one step's form, or one inbox item (docs/memwise/23-phase-5-interfaces.md §4-6)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src",
+    "mock": "bun dev/mock-server.ts",
+    "screenshots": "node dev/screenshots.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@memwise/defs": "workspace:*",
+    "@types/bun": "^1.4.2",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^5.1.2",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.4"
+  }
+}
