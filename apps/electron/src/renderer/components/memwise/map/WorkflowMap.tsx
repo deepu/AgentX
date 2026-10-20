@@ -197,7 +197,7 @@ function MapNodeCard({
       title={unreachable ? t('memwise.map.unreachable') : undefined}
       aria-current={current ? 'step' : undefined}
       className={cn(
-        'absolute flex flex-col items-start justify-start gap-1.5 overflow-visible rounded-lg border bg-raised px-2.5 py-2 text-left shadow-sm transition-colors',
+        'absolute flex flex-col items-start justify-start gap-1.5 overflow-visible rounded-lg border bg-raised px-2.5 py-2 text-left shadow-elev-1 transition-colors',
         waiting || unreachable ? 'border-dashed border-strong' : 'border-border',
         onSelect && 'cursor-pointer hover:border-strong hover:bg-floating focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
         visited && 'border-accent/60',
@@ -215,7 +215,7 @@ function MapNodeCard({
       <span className="line-clamp-2 w-full text-label font-medium leading-[17px] text-foreground">{title}</span>
       {count !== undefined && count > 0 && (
         <span
-          className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-[11px] font-semibold text-background tabular-nums shadow-sm"
+          className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-[11px] font-semibold text-background tabular-nums shadow-minimal"
           title={t('memwise.map.openCases', { count })}
         >
           {count}

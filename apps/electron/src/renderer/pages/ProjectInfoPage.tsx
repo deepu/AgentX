@@ -404,6 +404,7 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
                     aria-label={t('projectInfo.openLocation')}
                     tooltip
                     icon={<FolderOpen className="size-3.5" />}
+                    // eslint-disable-next-line craft-links/no-direct-file-open -- opens the folder itself in the OS, not a file preview
                     onClick={() => window.electronAPI.openFile(project.folderPath)}
                   />
                 </div>

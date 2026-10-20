@@ -53,8 +53,9 @@ describe('layoutWorkflow', () => {
 
     const main = layout.nodes.filter((n) => n.row === 'main').sort((a, b) => a.x - b.x)
     expect(main.map((n) => n.id)).toEqual(['fill', 'check', 'verify', 'onboard', 'end'])
+    // One row: every card (and the smaller end marker) shares the same centre line.
     const mainY = main[0]!.y
-    for (const n of main) expect(n.y).toBe(mainY)
+    for (const n of main) expect(n.y + n.h / 2).toBe(mainY + main[0]!.h / 2)
 
     const np = layout.nodes.find((n) => n.id === 'needs_person')!
     expect(np.row).toBe('lower')

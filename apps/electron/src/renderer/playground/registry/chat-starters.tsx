@@ -184,7 +184,6 @@ function AddStarterForm({ onAdd, onCancel }: {
             onChange={e => setLabel(e.target.value)}
             onKeyDown={handleLabelKeyDown}
             placeholder="e.g. Workspace status"
-            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
           />
         </div>

@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeAll } from 'bun:test'
 import { setupI18n, i18n } from '@memwise/shared/i18n'
 import type { MwCaseValue } from '@memwise/shared/protocol'
+import type { TFunction } from 'i18next'
 import {
   filterCases,
   formatValueInline,
@@ -20,7 +21,7 @@ beforeAll(() => {
   setupI18n()
   void i18n.changeLanguage('en')
 })
-const t = (...args: Parameters<typeof i18n.t>) => i18n.t(...args)
+const t = i18n.t.bind(i18n) as unknown as TFunction
 
 describe('words', () => {
   test('humanize', () => {
