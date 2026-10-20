@@ -6,7 +6,7 @@ import {
   actorLabel, PgBindingVersionStore, PgEntityStore, PgIdentityStore, PgPluginStore, ulid, withActor, withTransaction,
 } from '@memwise/db';
 import {
-  applyDraft, BINDINGS_DIR, bindingPath, DEFAULT_DOMAIN, hasRole, bindingToYaml, checkProject, compileRecordMapping, createBindingDraft, DraftConflictError,
+  applyDraft, BINDINGS_DIR, keyOf, bindingPath, DEFAULT_DOMAIN, hasRole, bindingToYaml, checkProject, compileRecordMapping, createBindingDraft, DraftConflictError,
   draftContentHash, draftDir, DraftStaleError, EFFECT_CLASSES, importClaudePlugin, installPlugin, listDrafts, loadDraft, loadProject,
   matchRecord, parseBindingFile, PLUGIN_MANIFEST, proposeBinding, readDraft, structuralDiff, updateDraftMeta, withDiscoveredTools,
   writeDraftFiles, writeDraftReport,
@@ -765,7 +765,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
 
     async links(entity, recordId) {
       const def = entityDef(entity);
-      return identityStore.links(deps.pool, def?.entity ?? entity, recordId);
+      return identityStore.links(deps.pool, def ? keyOf(def) : entity, recordId);
     },
   };
 
@@ -785,7 +785,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
       // A domain record already linked to another record of this source is not offered again.
       const candidates = rows.filter((r) => !linkedRecords.has(r.id) && !rejected.has(`${rec.externalId}\0${r.id}`));
       const match = matchRecord(rec.values, candidates, rb.identity);
-      const base = { entity: entity.entity, plugin: pluginId, source, externalId: rec.externalId };
+      const base = { entity: keyOf(entity), plugin: pluginId, source, externalId: rec.externalId };
       if (match.verdict === 'link' && match.recordId) {
         await identityStore.link(deps.pool, { ...base, recordId: match.recordId, method: match.method ?? 'key', score: match.score, reasons: match.reasons });
         linkedRecords.add(match.recordId);
@@ -820,7 +820,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
     if (!def) throw new Error(`no entity type ${entityName}`);
     const row = await withActor(deps.pool, actor, (db) => entityStore.get(db, def, id));
     if (!row) return undefined;
-    const links = await identityStore.links(deps.pool, def.entity, id);
+    const links = await identityStore.links(deps.pool, keyOf(def), id);
     const project = await live();
     const bound = boundPlugins(project);
     const policies = pluginPolicies(bound);

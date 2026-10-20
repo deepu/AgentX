@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path'
 const EXAMPLE = join('examples', 'intake')
 
 function isProject(dir: string): boolean {
-  return existsSync(join(dir, 'workflows')) || existsSync(join(dir, 'domain'))
+  return ['workflows', 'domain', 'domains', 'workspace.yaml'].some((name) => existsSync(join(dir, name)))
 }
 
 /** Walks up from `start` looking for `examples/intake`. */
