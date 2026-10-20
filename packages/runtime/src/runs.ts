@@ -83,3 +83,16 @@ export async function loadDomainPolicy(db: Queryable): Promise<PolicyDoc | undef
     `select body from mw.definitions where kind = 'policy' and id = 'domain' order by indexed_at desc limit 1`);
   return rows[0]?.body;
 }
+
+/** Definition kind of the bound plugins' policy layers (one row for the whole set, written at index). */
+export const PLUGIN_POLICIES_KIND = 'plugin_policies';
+
+/**
+ * The plugin layers' sources as last indexed (22 §3): like the domain policy, not part of the
+ * workflow snapshot; the bindings live now apply.
+ */
+export async function loadPluginPolicies(db: Queryable): Promise<import('@memwise/policy').PluginPolicy[]> {
+  const { rows } = await db.query(
+    `select body from mw.definitions where kind = $1 and id = 'domain' order by indexed_at desc limit 1`, [PLUGIN_POLICIES_KIND]);
+  return rows[0]?.body ?? [];
+}

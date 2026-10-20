@@ -9,7 +9,8 @@ import {
   PgStepRecorder, PgStepRecordReader, PgVersionStore, withActor, withTransaction,
 } from '@memwise/db';
 import {
-  indexProject, loadProject, type ApprovalRequest, type CaseValue, type Diagnostic, type EntityTypeDef, type ProjectDefs,
+  indexProject, sha256, type ApprovalRequest, type CaseValue, type Diagnostic, type EntityTypeDef, type IndexedDefinition,
+  type ProjectDefs,
 } from '@memwise/defs';
 import {
   createModelGateway, createToolGateway, quarantinedRead, type ToolDefinition, type ToolGateway,
@@ -30,12 +31,17 @@ import { EXTRACTOR_ROLE, quarantinedExtractTool } from './extract.ts';
 import { driverIdOf, newCaseId, newRunId } from './ids.ts';
 import { compileMachine, type RunEvent } from './machine.ts';
 import { caseToExample } from './replay.ts';
-import { getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef } from './runs.ts';
+import { bindingTools } from './plugins/kernel-tools.ts';
+import { loadProjectAt } from './plugins/load.ts';
+import { McpConnections } from './plugins/routes.ts';
+import { createPluginServices, type PluginServices } from './plugins/service.ts';
+import { boundPlugins, pluginPolicies, pluginTools, type BoundPlugin } from './plugins/tools.ts';
+import { getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef, PLUGIN_POLICIES_KIND } from './runs.ts';
 import { ensureSandbox, SAMPLE_PLUGIN } from './sample-tools.ts';
 import { startValueErrors, StartRunError } from './start.ts';
 import { submitStep } from './submit.ts';
 import { defaultTestRunner } from './test-runner.ts';
-import type { Actor, Authoring, EntityRow, Explanation, Kernel, KernelOptions, RunRecord, StartRunInput } from './types.ts';
+import type { Actor, Authoring, EntityRow, Explanation, InboxItem, Kernel, KernelOptions, RunRecord, StartRunInput } from './types.ts';
 import { approverRoles, DefinitionCache, getCaseView, inbox, listCases, liveCounts, mayApprove } from './views.ts';
 
 export const DEFAULT_ENGINE_VERSION = 'memwise-kernel-1';
@@ -96,7 +102,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   // The domain schema last applied by this kernel, and its notes: re-indexing (every publish) skips
   // the DDL when nothing it depends on changed, so a publish doesn't take locks readers wait on.
   let appliedSchema: { key: string; notes: string[] } | undefined;
-  if (options.projectDir) indexed = await loadProject(options.projectDir);
+  if (options.projectDir) indexed = await loadProjectAt(options.projectDir);
   let entities = indexed ? indexed.project.entities : await indexedEntities(pool);
 
   // The real extractor, unless the caller binds its own `intake.extract_fields` (e.g. the stub).
@@ -112,17 +118,39 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   });
 
   // Drafts and change control (Phase 3), when the kernel has a project folder; its `playbooks.*`
-  // tools are bound after the caller's, so an example case's stubs win.
+  // tools are bound after the caller's, so an example case's stubs win. So are the Phase 4
+  // `plugins.*` and `identity.resolve` tools.
   let authoring: Authoring | undefined;
+  let pluginServices: PluginServices | undefined;
   const playbookTools = options.projectDir ? authoringTools(() => authoring, () => pool) : [];
+  const pluginKernelTools = options.projectDir ? bindingTools(() => pluginServices?.ops) : [];
 
-  // Rebuilt when indexing changes the entity types; the step engine always calls the current one.
-  const buildTools = () => createToolGateway({
-    tools: uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), extractor, ...playbookTools]),
-    ledger: new PgEffectLedger(pool),
-    secrets: options.secrets,
-    rates: new PgRateCounter(pool),
-  });
+  // Phase 4: builtins for `run: { builtin }` (the caller's, and the kernel's real extractor), MCP
+  // connections opened lazily and closed at shutdown, and the frozen bindings bound now.
+  const builtins = new Map<string, ToolDefinition>();
+  for (const t of [...(options.builtins ?? []), extractor]) if (!builtins.has(t.name)) builtins.set(t.name, t);
+  const mcp = new McpConnections(options.resolveMcpSource);
+  let bound: BoundPlugin[] = indexed ? boundPlugins(indexed.project) : [];
+  let pluginToolDiagnostics: Diagnostic[] = [];
+  /** Identifies what the bound plugins bind: rebuilt when a binding or the version it pins changes. */
+  const boundKey = (b: BoundPlugin[]) => JSON.stringify(b.map((x) => [x.binding.plugin, x.binding.hash, x.plugin.hash]));
+
+  // Rebuilt when indexing changes the entity types or the bindings; the step engine always calls the current one.
+  // Precedence: the caller's tools, the kernel's, then plugin tools (a clash is not bound).
+  const buildTools = () => {
+    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), extractor, ...playbookTools, ...pluginKernelTools]);
+    const taken = new Map(base.map((t) => [t.name, t]));
+    const fromPlugins = options.projectDir
+      ? pluginTools(bound, taken, { root: options.projectDir, builtins, mcp })
+      : { tools: [], diagnostics: [] };
+    pluginToolDiagnostics = fromPlugins.diagnostics;
+    return createToolGateway({
+      tools: [...base, ...fromPlugins.tools],
+      ledger: new PgEffectLedger(pool),
+      secrets: options.secrets,
+      rates: new PgRateCounter(pool),
+    });
+  };
   let gateway = buildTools();
   const tools: ToolGateway = {
     bound: () => gateway.bound(),
@@ -223,26 +251,33 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
 
     async index() {
       if (!options.projectDir) throw new Error('createKernel({ projectDir }) is needed to index');
-      const loaded = await loadProject(options.projectDir);
+      const loaded = await loadProjectAt(options.projectDir);
       const { project } = loaded;
       await indexProject(project, new PgDefinitionStore(pool));
+      // The plugin layers (22 §3) as one row, read at run time like the domain policy.
+      const nowBound = boundPlugins(project);
+      const policies = pluginPolicies(nowBound);
+      const policiesRow = { kind: PLUGIN_POLICIES_KIND, id: 'domain', hash: sha256(JSON.stringify(policies)), path: 'domain/bindings', body: policies };
+      await new PgDefinitionStore(pool).upsert([policiesRow as unknown as IndexedDefinition], []);
       await people.syncRoles(project.roles);
       const creators = domainCreators(project.entities, project.workflows);
       const schemaKey = JSON.stringify([project.entities, creators]);
       if (appliedSchema?.key !== schemaKey) {
         appliedSchema = { key: schemaKey, notes: await applyDomainSchema(pool, project.entities, { creators }) };
       }
+      // The domain tools capture each entity's definition (its fields, the create tool's schema):
+      // rebuild them when any entity type is added, removed or changed, not only added; and the
+      // plugin tools when a binding changes.
+      const changed = entitiesKey(project.entities) !== entitiesKey(entities) || boundKey(nowBound) !== boundKey(bound);
+      entities = project.entities;
+      bound = nowBound;
+      if (changed) gateway = buildTools();
       const notes = appliedSchema.notes;
       const diagnostics = [
         ...loaded.diagnostics, ...notes.map((message): Diagnostic => ({ severity: 'warning', code: 'domain-column-type', message })),
-        ...(await recordVersions(project)),
+        ...(await recordVersions(project)), ...pluginToolDiagnostics,
       ];
       indexed = { project, diagnostics };
-      // The domain tools capture each entity's definition (its fields, the create tool's schema):
-      // rebuild them when any entity type is added, removed or changed, not only added.
-      const changed = entitiesKey(project.entities) !== entitiesKey(entities);
-      entities = project.entities;
-      if (changed) gateway = buildTools();
       feed.emit({ kind: 'definitions' });
       return diagnostics;
     },
@@ -330,7 +365,14 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       client,
     }, input),
 
-    inbox: (actor) => inbox(pool, defs, actor),
+    async inbox(actor) {
+      const items: InboxItem[] = await inbox(pool, defs, actor);
+      // Phase 4: uncertain identity matches, for the people who own plugin bindings.
+      for (const candidate of (await pluginServices?.identityInbox(actor)) ?? []) {
+        items.push({ kind: 'identity', id: `identity:${candidate.id}`, candidate, since: candidate.createdAt });
+      }
+      return items;
+    },
     listCases: (filter, actor) => listCases(pool, defs, filter, actor),
     getCaseView: (caseId, actor) => getCaseView(pool, defs, caseId, actor),
     liveCounts: (workflowId) => liveCounts(pool, workflowId),
@@ -365,7 +407,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     async project() {
       if (!indexed) {
         if (!options.projectDir) throw new Error('createKernel({ projectDir }) is needed for the project');
-        indexed = await loadProject(options.projectDir);
+        indexed = await loadProjectAt(options.projectDir);
       }
       return indexed;
     },
@@ -394,14 +436,56 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
 
     caseToExample: (caseId, opts) => caseToExample(pool, defs, caseId, opts),
 
+    // ---------------------------------------------------------------- Phase 4
+
+    get plugins() { return pluginServices?.plugins ?? withoutProject.plugins; },
+    get identity() { return pluginServices?.identity ?? withoutProject.identity; },
+    entityRecord: (entity, id, actor) => needPlugins().entityRecord(entity, id, actor),
+
     async shutdown() {
+      await mcp.closeAll();
       await feed.close();
       await DBOS.shutdown({ deregister: true });
       await client.destroy();
       await pool.end();
     },
   };
+  // Without a project folder there are no plugins: every call says so.
+  const refuse = async (): Promise<never> => { throw new Error('createKernel({ projectDir }) is needed for plugins'); };
+  const withoutProject = {
+    plugins: { list: refuse, get: refuse, install: refuse, startBind: refuse, binding: refuse },
+    identity: { resolve: refuse, candidates: refuse, decide: refuse, links: refuse },
+  };
+  function needPlugins(): PluginServices {
+    if (!pluginServices) throw new Error('createKernel({ projectDir }) is needed for plugins');
+    return pluginServices;
+  }
   if (options.projectDir) {
+    pluginServices = createPluginServices({
+      projectDir: options.projectDir,
+      pool,
+      project: () => kernel.project(),
+      index: () => kernel.index(),
+      startRun: (input) => start(input, true),
+      getRun,
+      tools: () => gateway,
+      entities: () => entities,
+      testRunner: options.testRunner ?? defaultTestRunner({ adminUrl: options.testDatabaseUrl }),
+      emit: (change) => feed.emit(change),
+      builtins: () => builtins,
+      mcp,
+      ...(options.resolveMcpSource ? { resolveMcpSource: options.resolveMcpSource } : {}),
+      kernelToolEnvironment: () => {
+        const out: Record<string, { effect?: import('@memwise/defs').EffectClass; inputSchema?: Record<string, unknown> }> = {};
+        for (const [name, b] of Object.entries(gateway.bound())) {
+          const def = gateway.get(name);
+          // Plugin tools are the draft's business: its own binding says what they are.
+          if (def?.source?.plugin && bound.some((x) => x.manifest.id === def.source!.plugin)) continue;
+          out[name] = { ...(b.effect ? { effect: b.effect } : {}), ...(def?.inputSchema ? { inputSchema: def.inputSchema } : {}) };
+        }
+        return out;
+      },
+    });
     authoring = createAuthoring({
       projectDir: options.projectDir,
       pool,

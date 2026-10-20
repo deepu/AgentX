@@ -1,0 +1,52 @@
+name: binder-classifies-crm
+description: >
+  The sample CRM is a Claude plugin: its MCP tools come in unclassified, so the binder classifies
+  them (listing and reading contacts as read, creating one as write); the dry run maps the sample
+  contacts, the manager approves, the binding is frozen, and linking links one contact and sends
+  a near name to the inbox.
+case:
+  plugin: claude/sample-crm
+submit:
+  review: { outcome: approved }
+tools:
+  plugins.install_check: { outcome: ok, missing: [], version: 1.0.0, summary: "Installed (1.0.0). Tools: 3 unclassified on the MCP server crm." }
+  plugins.propose_binding:
+    outcome: unclassified
+    draft: claude__sample-crm-binding
+    unclassified: |-
+      crm.create_contact: Create a contact. Arguments: company_name, email, gst_number.
+      crm.get_contact: Read one contact by id. Hints: readOnlyHint. Arguments: id.
+      crm.list_contacts: List the contacts. Hints: readOnlyHint.
+    unclassified_tools: [crm.create_contact, crm.get_contact, crm.list_contacts]
+    gaps: 3
+    version: 1.0.0
+    summary: 3 tools are unclassified. The contact records map onto Customer by GSTIN and email.
+  plugins.classify_tools:
+    draft: claude__sample-crm-binding
+    classified: [crm.create_contact, crm.get_contact, crm.list_contacts]
+    refused: []
+    unclassified: []
+  plugins.dry_run: { outcome: passed, hash: 9c2b, errors: 0, examples_failed: 0, summary: Checks pass; 3 sample contacts mapped. }
+  plugins.freeze: { outcome: frozen, version: 1 }
+  identity.resolve: { linked: 1, candidates: 1, unmatched: 1, created: 0 }
+model:
+  binder:
+    - toolCalls:
+        - name: plugins.classify_tools
+          args:
+            draft: claude__sample-crm-binding
+            classes: { crm.list_contacts: read, crm.get_contact: read, crm.create_contact: write }
+            reasons:
+              crm.list_contacts: It only lists contacts and says it is read-only.
+              crm.get_contact: It reads one contact by id and changes nothing.
+              crm.create_contact: It adds a contact to the CRM, which the business owns and can delete again.
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: proposed
+            rationale: Two tools only read contacts; creating a contact is a write in the business's own CRM.
+expect:
+  outcome: ok
+  state: end
+  writes: { gaps: 3, checked_hash: 9c2b, binding_version: 1, linked: 1, candidates: 1 }
+  effects: { plugins.classify_tools: 1, plugins.freeze: 1 }

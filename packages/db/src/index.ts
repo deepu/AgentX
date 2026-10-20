@@ -34,3 +34,9 @@ export { PgEntityStore, type CreateEntityOptions, type StoredEntityRow } from '.
 
 // ---------------------------------------------------------------- Phase 3 (docs/memwise/20-phase-3-interfaces.md)
 export { PgVersionStore, type VersionRow, type NewVersion } from './stores/versions.ts';
+
+// ---------------------------------------------------------------- Phase 4 (docs/memwise/22-phase-4-interfaces.md)
+export {
+  PgPluginStore, PgBindingVersionStore, PgIdentityStore, type PluginRow, type BindingVersionRow, type NewIdentityLink,
+  type NewIdentityCandidate,
+} from './stores/plugins.ts';

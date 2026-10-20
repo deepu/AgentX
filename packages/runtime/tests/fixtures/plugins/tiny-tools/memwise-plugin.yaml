@@ -1,0 +1,29 @@
+id: test/tiny-tools
+version: 1.0.0
+title: Tiny tools
+trust: local
+tools:
+  tiny.shout:
+    description: Upper-cases a word (a subprocess per call).
+    effect: read
+    input: { type: object, properties: { word: { type: string } }, required: [word] }
+    run: { command: [node, shout.mjs] }
+  tiny.lookup:
+    description: Looks a word up (a built-in of the app).
+    effect: read
+    input: { type: object, properties: { word: { type: string } }, required: [word] }
+    run: { builtin: tiny.lookup }
+  tiny.missing:
+    description: A built-in the app does not have.
+    effect: read
+    input: { type: object, properties: {} }
+    run: { builtin: tiny.nowhere }
+  tiny.send:
+    description: Sends a word somewhere (declared outbound).
+    effect: outbound
+    input: { type: object, properties: { word: { type: string } } }
+    run: { command: [node, shout.mjs] }
+policy:
+  tools:
+    rules:
+      tiny.shout: { rateLimit: 30/min }

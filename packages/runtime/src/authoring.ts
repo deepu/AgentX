@@ -11,13 +11,14 @@ import {
   type ImpactTool, type PastCaseOutcome, type ProjectDefs, type StructuralDiff, type WorkflowDef,
 } from '@memwise/defs';
 import type { ToolGateway } from '@memwise/gateway';
-import { compilePolicy, decide, layersFor, violationsToDiagnostics } from '@memwise/policy';
+import { compilePolicy, decide, layersFor, pluginLayers, violationsToDiagnostics } from '@memwise/policy';
 import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type pg from 'pg';
 import { domainTools } from './domain-tools.ts';
 import { PUBLISH_DRAFT_TOOL } from './authoring-tools.ts';
+import { boundPlugins, pluginPolicies, pluginToolEnvironment } from './plugins/tools.ts';
 import { newRunId } from './ids.ts';
 import { getTransitions, latestWorkflowDef } from './runs.ts';
 import {
@@ -124,7 +125,10 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     return d;
   }
 
-  /** Every bound tool, plus the domain tools of the draft's own entity types (a draft may add one). */
+  /**
+   * Every bound tool, plus the domain tools of the draft's own entity types (a draft may add one)
+   * and the tools of the plugins its bindings bind (Phase 4), known without connecting to them.
+   */
   function environment(project: ProjectDefs): CheckEnvironment {
     const gateway = deps.tools();
     const tools: CheckEnvironment['tools'] = {};
@@ -132,6 +136,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     for (const t of domainTools(project.entities)) {
       tools[t.name] ??= { effect: typeof t.effect === 'string' ? t.effect : undefined, inputSchema: t.inputSchema };
     }
+    for (const [name, t] of Object.entries(pluginToolEnvironment(boundPlugins(project)))) tools[name] ??= t;
     return { tools };
   }
 
@@ -142,8 +147,10 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     const seen = new Set<string>();
     const workflow = project.workflows[meta.workflowId];
     if (workflow) {
+      const policies = pluginPolicies(boundPlugins(project));
       for (const step of [undefined, ...Object.values(workflow.steps)]) {
-        const { violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, workflow, step }));
+        const plugins = pluginLayers(policies, workflow, step);
+        const { violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins, workflow, step }));
         for (const d of violationsToDiagnostics(violations)) {
           const key = `${d.file}|${d.path}|${d.message}`;
           if (!seen.has(key)) { seen.add(key); all.push(d); }
@@ -216,7 +223,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       const step = stepId ? after.steps[stepId] : undefined;
       let treatment: ImpactTool['treatment'];
       if (isBound) {
-        const { effective } = compilePolicy(layersFor({ domainPolicy: draft.project.domainPolicy, workflow: after, step }));
+        const plugins = pluginLayers(pluginPolicies(boundPlugins(draft.project)), after, step);
+        const { effective } = compilePolicy(layersFor({ domainPolicy: draft.project.domainPolicy, plugins, workflow: after, step }));
         treatment = decide(effective, { tool: name, effect: effect ?? 'irreversible', classified: !!effect, tainted: false }).verdict;
       }
       return { name, bound: isBound, ...(effect ? { effect } : {}), ...(treatment ? { treatment } : {}), ...(def?.source?.plugin ? { plugin: def.source.plugin } : {}) };

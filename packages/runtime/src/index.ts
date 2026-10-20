@@ -26,3 +26,17 @@ export { caseToExample, exampleNameFor, type Correction } from './replay.ts';
 export { returnedComments } from './prepare.ts';
 export { answeredBySubmit } from './machine.ts';
 export { CREATE_PLAYBOOK, CHANGE_PLAYBOOK } from './types.ts';
+// Phase 4 (docs/memwise/22-phase-4-interfaces.md)
+export { BIND_PLUGIN } from './types.ts';
+export {
+  bindingTools, bindingToolDefinitions, INSTALL_CHECK_TOOL, PROPOSE_BINDING_TOOL, CLASSIFY_TOOLS_TOOL, DRY_RUN_TOOL, FREEZE_TOOL,
+  RESOLVE_IDENTITY_TOOL, type BindingOps, type InstallCheckResult, type ProposeBindingResult, type ClassifyToolsResult, type DryRunResult,
+  type FreezeResult, type ResolveIdentityResult,
+} from './plugins/kernel-tools.ts';
+export { McpConnections, discoverMcpTools, mcpResultValue, runCommandTool, resolveCommand, type DiscoveredTool } from './plugins/routes.ts';
+export {
+  boundPlugins, pluginPolicies, pluginTool, pluginTools, pluginToolEnvironment, toolClass, isReservedToolName, RESERVED_TOOL_PREFIXES,
+  type BoundPlugin, type PluginToolDeps,
+} from './plugins/tools.ts';
+export { createPluginServices, compareVersions, pluginNamespace, type PluginServiceDeps, type PluginServices } from './plugins/service.ts';
+export { loadPluginPolicies, PLUGIN_POLICIES_KIND } from './runs.ts';

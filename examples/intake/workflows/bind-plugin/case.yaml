@@ -1,0 +1,15 @@
+case: plugin_binding
+fields:
+  plugin:          { type: Text, description: "The plugin's id, e.g. memwise/client-intake" }
+  version:         { type: Text, description: The plugin version being bound }
+  draft:           { type: Text, description: The binding draft (drafts/<id>/domain/bindings/<slug>.yaml) }
+  summary:         { type: Text, description: "What the plugin can reach and what the proposal could not decide, in plain words" }
+  unclassified:    { type: Text, description: "The tools nobody classified yet: name, description, MCP hints and arguments, one per line" }
+  gaps:            { type: Number, description: How many things the proposal left for a person }
+  checked_hash:    { type: Text, description: "The draft's content as dry-run; freezing refuses anything else" }
+  report:          { type: Text, description: What the last dry run found }
+  errors:          Number
+  examples_failed: Number
+  binding_version: { type: Number, description: The binding version frozen }
+  linked:          { type: Number, description: Outside records linked to domain records }
+  candidates:      { type: Number, description: Uncertain matches waiting for a person in the inbox }

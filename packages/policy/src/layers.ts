@@ -46,6 +46,7 @@ export function stepLayer(step: StepDef, workflowId: string): PolicyLayer {
 
 export interface LayersForInput {
   domainPolicy?: PolicyDoc;
+  /** Plugin layers, top to bottom (see `pluginLayers`). */
   plugins?: PolicyLayer[];
   workflow: WorkflowDef;
   step?: StepDef;
@@ -60,6 +61,47 @@ export function layersFor({ domainPolicy, plugins = [], workflow, step }: Layers
     layers.push({ kind: 'workflow', name: workflow.id, source: workflow.policy.file, doc: workflow.policy });
   }
   if (step) layers.push(stepLayer(step, workflow.id));
+  return layers;
+}
+
+/**
+ * What a bound plugin contributes to policy (22 §3, D30): its default policy, the domain's
+ * tightening of it in the binding, and the tools it binds (so a step using one gets its layers).
+ */
+export interface PluginPolicy {
+  plugin: string;
+  /** The manifest's `policy:`, and where it was read. */
+  policy?: PolicyDoc;
+  source?: string;
+  /** The binding's `policy:` (the domain's tightening), and the binding file. */
+  bindingPolicy?: PolicyDoc;
+  bindingSource?: string;
+  /** Tool names the binding binds (not `off`). */
+  tools: string[];
+}
+
+/**
+ * The plugin layers of a step: for the plugin the workflow comes from (`origin.kind: plugin`),
+ * then for each plugin owning a tool the step allows or requires (by plugin id), its default
+ * policy followed by the binding's tightening. Without a step: the workflow's own plugin only.
+ */
+export function pluginLayers(plugins: PluginPolicy[] | Record<string, PluginPolicy> | undefined, workflow: Pick<WorkflowDef, 'origin'>, step?: Pick<StepDef, 'tools'>): PolicyLayer[] {
+  const all = Array.isArray(plugins) ? plugins : Object.values(plugins ?? {});
+  if (!all.length) return [];
+  const relevant: PluginPolicy[] = [];
+  const origin = workflow.origin?.kind === 'plugin' ? all.find((p) => p.plugin === workflow.origin!.plugin) : undefined;
+  if (origin) relevant.push(origin);
+  if (step) {
+    const used = new Set([...step.tools.allowed, ...step.tools.required]);
+    for (const p of [...all].sort((a, b) => a.plugin.localeCompare(b.plugin))) {
+      if (p !== origin && p.tools.some((t) => used.has(t))) relevant.push(p);
+    }
+  }
+  const layers: PolicyLayer[] = [];
+  for (const p of relevant) {
+    if (p.policy) layers.push({ kind: 'plugin', name: p.plugin, ...(p.source ? { source: p.source } : {}), doc: p.policy });
+    if (p.bindingPolicy) layers.push({ kind: 'plugin', name: `${p.plugin} binding`, ...(p.bindingSource ? { source: p.bindingSource } : {}), doc: p.bindingPolicy });
+  }
   return layers;
 }
 
