@@ -108,7 +108,7 @@ steps:
     expect(s.tools).toEqual({ added: ['mail.send'], removed: ['lookup.customer'] });
     expect(s.requiredTools).toEqual([{ step: 'work', tool: 'mail.send', change: 'added' }]);
     expect(s.roles).toEqual({ added: ['manager'], removed: ['clerk'] });
-    expect(s.examples).toEqual({ added: ['c.yaml'], removed: ['b.yaml'], changed: ['a.yaml'] });
+    expect(s.examples).toEqual({ added: ['c'], removed: ['b'], changed: ['a'] });
     expect(s.version).toEqual({ from: 1, to: 2 });
     expect(s.playbook).toEqual(['title']);
     const words = describeStructuralDiff(s);

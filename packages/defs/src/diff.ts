@@ -212,7 +212,8 @@ export function structuralDiff(before: WorkflowDef | undefined, after: WorkflowD
     for (const tool of added(b, a)) requiredTools.push({ step: name, tool, change: 'removed' });
   }
 
-  const examplesOf = (w: WorkflowDef | undefined) => new Map((w?.examples ?? []).map(({ file, ...rest }) => [basename(file), rest] as const));
+  // By the example's name (what people see), falling back to its file name.
+  const examplesOf = (w: WorkflowDef | undefined) => new Map((w?.examples ?? []).map(({ file, ...rest }) => [rest.name || basename(file), rest] as const));
   const exBefore = examplesOf(before);
   const exAfter = examplesOf(after);
   const examples = {

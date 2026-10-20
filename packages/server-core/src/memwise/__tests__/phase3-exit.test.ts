@@ -118,10 +118,9 @@ function chatTools(sessionId: string) {
 }
 
 /**
- * Polls like the harness's `until`, but rides out a Postgres deadlock (40P01) on a read. Publishing
- * re-indexes the project, and the kernel re-applies the domain tables' row rules (DDL) on every
- * index, which can deadlock with a read made at that moment. Reported to the kernel side; a client
- * would simply refetch.
+ * Polls like the harness's `until`, but rides out a Postgres deadlock (40P01) on a read. A publish
+ * that changes the domain (the Engagement letter adds a role) re-applies the domain tables' row
+ * rules (DDL), which can deadlock with a read made at that moment; a client would simply refetch.
  */
 function until<T>(what: string, fn: () => Promise<T>, ok: (v: T) => boolean, timeoutMs?: number): Promise<T> {
   const retrying = async (): Promise<T> => {
@@ -488,7 +487,7 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     const draft = await api.call<MwDraft>(manager, ch.DRAFTS_GET, r.draftId)
     expect(draft).toMatchObject({ kind: 'change', workflowId: 'client-intake', baseVersion: 2 })
     expect(draft.files.find((f) => f.path === r.path)).toMatchObject({ status: 'added' })
-    expect(draft.structure?.examples.added).toEqual(['should-send-back.yaml'])
+    expect(draft.structure?.examples.added).toEqual(['should-send-back'])
     const text = draft.files.find((f) => f.path === r.path)!.hunks.flatMap((h) => h.lines.map((l) => l.text)).join('\n')
     expect(text).toContain('startAt: verify')
     expect(text).toContain('sent_back')

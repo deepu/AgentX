@@ -93,6 +93,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
 
   // The project as last indexed (or loaded at start), for the domain tools and the app.
   let indexed: { project: ProjectDefs; diagnostics: Diagnostic[] } | undefined;
+  // The domain schema last applied by this kernel, and its notes: re-indexing (every publish) skips
+  // the DDL when nothing it depends on changed, so a publish doesn't take locks readers wait on.
+  let appliedSchema: { key: string; notes: string[] } | undefined;
   if (options.projectDir) indexed = await loadProject(options.projectDir);
   let entities = indexed ? indexed.project.entities : await indexedEntities(pool);
 
@@ -224,7 +227,12 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       const { project } = loaded;
       await indexProject(project, new PgDefinitionStore(pool));
       await people.syncRoles(project.roles);
-      const notes = await applyDomainSchema(pool, project.entities, { creators: domainCreators(project.entities, project.workflows) });
+      const creators = domainCreators(project.entities, project.workflows);
+      const schemaKey = JSON.stringify([project.entities, creators]);
+      if (appliedSchema?.key !== schemaKey) {
+        appliedSchema = { key: schemaKey, notes: await applyDomainSchema(pool, project.entities, { creators }) };
+      }
+      const notes = appliedSchema.notes;
       const diagnostics = [
         ...loaded.diagnostics, ...notes.map((message): Diagnostic => ({ severity: 'warning', code: 'domain-column-type', message })),
         ...(await recordVersions(project)),
