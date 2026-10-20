@@ -181,6 +181,23 @@
         "@types/ws": "^8.18.1",
       },
     },
+    "apps/external-form": {
+      "name": "@memwise/external-form",
+      "version": "0.0.0",
+      "dependencies": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+      },
+      "devDependencies": {
+        "@memwise/defs": "workspace:*",
+        "@types/bun": "^1.4.2",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0",
+        "@vitejs/plugin-react": "^5.1.2",
+        "typescript": "^5.8.2",
+        "vite": "^6.2.4",
+      },
+    },
     "apps/viewer": {
       "name": "@memwise/viewer",
       "version": "0.15.3",
@@ -1041,6 +1058,8 @@
     "@memwise/defs": ["@memwise/defs@workspace:packages/defs"],
 
     "@memwise/electron": ["@memwise/electron@workspace:apps/electron"],
+
+    "@memwise/external-form": ["@memwise/external-form@workspace:apps/external-form"],
 
     "@memwise/gateway": ["@memwise/gateway@workspace:packages/gateway"],
 
