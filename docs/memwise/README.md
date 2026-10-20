@@ -38,9 +38,10 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 | 14 | [Reference scenarios](14-scenarios.md) | Client intake and four other stress tests |
 | 15 | [Decision log](15-decisions.md) | Every decision made so far, with its reason |
 | 16 | [Open questions](16-open-questions.md) | What's left, including the spikes that start the build |
-| 17 | [Build plan](17-build-plan.md) | Phases 0–6, each with an exit test, the spikes and the risks |
+| 17 | [Build plan](17-build-plan.md) | Phases 0–7, each with an exit test, the spikes and the risks |
 | 18 | [Kernel interfaces](18-kernel-interfaces.md) | The Phase 1 package boundaries, contracts and conventions |
 | 19 | [Phase 2 interfaces](19-phase-2-interfaces.md) | People and roles, domain tables, human and system steps, the app API and screens |
+| 21 | [Domains and records](21-domains-and-records.md) | Phase 6: several domains per workspace, record pages, lifecycles, handoffs, triggers, regulated mode, review screens |
 
 ## Status labels
 

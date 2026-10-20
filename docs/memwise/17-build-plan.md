@@ -9,7 +9,8 @@ Phase 2  Client intake, internal users              staff run intake end to end 
 Phase 3  Build and change by chat                   a second workflow is built by chat; changes go through drafts
 Phase 4  Plugins and bindings                       intake installs into a fresh domain as a plugin
 Phase 5  External participants                      a real client fills the form through a link
-Phase 6  Server, hosting and learning               multi-user server, workers, metering; corrections improve workflows
+Phase 6  Domains and records                        several domains in a workspace; record pages, lifecycles, triggers, regulated mode
+Phase 7  Server, hosting and learning               multi-user server, workers, metering; corrections improve workflows
 ```
 
 ## What runs in sequence and what runs in parallel
@@ -19,6 +20,7 @@ Phases are milestones in order; work inside a phase runs in parallel, and some l
 - **In sequence (the critical path): 0 → 1 → 2 → 3.** The rename comes first so nothing is renamed twice. Intake (Phase 2) is built on the kernel's runs, journal and gateway. Building by chat (Phase 3) needs a live workflow and change control to edit.
 - **In parallel inside a phase.** Phase 0: the five spikes alongside the rename. Phase 1: formats and checks, Postgres, the step engine on DBOS, the gateways and the policy compiler, built against agreed package boundaries and joined at the end.
 - **Side tracks that start early, beside Phase 1:** the Phase 2 UI (navigation, inbox, approval card, case view) against sample data; the Phase 5 relay; the Phase 4 plugin format and loader.
+- **Phase 6 after Phase 5.** It reuses Phase 4's mappings and identity resolution and Phase 5's relay and extraction badges, so it waits for both. Phases 3 to 5 are unchanged by it.
 - **About three tracks at once.** With agents building, the limit is integration and review, not hands.
 
 ## Phase 0 · Rename, skeleton and spikes
@@ -113,7 +115,22 @@ The first usable workflow (D6), in the app.
 - **Extraction in the form** with confidence and provenance badges.
 - **Exit test:** the full intake scenario ([14](14-scenarios.md)) with a real client filling the form from their phone.
 
-## Phase 6 · Server, hosting and learning
+## Phase 6 · Domains and records
+
+Designed in [21](21-domains-and-records.md), from an eTMF (clinical operations) trial of the model. Decisions D70–D78.
+
+- **Several domains per workspace** (D70): the workspace is the organisation, a domain is an area of work. Roles are defined once and granted per domain, optionally scoped to some records. Plugins are installed in the workspace and bound per domain.
+- **Linked entities across domains** (D71): shared fields have one source and are read through the link, matched by key with the Phase 4 identity machinery.
+- **Typed tables named by domain** (D72): `domain.<domain>__<entity>`, one schema; Phase 2's tables are migrated.
+- **Record pages** (D73): generated from the entity's `page:` section (a layout and blocks from a fixed set), with views, row formulas and rollups compiled to SQL, notes and a page tree.
+- **Lifecycles that act** (D74): named transitions with who may make them, guards and the event they announce, through the gateway.
+- **Handoffs** (D75): start, call, for each and wait until.
+- **Triggers** (D76): `starts_on:` entity events, dates on records, schedules and incoming messages; exactly once, with a storm guard. The Automations screen becomes the trigger list.
+- **Regulated mode** (D77), per domain: signed person steps, record versions that can't be changed (hash-chained, with a reason), server timestamps, audit export and retention, no "act as another person", a validation pack. Per-record version history and server timestamps apply to every domain; Phase 6 migrates earlier records into them.
+- **Review screens** (D78): document review on the Document's page, table review, diff review and an inbox queue mode.
+- **Exit test:** the eTMF scenario ([21 §10](21-domains-and-records.md)): a CV arrives by email, is classified, reviewed and signed on its page, filed with hash-chained history; the waiting site activation case moves on by itself, and the document's audit trail exports with its signature.
+
+## Phase 7 · Server, hosting and learning
 
 - **Server and worker modes** on external Postgres and S3-compatible storage; workers scaled from DBOS queues.
 - **Metering** per workspace and organisation; billing for the hosted version.
@@ -130,7 +147,7 @@ The first usable workflow (D6), in the app.
 
 ## Deliberately later
 
-Drag-and-drop map editing, canvas authoring, moving chat transcripts to Postgres, a public plugin registry, multi-domain workspaces, and `pgvector` recall. Each waits until something earlier needs it.
+Drag-and-drop map editing, canvas authoring, moving chat transcripts to Postgres, a public plugin registry, and `pgvector` recall. Each waits until something earlier needs it.
 
 ## Biggest risks
 
@@ -141,3 +158,4 @@ Drag-and-drop map editing, canvas authoring, moving chat transcripts to Postgres
 | Our step loop loses quality against the SDK's | S4, Phase 1 exit test | Keep more step kinds on the open engine; journal at the pool |
 | The rename destabilises the app | Phase 0 exit test | Rename in slices, package by package, with CI green after each |
 | Navigation rework breaks the mature chat experience | Phase 2 | Keep the chat screen untouched; change only how it's opened |
+| Migrating Phase 2–5 records to domain-named tables and version history loses data | Phase 6 | Migrations tested on copies of real projects; old tables kept until the exit test passes |
