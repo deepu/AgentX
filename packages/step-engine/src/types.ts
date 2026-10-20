@@ -27,6 +27,12 @@ export interface StepRunInput {
   priorAttempts: { attempt: number; outcome?: string; reason: string }[];
   /** Epoch ms, fixed by the caller so a replay builds identical messages. */
   startedAt: number;
+  /**
+   * What earlier step runs of this run already used. Budgets set above the step layer
+   * (platform, plugin, domain, workflow) are run budgets: they apply to this plus `runSpent`.
+   * Budgets set by the step layer apply to this step run alone.
+   */
+  runSpent?: { tokens: number; modelCalls: number; elapsedMs: number };
 }
 
 export type StepResultStatus = 'completed' | 'needs_person' | 'failed';
