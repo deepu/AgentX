@@ -14,3 +14,16 @@ memwise test  examples/intake
   and the domain tools the kernel binds for each entity type (`domain.customer.create`, `domain.customer.get`).
 - Example cases stub tool results and script the model roles; `submit:` answers the person steps, and
   `expect.entities` checks the rows written to the domain tables.
+
+## Building and changing playbooks (Phase 3)
+
+Change control is itself two playbooks, run like any other case (docs/memwise/20-phase-3-interfaces.md §3):
+
+- `workflows/create-playbook`: a chat with staff (`interview`, a conversation step: `engine: open`) drafts a new
+  playbook in `drafts/<id>/`; `check` runs the checks, its example cases and past cases (`playbooks.check_draft`);
+  a manager reviews it; `publish` makes it live as version 1 (`playbooks.publish_draft`).
+- `workflows/change-playbook`: the same, starting at `edit` on a copy of a live playbook set to the next version.
+  "Send for review" from the editor starts it at `check`.
+
+The `playbooks.*` tools are bound by the kernel when it has a project folder. The example cases stub them and answer
+the chat steps and the review from `submit:`.

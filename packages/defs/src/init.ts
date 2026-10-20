@@ -2,10 +2,12 @@
 import { existsSync } from 'node:fs';
 import { cp, mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { DRAFTS_DIR } from './draft-types.ts';
 
 /** The sample project in this repository (examples/intake). */
-export const INTAKE_TEMPLATE_DIR = resolve(import.meta.dir, '..', '..', '..', 'examples', 'intake');
+// A file URL, not import.meta.dir: the bundled CLI runs on Electron's Node (and passes `source`).
+export const INTAKE_TEMPLATE_DIR = fileURLToPath(new URL('../../../examples/intake', import.meta.url));
 
 /** Playbooks every project ships with: building and changing playbooks are runs of these (20 §3). */
 export const META_PLAYBOOKS = ['create-playbook', 'change-playbook'] as const;

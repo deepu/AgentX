@@ -45,6 +45,9 @@ export const memwiseCaseFilterAtom = atom<CaseFilter>({})
 /** The "New playbook" dialog (asks what it should do, then opens the chat that builds it). */
 export const memwiseNewPlaybookDialogAtom = atom<boolean>(false)
 
+/** The tab a draft opens on the next time it is shown (Edit opens the steps). */
+export const memwiseDraftOpenTabAtom = atom<{ draftId: string; tab: 'changes' | 'steps' | 'map' | 'checks' | 'history' } | null>(null)
+
 /** The "Start a case" dialog, openable from the cases list and a playbook. */
 export const memwiseStartCaseDialogAtom = atom<{ open: boolean; workflowId?: string }>({ open: false })
 

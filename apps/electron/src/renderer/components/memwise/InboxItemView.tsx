@@ -7,8 +7,9 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { AlertTriangle, Bell, CheckCircle2, ClipboardList, Mail, ShieldCheck, Undo2 } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCircle2, ClipboardList, FilePen, Mail, MessagesSquare, ShieldCheck, Undo2 } from 'lucide-react'
 import type {
+  MwCaseValue,
   MwDecideApprovalInput,
   MwInboxItem,
   MwRole,
@@ -26,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Markdown } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 import { CaseFieldList } from './CaseValues'
+import { isMetaPlaybook } from './draft/draft-model'
 import { GeneratedForm, type UploadFile } from './GeneratedForm'
 import { buildSubmission, initialFormValues, type FormError, type FormValues } from './form-model'
 import {
@@ -57,6 +59,10 @@ export interface InboxActions {
   openCase: (caseId: string) => void
   /** Called after the kernel accepted an answer. */
   onDone?: (result: MwSubmitResult) => void
+  /** Reopen a conversation step's chat (building or changing a playbook), beside the inbox. */
+  continueChat?: (item: Extract<MwInboxItem, { kind: 'conversation' }>) => void
+  /** Open a draft's review screen. */
+  openDraft?: (draftId: string) => void
 }
 
 export interface InboxItemViewProps {
@@ -64,6 +70,8 @@ export interface InboxItemViewProps {
   actions: InboxActions
   people?: PeopleById
   roles?: MwRole[]
+  /** For a playbook change's review step: the draft it reviews, when the item's context does not name it. */
+  reviewDraftId?: string
   now?: number
 }
 
@@ -73,6 +81,14 @@ const KIND_ICON: Record<MwInboxItem['kind'], React.ReactNode> = {
   approval: <ShieldCheck />,
   attention: <AlertTriangle />,
   reminder: <Bell />,
+  conversation: <MessagesSquare />,
+}
+
+/** The draft a playbook change's decision is about: the case value `draft`. */
+export function reviewDraftOf(item: MwInboxItem): string | undefined {
+  if (item.kind !== 'decision' || !isMetaPlaybook(item.workflowId)) return undefined
+  const value = item.context.draft?.value
+  return typeof value === 'string' && value ? value : undefined
 }
 
 /** Keeps a submit in flight from being sent twice, and turns thrown errors into a message. */
@@ -138,7 +154,7 @@ function CommentBox({ value, onChange, error, placeholder, disabled }: {
   )
 }
 
-export function InboxItemView({ item, actions, people = {}, roles, now }: InboxItemViewProps) {
+export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId, now }: InboxItemViewProps) {
   const { t, i18n } = useTranslation()
   const since = relativeTime(item.since, now, i18n.language)
   const dueAt = 'dueAt' in item ? item.dueAt : undefined
@@ -160,7 +176,8 @@ export function InboxItemView({ item, actions, people = {}, roles, now }: InboxI
         }
       />
       {item.kind === 'input' && <InputBody item={item} actions={actions} people={people} />}
-      {item.kind === 'decision' && <DecisionBody item={item} actions={actions} people={people} roles={roles} />}
+      {item.kind === 'decision' && <DecisionBody item={item} actions={actions} people={people} roles={roles} draftId={reviewDraftOf(item) ?? reviewDraftId} />}
+      {item.kind === 'conversation' && <ConversationBody item={item} actions={actions} roles={roles} />}
       {item.kind === 'approval' && <ApprovalBody item={item} actions={actions} />}
       {item.kind === 'attention' && <AttentionBody item={item} actions={actions} />}
       {item.kind === 'reminder' && <ReminderBody item={item} actions={actions} />}
@@ -264,11 +281,13 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
 
 // ---------------------------------------------------------------- decision
 
-function DecisionBody({ item, actions, people, roles }: {
+function DecisionBody({ item, actions, people, roles, draftId }: {
   item: Extract<MwInboxItem, { kind: 'decision' }>
   actions: InboxActions
   people: PeopleById
   roles?: MwRole[]
+  /** A playbook change under review: the card links to its draft. */
+  draftId?: string
 }) {
   const { t } = useTranslation()
   const [comment, setComment] = React.useState('')
@@ -293,8 +312,20 @@ function DecisionBody({ item, actions, people, roles }: {
           </div>
         </Info_Section>
       )}
+      {isMetaPlaybook(item.workflowId) && (
+        <Info_Alert variant="info" icon={<FilePen />} data-review-draft={draftId}>
+          <Info_Alert.Title>{t('memwise.inbox.review.title')}</Info_Alert.Title>
+          <Info_Alert.Description>{t('memwise.inbox.review.description')}</Info_Alert.Description>
+          {draftId && actions.openDraft && (
+            <Button variant="primary" size="sm" className="mt-2" onClick={() => actions.openDraft!(draftId)} data-action="review-draft">
+              <FilePen />
+              {t('memwise.inbox.review.open')}
+            </Button>
+          )}
+        </Info_Alert>
+      )}
       <Info_Section title={t('memwise.inbox.whatToReview')}>
-        <CaseFieldList values={item.context} people={people} />
+        <CaseFieldList values={reviewContext(item)} people={people} />
       </Info_Section>
       <div className="space-y-3">
         <CommentBox
@@ -319,6 +350,50 @@ function DecisionBody({ item, actions, people, roles }: {
         </div>
       </div>
       <ResultMessage result={result} />
+    </>
+  )
+}
+
+/** A change's review shows its words, not the draft's id (the button above opens the draft). */
+function reviewContext(item: Extract<MwInboxItem, { kind: 'decision' }>): Record<string, MwCaseValue> {
+  if (!isMetaPlaybook(item.workflowId)) return item.context
+  const { draft: _draft, ...rest } = item.context
+  return rest
+}
+
+// ---------------------------------------------------------------- conversation
+
+function ConversationBody({ item, actions, roles }: {
+  item: Extract<MwInboxItem, { kind: 'conversation' }>
+  actions: InboxActions
+  roles?: MwRole[]
+}) {
+  const { t } = useTranslation()
+  const building = item.workflowId === 'create-playbook'
+  return (
+    <>
+      <Info_Alert variant="info" icon={<MessagesSquare />}>
+        <Info_Alert.Title>{t(building ? 'memwise.inbox.conversation.buildTitle' : 'memwise.inbox.conversation.changeTitle', { title: item.caseTitle })}</Info_Alert.Title>
+        <Info_Alert.Description>
+          {t('memwise.inbox.conversation.description')}
+          {item.assignee && <> {t('memwise.inbox.forRole', { role: roleTitle(item.assignee, roles) })}</>}
+        </Info_Alert.Description>
+      </Info_Alert>
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" onClick={() => actions.openCase(item.caseId)}>{t('memwise.inbox.openCase')}</Button>
+        {item.draftId && actions.openDraft && (
+          <Button variant="secondary" onClick={() => actions.openDraft!(item.draftId!)} data-action="open-draft">
+            <FilePen />
+            {t('memwise.inbox.conversation.openDraft')}
+          </Button>
+        )}
+        {actions.continueChat && (
+          <Button variant="primary" onClick={() => actions.continueChat!(item)} data-action="continue-chat">
+            <MessagesSquare />
+            {t('memwise.inbox.conversation.continue')}
+          </Button>
+        )}
+      </div>
     </>
   )
 }

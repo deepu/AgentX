@@ -139,7 +139,7 @@ The inbox gains `conversation` items. Like `memwise:chat:open`, `memwise:playboo
 | `memwise draft <project> <workflow> [--title t]` | Make a change draft (prints its folder) |
 | `memwise diff <project> <draft>` | File and structural diff against live |
 | `memwise push <project> <draft>` | Check, run the draft's example cases, then publish it (`source: cli`). For a project you control with your own review (git); the app publishes through the review step |
-| `memwise convert <task.yaml> <project>` | An old Conductor task as a create draft: each `session` node becomes an agent step (`strictness: open`, its prompt as the instructions), `depends_on` becomes `done` transitions, `approval: true` nodes become person approval steps |
+| `memwise convert <task.yaml> <project>` | An old Conductor task as a create draft: each `session` node becomes a guided agent step (its prompt as the instructions, its result a case field), `depends_on` becomes `done` transitions (a DAG that is not a chain runs in dependency order), `approval: true` nodes become person approval steps with a reminder and a hand-off to `needs_person` |
 | `memwise test <project> --json --workflow <id> --examples-file <f>` | Machine output for the `TestRunner` |
 
 ## 8. Screens

@@ -56,6 +56,16 @@ export function startMemwiseKernel(log: Log): void {
     join(repoRoot(), 'packages', 'db', 'migrations'),
     join(process.cwd(), 'packages', 'db', 'migrations'),
   ])
+  // Draft example cases run in the memwise CLI, out of process (DBOS is process-wide). Under Bun
+  // the kernel runs the CLI from source; Electron runs the bundled one with itself as Node.
+  if (!process.versions.bun && !process.env.MEMWISE_CLI_JS) {
+    const cli = firstExisting([
+      join(__dirname, 'memwise-cli.mjs'),
+      resources && join(resources, 'app.asar.unpacked', 'dist', 'memwise-cli.mjs'),
+    ])
+    if (cli) process.env.MEMWISE_CLI_JS = cli
+    else log.warn('[memwise] the bundled memwise CLI was not found: checking a draft will report its example cases as not run')
+  }
   const pgBinDir = postgresBinDir()
   starting = import('@memwise/server-core/memwise')
     .then(({ startMemwiseService }) => startMemwiseService({

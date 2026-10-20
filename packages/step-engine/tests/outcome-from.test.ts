@@ -71,6 +71,21 @@ describe('outcomeFrom', () => {
     expect(unknown.reason).toContain('passed, failed');
   });
 
+  test("a write the result doesn't carry is skipped, unless it is required", async () => {
+    const withWrite = (id: string, required?: boolean) => {
+      const input = checkStep(id);
+      input.step = { ...input.step, writes: { legal_name: { field: 'legal_name', type: { kind: 'scalar', name: 'Text' }, typeSource: 'Text', from: { kind: 'tool', tool: 'playbooks.check_draft', field: 'hash' }, ...(required ? { required } : {}) } } };
+      return input;
+    };
+    answer = { outcome: 'failed' };
+    expect(await run(withWrite('of-optional'))).toMatchObject({ status: 'completed', outcome: 'failed', writes: {} });
+    const required = await run(withWrite('of-required', true));
+    expect(required).toMatchObject({ status: 'needs_person' });
+    expect(required.reason).toContain('returned no hash');
+    answer = { outcome: 'passed', hash: 'abc' };
+    expect((await run(withWrite('of-written'))).writes.legal_name).toMatchObject({ value: 'abc', provenance: { kind: 'tool', tool: 'playbooks.check_draft' } });
+  });
+
   test('outcomeOf: without outcomeFrom the only outcome; a tool that was not called', () => {
     const step = checkStep('pure').step;
     expect(outcomeOf({ ...step, outcomeFrom: undefined, outcomes: ['done'] }, {})).toEqual({ outcome: 'done' });

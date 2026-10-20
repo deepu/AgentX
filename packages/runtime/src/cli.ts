@@ -24,7 +24,7 @@ const USAGE = `usage:
   memwise test <project> [--workflow <id>] [--example <name>] [--examples-file <file.json>] [--json] [--database-url <admin-url>]
   memwise record <step-run-id> --database-url <url>
   memwise policy <project> <workflow> <step>
-  memwise init <dir> [--template empty|intake]
+  memwise init <dir> [--template empty|intake] [--from <sample-project>]
   memwise draft <project> <workflow> [--title <title>] [--new]
   memwise diff <project> <draft>
   memwise push <project> <draft> [--database-url <url>] [--test-database-url <admin-url>] [--by <person>]
@@ -188,9 +188,9 @@ async function policy(dir: string, workflowId: string, stepId: string): Promise<
 
 // ---------------------------------------------------------------- Phase 3: projects and drafts
 
-async function init(dir: string, template: string | undefined): Promise<number> {
+async function init(dir: string, template: string | undefined, from: string | undefined): Promise<number> {
   if (template !== undefined && template !== 'empty' && template !== 'intake') { console.log(`no template ${template}: use empty or intake`); return 2; }
-  const files = await initProject(dir, { template: (template ?? 'empty') as 'empty' | 'intake' });
+  const files = await initProject(dir, { template: (template ?? 'empty') as 'empty' | 'intake', ...(from ? { source: from } : {}) });
   console.log(`made a new project in ${resolve(dir)} (${files.length} files)`);
   for (const f of files) console.log(`  ${f}`);
   return 0;
@@ -337,7 +337,7 @@ export async function main(argv: string[]): Promise<number> {
         break;
       }
       case 'policy': if (positional.length === 3) return await policy(positional[0]!, positional[1]!, positional[2]!); break;
-      case 'init': if (positional[0]) return await init(positional[0], flags.template); break;
+      case 'init': if (positional[0]) return await init(positional[0], flags.template, flags.from); break;
       case 'draft': if (positional.length === 2) return await draft(positional[0]!, positional[1]!, { title: flags.title, create: flags.new === 'true' }); break;
       case 'diff': if (positional.length === 2) return await diff(positional[0]!, positional[1]!); break;
       case 'push': if (positional.length === 2) {

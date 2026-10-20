@@ -4,7 +4,7 @@
  * disabled), model-role resolution, and seeding the project folder.
  */
 import { afterEach, describe, expect, it } from 'bun:test'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
@@ -12,7 +12,7 @@ import { WsRpcServer, type WsRpcServerOptions } from '../../transport/server'
 import { WsRpcClient } from '../../transport/client'
 import { personMayCall } from '../../transport/person-channels'
 import { connectionModels, NO_MODEL_MESSAGE, piAiProviderIdFor, unconfiguredModels } from '../models'
-import { findExampleProject, seedProject } from '../seed'
+import { addMissingMetaPlaybooks, affectsIndex, findExampleProject, seedProject } from '../seed'
 import { createSessionToken, sessionPersonId } from '../../webui/auth'
 
 const SHARED = 'shared-server-token-0123456789abcdef'
@@ -132,7 +132,7 @@ describe('person channel allowlist', () => {
     expect(personMayCall(RPC_CHANNELS.memwise.INBOX_LIST)).toBe(true)
     expect(personMayCall(RPC_CHANNELS.workspaces.GET)).toBe(true)
     for (const ch of [
-      RPC_CHANNELS.memwise.CHAT_OPEN, RPC_CHANNELS.sessions.CREATE, RPC_CHANNELS.sessions.SEND_MESSAGE, RPC_CHANNELS.sources.GET,
+      RPC_CHANNELS.memwise.CHAT_OPEN, RPC_CHANNELS.memwise.PLAYBOOKS_BUILD, RPC_CHANNELS.sessions.CREATE, RPC_CHANNELS.sessions.SEND_MESSAGE, RPC_CHANNELS.sources.GET,
       RPC_CHANNELS.llmConnections.GET_API_KEY, RPC_CHANNELS.settings.SET_SERVER_CONFIG, RPC_CHANNELS.theme.SET_COLOR_THEME,
       RPC_CHANNELS.preferences.WRITE, RPC_CHANNELS.file.READ, RPC_CHANNELS.workspaces.CREATE,
     ]) expect(personMayCall(ch)).toBe(false)
@@ -188,5 +188,32 @@ describe('project folder', () => {
     expect(existsSync(join(project, 'workflows', 'client-intake', 'workflow.yaml'))).toBe(true)
     writeFileSync(join(project, 'mine.txt'), 'x')
     expect(seedProject(project, example)).toBe(false)
+  })
+
+  it('gains the meta playbooks when an older install lacks them, and keeps its own', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mw-meta-'))
+    teardown.push(() => rmSync(dir, { recursive: true, force: true }))
+    const example = join(dir, 'example')
+    for (const id of ['client-intake', 'create-playbook', 'change-playbook']) {
+      mkdirSync(join(example, 'workflows', id), { recursive: true })
+      writeFileSync(join(example, 'workflows', id, 'workflow.yaml'), `workflow: ${id}\n`)
+    }
+    const project = join(dir, 'project')
+    mkdirSync(join(project, 'workflows', 'change-playbook'), { recursive: true })
+    writeFileSync(join(project, 'workflows', 'change-playbook', 'workflow.yaml'), 'workflow: change-playbook # mine\n')
+    expect(addMissingMetaPlaybooks(project, example)).toEqual(['create-playbook'])
+    expect(existsSync(join(project, 'workflows', 'create-playbook', 'workflow.yaml'))).toBe(true)
+    expect(readFileSync(join(project, 'workflows', 'change-playbook', 'workflow.yaml'), 'utf8')).toContain('# mine')
+    expect(existsSync(join(project, 'workflows', 'client-intake'))).toBe(false)
+    expect(addMissingMetaPlaybooks(project, example)).toEqual([])
+  })
+
+  it('re-indexes only for domain/ and workflows/, never for drafts/', () => {
+    expect(affectsIndex('workflows/client-intake/steps/check.md')).toBe(true)
+    expect(affectsIndex('domain/roles.yaml')).toBe(true)
+    expect(affectsIndex('drafts/client-intake-abc/workflows/client-intake/steps/check.md')).toBe(false)
+    expect(affectsIndex('drafts')).toBe(false)
+    expect(affectsIndex('README.md')).toBe(false)
+    expect(affectsIndex(null)).toBe(true)
   })
 })

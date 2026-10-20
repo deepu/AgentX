@@ -16,7 +16,7 @@ import type { Actor, Kernel as KernelPhase1, KernelOptions, KernelPhase2, Person
 import type { DtoContext, ToolInfo } from './dto'
 import { emitMemwiseChange, getMemwiseHostStatus, setMemwiseHostStatus, setMemwiseService, type MemwiseHostStatus } from './host'
 import { defaultModelResolver, projectModelRoles, type ModelResolver } from './models'
-import { findExampleProject, seedProject } from './seed'
+import { addMissingMetaPlaybooks, affectsIndex, findExampleProject, seedProject } from './seed'
 import { toDiagnostic } from './dto'
 
 export interface MemwiseLogger {
@@ -58,6 +58,10 @@ export interface MemwiseServiceOptions {
   throwOnError?: boolean
   /** Owner's name and email; default the OS user name. */
   owner?: { name: string; email: string }
+  /** Admin URL for the throwaway databases of draft example cases; default the bundled cluster, else MEMWISE_TEST_DATABASE_URL. */
+  testDatabaseUrl?: string
+  /** Tests: run draft example cases in process instead of spawning the CLI. */
+  testRunner?: KernelOptions['testRunner']
 }
 
 export interface MemwiseService {
@@ -143,8 +147,16 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     // ---- project folder
     setMemwiseHostStatus({ message: 'Loading the playbooks…' })
     const projectDir = opts.projectDir ?? process.env.MEMWISE_PROJECT_DIR ?? join(opts.configDir, 'project')
-    const seeded = seedProject(projectDir, findExampleProject(opts.exampleRoots))
+    const exampleDir = findExampleProject(opts.exampleRoots)
+    const seeded = seedProject(projectDir, exampleDir)
     if (seeded) log.info(`[memwise] set up the playbooks folder ${projectDir} from the example`)
+    // Phase 3: building and changing playbooks are themselves playbooks; earlier installs lack them.
+    try {
+      const added = addMissingMetaPlaybooks(projectDir, exampleDir)
+      if (added.length) log.info(`[memwise] added the playbooks ${added.join(', ')} to ${projectDir}`)
+    } catch (e) {
+      log.warn(`[memwise] could not add the meta playbooks: ${errorMessage(e)}`)
+    }
     const { loadProject } = await import('@memwise/defs')
     const loaded = await loadProject(projectDir)
 
@@ -168,6 +180,10 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
 
     // ---- kernel
     setMemwiseHostStatus({ message: 'Starting the playbook engine…' })
+    // Example cases of a draft run out of process on throwaway databases (20 §5): on the bundled
+    // cluster's admin connection, or a server's MEMWISE_TEST_DATABASE_URL; otherwise the CLI
+    // starts a throwaway cluster of its own.
+    const testDatabaseUrl = opts.testDatabaseUrl ?? (cluster ? cluster.url('postgres') : process.env.MEMWISE_TEST_DATABASE_URL)
     const kernelOptions: KernelOptions & { filesDir?: string } = {
       databaseUrl,
       projectDir,
@@ -176,6 +192,8 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       providers: models.providers,
       filesDir: opts.filesDir ?? join(opts.configDir, 'files'),
       logLevel: process.env.DBOS_LOG ?? 'error',
+      ...(testDatabaseUrl ? { testDatabaseUrl } : {}),
+      ...(opts.testRunner ? { testRunner: opts.testRunner } : {}),
     }
     const k = (await runtime.createKernel(kernelOptions)) as Kernel
     kernel = k
@@ -203,6 +221,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     // ---- changes and re-indexing
     const unsubscribe = k.onChange((c) => {
       if (c.kind === 'run') emitMemwiseChange({ kind: 'run', id: c.runId, caseId: c.caseId, workflowId: c.workflowId })
+      else if (c.kind === 'drafts') emitMemwiseChange({ kind: 'drafts', id: c.draftId })
       else emitMemwiseChange({ kind: c.kind })
     })
 
@@ -219,7 +238,9 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     let timer: ReturnType<typeof setTimeout> | undefined
     if (opts.watch !== false && existsSync(projectDir)) {
       try {
-        watcher = watch(projectDir, { recursive: true }, () => {
+        watcher = watch(projectDir, { recursive: true }, (_event, filename) => {
+          // Only domain/ and workflows/ are live; drafts/ changes on every chat edit.
+          if (!affectsIndex(typeof filename === 'string' ? filename : filename ? String(filename) : null)) return
           if (timer) clearTimeout(timer)
           timer = setTimeout(() => {
             reindex().catch((e) => log.warn(`[memwise] re-reading the playbooks failed: ${errorMessage(e)}`))

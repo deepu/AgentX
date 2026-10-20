@@ -1,0 +1,17 @@
+workflow: create-playbook
+version: 1
+title: Create a playbook
+owner: manager                 # change runs that stop or need a person go to a manager
+case: ./case.yaml
+start: interview
+steps:
+  interview:                   # a conversation in chat with whoever asked for the playbook
+    on: { drafted: check }
+    wait: { remind: 3d, timeout: 30d → end }
+  check:                       # checks, example cases, past cases, impact
+    on: { passed: review, failed: interview }
+  review:
+    on: { approved: publish, changes_requested: interview }
+    wait: { remind: 2d, timeout: 14d → interview }
+  publish:                     # the draft becomes the next version
+    on: { published: end, stale: check }

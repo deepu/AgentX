@@ -3,8 +3,8 @@
  * ever sees these. Pure functions over the indexed definitions, so they are easy to test.
  */
 import type {
-  CaseTypeDef, Diagnostic, EffectClass, EntityTypeDef, FieldDef, JournalEntry, ProjectDefs, RecordTypeDef, StepDef,
-  StepRecord, WorkflowDef, WriteDef,
+  CaseTypeDef, Diagnostic, DraftEdit, DraftMeta, DraftReport, EffectClass, EntityTypeDef, FieldDef, FileChange, Impact,
+  JournalEntry, ProjectDefs, RecordTypeDef, StepDef, StepRecord, StructuralDiff, WorkflowDef, WorkflowVersion, WriteDef,
 } from '@memwise/defs'
 import type { CompiledPolicy, RuleOrigin, Sourced } from '@memwise/policy'
 import type {
@@ -13,7 +13,8 @@ import type {
 import type {
   MwCase, MwCaseSummary, MwCaseValue, MwDiagnostic, MwEffectClass, MwEntityRow, MwEntityType, MwField, MwJournalEntry,
   MwPerformer, MwPerson, MwPlaybook, MwPolicyRule, MwRole, MwState, MwStep, MwStepRecord, MwStepRunSummary, MwToolRef,
-  MwTransition,
+  MwTransition, MwDraftStage, MwDraftSummary, MwDraftEdit, MwFileChange, MwStructuralDiff, MwImpact, MwDraftReport, MwVersion,
+  MwTreatment,
 } from '@memwise/shared/protocol'
 
 type JsonSchemaFn = (type: FieldDef['type'], recordTypes?: Record<string, { fields: Record<string, FieldDef> }>) => Record<string, unknown>
@@ -65,7 +66,7 @@ export function stateTitle(wf: WorkflowDef | undefined, state: string): string {
 /** A readable case title: the client's name, the legal name, the first text value, else a short reference. */
 export function caseTitle(values: Record<string, unknown>, caseId: string, caseType?: CaseTypeDef): string {
   const plain = (v: unknown) => (v && typeof v === 'object' && 'value' in (v as object) ? (v as { value: unknown }).value : v)
-  for (const key of ['client_name', 'legal_name']) {
+  for (const key of ['client_name', 'legal_name', 'title']) {
     const v = plain(values[key])
     if (typeof v === 'string' && v.trim()) return v.trim()
   }
@@ -529,4 +530,134 @@ export function toEntityRow(row: EntityRow): MwEntityRow {
   }
   for (const k of hidden) values[k] ??= { value: null, provenance, hidden: true }
   return { id: row.id, values, createdAt: row.createdAt }
+}
+
+// ---------------------------------------------------------------- Phase 3: drafts, versions (20 §6)
+
+/** Facts about a draft the DTOs need beyond its files. */
+export interface DraftFacts {
+  meta: DraftMeta
+  edits: DraftEdit[]
+  report?: DraftReport
+  contentHash: string
+  /** The change run (create-playbook / change-playbook) and where it is. */
+  run?: { runId: string; caseId: string; state: string; status: string }
+  changedFiles: number
+  playbookTitle: string
+  names: Map<string, string>
+}
+
+/** Where a draft is: published/discarded from its meta; in review while its change run waits at `review`; checked or failed when the last report covers the current content. */
+export function draftStage(f: Pick<DraftFacts, 'meta' | 'report' | 'contentHash' | 'run'>): MwDraftStage {
+  if (f.meta.status === 'published') return 'published'
+  if (f.meta.status === 'discarded') return 'discarded'
+  if (f.run && f.run.status === 'active' && f.run.state === 'review') return 'in_review'
+  if (f.report && f.report.hash === f.contentHash) return f.report.outcome === 'passed' ? 'checked' : 'failed'
+  return 'draft'
+}
+
+export function toDraftSummary(f: DraftFacts): MwDraftSummary {
+  const m = f.meta
+  const updatedAt = [m.createdAt, m.publishedAt, ...f.edits.map((e) => e.at), f.report?.at].filter((x): x is string => !!x).sort().at(-1) ?? m.createdAt
+  const createdByName = f.names.get(m.createdBy)
+  return {
+    id: m.id,
+    title: m.title,
+    workflowId: m.workflowId,
+    playbookTitle: f.playbookTitle,
+    kind: m.kind,
+    stage: draftStage(f),
+    createdBy: m.createdBy,
+    ...(createdByName ? { createdByName } : {}),
+    createdAt: m.createdAt,
+    updatedAt,
+    pendingEdits: f.edits.filter((e) => e.status === 'pending').length,
+    changedFiles: f.changedFiles,
+    ...(m.baseVersion !== undefined ? { baseVersion: m.baseVersion } : {}),
+    ...(m.publishedVersion !== undefined ? { publishedVersion: m.publishedVersion } : {}),
+    ...(f.run ? { runId: f.run.runId, caseId: f.run.caseId } : m.runId ? { runId: m.runId } : {}),
+  }
+}
+
+export function toDraftEdit(e: DraftEdit, names: Map<string, string>): MwDraftEdit {
+  const byName = names.get(e.by)
+  return {
+    id: e.id, at: e.at, by: e.by, ...(byName ? { byName } : {}), via: e.via,
+    ...(e.chatId ? { sessionId: e.chatId } : {}), summary: e.summary, paths: e.files.map((x) => x.path), status: e.status,
+  }
+}
+
+/** The pending chat edit that last touched each path (the editor highlights those). */
+export function pendingEditByPath(edits: DraftEdit[]): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const e of edits) {
+    if (e.status !== 'pending') continue
+    for (const f of e.files) out.set(f.path, e.id)
+  }
+  return out
+}
+
+export function toFileChange(f: FileChange, pending: Map<string, string>): MwFileChange {
+  const editId = pending.get(f.path)
+  return {
+    path: f.path, status: f.status,
+    hunks: f.hunks.map((h) => ({ oldStart: h.oldStart, oldLines: h.oldLines, newStart: h.newStart, newLines: h.newLines, lines: h.lines.map((l) => ({ kind: l.kind, text: l.text })) })),
+    ...(f.conflict ? { conflict: true } : {}),
+    ...(editId ? { pendingEditId: editId } : {}),
+  }
+}
+
+export function toStructuralDiff(s: StructuralDiff): MwStructuralDiff {
+  return {
+    states: { ...s.states },
+    transitions: s.transitions.map((t) => ({ ...t })),
+    steps: Object.fromEntries(Object.entries(s.steps).map(([k, v]) => [k, { change: v.change, parts: [...v.parts] }])),
+    caseFields: { added: [...s.caseFields.added], removed: [...s.caseFields.removed], changed: [...s.caseFields.changed] },
+    tools: { added: [...s.tools.added], removed: [...s.tools.removed] },
+    requiredTools: s.requiredTools.map((t) => ({ ...t })),
+    roles: { added: [...s.roles.added], removed: [...s.roles.removed] },
+    examples: { added: [...s.examples.added], removed: [...s.examples.removed], changed: [...s.examples.changed] },
+    version: { ...(s.version.from !== undefined ? { from: s.version.from } : {}), ...(s.version.to !== undefined ? { to: s.version.to } : {}) },
+    playbook: [...s.playbook],
+  }
+}
+
+export function toImpact(i: Impact): MwImpact {
+  return {
+    ...(i.liveVersion !== undefined ? { liveVersion: i.liveVersion } : {}),
+    newVersion: i.newVersion,
+    openCases: { total: i.openCases.total, byState: { ...i.openCases.byState } },
+    removedStatesWithCases: i.removedStatesWithCases.map((r) => ({ ...r })),
+    newTools: i.newTools.map((t) => ({
+      name: t.name, bound: t.bound,
+      ...(t.effect ? { effect: t.effect as MwEffectClass } : {}), ...(t.treatment ? { treatment: t.treatment as MwTreatment } : {}),
+      ...(t.plugin ? { plugin: t.plugin } : {}),
+    })),
+    newRequiredTools: i.newRequiredTools.map((t) => ({ ...t })),
+    caseFields: { added: [...i.caseFields.added], removed: [...i.caseFields.removed], changed: [...i.caseFields.changed] },
+    otherPlaybooks: i.otherPlaybooks.map((p) => ({ id: p.id, uses: [...p.uses] })),
+    summary: [...i.summary],
+  }
+}
+
+export function toDraftReport(r: DraftReport): MwDraftReport {
+  return {
+    hash: r.hash, at: r.at,
+    diagnostics: r.diagnostics.map(toDiagnostic),
+    errors: r.errors, warnings: r.warnings,
+    examples: r.examples.map((e) => ({ name: e.name, status: e.status, differences: [...e.differences], ...(e.reason ? { reason: e.reason } : {}) })),
+    pastCases: r.pastCases.map((p) => ({ caseId: p.caseId, title: p.title, status: p.status, differences: [...p.differences], livePath: [...p.livePath], draftPath: [...p.draftPath] })),
+    ...(r.impact ? { impact: toImpact(r.impact) } : {}),
+    outcome: r.outcome, summary: r.summary,
+  }
+}
+
+export function toVersion(v: WorkflowVersion, names: Map<string, string>): MwVersion {
+  const publishedByName = v.publishedBy ? names.get(v.publishedBy) : undefined
+  return {
+    version: v.version, hash: v.hash, publishedAt: v.publishedAt,
+    ...(v.publishedBy ? { publishedBy: v.publishedBy } : {}), ...(publishedByName ? { publishedByName } : {}),
+    source: v.source, ...(v.draftId ? { draftId: v.draftId } : {}), ...(v.runId ? { runId: v.runId } : {}),
+    openCases: v.openCases, live: v.live,
+  }
 }

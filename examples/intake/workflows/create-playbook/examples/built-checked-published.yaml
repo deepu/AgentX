@@ -1,0 +1,23 @@
+name: built-checked-published
+description: >
+  Staff describe the engagement letter in chat and the draft is finished; the checks pass, the
+  manager approves it, and it is published as version 1.
+case:
+  request: We need a playbook for engagement letters for onboarded customers, approved by a partner.
+submit:
+  interview:
+    outcome: drafted
+    values:
+      playbook: engagement-letter
+      title: Engagement letter
+      draft: engagement-letter-draft
+      summary: Staff ask for a letter for an onboarded customer; an agent drafts it from the scope; a partner approves or sends it back; the engagement is recorded.
+  review: { outcome: approved }
+tools:
+  playbooks.check_draft: { outcome: passed, hash: 3f9a, errors: 0, warnings: 0, examples_failed: 0, summary: Checks pass; 2 of 2 example cases pass. }
+  playbooks.publish_draft: { outcome: published, version: 1, workflow: engagement-letter }
+expect:
+  outcome: drafted
+  state: end
+  writes: { playbook: engagement-letter, checked_hash: 3f9a, errors: 0, examples_failed: 0, version: 1 }
+  effects: { playbooks.publish_draft: 1 }

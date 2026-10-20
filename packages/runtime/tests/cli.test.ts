@@ -47,7 +47,10 @@ describe.skipIf(!pgAvailable)('memwise CLI', () => {
     expect(r.output).toContain('PASS client-intake/pan-mismatch');
     expect(r.output).toContain('PASS client-intake/onboard-creates-customer');
     expect(r.output).toContain('PASS client-intake/full-intake');
-    expect(r.output).toContain('4 passed, 0 failed, 0 skipped');
+    // The meta playbooks' examples run too (their conversation steps are answered by submit:).
+    expect(r.output).toContain('PASS create-playbook/');
+    expect(r.output).toContain('PASS change-playbook/');
+    expect(r.output).toMatch(/\d+ passed, 0 failed, 0 skipped/);
   }, 300_000);
 
   test('memwise record prints the record, its context and journal', async () => {

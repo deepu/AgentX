@@ -175,6 +175,45 @@ async function buildInterceptor(): Promise<void> {
   console.log("✅ Interceptor built successfully");
 }
 
+// Build the memwise CLI (dist/memwise-cli.mjs): the kernel's TestRunner runs it with Electron as
+// Node to check a draft's example cases in throwaway databases (docs/memwise/20 §5). ESM, because
+// cli.ts uses top-level await; `import.meta.main` is defined false so only the entry runs main().
+const MEMWISE_CLI_SOURCE = join(ROOT_DIR, "apps/electron/src/main/memwise-cli-entry.ts");
+const MEMWISE_CLI_OUTPUT = join(DIST_DIR, "memwise-cli.mjs");
+
+async function buildMemwiseCli(): Promise<void> {
+  console.log("🧪 Building the memwise CLI (draft example cases)...");
+  const proc = spawn({
+    cmd: [
+      "bun", "run", "esbuild",
+      MEMWISE_CLI_SOURCE,
+      "--bundle",
+      "--platform=node",
+      "--format=esm",
+      "--target=node22",
+      `--outfile=${MEMWISE_CLI_OUTPUT}`,
+      "--external:electron",
+      "--define:import.meta.main=false",
+      // CJS dependencies inside an ESM bundle still call require().
+      "--banner:js=import { createRequire as __mwCreateRequire } from 'module'; const require = __mwCreateRequire(import.meta.url);",
+      ...MEMWISE_OPTIONAL_EXTERNALS.map((m) => `--external:${m}`),
+    ],
+    cwd: ROOT_DIR,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    console.error("❌ memwise CLI build failed with exit code", exitCode);
+    process.exit(exitCode);
+  }
+  if (!existsSync(MEMWISE_CLI_OUTPUT)) {
+    console.error("❌ memwise CLI output not found at", MEMWISE_CLI_OUTPUT);
+    process.exit(1);
+  }
+  console.log("✅ memwise CLI built successfully");
+}
+
 // Build the Pi Agent Server (subprocess for Pi SDK sessions)
 // Optional: skips if package directory is missing (e.g., not synced to OSS).
 async function buildPiAgentServer(): Promise<void> {
@@ -296,6 +335,9 @@ async function main(): Promise<void> {
 
   // Build WhatsApp worker (Baileys subprocess — optional package)
   await buildWhatsAppWorker();
+
+  // Build the memwise CLI (draft example cases run out of process)
+  await buildMemwiseCli();
 
   const buildDefines = getBuildDefines();
 

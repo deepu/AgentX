@@ -243,7 +243,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     const summary = [...describeStructuralDiff(structure)];
     if (total) {
       const where = Object.entries(byState).map(([s, n]) => `${n} in ${s}`).join(', ');
-      summary.push(`${plural(total, 'case')} still running on earlier versions (${where}) stay on their version.`);
+      summary.push(`${plural(total, 'case')} still running (${where}) ${total === 1 ? 'keeps the version it' : 'keep the versions they'} started on.`);
     }
     for (const r of removedStatesWithCases) summary.push(`${plural(r.cases, 'case')} in \`${r.state}\`, which this change removes, will finish on the old version.`);
     for (const t of newTools) {

@@ -1,0 +1,17 @@
+workflow: change-playbook
+version: 1
+title: Change a playbook
+owner: manager                 # change runs that stop or need a person go to a manager
+case: ./case.yaml
+start: edit
+steps:
+  edit:                        # a conversation in chat about what to change
+    on: { drafted: check }
+    wait: { remind: 3d, timeout: 30d → end }
+  check:                       # checks, example cases, past cases, impact
+    on: { passed: review, failed: edit }
+  review:
+    on: { approved: publish, changes_requested: edit }
+    wait: { remind: 2d, timeout: 14d → edit }
+  publish:                     # the draft becomes the next version
+    on: { published: end, stale: check }

@@ -213,14 +213,16 @@ nodes:
       write: { done: 'write_approval' },
       write_approval: { approved: 'polish', sent_back: 'write' },
       polish: { done: 'end' },
+      needs_person: { resolved: 'gather' },
     });
     expect(wf.steps.gather).toMatchObject({ performer: 'agent', strictness: 'guided', model: 'worker', outcomes: ['done'], reads: ['case.topic', 'case.depth'] });
     expect(wf.steps.write_approval).toMatchObject({ performer: 'person', assignee: 'manager', outcomes: ['approved', 'sent_back'] });
     expect(Object.fromEntries(Object.entries(wf.caseType.fields).map(([n, f]) => [n, f.typeSource]))).toEqual({
       topic: 'Text', depth: 'Number', gather_result: 'Text', write_result: 'Text', polish_result: 'Text',
     });
-    // Only the person step's missing timeout is left to decide.
-    expect(brief(checkWorkflow(wf, { tools: {}, roles: ['manager', 'staff'] }))).toEqual([`warning wait-without-timeout ${dir}/workflow.yaml:14 steps.write_approval`]);
+    // The approval reminds, then hands a stalled case to the owner's role.
+    expect(wf.states.write_approval!.wait?.timeout?.target).toBe('needs_person');
+    expect(brief(checkWorkflow(wf, { tools: {}, roles: ['manager', 'staff'] }))).toEqual([]);
     expect(files[`${dir}/workflow.yaml`]).not.toContain('not a simple chain');
   });
 

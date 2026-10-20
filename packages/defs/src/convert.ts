@@ -126,9 +126,13 @@ export function convertTaskYaml(text: string, opts: ConvertOptions = {}): { work
   states.forEach((s, i) => {
     const next = states[i + 1]?.name ?? 'end';
     if (s.step) {
-      steps[s.name] = { on: { approved: next, ...(s.backTo ? { sent_back: s.backTo } : {}) } };
+      // People can stall: remind them, then hand the case to someone after a week.
+      steps[s.name] = { on: { approved: next, ...(s.backTo ? { sent_back: s.backTo } : {}) }, wait: { remind: '2d', timeout: '7d → needs_person' } };
     } else steps[s.name] = { on: { done: next } };
   });
+  if (states.some((s) => s.step)) {
+    steps.needs_person = { on: { resolved: states[0]!.name }, assignee: role, wait: { timeout: '7d → end' } };
+  }
   // Steps sent back to with no earlier node have nowhere to go back to: send them to the start.
   for (const s of states) {
     const on = (steps[s.name] as { on: Record<string, string> }).on;

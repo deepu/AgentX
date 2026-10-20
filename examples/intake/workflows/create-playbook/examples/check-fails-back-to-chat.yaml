@@ -1,0 +1,19 @@
+name: check-fails-back-to-chat
+description: The draft has errors, so the check sends the case back to the chat with the report.
+case:
+  request: A playbook for engagement letters.
+submit:
+  interview:
+    - outcome: drafted
+      values:
+        playbook: engagement-letter
+        title: Engagement letter
+        draft: engagement-letter-draft
+        summary: A first draft of the engagement letter playbook.
+tools:
+  playbooks.check_draft: { outcome: failed, hash: 77c1, errors: 2, warnings: 1, examples_failed: 0, summary: 2 errors to fix; 1 warning; example cases not run. }
+expect:
+  outcome: drafted
+  state: interview
+  writes: { errors: 2, report: 2 errors to fix; 1 warning; example cases not run. }
+  effects: { playbooks.publish_draft: 0 }
