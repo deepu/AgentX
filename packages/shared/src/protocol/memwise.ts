@@ -470,6 +470,8 @@ export interface MwSubmitStepInput {
   outcome: string
   values?: Record<string, unknown>
   comment?: string
+  /** Phase 5: field -> suggestion id (memwise:external:extract) for values kept as read from a document. */
+  sources?: Record<string, string>
 }
 
 export interface MwSubmitResult {
@@ -1279,3 +1281,27 @@ export interface MwRelayStatus {
 export interface MwRelayConfigureInput { enabled: boolean; relayUrl?: string }
 
 export type MwChannelsAvailable = Record<MwChannelName, { tool: string; plugin?: string } | null>
+
+// ---- Phase 5 renderer additions (additive): the inputs the app sends on the channels above.
+// memwise:external:links       (workspaceId, MwExternalLinksFilter)  → MwExternalLink[]
+// memwise:external:issue       (workspaceId, MwIssueLinkInput)       → MwIssuedLink
+// memwise:external:revoke      (workspaceId, linkId: string)         → MwSubmitResult
+// memwise:external:previewResend (workspaceId, MwResendInput)        → MwResendPreview | { message }
+// memwise:external:resend      (workspaceId, MwResendInput)          → MwResendResult
+// memwise:external:extract     (workspaceId, MwExtractInput)         → MwExtractResult
+// memwise:relay:status         (workspaceId)                         → MwRelayStatus
+// memwise:relay:configure      (workspaceId, MwRelayConfigureInput)  → MwRelayStatus
+// memwise:channels:available   (workspaceId)                         → MwChannelsAvailable
+// memwise:notify:get           (workspaceId)                         → MwNotifySettings (the current person's)
+// memwise:notify:set           (workspaceId, MwNotifySettings)       → MwNotifySettings
+
+export interface MwExternalLinksFilter { caseId?: string; runId?: string }
+
+/** `memwise:external:previewResend` and `memwise:external:resend`. */
+export interface MwResendInput {
+  linkId: string
+  /** Another channel than the link's own (a copied link has none). */
+  via?: MwChannelName
+}
+
+export interface MwResendResult extends MwSubmitResult { delivery?: MwDelivery }

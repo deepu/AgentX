@@ -7,12 +7,23 @@
  * useMemwise* hooks below, which refetch on the same pushes through memwiseLastChangeAtom.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAtomValue, useSetAtom, useStore } from 'jotai'
 import i18n from 'i18next'
 import type {
   MwBindingView,
   MwBuildPlaybookInput,
+  MwChannelsAvailable,
+  MwExtractInput,
+  MwExtractResult,
+  MwIssuedLink,
+  MwIssueLinkInput,
+  MwNotifySettings,
+  MwRelayStatus,
+  MwResendInput,
+  MwResendPreview,
+  MwResendResult,
+  MwSubmitResult,
   MwBuildPlaybookResult,
   MwCase,
   MwChange,
@@ -73,6 +84,8 @@ export function affectedByChange(change: MwChange): AffectedLists {
     case 'drafts': return { ...NO_LISTS, inbox: true, drafts: true }
     // Installs, binding freezes and identity links; pending matches are inbox items.
     case 'plugins': return { ...NO_LISTS, inbox: true, plugins: true }
+    // Phase 5: a link was issued, opened, saved or used; an external step is in the inbox only while it has no open link.
+    case 'external': return { ...NO_LISTS, inbox: true, cases: true }
     default: return { ...NO_LISTS }
   }
 }
@@ -357,7 +370,7 @@ export function useMemwiseQuery<T>(
 
 /** Whether a push concerns this case. Matched on the case id, so it works before the first fetch lands. */
 export function caseChangeMatches(c: MwChange, caseId: string, cur: { runId: string } | null): boolean {
-  if (c.kind !== 'run' && c.kind !== 'case' && c.kind !== 'inbox') return false
+  if (c.kind !== 'run' && c.kind !== 'case' && c.kind !== 'inbox' && c.kind !== 'external') return false
   if (c.caseId) return c.caseId === caseId
   return !c.id || c.id === caseId || c.id === cur?.runId
 }
@@ -544,4 +557,83 @@ export function useMemwiseOpenChat(): (anchor: import('@memwise/shared/protocol'
     await waitForSession(store, sessionId)
     return sessionId
   }, [store])
+}
+
+// ---------------------------------------------------------------- external links, public address (Phase 5)
+
+/** The Phase 5 calls, bound to the workspace; absent methods (an older server) answer "not available". */
+export interface MemwiseExternalCalls {
+  issue: (input: MwIssueLinkInput) => Promise<MwIssuedLink>
+  revoke: (linkId: string) => Promise<MwSubmitResult>
+  previewResend: (input: MwResendInput) => Promise<MwResendPreview | { message: string }>
+  resend: (input: MwResendInput) => Promise<MwResendResult>
+  extract: (input: MwExtractInput) => Promise<MwExtractResult>
+}
+
+/** Whether this host offers the Phase 5 link calls at all. */
+export function hasExternalCalls(api: MemwiseApi | null = getMemwiseApi()): boolean {
+  return !!api && typeof api.memwiseIssueExternalLink === 'function'
+}
+
+export function useMemwiseExternal(): MemwiseExternalCalls {
+  const store = useStore()
+  return useMemo(() => {
+    const need = () => {
+      const ws = store.get(memwiseWorkspaceIdAtom)
+      const api = getMemwiseApi()
+      if (!ws || !api || !hasExternalCalls(api)) throw new Error(i18n.t('memwise.notAvailable'))
+      return { ws, api }
+    }
+    return {
+      issue: async input => { const { ws, api } = need(); return api.memwiseIssueExternalLink(ws, input) },
+      revoke: async linkId => { const { ws, api } = need(); return api.memwiseRevokeExternalLink(ws, linkId) },
+      previewResend: async input => { const { ws, api } = need(); return api.memwisePreviewResend(ws, input) },
+      resend: async input => { const { ws, api } = need(); return api.memwiseResendExternalLink(ws, input) },
+      extract: async input => {
+        const ws = store.get(memwiseWorkspaceIdAtom)
+        const api = getMemwiseApi()
+        if (!ws || !api || typeof api.memwiseExtract !== 'function') throw new Error(i18n.t('memwise.notAvailable'))
+        return api.memwiseExtract(ws, input)
+      },
+    }
+  }, [store])
+}
+
+export interface MemwisePublicAddress {
+  relay: MwRelayStatus | null
+  channels: MwChannelsAvailable | null
+  notify: MwNotifySettings | null
+  /** This host has no Phase 5 calls (an older server). */
+  unsupported: boolean
+  error: string | null
+  loading: boolean
+  reload: () => void
+}
+
+/** Settings → Public address: the relay's state, the bound channels and the person's notifications. Refetches on `relay`, `external` and `status` pushes. */
+export function useMemwisePublicAddress(): MemwisePublicAddress {
+  const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
+  const api = getMemwiseApi()
+  const unsupported = !api || typeof api.memwiseRelayStatus !== 'function'
+  const query = useMemwiseQuery<{ relay: MwRelayStatus; channels: MwChannelsAvailable | null; notify: MwNotifySettings | null }>(
+    workspaceId && !unsupported ? `public-address:${workspaceId}` : null,
+    async (a, ws) => {
+      const [relay, channels, notify] = await Promise.all([
+        a.memwiseRelayStatus(ws),
+        a.memwiseChannelsAvailable(ws).catch(() => null),
+        a.memwiseGetNotifySettings(ws).catch(() => null),
+      ])
+      return { relay, channels, notify }
+    },
+    c => c.kind === 'relay' || c.kind === 'external' || c.kind === 'status' || c.kind === 'plugins',
+  )
+  return {
+    relay: query.data?.relay ?? null,
+    channels: query.data?.channels ?? null,
+    notify: query.data?.notify ?? null,
+    unsupported,
+    error: query.error,
+    loading: query.loading,
+    reload: query.reload,
+  }
 }

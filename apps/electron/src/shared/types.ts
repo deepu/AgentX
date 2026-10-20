@@ -791,6 +791,18 @@ export interface ElectronAPI {
   memwiseListIdentityCandidates(workspaceId: string, filter?: { status?: import('@memwise/shared/protocol').MwIdentityCandidate['status'] }): Promise<import('@memwise/shared/protocol').MwIdentityCandidate[]>
   memwiseDecideIdentity(workspaceId: string, input: import('@memwise/shared/protocol').MwDecideIdentityInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
   memwiseGetEntityRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwEntityRecordInput): Promise<import('@memwise/shared/protocol').MwEntityRecord>
+  // Phase 5: external links, the relay (public address), channels (docs/memwise/23-phase-5-interfaces.md §11)
+  memwiseListExternalLinks(workspaceId: string, filter: import('@memwise/shared/protocol').MwExternalLinksFilter): Promise<import('@memwise/shared/protocol').MwExternalLink[]>
+  memwiseIssueExternalLink(workspaceId: string, input: import('@memwise/shared/protocol').MwIssueLinkInput): Promise<import('@memwise/shared/protocol').MwIssuedLink>
+  memwiseRevokeExternalLink(workspaceId: string, linkId: string): Promise<import('@memwise/shared/protocol').MwSubmitResult>
+  memwisePreviewResend(workspaceId: string, input: import('@memwise/shared/protocol').MwResendInput): Promise<import('@memwise/shared/protocol').MwResendPreview | { message: string }>
+  memwiseResendExternalLink(workspaceId: string, input: import('@memwise/shared/protocol').MwResendInput): Promise<import('@memwise/shared/protocol').MwResendResult>
+  memwiseExtract(workspaceId: string, input: import('@memwise/shared/protocol').MwExtractInput): Promise<import('@memwise/shared/protocol').MwExtractResult>
+  memwiseRelayStatus(workspaceId: string): Promise<import('@memwise/shared/protocol').MwRelayStatus>
+  memwiseConfigureRelay(workspaceId: string, input: import('@memwise/shared/protocol').MwRelayConfigureInput): Promise<import('@memwise/shared/protocol').MwRelayStatus>
+  memwiseChannelsAvailable(workspaceId: string): Promise<import('@memwise/shared/protocol').MwChannelsAvailable>
+  memwiseGetNotifySettings(workspaceId: string): Promise<import('@memwise/shared/protocol').MwNotifySettings>
+  memwiseSetNotifySettings(workspaceId: string, settings: import('@memwise/shared/protocol').MwNotifySettings): Promise<import('@memwise/shared/protocol').MwNotifySettings>
   onMemwiseChanged(callback: (change: import('@memwise/shared/protocol').MwChange) => void): () => void
 
   // Automations

@@ -15,6 +15,8 @@ import { Info_Section } from '@/components/info/Info_Section'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { CaseFieldList } from './CaseValues'
+import { ClientLinkPanel, type ClientLinkActions } from './ClientLinkPanel'
+import { openClientLink } from './client-link-model'
 import { WorkflowMap } from './map'
 import { stateTitle as playbookStateTitle } from './playbook/labels'
 import {
@@ -39,16 +41,26 @@ export interface CaseViewProps {
   onOpenStep?: (stepRunId: string) => void
   onOpenPlaybook?: (workflowId: string) => void
   onOpenChat?: () => void
+  /** Phase 5: Copy link, Send again and Revoke on the "Client link" panel (absent: the panel only reads). */
+  linkActions?: ClientLinkActions
   now?: number
 }
 
 const STATUS_COLOR = { active: 'default', done: 'success', stopped: 'destructive' } as const
 
-export function CaseView({ kase, playbook, playbookTitle, people = {}, roles, onOpenStep, onOpenPlaybook, onOpenChat, now }: CaseViewProps) {
+export function CaseView({ kase, playbook, playbookTitle, people = {}, roles, onOpenStep, onOpenPlaybook, onOpenChat, linkActions, now }: CaseViewProps) {
   const { t, i18n } = useTranslation()
   const [mapNote, setMapNote] = React.useState<string | null>(null)
   React.useEffect(() => { setMapNote(null) }, [kase.caseId])
-  const waiting = waitingOnLabel(kase, t, roles)
+  const clientLink = openClientLink(kase, now)
+  // Waiting on the client through an open link: say who, and when it was sent and opened.
+  const waiting = clientLink
+    ? [
+        t('memwise.case.waitingOnClient', { name: clientLink.participant.name ?? t('memwise.clientLink.theClient') }),
+        t('memwise.case.linkSentAt', { time: absoluteTime(clientLink.sentAt ?? clientLink.createdAt, i18n.language) }),
+        clientLink.firstOpenedAt ? t('memwise.case.linkOpenedAt', { time: absoluteTime(clientLink.firstOpenedAt, i18n.language) }) : undefined,
+      ].filter(Boolean).join(' · ')
+    : waitingOnLabel(kase, t, roles)
   const title = playbookTitle ?? playbook?.title ?? kase.workflowId
 
   return (
@@ -84,6 +96,8 @@ export function CaseView({ kase, playbook, playbookTitle, people = {}, roles, on
       <Info_Section title={t('memwise.case.fields')} count={Object.keys(kase.values).length}>
         <CaseFieldList values={kase.values} fields={kase.fields} people={people} />
       </Info_Section>
+
+      <ClientLinkPanel kase={kase} actions={linkActions} people={people} now={now} />
 
       <Info_Section title={t('memwise.case.map')} description={t('memwise.case.mapDescription')}>
         {playbook ? (
