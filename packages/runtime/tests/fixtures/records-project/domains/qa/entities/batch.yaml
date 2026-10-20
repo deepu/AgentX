@@ -1,0 +1,10 @@
+entity: Batch
+title: "{code}"
+fields:
+  code:    { type: Text, required: true, description: "Like B-2026-001" }
+  product: Text
+relationships:
+  reports: many Report
+calculated:
+  released_pct: { percent: reports, where: "status = 'released'", description: Reports released so far }
+  report_count: { count: reports }

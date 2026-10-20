@@ -1,0 +1,5 @@
+title: Open reports
+entity: Report
+filter: "status != 'released'"
+sort: [title]
+columns: [title, score, status]

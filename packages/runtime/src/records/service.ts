@@ -4,7 +4,7 @@
 // rules and field access apply. Pages, the tree and dashboards are in page.ts and browse.ts.
 import {
   ConditionCompileError, evaluateCondition, mentionTokens, PgEntityEvents, PgEntityStore, PgFlagStore, PgMentionStore, PgNoteStore, PgViewStore,
-  RecordWriteError, withActor, withRecordContext,
+  RecordWriteError, withActor, withRecordContext, withTransaction,
 } from '@memwise/db';
 import { keyOf, rolesIn, type EntityTypeDef, type ViewDef } from '@memwise/defs';
 import { fieldErrors } from '../domain-tools.ts';
@@ -156,14 +156,16 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
       if (!(await visible(actor, def, input.id))) return { applied: false, status: 'missing', message: `there is no ${def.entity} ${input.id}` };
       const by = actor.kind === 'person' ? actor.personId : 'system';
       const key = keyOf(def);
-      const version = await withActor(deps.pool, actor, async (db) => {
+      const { version, label } = await withActor(deps.pool, actor, async (db) => {
         const v = await notes.save(db, key, input.id, input.body, by, input.reason?.trim() ? { reason: input.reason.trim() } : {});
-        // `[[etmf.Site:site_…]]` tokens are mentions of those records, from this note.
-        const targets = mentionTokens(input.body).filter((t) => entityByName(deps.entities(), t.entity));
-        const label = `Notes on ${recordTitle(def, input.id, (await entityStore.get(db, def, input.id))?.values ?? {})}`;
-        await mentions.replaceForSource(db, 'note', `${key}:${input.id}`, targets.map((t) => ({ entity: keyOf(entityByName(deps.entities(), t.entity)!), id: t.id, label })));
-        return v;
+        return { version: v, label: `Notes on ${recordTitle(def, input.id, (await entityStore.get(db, def, input.id))?.values ?? {})}` };
       });
+      // `[[etmf.Site:site_…]]` tokens are mentions of those records, from this note. Written by
+      // the kernel itself: the app role may insert and delete mentions but not update them, which
+      // the store's upsert needs.
+      const targets = mentionTokens(input.body).filter((t) => entityByName(deps.entities(), t.entity));
+      await withTransaction(deps.pool, (db) => mentions.replaceForSource(db, 'note', `${key}:${input.id}`,
+        targets.map((t) => ({ entity: keyOf(entityByName(deps.entities(), t.entity)!), id: t.id, label }))));
       changed(def, input.id);
       return { applied: true, status: 'applied', id: input.id, version };
     },
