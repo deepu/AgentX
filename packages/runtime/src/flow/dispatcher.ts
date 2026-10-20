@@ -8,7 +8,7 @@
 // its journal forever. It is woken by LISTEN `mw_changes` ({kind:'entity'} and {kind:'flow'}),
 // by a sweep every 30 s, and by settle() in tests. Each pump also does the other queued work
 // (the hand-off outbox, incoming email, due entity timers) through `work`.
-import type { EntityEvent } from '@memwise/defs';
+import { crashPoint, type EntityEvent } from '@memwise/defs';
 import type pg from 'pg';
 
 /** One thing that acts on entity events. Its `name` is its key in the ledger: keep it stable. */
@@ -176,6 +176,7 @@ export class Dispatcher {
           if (done.has(c.name) || blocked.has(c.name) || this.stopped) continue;
           try {
             await c.handle(event);
+            crashPoint('event-before-delivery', c.name);
             await this.deliver(event.id, c.name);
             done.add(c.name);
           } catch (e) {

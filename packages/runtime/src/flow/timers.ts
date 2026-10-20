@@ -6,7 +6,7 @@ import type { EntityEvent, EntityTypeDef } from '@memwise/defs';
 import type { FlowDeps } from './context.ts';
 import { durationWords, words } from './describe.ts';
 import type { EventConsumer } from './dispatcher.ts';
-import { recordRef, tableOf } from './records.ts';
+import { recordRef } from './records.ts';
 
 const BATCH = 50;
 
@@ -14,12 +14,6 @@ interface TimerAction { afterMs: number; remind?: string; transition?: string }
 
 export function createEntityTimers(deps: FlowDeps) {
   const { pool } = deps;
-
-  /** The state a record is in now (a `created` event names none). */
-  async function stateOf(def: EntityTypeDef, id: string): Promise<string | undefined> {
-    const { rows } = await pool.query(`select lifecycle from ${tableOf(def)} where id = $1`, [id]);
-    return rows[0]?.lifecycle ?? undefined;
-  }
 
   async function arm(event: EntityEvent, def: EntityTypeDef, state: string) {
     const after = def.lifecycleChart?.states[state]?.after ?? [];
@@ -36,15 +30,13 @@ export function createEntityTimers(deps: FlowDeps) {
     async handle(event) {
       const def = deps.entities()[event.entity];
       if (!def?.lifecycleChart) return;
+      // A new record also enters its first state (the storage writes `entered` with `created`).
       if (event.kind === 'entered' && event.state) {
         // Leaving a state cancels its timers; this event's own (a replay) stay.
         await pool.query(
           `update mw.entity_timers set status = 'cancelled' where entity = $1 and record_id = $2 and status = 'pending' and entered_event <> $3`,
           [event.entity, event.recordId, event.id]);
         await arm(event, def, event.state);
-      } else if (event.kind === 'created') {
-        const state = await stateOf(def, event.recordId);
-        if (state) await arm(event, def, state);
       }
     },
   };

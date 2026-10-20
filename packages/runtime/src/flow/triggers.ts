@@ -2,7 +2,7 @@
 // the dispatcher; date triggers and schedules from the minute sweep; messages from
 // receiveMessage. Every firing has a key, and its run id is derived from the key, so a firing
 // retried after a crash (an event delivered again, a sweep run twice) starts nothing new.
-import { DEFAULT_DOMAIN, domainOf, hasRole, type EntityEvent, type InboundMessageBody, type TriggerDef, type WorkflowDef } from '@memwise/defs';
+import { crashPoint, DEFAULT_DOMAIN, domainOf, hasRole, type EntityEvent, type InboundMessageBody, type TriggerDef, type WorkflowDef } from '@memwise/defs';
 import { StartRunError } from '../start.ts';
 import type { PersonActor, RecordRef, TriggerFiring, TriggerSummary, TriggersService } from '../types.ts';
 import { derivedRunId, type FlowDeps } from './context.ts';
@@ -107,6 +107,7 @@ export function createTriggers(deps: FlowDeps, more: { settle: TriggersService['
     } finally {
       client.release();
     }
+    crashPoint('trigger-before-start', t.id);
     if (row.status === 'started' && !row.case_id) return startFiring({ ...row, workflow_hash: t.workflow.hash });
     return firingOf(row);
   }
@@ -117,9 +118,8 @@ export function createTriggers(deps: FlowDeps, more: { settle: TriggersService['
     if (entityKeyFor(t.workflow, d.entity, deps.entities()) !== event.entity) return false;
     if (d.kind === 'entered') return event.kind === 'entered' && event.state === d.state;
     if (d.kind === 'created') return event.kind === 'created';
-    // `changed`: any change, or one of the named fields; `status` is a lifecycle move (an `entered` event).
-    if (event.kind === 'changed') return !d.fields?.length || d.fields.some((f) => event.fields?.includes(f));
-    return event.kind === 'entered' && !!d.fields?.includes('status');
+    // `changed`: any change, or one of the named fields (a lifecycle move changes `status`).
+    return event.kind === 'changed' && (!d.fields?.length || d.fields.some((f) => event.fields?.includes(f)));
   };
 
   const consumer: EventConsumer = {

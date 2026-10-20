@@ -13,7 +13,7 @@
 // Every message to a run goes through mw.inbox with an idempotency key, so sending twice is
 // sending once; the outbox row is marked done after its work, which is safe to repeat.
 import { PgCaseStore, withTransaction } from '@memwise/db';
-import { domainOf, END_STATE, type BlockDef, type CaseValue, type WorkflowDef } from '@memwise/defs';
+import { crashPoint, domainOf, END_STATE, type BlockDef, type CaseValue, type WorkflowDef } from '@memwise/defs';
 import type { RunEvent } from '../machine.ts';
 import { loadWorkflowDef, type Queryable } from '../runs.ts';
 import { StartRunError } from '../start.ts';
@@ -122,6 +122,7 @@ export function createHandoffs(deps: FlowDeps) {
         `insert into mw.case_links (parent_run_id, parent_case_id, parent_state, entered_seq, item_index, child_run_id, child_workflow, kind)
          values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict do nothing`,
         [run.id, run.case_id, state, enteredSeq, i, childRunId, target.id, mode === 'start' ? 'started' : 'called']);
+      crashPoint('handoff-before-start', state);
       try {
         const { caseId } = await deps.start({
           workflowId: target.id, workflowHash: target.hash, case: handoffValues(block.with, values, items[i]), runId: childRunId, by: `case:${run.case_id}`,
@@ -134,6 +135,7 @@ export function createHandoffs(deps: FlowDeps) {
         return 'done';
       }
     }
+    crashPoint('handoff-before-send', state);
     if (mode === 'start') await send(run.id, { type: 'started' }, `started:${run.id}:${enteredSeq}`, enteredSeq);
     else if (block.kind === 'for_each') await join(run, state, enteredSeq, block);
     return 'done';

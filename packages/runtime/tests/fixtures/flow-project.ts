@@ -88,8 +88,10 @@ version: 1
 title: Wait briefly for a site
 owner: study_manager
 case: ./case.yaml
-start: collect_pack
+start: begin
 steps:
+  begin:
+    on: { go: collect_pack }
   collect_pack:
     wait_until: { record: case.site, condition: "start_up_pack_complete = 100%" }
     on: { met: approve }
@@ -205,7 +207,7 @@ case: ./case.yaml
 start: file_it
 steps:
   file_it:
-    call: { workflow: file-document, with: { document: case.document, note: "please file" }, returns: { filed_id: filed_id } }
+    call: { workflow: file-document, with: { document: case.document, note: "please file" }, returns: { filed_id: note } }
     on: { filed: filed, rejected: needs_person, failed: needs_person }
   filed:
     on: { ok: end }
