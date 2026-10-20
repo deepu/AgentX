@@ -2,27 +2,34 @@
 
 These are rough mockups of the public home page, made on 2026-10-20 in the project thread "MemWise landing page".
 
-**Chosen direction: v3, "Polished".**
-- Headline: "Describe your process. Agents run it."
-- Audience: domain experts first, with developers second.
-- Look: light, Stripe-like polish.
+**Chosen direction: v4, "Playbooks"** (Sandeep, 2026-10-20).
+- Headline: "Write a playbook. Agents run it."
+- Positioning: the playbook (the expert's own "how we do X" brief) is the product noun and the hook. This is what sets MemWise apart from Zapier-style flow automation.
+- Audience: domain experts first, with developers second. No technical words on the main page.
+- Look: light, Stripe-like polish, carried over from v3.
+
+## How we got here
+v1 was dark and aimed at developers. v2 was light and aimed at domain experts. v3 added polish. v4 reframes the page around playbooks: the playbook document is the hero, there's a playbook library section, and there are no technical words.
 
 ## Files
 
 | File | What it is |
 |---|---|
-| [memwise-home.html](memwise-home.html) | v3 as one standalone page. Open it in any browser. The team tabs work. |
+| [memwise-home-v4.html](memwise-home-v4.html) | v4 "Playbooks" (chosen) as a standalone page. Open it in any browser. |
+| [memwise-home.html](memwise-home.html) | v3 as a standalone page |
+| [canvas/Playbook.dc.html](canvas/Playbook.dc.html) | v4 source: "Write a playbook. Agents run it.", playbook-centred hero, playbook library |
 | [canvas/Polished.dc.html](canvas/Polished.dc.html) | v3 source, as stored on the design canvas |
 | [canvas/Light.dc.html](canvas/Light.dc.html) | v2: the first light version aimed at domain experts |
 | [canvas/Main.dc.html](canvas/Main.dc.html) | v1: the first dark version aimed at developers |
-| [canvas/canvas.json](canvas/canvas.json) | Layout of the three artboards on the canvas |
+| [canvas/canvas.json](canvas/canvas.json) | Layout of the four artboards on the canvas |
 
-The live, editable canvas (private until shared) holding all three versions: https://claude.ai/artifact/PdyTwCiSTwKjWi4buRHEDy
+The live, editable canvas holding all four versions (private until shared): https://claude.ai/artifact/PdyTwCiSTwKjWi4buRHEDy
 
-The `.dc.html` files only render inside that canvas editor. Use `memwise-home.html` to look at v3 anywhere else.
+The `.dc.html` files only render inside that canvas editor. Use the standalone `.html` files to look at v4 or v3 anywhere else.
 
 ## Decisions so far
 - Lead with domain experts and make getting started easy. Developer material sits in one band near the bottom.
+- Lead with the playbook library, so people see that ready-made playbooks exist. Promise a first draft in minutes.
 - The five effect classes are written in plain words: "Look things up", "Prepare", "Update records", "Contact people" and "Can't be undone".
 - Fonts are Inter Tight, with Instrument Serif italic for accent phrases. The accent colour is amber (#F5B43C).
 
