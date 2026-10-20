@@ -34,7 +34,7 @@ export function domainTools(entities: Record<string, EntityTypeDef>, pool?: () =
   };
   const out: ToolDefinition[] = [];
   for (const def of Object.values(entities)) {
-    const names = domainToolNames(def.entity);
+    const names = domainToolNames(def);
     out.push({
       name: names.create,
       description: `Create a ${def.entity} record with the given fields; returns its id.`,
