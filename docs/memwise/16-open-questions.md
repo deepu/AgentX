@@ -27,7 +27,7 @@ Left open by Phase 3:
 ## Domain and data
 
 6. **Link versus materialise.** How much plugin data the domain caches or copies by default, especially for analytics.
-7. **Several domains per workspace**, and cross-domain references.
+7. ~~**Several domains per workspace**, and cross-domain references.~~ Settled for Phase 6: see [21](21-domains-and-records.md) (D70, D71).
 8. **The first value-type catalogue**, and whether country-specific identifier validators (GSTIN, PAN, VAT) are plugins.
 9. **Recall search.** Full-text first; when to add `pgvector`.
 

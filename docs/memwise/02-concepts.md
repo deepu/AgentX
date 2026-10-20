@@ -5,10 +5,10 @@ The vocabulary used across all the docs, grouped by plane (see [03](03-architect
 ## Work plane: what the business sees
 
 ### Domain
-A business's **own model of its world**: entity types, workflows, case types, mappings, policies, plus the records created as work happens. Definitions are files in the project folder; instances are rows in Postgres. See [04](04-domain-and-data.md).
+An **area of work** within an organisation (client intake, eTMF) and the business's **own model of it**: entity types, workflows, case types, mappings, policies, plus the records created as work happens. Definitions are files in the project folder; instances are rows in Postgres. See [04](04-domain-and-data.md).
 
 ### Workspace
-Where work happens: people, chats, runs in progress and settings. A workspace **attaches one domain**. Several workspaces can share a domain (per team, per region, test versus live).
+The **organisation**: people, roles, installed plugins, chats and settings. A workspace holds **several domains**. Roles are defined once in the workspace and granted per domain, optionally scoped to some records; plugins are installed once and bound per domain. Entities in different domains can be linked. Until Phase 6 a workspace has one domain (D51). See [21](21-domains-and-records.md).
 
 ### Entity and entity type
 An **entity type** is a business noun the domain defines (Customer, Invoice, Engagement) with fields, relationships, lifecycle states, rules, field ownership and field-level access. An **entity** is one record of that type.

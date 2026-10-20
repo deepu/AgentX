@@ -133,7 +133,6 @@ fields:
 ## 10. Open
 
 - Default for linking versus materialising plugin data, especially for analytics.
-- Whether one workspace can see more than one domain, and how cross-domain references work.
 - The first value-type catalogue, and whether country-specific identifier validators are plugins.
 
-See [16](16-open-questions.md).
+See [16](16-open-questions.md). Several domains per workspace and links between them are settled in [21](21-domains-and-records.md).
