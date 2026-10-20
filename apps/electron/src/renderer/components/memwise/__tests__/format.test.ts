@@ -1,5 +1,6 @@
-import { describe, expect, test, beforeAll } from 'bun:test'
-import { setupI18n, i18n } from '@memwise/shared/i18n'
+import { describe, expect, test } from 'bun:test'
+import i18next from 'i18next'
+import en from '@memwise/shared/i18n/locales/en.json'
 import type { MwCaseValue } from '@memwise/shared/protocol'
 import type { TFunction } from 'i18next'
 import {
@@ -13,14 +14,15 @@ import {
   relativeTime,
   sortInbox,
   toolLabel,
+  checkLabel,
   waitingOnLabel,
 } from '../format'
 import { sampleCaseSummaries, sampleInbox, samplePeople, sampleRoles, sampleValues } from '../sample-data'
 
-beforeAll(() => {
-  setupI18n()
-  void i18n.changeLanguage('en')
-})
+// A private instance: the shared i18next singleton is set up once per process, possibly by
+// another test file with other options, when the whole suite runs together.
+const i18n = i18next.createInstance()
+void i18n.init({ resources: { en: { translation: en } }, lng: 'en', fallbackLng: 'en', initImmediate: false, interpolation: { escapeValue: false } })
 const t = i18n.t.bind(i18n) as unknown as TFunction
 
 describe('words', () => {
@@ -30,6 +32,11 @@ describe('words', () => {
     expect(humanize('needs_person')).toBe('Needs person')
     expect(toolLabel('intake.extract_fields')).toBe('Extract fields')
     expect(toolLabel('gst.validate_gstin')).toBe('Validate GSTIN')
+    expect(toolLabel('domain.customer.create')).toBe('Create customer')
+    expect(checkLabel('outcome is declared', t)).toBe('Finished with one of the step’s outcomes')
+    expect(checkLabel('writes.gstin_ok: from tool gst.validate_gstin (valid)', t)).toBe('GSTIN ok matches what “Validate GSTIN” returned')
+    expect(checkLabel('writes.flags: List<Flag>', t)).toBe('Flags is in the right form')
+    expect(checkLabel('every flag names the document it came from', t)).toBe('every flag names the document it came from')
   })
 
   test('outcomes', () => {

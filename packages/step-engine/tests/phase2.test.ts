@@ -4,21 +4,24 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { CaseValue, StepDef } from '@memwise/defs';
 import { createModelGateway, createToolGateway, scriptedProvider, type ToolDefinition } from '@memwise/gateway';
 import {
-  configureStepEngine, mapArgs, registerAgentStep, structuralChecks, systemStepWorkflow, SYSTEM_STEP_WORKFLOW,
+  AGENT_STEP_WORKFLOW, agentStepWorkflow, configureStepEngine, mapArgs, structuralChecks, systemStepWorkflow, SYSTEM_STEP_WORKFLOW,
   type StepEngineDeps, type StepResult, type StepRunInput,
 } from '../src/index.ts';
 import { MemoryLedger, MemoryRecorder, createDatabase, example, intakeTools, launchDbos, stepInput } from './helpers.ts';
 
-const agentStep = registerAgentStep();
-const systemStep = DBOS.registerWorkflow(systemStepWorkflow, { name: SYSTEM_STEP_WORKFLOW });
+// Registered per file and deregistered after it, so other files in the same process (a kernel) can use the names.
+let agentStep: (input: StepRunInput) => Promise<StepResult>;
+let systemStep: (input: StepRunInput) => Promise<StepResult>;
 let db: Awaited<ReturnType<typeof createDatabase>>;
 
 beforeAll(async () => {
+  agentStep = DBOS.registerWorkflow((i: StepRunInput) => agentStepWorkflow(i), { name: AGENT_STEP_WORKFLOW });
+  systemStep = DBOS.registerWorkflow((i: StepRunInput) => systemStepWorkflow(i), { name: SYSTEM_STEP_WORKFLOW });
   db = await createDatabase('phase2');
   await launchDbos(db.url);
 });
 afterAll(async () => {
-  await DBOS.shutdown();
+  await DBOS.shutdown({ deregister: true });
   await db.drop();
 });
 

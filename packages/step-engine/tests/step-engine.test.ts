@@ -3,22 +3,24 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { ApprovalDecision, StepRecord, StepRecordReader } from '@memwise/defs';
 import type { ToolDefinition } from '@memwise/gateway';
 import {
-  approvalTopic, configureStepEngine, recallTools, registerAgentStep, runBudget, stepBudget, type StepEngineDeps, type StepResult,
+  AGENT_STEP_WORKFLOW, agentStepWorkflow, approvalTopic, configureStepEngine, recallTools, runBudget, stepBudget, type StepEngineDeps, type StepResult,
   type StepRunInput,
 } from '../src/index.ts';
 import {
   FakeTools, FlakyRecorder, MemoryRecorder, ScriptedModels, createDatabase, example, intakeTools, launchDbos, realGateways, stepInput, until,
 } from './helpers.ts';
 
-const agentStep = registerAgentStep();
+// Registered per file and deregistered after it, so other files in the same process (a kernel) can use the names.
+let agentStep: (input: StepRunInput) => Promise<StepResult>;
 let db: Awaited<ReturnType<typeof createDatabase>>;
 
 beforeAll(async () => {
+  agentStep = DBOS.registerWorkflow((i: StepRunInput) => agentStepWorkflow(i), { name: AGENT_STEP_WORKFLOW });
   db = await createDatabase('loop');
   await launchDbos(db.url);
 });
 afterAll(async () => {
-  await DBOS.shutdown();
+  await DBOS.shutdown({ deregister: true });
   await db.drop();
 });
 
