@@ -146,6 +146,18 @@ describe('the form API', () => {
     expect(calls).toEqual([{ method: 'form', args: [TOKEN, { ip: '203.0.113.7', userAgent: 'phone' }] }])
   })
 
+  it('routes below the relay\'s path-mode prefix (the tunnel passes the full public URL)', async () => {
+    const { kernel, calls } = fakeKernel()
+    const handle = createPublicHandler({ kernel: () => kernel, formAppDir: dist })
+    const r = await handle(new Request(`http://localhost:8788/x/abcdefghijklmnop/f/${TOKEN}/api/form`))
+    expect(r.status).toBe(200)
+    expect(calls[0]!.args[0]).toBe(TOKEN)
+    const page = await handle(new Request(`http://localhost:8788/x/abcdefghijklmnop/f/${TOKEN}`))
+    expect(await page.text()).toContain('../assets/form/assets/index-abc.js')
+    expect((await handle(new Request('http://localhost:8788/x/abcdefghijklmnop/assets/form/assets/index-abc.js'))).status).toBe(200)
+    expect((await handle(new Request(`http://localhost:8788/x/not-an-install/f/${TOKEN}/api/form`))).status).toBe(404)
+  })
+
   it('answers a refusal from the kernel as it is', async () => {
     const { req } = setup({ form: async () => ({ status: 'expired', message: 'This link has expired.' }) } as Partial<ExternalService>)
     const r = await req('GET', `/f/${TOKEN}/api/form`)

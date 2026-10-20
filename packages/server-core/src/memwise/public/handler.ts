@@ -59,6 +59,8 @@ const SECURITY_HEADERS: Record<string, string> = {
 /** A token as it may appear in a path: base64url with the `mwl_` prefix (checked by the kernel). */
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,256}$/
 const HOOK_RE = /^[A-Za-z0-9_-]{4,128}$/
+/** `/x/<installId>` before the route, when the relay runs in path mode (an install id is 16 base32 characters). */
+const PATH_MODE_PREFIX = /^\/x\/[a-z2-7]{16}(?=\/)/
 const MAX_FILE_NAME = 255
 const MAX_DOCUMENTS = 50
 
@@ -246,6 +248,9 @@ export function createPublicHandler(opts: PublicHandlerOptions): PublicHandler {
   return async function handle(req: Request, conn?: PublicConnectionInfo): Promise<Response> {
     let path: string
     try { path = new URL(req.url).pathname } catch { return notFound() }
+    // The tunnel hands over the full public URL; in the relay's path mode that starts with
+    // `/x/<installId>` (23 §2). Routes are matched below it.
+    path = path.replace(PATH_MODE_PREFIX, '')
     const ip = clientIp(req, conn)
     const isPublicRoute = path.startsWith('/f/') || path.startsWith('/i/') || path.startsWith('/h/') || path.startsWith(FORM_ASSETS_PREFIX)
     if (!isPublicRoute) return notFound()
