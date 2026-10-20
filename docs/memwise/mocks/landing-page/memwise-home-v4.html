@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MemWise · Write a playbook. Agents run it.</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FCFCFA}
+a{color:#0E1116;text-decoration:none}a:hover{color:#000000}
+.mw-float{position:absolute}
+.mw-span2{grid-column:span 2}
+@media (max-width: 860px){.mw-float{position:static;margin-top:12px;width:auto !important;transform:none !important}.mw-span2{grid-column:auto}.mw-pad{padding:16px 16px 16px !important}}
+</style>
+</head>
+<body>
+<div style="background: #FCFCFA; color: #0E1116; font-family: 'Inter Tight', system-ui, sans-serif; min-width: 0; overflow-x: hidden">
+
+<header style="padding: 16px 24px 0">
+<nav aria-label="Main" style="max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 10px 10px 10px 20px; background: rgba(255,255,255,0.86); border: 1px solid #E7E8EA; border-radius: 16px; box-shadow: 0 1px 1px rgba(14,17,22,0.03), 0 8px 24px -12px rgba(14,17,22,0.12)">
+<a href="#top" style="display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 19px; letter-spacing: -0.02em">
+<svg width="24" height="24" viewBox="0 0 26 26" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="23" height="23" rx="7" fill="#0E1116"></rect><circle cx="8.5" cy="13" r="2.4" fill="#F5B43C"></circle><circle cx="17.5" cy="8.5" r="2.2" fill="#FFFFFF"></circle><circle cx="17.5" cy="17.5" r="2.2" fill="#FFFFFF"></circle><path d="M10.6 12 L15.6 9.4 M10.6 14 L15.6 16.6" stroke="#FFFFFF" stroke-width="1.4"></path></svg>
+MemWise
+</a>
+<div style="display: flex; flex-wrap: wrap; gap: 4px; font-size: 15px">
+<a href="#how" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #525B67">How it works</a>
+<a href="#library" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #525B67">Playbook library</a>
+<a href="#charge" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #525B67">Safety</a>
+<a href="#pricing" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #525B67">Pricing</a>
+<a href="#developers" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #525B67">Developers</a>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<a href="#signin" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 15px; color: #0E1116">Sign in</a>
+<a href="#start" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; font-size: 15px; font-weight: 600; color: #FFFFFF; background: #0E1116; border-radius: 11px">Start free
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+</a>
+</div>
+</nav>
+</header>
+
+<section id="top" style="padding: 104px 24px 0">
+<div style="max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; text-align: center">
+<a href="#library" style="display: inline-flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 6px 0 6px; font-size: 14px; color: #3A424D; background: #FFFFFF; border: 1px solid #E7E8EA; border-radius: 999px">
+<span style="font-size: 12px; font-weight: 600; color: #0E1116; background: #F5B43C; border-radius: 999px; padding: 3px 10px">New</span>
+The playbook library is open
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-right: 6px"><path d="M9 6l6 6-6 6"></path></svg>
+</a>
+<h1 style="margin: 36px 0 0; font-size: clamp(48px, 7.4vw, 104px); line-height: 0.98; letter-spacing: -0.045em; font-weight: 600; color: #0E1116; max-width: 1060px">Write a playbook.<br><span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.02em">Agents run it.</span></h1>
+<p style="margin: 32px 0 0; font-size: clamp(18px, 1.55vw, 21px); line-height: 1.55; color: #525B67; max-width: 680px">Pick one from the library or write your own in plain English, the way you’d brief a new colleague. Agents do the steps, your team signs off on what matters, and every step can explain itself.</p>
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 40px">
+<a href="#start" style="display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 28px; font-size: 17px; font-weight: 600; color: #FFFFFF; background: #0E1116; border-radius: 14px; box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset, 0 10px 24px -10px rgba(14,17,22,0.5)">Write your first playbook
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+</a>
+<a href="#library" style="display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 24px; font-size: 17px; font-weight: 500; color: #0E1116; background: #FFFFFF; border: 1px solid #DCDEE2; border-radius: 14px">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21V5M9 7h6"></path></svg>
+Browse the library
+</a>
+</div>
+<p style="margin: 18px 0 0; font-size: 14px; color: #69717D">First draft in minutes · Free to start · No code</p>
+</div>
+
+<div class="mw-pad" style="max-width: 1240px; margin: 80px auto 0; position: relative; padding: 56px 56px 0; box-sizing: border-box; background-color: #F4F2EC; background-image: radial-gradient(#D9D5CB 1px, transparent 1px); background-size: 22px 22px; border: 1px solid #ECE9E1; border-radius: 28px 28px 0 0; text-align: left">
+
+<div style="background: #FFFFFF; border: 1px solid #E2E3E6; border-bottom: 0; border-radius: 18px 18px 0 0; overflow: hidden; box-shadow: 0 1px 1px rgba(14,17,22,0.04), 0 24px 48px -20px rgba(14,17,22,0.22), 0 60px 120px -40px rgba(14,17,22,0.25)">
+<div style="display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid #EEEFF1">
+<span style="width: 11px; height: 11px; border-radius: 50%; background: #E3E4E7"></span><span style="width: 11px; height: 11px; border-radius: 50%; background: #E3E4E7"></span><span style="width: 11px; height: 11px; border-radius: 50%; background: #E3E4E7"></span>
+<span style="margin-left: 12px; font-size: 13px; color: #69717D">Client onboarding · playbook</span>
+</div>
+<div style="display: flex; flex-wrap: wrap">
+<div style="flex: 1 1 200px; min-width: 0; padding: 20px 14px; border-right: 1px solid #EEEFF1; background: #FAFAF9; display: flex; flex-direction: column; gap: 2px; font-size: 14px">
+<span style="display: flex; justify-content: space-between; padding: 9px 12px; border-radius: 9px; background: #FFFFFF; border: 1px solid #ECEDEF; font-weight: 600">Inbox <span style="font-size: 12px; color: #0E1116; background: #F5B43C; border-radius: 999px; padding: 1px 8px">3</span></span>
+<span style="padding: 9px 12px; color: #525B67">Playbooks</span>
+<span style="padding: 9px 12px; color: #525B67">Cases</span>
+<span style="padding: 9px 12px; color: #525B67">Records</span>
+<span style="padding: 9px 12px; color: #525B67">Library</span>
+<span style="margin-top: 18px; padding: 0 12px; font-size: 12px; color: #69717D">Ask MemWise</span>
+<span style="margin: 6px 6px 0; padding: 10px 12px; font-size: 13px; line-height: 1.45; color: #525B67; background: #FFFFFF; border: 1px solid #ECEDEF; border-radius: 10px">Add a step to chase the client after 3 days</span>
+</div>
+<div style="flex: 999 1 560px; min-width: 0; display: flex; flex-wrap: wrap">
+<div style="flex: 3 1 340px; min-width: 0; padding: 26px 28px 36px; border-right: 1px solid #EEEFF1">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px">
+<div style="font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Client onboarding</div>
+<span style="font-size: 13px; color: #69717D">From the library · edited by Priya</span>
+</div>
+<p style="margin: 10px 0 22px; font-size: 15px; line-height: 1.6; color: #525B67">Use this for every new limited company client. Our anti-money-laundering policy applies throughout.</p>
+<div style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; gap: 14px">
+<span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 24px; line-height: 1.1; color: #B9B2A2; width: 22px; flex: none">1</span>
+<div style="min-width: 0"><div style="font-weight: 600">Collect the details</div><div style="margin-top: 4px; font-size: 14px; line-height: 1.55; color: #525B67">Send the client our onboarding form. Ask for photo ID for every director and the certificate of incorporation.</div><div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px"><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #EEF0F3; color: #3A424D">Client, by link</span></div></div>
+</div>
+<div style="display: flex; gap: 14px">
+<span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 24px; line-height: 1.1; color: #B9B2A2; width: 22px; flex: none">2</span>
+<div style="min-width: 0"><div style="font-weight: 600">Read the documents</div><div style="margin-top: 4px; font-size: 14px; line-height: 1.55; color: #525B67">Fill in the form from what they uploaded, and note where each answer came from.</div><div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px"><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #E4EDFF; color: #1D4E9E">Agent</span></div></div>
+</div>
+<div style="display: flex; gap: 14px">
+<span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 24px; line-height: 1.1; color: #B9B2A2; width: 22px; flex: none">3</span>
+<div style="min-width: 0"><div style="font-weight: 600">Check the register</div><div style="margin-top: 4px; font-size: 14px; line-height: 1.55; color: #525B67">Compare the company with the public register and search the sanctions list for every director. Flag anything that doesn’t match.</div><div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px"><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #E4EDFF; color: #1D4E9E">Agent</span><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #EEF0F3; color: #3A424D">Must run the sanctions search</span></div></div>
+</div>
+<div style="display: flex; gap: 14px">
+<span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 24px; line-height: 1.1; color: #B9B2A2; width: 22px; flex: none">4</span>
+<div style="min-width: 0"><div style="font-weight: 600">Partner sign-off</div><div style="margin-top: 4px; font-size: 14px; line-height: 1.55; color: #525B67">Priya approves or sends it back. Remind her after two days.</div><div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px"><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #FFF2D6; color: #8A5300">Person</span></div></div>
+</div>
+<div style="display: flex; gap: 14px">
+<span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 24px; line-height: 1.1; color: #B9B2A2; width: 22px; flex: none">5</span>
+<div style="min-width: 0"><div style="font-weight: 600">Welcome pack</div><div style="margin-top: 4px; font-size: 14px; line-height: 1.55; color: #525B67">Send our welcome pack and engagement letter.</div><div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px"><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #EAF6EF; color: #1A6B43">Automatic</span><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #FFF2D6; color: #8A5300">Contacting clients: ask me first</span></div></div>
+</div>
+</div>
+</div>
+<div style="flex: 2 1 240px; min-width: 0; padding: 26px 20px; background: #FAFAF9; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #69717D">Running now</div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #ECEDEF; border-radius: 12px"><span style="font-size: 14px; font-weight: 500">Northwind Ltd</span><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #FFF2D6; color: #8A5300">Waiting on Priya</span></div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #ECEDEF; border-radius: 12px"><span style="font-size: 14px; font-weight: 500">Halvorsen &amp; Co</span><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #E4EDFF; color: #1D4E9E">Checking register</span></div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #ECEDEF; border-radius: 12px"><span style="font-size: 14px; font-weight: 500">Oakridge Partners</span><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #FFF2D6; color: #8A5300">Welcome pack held</span></div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #ECEDEF; border-radius: 12px"><span style="font-size: 14px; font-weight: 500">Brightwater LLP</span><span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; background: #EAF6EF; color: #1A6B43">Done</span></div>
+<div style="margin-top: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.5; color: #525B67; border: 1px dashed #CFD3D8; border-radius: 12px">Change a line of the playbook and every new case follows it. Cases already running keep their version.</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="mw-float" style="left: -28px; top: 470px; width: 270px; padding: 16px; background: #FFFFFF; border: 1px solid #E2E3E6; border-radius: 16px; box-shadow: 0 20px 40px -16px rgba(14,17,22,0.28); transform: rotate(-2deg)">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: #FFF2D6">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A5300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path></svg>
+</span>
+<div style="min-width: 0"><div style="font-size: 13px; color: #69717D">Held for your OK</div><div style="font-size: 14px; font-weight: 600">Welcome email to Oakridge</div></div>
+</div>
+<div style="margin-top: 12px; display: flex; gap: 8px">
+<button type="button" style="flex: 1; min-height: 44px; font-family: inherit; font-size: 14px; font-weight: 600; color: #FFFFFF; background: #0E1116; border: 0; border-radius: 10px; cursor: pointer">Send</button>
+<button type="button" style="flex: 1; min-height: 44px; font-family: inherit; font-size: 14px; color: #0E1116; background: #FFFFFF; border: 1px solid #DCDEE2; border-radius: 10px; cursor: pointer">Edit</button>
+</div>
+</div>
+
+<div class="mw-float" style="right: -24px; top: 490px; width: 280px; padding: 16px; background: #0E1116; color: #FFFFFF; border-radius: 16px; box-shadow: 0 24px 48px -16px rgba(14,17,22,0.45); transform: rotate(1.5deg)">
+<div style="font-size: 13px; color: #A9B1BC">You asked</div>
+<div style="margin-top: 4px; font-size: 15px; font-weight: 500">Why was Northwind flagged?</div>
+<div style="margin-top: 10px; font-size: 14px; line-height: 1.5; color: #D5DAE1">The director's surname differs between the form and the certificate. Everything else matched.</div>
+</div>
+
+<div class="mw-float" style="right: 64px; bottom: 36px; width: 250px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #FFFFFF; border: 1px solid #E2E3E6; border-radius: 999px; box-shadow: 0 16px 32px -14px rgba(14,17,22,0.3)">
+<span style="width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #E4EDFF; color: #1D4E9E; font-size: 13px; font-weight: 600">PS</span>
+<div style="min-width: 0"><div style="font-size: 14px; font-weight: 600">Priya approved</div><div style="font-size: 13px; color: #69717D">Halvorsen &amp; Co · just now</div></div>
+</div>
+</div>
+</section>
+
+<section style="padding: 56px 24px; border-top: 1px solid #ECE9E1; background: #FFFFFF">
+<div style="max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 18px 44px">
+<span style="font-size: 14px; color: #69717D">Works with the tools you already use</span>
+<span style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: #3A424D">Gmail</span>
+<span style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: #3A424D">Outlook</span>
+<span style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: #3A424D">Google Sheets</span>
+<span style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: #3A424D">Excel</span>
+<span style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: #3A424D">HubSpot</span>
+<span style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: #3A424D">Xero</span>
+<span style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: #3A424D">Slack</span>
+</div>
+</section>
+
+<section id="how" style="padding: 128px 24px">
+<div style="max-width: 1200px; margin: 0 auto">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 24px">
+<h2 style="margin: 0; font-size: clamp(36px, 4.6vw, 62px); line-height: 1.02; letter-spacing: -0.04em; font-weight: 600; max-width: 720px">From a page of instructions to <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.01em">work that gets done.</span></h2>
+<p style="margin: 0; font-size: 18px; line-height: 1.55; color: #525B67; max-width: 380px">No developer, no IT project. Nothing goes live until you've said yes.</p>
+</div>
+<div style="margin-top: 72px; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 40px 28px">
+<div>
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 64px; line-height: 1; color: #C9C3B5">01</div>
+<div style="margin-top: 18px; height: 1px; background: #E7E8EA"></div>
+<h3 style="margin: 22px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">Pick or write a playbook</h3>
+<p style="margin: 10px 0 0; font-size: 16px; line-height: 1.6; color: #525B67">Start from the library, paste the checklist you already use, or write it like a brief. A first draft takes minutes.</p>
+</div>
+<div>
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 64px; line-height: 1; color: #C9C3B5">02</div>
+<div style="margin-top: 18px; height: 1px; background: #E7E8EA"></div>
+<h3 style="margin: 22px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">Set the house rules</h3>
+<p style="margin: 10px 0 0; font-size: 16px; line-height: 1.6; color: #525B67">Say who does each step, what agents may do on their own, and what needs your sign-off.</p>
+</div>
+<div>
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 64px; line-height: 1; color: #C9C3B5">03</div>
+<div style="margin-top: 18px; height: 1px; background: #E7E8EA"></div>
+<h3 style="margin: 22px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">Connect your tools</h3>
+<p style="margin: 10px 0 0; font-size: 16px; line-height: 1.6; color: #525B67">Email, spreadsheets, your practice software, and the automations you already run. MemWise suggests how they fit; you confirm.</p>
+</div>
+<div>
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 64px; line-height: 1; color: #F5B43C">04</div>
+<div style="margin-top: 18px; height: 1px; background: #E7E8EA"></div>
+<h3 style="margin: 22px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">Dry run, then go live</h3>
+<p style="margin: 10px 0 0; font-size: 16px; line-height: 1.6; color: #525B67">Run it on a few example cases and see exactly what would happen before anything real does.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section id="library" style="padding: 128px 24px; background: #0E1116; color: #F2F4F7">
+<div style="max-width: 1200px; margin: 0 auto">
+<h2 style="margin: 0; font-size: clamp(36px, 4.6vw, 62px); line-height: 1.02; letter-spacing: -0.04em; font-weight: 600; max-width: 820px; color: #FFFFFF">Start from a playbook <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.01em">that already works.</span></h2>
+<p style="margin: 20px 0 0; font-size: 18px; line-height: 1.55; color: #A9B1BC; max-width: 600px">Written with people who do this work every day. Copy one, make it yours, and run it the same afternoon.</p>
+<div role="tablist" id="mw-tabs" aria-label="Teams" style="margin-top: 44px; display: flex; flex-wrap: wrap; gap: 8px">
+
+</div>
+<div style="margin-top: 32px; padding: 36px; background: #161A21; border: 1px solid #262C35; border-radius: 22px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 12px">
+<div style="font-size: 28px; font-weight: 600; letter-spacing: -0.02em; color: #FFFFFF" id="mw-title"></div>
+<div style="font-size: 15px; color: #A9B1BC" id="mw-note"></div>
+</div>
+<div style="margin-top: 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px" id="mw-steps">
+</div>
+<div style="margin-top: 24px; display: flex; flex-wrap: wrap; gap: 10px">
+<a href="#start" style="display: flex; align-items: center; min-height: 48px; padding: 0 20px; font-weight: 600; color: #0E1116; background: #FFFFFF; border-radius: 12px">Use this playbook</a>
+<a href="#start" style="display: flex; align-items: center; min-height: 48px; padding: 0 20px; font-weight: 500; color: #F2F4F7; border: 1px solid #333A45; border-radius: 12px">Preview it on a sample case</a>
+</div>
+</div>
+<div style="margin-top: 56px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 12px">
+<h3 style="margin: 0; font-size: 22px; font-weight: 600; color: #FFFFFF">More in the library</h3>
+<a href="#library" style="display: flex; align-items: center; min-height: 44px; font-weight: 600; color: #FFFFFF; text-decoration: underline; text-underline-offset: 4px">Browse all playbooks</a>
+</div>
+<div style="margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px">
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">Accounting</span><span style="font-size: 16px; font-weight: 600">Client onboarding</span><span style="font-size: 13px; color: #8D96A2">5 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">Accounting</span><span style="font-size: 16px; font-weight: 600">Annual AML refresh</span><span style="font-size: 13px; color: #8D96A2">4 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">Accounting</span><span style="font-size: 16px; font-weight: 600">Year-end records chase</span><span style="font-size: 13px; color: #8D96A2">6 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">Finance</span><span style="font-size: 16px; font-weight: 600">Supplier invoices</span><span style="font-size: 13px; color: #8D96A2">5 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">Finance</span><span style="font-size: 16px; font-weight: 600">Expense review</span><span style="font-size: 13px; color: #8D96A2">4 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">People</span><span style="font-size: 16px; font-weight: 600">New starter</span><span style="font-size: 13px; color: #8D96A2">5 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">People</span><span style="font-size: 16px; font-weight: 600">Leaver offboarding</span><span style="font-size: 13px; color: #8D96A2">6 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">Insurance</span><span style="font-size: 16px; font-weight: 600">Claim intake</span><span style="font-size: 13px; color: #8D96A2">5 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">Customer service</span><span style="font-size: 16px; font-weight: 600">Complaint handling</span><span style="font-size: 13px; color: #8D96A2">5 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">Property</span><span style="font-size: 16px; font-weight: 600">Tenant application</span><span style="font-size: 13px; color: #8D96A2">5 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">Legal</span><span style="font-size: 16px; font-weight: 600">Contract review</span><span style="font-size: 13px; color: #8D96A2">4 steps</span></a>
+<a href="#library" style="display: flex; flex-direction: column; gap: 6px; padding: 18px; color: #F2F4F7; background: #161A21; border: 1px solid #262C35; border-radius: 14px"><span style="font-size: 13px; color: #8D96A2">Procurement</span><span style="font-size: 16px; font-weight: 600">Supplier due diligence</span><span style="font-size: 13px; color: #8D96A2">6 steps</span></a>
+</div>
+</div>
+</section>
+
+<section id="charge" style="padding: 128px 24px">
+<div style="max-width: 1200px; margin: 0 auto">
+<h2 style="margin: 0; font-size: clamp(36px, 4.6vw, 62px); line-height: 1.02; letter-spacing: -0.04em; font-weight: 600; max-width: 820px">Clear rules. <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.01em">No surprises.</span></h2>
+<p style="margin: 20px 0 0; font-size: 18px; line-height: 1.55; color: #525B67; max-width: 620px">The rules you set are enforced on every step, even when an agent is unsure or reading something it shouldn't trust.</p>
+<div style="margin-top: 64px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px">
+
+<div class="mw-span2" style="min-width: 0; padding: 32px; background: #FFFFFF; border: 1px solid #E7E8EA; border-radius: 22px; box-shadow: 0 1px 1px rgba(14,17,22,0.03), 0 16px 40px -24px rgba(14,17,22,0.18)">
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">House rules for agents</h3>
+<p style="margin: 8px 0 24px; font-size: 16px; line-height: 1.55; color: #525B67; max-width: 520px">Every action is sorted by what it does in the world. You pick one rule for each kind.</p>
+<div style="display: flex; flex-direction: column; border: 1px solid #ECEDEF; border-radius: 14px; overflow: hidden">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 14px 18px; border-bottom: 1px solid #ECEDEF"><span style="flex: 1 1 200px; font-weight: 500">Look things up</span><span style="flex: 1 1 200px; font-size: 14px; color: #69717D">Find a client, read a document</span><span style="font-size: 13px; font-weight: 600; color: #1A6B43; background: #EAF6EF; border-radius: 999px; padding: 5px 12px">Always fine</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 14px 18px; border-bottom: 1px solid #ECEDEF"><span style="flex: 1 1 200px; font-weight: 500">Prepare</span><span style="flex: 1 1 200px; font-size: 14px; color: #69717D">Draft an email or a letter</span><span style="font-size: 13px; font-weight: 600; color: #1A6B43; background: #EAF6EF; border-radius: 999px; padding: 5px 12px">Always fine</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 14px 18px; border-bottom: 1px solid #ECEDEF"><span style="flex: 1 1 200px; font-weight: 500">Update records</span><span style="flex: 1 1 200px; font-size: 14px; color: #69717D">Change a client's details</span><span style="font-size: 13px; font-weight: 600; color: #1D4E9E; background: #E4EDFF; border-radius: 999px; padding: 5px 12px">Its own step only</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 14px 18px; border-bottom: 1px solid #ECEDEF; background: #FFFAEE"><span style="flex: 1 1 200px; font-weight: 500">Contact people</span><span style="flex: 1 1 200px; font-size: 14px; color: #69717D">Email a client</span><span style="font-size: 13px; font-weight: 600; color: #8A5300; background: #FFF2D6; border-radius: 999px; padding: 5px 12px">Ask me first</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 14px 18px"><span style="flex: 1 1 200px; font-weight: 500">Can't be undone</span><span style="flex: 1 1 200px; font-size: 14px; color: #69717D">Make a payment</span><span style="font-size: 13px; font-weight: 600; color: #9B1C1C; background: #FDE4E4; border-radius: 999px; padding: 5px 12px">Never</span></div>
+</div>
+</div>
+
+<div style="min-width: 0; padding: 32px; background: #0E1116; color: #F2F4F7; border-radius: 22px; display: flex; flex-direction: column">
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; color: #FFFFFF">Ask any step why</h3>
+<p style="margin: 8px 0 24px; font-size: 16px; line-height: 1.55; color: #A9B1BC">Every step keeps a record of what it saw and why it decided.</p>
+<div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
+<div style="align-self: flex-end; max-width: 85%; padding: 11px 15px; font-size: 15px; background: #FFFFFF; color: #0E1116; border-radius: 14px 14px 4px 14px">Why was this flagged?</div>
+<div style="max-width: 92%; padding: 13px 15px; font-size: 15px; line-height: 1.5; background: #1C222B; color: #D5DAE1; border-radius: 14px 14px 14px 4px">The surname on the form doesn't match page 2 of the certificate.</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px">
+<button type="button" style="min-height: 44px; padding: 0 14px; font-family: inherit; font-size: 14px; color: #F2F4F7; background: transparent; border: 1px solid #333A45; border-radius: 999px; cursor: pointer">It's a typo, carry on</button>
+</div>
+</div>
+</div>
+
+<div style="min-width: 0; padding: 32px; background: #F4F2EC; border: 1px solid #ECE9E1; border-radius: 22px">
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Waits patiently</h3>
+<p style="margin: 8px 0 24px; font-size: 16px; line-height: 1.55; color: #525B67">A case can wait days for a client and carry on exactly where it stopped. Nothing is done twice.</p>
+<div style="display: flex; flex-direction: column; gap: 10px; font-size: 14px">
+<div style="display: flex; justify-content: space-between; gap: 8px; padding: 10px 14px; background: #FFFFFF; border-radius: 10px"><span>Form sent to client</span><span style="color: #69717D">Mon</span></div>
+<div style="display: flex; justify-content: space-between; gap: 8px; padding: 10px 14px; background: #FFFFFF; border-radius: 10px"><span>Friendly reminder</span><span style="color: #69717D">Wed</span></div>
+<div style="display: flex; justify-content: space-between; gap: 8px; padding: 10px 14px; background: #FFFFFF; border: 1px solid #F5B43C; border-radius: 10px"><span style="font-weight: 600">Client replied, carrying on</span><span style="color: #69717D">Fri</span></div>
+</div>
+</div>
+
+<div style="min-width: 0; padding: 32px; background: #FFFFFF; border: 1px solid #E7E8EA; border-radius: 22px">
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Clients join by link</h3>
+<p style="margin: 8px 0 24px; font-size: 16px; line-height: 1.55; color: #525B67">No account to create. They fill in their part and drop their files, and the agent does the rest.</p>
+<div style="padding: 14px; border: 1px dashed #CFD3D8; border-radius: 12px; display: flex; align-items: center; gap: 12px; font-size: 14px; color: #525B67">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#525B67" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"></path><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"></path></svg>
+Drop your certificate of incorporation here
+</div>
+</div>
+
+<div style="min-width: 0; padding: 32px; background: #FFFFFF; border: 1px solid #E7E8EA; border-radius: 22px">
+<h3 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Every decision on record</h3>
+<p style="margin: 8px 0 24px; font-size: 16px; line-height: 1.55; color: #525B67">Who did what, when, under which rules. Ready for your auditor, without a spreadsheet.</p>
+<div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+<div style="display: flex; justify-content: space-between; gap: 8px"><span>Checked register</span><span style="color: #69717D">Agent · 09:12</span></div>
+<div style="display: flex; justify-content: space-between; gap: 8px"><span>Approved</span><span style="color: #69717D">Priya · 11:40</span></div>
+<div style="display: flex; justify-content: space-between; gap: 8px"><span>Welcome pack sent</span><span style="color: #69717D">System · 11:41</span></div>
+</div>
+</div>
+
+</div>
+</div>
+</section>
+
+<section style="padding: 120px 24px; background: #F4F2EC; border-top: 1px solid #ECE9E1; border-bottom: 1px solid #ECE9E1">
+<div style="max-width: 1000px; margin: 0 auto; text-align: center">
+<p style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: clamp(34px, 4.4vw, 58px); line-height: 1.12; letter-spacing: -0.01em; color: #0E1116">“If you can brief a new colleague, you can write a playbook.”</p>
+<p style="margin: 28px 0 0; font-size: 16px; color: #69717D">The whole idea, in one line</p>
+</div>
+</section>
+
+<section id="pricing" style="padding: 128px 24px">
+<div style="max-width: 1200px; margin: 0 auto">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 24px">
+<h2 style="margin: 0; font-size: clamp(36px, 4.6vw, 62px); line-height: 1.02; letter-spacing: -0.04em; font-weight: 600; max-width: 720px">Start free. <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.01em">Grow into it.</span></h2>
+<p style="margin: 0; font-size: 18px; line-height: 1.55; color: #525B67; max-width: 380px">The same playbooks run everywhere, so you never rebuild when you move up.</p>
+</div>
+<div style="margin-top: 56px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: stretch">
+<div style="padding: 32px; background: #FFFFFF; border: 1px solid #E7E8EA; border-radius: 22px; display: flex; flex-direction: column; gap: 14px">
+<div style="font-size: 16px; font-weight: 600">Free</div>
+<div style="font-size: 44px; font-weight: 600; letter-spacing: -0.04em">Free</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #525B67">For one person writing their first playbooks. In the browser or the desktop app.</p>
+<a href="#start" style="margin-top: auto; display: flex; align-items: center; justify-content: center; min-height: 50px; font-weight: 600; border: 1px solid #DCDEE2; border-radius: 12px">Start free</a>
+</div>
+<div style="padding: 32px; background: #0E1116; color: #F2F4F7; border-radius: 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 30px 60px -30px rgba(14,17,22,0.55)">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><span style="font-size: 16px; font-weight: 600; color: #FFFFFF">Team</span><span style="font-size: 12px; font-weight: 600; color: #0E1116; background: #F5B43C; border-radius: 999px; padding: 4px 10px">Most popular</span></div>
+<div style="font-size: 44px; font-weight: 600; letter-spacing: -0.04em; color: #FFFFFF">[YOUR PRICE]</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #A9B1BC">Shared playbooks and inbox, client links, approvals, and a full record of every decision.</p>
+<a href="#start" style="margin-top: auto; display: flex; align-items: center; justify-content: center; min-height: 50px; font-weight: 600; color: #0E1116; background: #FFFFFF; border-radius: 12px">Try Team free</a>
+</div>
+<div style="padding: 32px; background: #FFFFFF; border: 1px solid #E7E8EA; border-radius: 22px; display: flex; flex-direction: column; gap: 14px">
+<div style="font-size: 16px; font-weight: 600">Self-hosted</div>
+<div style="font-size: 44px; font-weight: 600; letter-spacing: -0.04em">Open source</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #525B67">For organisations whose IT team runs it on their own servers, with their own data.</p>
+<a href="#developers" style="margin-top: auto; display: flex; align-items: center; justify-content: center; min-height: 50px; font-weight: 600; border: 1px solid #DCDEE2; border-radius: 12px">Read the setup guide</a>
+</div>
+</div>
+<div id="developers" style="margin-top: 16px; padding: 24px 28px; background: #FFFFFF; border: 1px solid #E7E8EA; border-radius: 18px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<div style="min-width: 0; flex: 1 1 420px"><span style="font-weight: 600">For developers and IT:</span> <span style="color: #525B67">playbooks are plain files you can review in git, cases run durably on Postgres, any AI model can sit behind them, and every action passes one set of house rules.</span></div>
+<a href="#devdocs" style="display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 600">Developer docs
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+</a>
+</div>
+</div>
+</section>
+
+<section id="start" style="padding: 0 24px 96px">
+<div style="max-width: 1200px; margin: 0 auto; padding: 88px 40px; box-sizing: border-box; background-color: #0E1116; background-image: radial-gradient(#252B34 1px, transparent 1px); background-size: 22px 22px; border-radius: 28px; text-align: center; display: flex; flex-direction: column; align-items: center">
+<h2 style="margin: 0; font-size: clamp(36px, 5vw, 68px); line-height: 1.02; letter-spacing: -0.04em; font-weight: 600; color: #FFFFFF; max-width: 860px">What's the first playbook <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.01em">you'd write?</span></h2>
+<p style="margin: 22px 0 0; font-size: 18px; line-height: 1.55; color: #A9B1BC">Describe the work in a sentence or two. We'll draft the playbook for you to check.</p>
+<form style="margin-top: 36px; width: 100%; max-width: 760px; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; box-sizing: border-box; background: #FFFFFF; border-radius: 18px">
+<label for="playbook-input-4" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Describe the work</label>
+<input id="playbook-input-4" type="text" placeholder="When a supplier sends an invoice, match it to the order and…" style="flex: 1 1 340px; min-width: 0; min-height: 52px; padding: 0 16px; font-family: inherit; font-size: 16px; color: #0E1116; background: transparent; border: 0; box-sizing: border-box">
+<button type="button" style="flex: 0 0 auto; min-height: 52px; padding: 0 24px; font-family: inherit; font-size: 16px; font-weight: 600; color: #0E1116; background: #F5B43C; border: 0; border-radius: 12px; cursor: pointer">Draft my playbook</button>
+</form>
+<p style="margin: 18px 0 0; font-size: 14px; color: #8D96A2">First draft in minutes · Free to start · No code</p>
+</div>
+</section>
+
+<footer style="padding: 0 24px 48px">
+<div style="max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 48px; justify-content: space-between; padding-top: 48px; border-top: 1px solid #E7E8EA">
+<div style="flex: 1 1 240px; min-width: 0">
+<div style="font-weight: 600; font-size: 18px; letter-spacing: -0.02em">MemWise</div>
+<p style="margin: 10px 0 0; font-size: 14px; line-height: 1.6; color: #69717D; max-width: 280px">Write a playbook. Agents run it.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 32px; flex: 2 1 480px; min-width: 0; font-size: 14px">
+<div style="display: flex; flex-direction: column; gap: 10px"><span style="font-weight: 600">Product</span><a href="#how" style="color: #525B67">How it works</a><a href="#library" style="color: #525B67">Playbooks</a><a href="#pricing" style="color: #525B67">Pricing</a></div>
+<div style="display: flex; flex-direction: column; gap: 10px"><span style="font-weight: 600">Resources</span><a href="#library" style="color: #525B67">Playbook library</a><a href="#guides" style="color: #525B67">Guides</a><a href="#security" style="color: #525B67">Security</a></div>
+<div style="display: flex; flex-direction: column; gap: 10px"><span style="font-weight: 600">Developers</span><a href="#devdocs" style="color: #525B67">Docs</a><a href="#github" style="color: #525B67">GitHub</a><a href="#oss" style="color: #525B67">Open source</a></div>
+</div>
+</div>
+<div style="max-width: 1200px; margin: 40px auto 0; font-size: 13px; color: #69717D">© 2026 MemWise</div>
+</footer>
+
+</div>
+<script>
+(function(){
+var accent='#F5B43C';
+const kinds = {
+  outside: { bg: '#2A3039', fg: '#D5DAE1' },
+  agent: { bg: '#1D3557', fg: '#BFD6FF' },
+  person: { bg: accent, fg: '#0E1116' },
+  auto: { bg: '#1E3A2D', fg: '#B5E8CC' }
+};
+const cases = [
+  { label: 'Accounting', title: 'Client onboarding', note: 'The partner sees one flag, not fourteen fields.', steps: [
+    ['outside', 'Client', 'Fills in the onboarding form and drops their documents'],
+    ['agent', 'Agent', 'Reads the ID and company documents'],
+    ['agent', 'Agent', 'Checks the company register'],
+    ['person', 'Partner', 'Approves or sends back'],
+    ['auto', 'Automatic', 'Sends the engagement letter']] },
+  { label: 'Finance', title: 'Supplier invoices', note: 'Only the mismatches reach a person.', steps: [
+    ['auto', 'Automatic', 'Picks up invoices from the shared inbox'],
+    ['agent', 'Agent', 'Matches each one to a purchase order'],
+    ['agent', 'Agent', 'Drafts a query for anything that doesn’t match'],
+    ['person', 'Finance lead', 'Approves the payment'],
+    ['auto', 'Automatic', 'Adds it to the next payment run']] },
+  { label: 'People', title: 'New starters', note: 'Day one is ready before they arrive.', steps: [
+    ['outside', 'New starter', 'Signs the offer and uploads documents'],
+    ['agent', 'Agent', 'Checks right to work'],
+    ['agent', 'Agent', 'Prepares account and equipment requests'],
+    ['person', 'Manager', 'Signs off the day-one plan'],
+    ['auto', 'Automatic', 'Sends the welcome email']] },
+  { label: 'Claims', title: 'Claim intake', note: 'Adjusters decide with the evidence laid out.', steps: [
+    ['outside', 'Customer', 'Submits the claim and evidence'],
+    ['agent', 'Agent', 'Reads the photos, receipts and reports'],
+    ['agent', 'Agent', 'Checks them against the policy wording'],
+    ['person', 'Adjuster', 'Makes the decision'],
+    ['agent', 'Agent', 'Drafts the letter for review']] },
+  { label: 'Property', title: 'Tenant applications', note: 'References chased without anyone chasing.', steps: [
+    ['outside', 'Applicant', 'Applies and names their referees'],
+    ['agent', 'Agent', 'Requests and chases the references'],
+    ['agent', 'Agent', 'Runs the affordability check'],
+    ['person', 'Landlord', 'Approves the tenant'],
+    ['auto', 'Automatic', 'Sends the tenancy agreement']] }
+];
+
+var active=0;
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function render(){
+  var t=document.getElementById('mw-tabs');
+  t.innerHTML=cases.map(function(c,i){var on=i===active;return '<button type="button" role="tab" aria-selected="'+on+'" data-i="'+i+'" style="min-height:44px;padding:0 18px;font-family:inherit;font-size:15px;font-weight:500;cursor:pointer;border-radius:999px;border:1px solid '+(on?'#FFFFFF':'#333A45')+';background:'+(on?'#FFFFFF':'transparent')+';color:'+(on?'#0E1116':'#D5DAE1')+'">'+esc(c.label)+'</button>';}).join('');
+  var c=cases[active];
+  document.getElementById('mw-title').textContent=c.title;
+  document.getElementById('mw-note').textContent=c.note;
+  document.getElementById('mw-steps').innerHTML=c.steps.map(function(s,i){var k=kinds[s[0]];return '<div style="padding:18px;background:#0E1116;border:1px solid #262C35;border-radius:14px;display:flex;flex-direction:column;gap:14px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:\'Instrument Serif\',Georgia,serif;font-size:26px;line-height:1;color:#5E6672">0'+(i+1)+'</span><span style="font-size:12px;font-weight:600;border-radius:999px;padding:4px 10px;background:'+k.bg+';color:'+k.fg+'">'+esc(s[1])+'</span></div><div style="font-size:16px;line-height:1.45;color:#F2F4F7">'+esc(s[2])+'</div></div>';}).join('');
+}
+document.getElementById('mw-tabs').addEventListener('click',function(e){var b=e.target.closest('button[data-i]');if(b){active=+b.getAttribute('data-i');render();}});
+render();
+})();
+</script>
+</body>
+</html>
