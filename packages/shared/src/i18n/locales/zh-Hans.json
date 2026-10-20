@@ -1092,6 +1092,7 @@
   "memwise.result.dismiss.unsupported": "只有提醒可以标记为已读。",
   "memwise.result.draft.conflict": "自此草稿创建以来，正在使用的手册已更改。",
   "memwise.result.draft.errors": "草稿有需要先修正的问题。",
+  "memwise.result.draft.in_chat": "此草稿正在聊天中创建。请在那里完成。",
   "memwise.result.draft.in_review": "此草稿已在等待审核。",
   "memwise.result.draft.missing": "未找到该草稿。",
   "memwise.result.draft.not_checked": "请先检查草稿。",

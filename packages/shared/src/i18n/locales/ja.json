@@ -1092,6 +1092,7 @@
   "memwise.result.dismiss.unsupported": "既読にできるのはリマインダーだけです。",
   "memwise.result.draft.conflict": "この下書きの作成後に、使用中のプレイブックが変更されました。",
   "memwise.result.draft.errors": "下書きに先に直すべき問題があります。",
+  "memwise.result.draft.in_chat": "この下書きはチャットで作成中です。そちらで仕上げてください。",
   "memwise.result.draft.in_review": "この下書きはすでにレビュー待ちです。",
   "memwise.result.draft.missing": "その下書きは見つかりませんでした。",
   "memwise.result.draft.not_checked": "先に下書きをチェックしてください。",

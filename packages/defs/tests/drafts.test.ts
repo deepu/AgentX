@@ -130,8 +130,6 @@ describe('drafts', () => {
       [WORK]: BASE[WORK]!.replace('allowed: [lookup.customer]', 'allowed: [lookup.customer, mail.send]\n  required: [lookup.customer]'),
       'workflows/demo/case.yaml': BASE['workflows/demo/case.yaml']!.replace('  name: Text\n', '  name: Text\n  email: Email\n'),
     }, cli);
-    // A live change to a file the draft didn't touch doesn't show.
-    writeFileSync(join(root, 'workflows/demo/steps/review.md'), `${BASE['workflows/demo/steps/review.md']}More.\n`);
     const diff = await diffDraft(root, meta.id);
     expect(diff.files.map((f) => [f.path, f.status])).toEqual([
       ['workflows/demo/case.yaml', 'modified'],
@@ -162,6 +160,29 @@ describe('drafts', () => {
     const again = await diffDraft(root, meta.id);
     expect(again.conflicts).toEqual([WORK]);
     expect(again.files.find((f) => f.path === WORK)?.conflict).toBe(true);
+  });
+
+  test('a live change to a playbook file the draft did not touch is a conflict too (the draft is out of date)', async () => {
+    const { root, meta } = await changeDraft();
+    await writeDraftFiles(root, meta.id, { [WORK]: 'draft\n' }, cli);
+    writeFileSync(join(root, 'workflows/demo/steps/review.md'), `${BASE['workflows/demo/steps/review.md']}More.\n`);
+    const diff = await diffDraft(root, meta.id);
+    expect(diff.files.map((f) => f.path)).not.toContain('workflows/demo/steps/review.md');
+    expect(diff.conflicts).toEqual(['workflows/demo/steps/review.md']);
+    await expect(applyDraft(root, meta.id)).rejects.toBeInstanceOf(DraftConflictError);
+  });
+
+  test('of two drafts made from the same version, the second is refused once the first is published', async () => {
+    const root = makeProject();
+    const a = (await changeDraft(root)).meta;
+    const b = (await changeDraft(root)).meta;
+    await writeDraftFiles(root, a.id, { [WORK]: 'from a\n' }, cli);
+    await writeDraftFiles(root, b.id, { 'workflows/demo/steps/review.md': 'from b\n' }, cli);
+    expect((await applyDraft(root, a.id)).version).toBe(2);
+    const err = await applyDraft(root, b.id).catch((e) => e);
+    expect(err).toBeInstanceOf(DraftConflictError);
+    expect((err as DraftConflictError).paths).toEqual([WORK, WF]);
+    expect(readFileSync(join(root, 'workflows/demo/steps/review.md'), 'utf8')).toBe(BASE['workflows/demo/steps/review.md']!);
   });
 
   test('a create draft diffs as added files with no structure until it loads', async () => {

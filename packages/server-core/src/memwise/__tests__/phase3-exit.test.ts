@@ -325,6 +325,22 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     expect(inReview.stage).toBe('in_review')
     expect(await api.call<any>(staff, ch.DRAFTS_SUBMIT, letterDraft)).toMatchObject({ applied: false, code: 'draft.in_review' })
 
+    // The manager asks for a change first: the case goes back to the interview, and reopening the
+    // chat from the inbox brings the same chat back with the reviewer's comment passed on.
+    const review = await inboxItem(manager, 'decision', (i) => i.caseId === build.caseId)
+    const comment = 'Say which partner signs the letter.'
+    expect(await api.call<any>(manager, ch.INBOX_SUBMIT, { stepRunId: review.stepRunId, outcome: 'changes_requested', comment })).toEqual({ applied: true })
+    const again = await inboxItem(staff, 'conversation', (i) => i.caseId === build.caseId && i.stepRunId !== build.stepRunId)
+    const sentBefore = sessions.sent.length
+    expect(await api.call<any>(staff, ch.CHAT_OPEN, { anchor: { kind: 'step', id: again.stepRunId } })).toEqual({ sessionId: build.sessionId })
+    const passedOn = sessions.sent.slice(sentBefore).find((m) => m.sessionId === build.sessionId)
+    expect(passedOn).toMatchObject({ hidden: true })
+    expect(passedOn!.message).toContain(comment)
+    expect(passedOn!.message).toContain('Ravi')
+    expect(await tool('playbook_finish', { summary: 'The partner who signs is the one who approves it.', rationale: 'Answered the review.' }))
+      .toMatchObject({ applied: true, draftId: letterDraft, outcome: 'drafted' })
+    await caseAt(manager, build.caseId, 'review')
+
     await managerApproves(build.caseId)
     const list = await until('engagement-letter listed', () => api.call(staff, ch.PLAYBOOKS_LIST), (l: { id: string }[]) => l.some((p) => p.id === 'engagement-letter'))
     expect(list.find((p: { id: string }) => p.id === 'engagement-letter')).toMatchObject({ title: 'Engagement letter' })

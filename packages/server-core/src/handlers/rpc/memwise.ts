@@ -22,6 +22,7 @@ import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../
 import type { DraftFacts, DtoContext } from '../../memwise/dto'
 import {
   authoringOf, conversationBlock, conversationState, draftForRun, isConversationStep, kickoffMessage, personName, plainValues,
+  sendBackNote, sentBackMessage,
   type KernelWithAuthoring,
 } from '../../memwise/conversation'
 
@@ -105,6 +106,7 @@ const DRAFT_MESSAGES: Record<string, string> = {
   conflict: 'The live playbook changed since this draft was made; look at the conflicting files first.',
   write_failed: 'The draft could not be changed.',
   in_review: 'This draft is already waiting for approval.',
+  in_chat: 'This draft is being built in a chat; finish it there.',
   errors: 'Fix the errors in the draft before sending it for review.',
   submit_failed: 'The draft could not be sent for review.',
   create_failed: 'The draft could not be made.',
@@ -373,7 +375,22 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     for (const id of attempts) {
       for (const a of await store.forAnchor(svc.kernel.pool, 'step', id, actor.personId)) {
         if (!(await deps.sessionManager.getSession(a.chatId).catch(() => null))) continue
-        if (id !== s.stepRunId) await store.set(svc.kernel.pool, { chatId: a.chatId, anchorKind: 'step', anchorId: s.stepRunId, personId: actor.personId })
+        if (id !== s.stepRunId) {
+          // A new attempt after the review sent it back: re-anchor the chat, refresh its context,
+          // and pass the reviewer's comment on so the person needn't repeat it.
+          await store.set(svc.kernel.pool, { chatId: a.chatId, anchorKind: 'step', anchorId: s.stepRunId, personId: actor.personId })
+          const who = (await personName(svc, actor.personId)) ?? 'the person in this chat'
+          deps.sessionManager.setMemwiseContext(a.chatId, {
+            anchor: { kind: 'step', id: s.stepRunId }, conversation: true, block: await conversationBlock(svc, s, actor, who), personName: who,
+          })
+          const note = sendBackNote(s.view, s.stepRunId, s.stepId)
+          if (note) {
+            const by = (await personName(svc, note.by)) ?? undefined
+            deps.sessionManager.sendMessage(a.chatId, sentBackMessage(note, by), undefined, undefined, { hidden: true }).catch((e: unknown) => {
+              log.warn(`[memwise] chat ${a.chatId}: passing the review's comment on failed: ${errText(e)}`)
+            })
+          }
+        }
         return a.chatId
       }
     }
@@ -859,7 +876,14 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (!got) return { applied: false, code: 'draft.missing', message: DRAFT_MESSAGES.missing }
       if (got.meta.status !== 'open') return { applied: false, code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
       const facts = await draftLookup(svc, actor, c).facts(got.meta, { got })
-      if (facts.run?.status === 'active') return { applied: false, code: 'draft.in_review', message: DRAFT_MESSAGES.in_review, runId: facts.run.runId, caseId: facts.run.caseId }
+      if (facts.run?.status === 'active') {
+        // Still in its chat (the meta playbook's conversation step), or past it on the way to review.
+        const state = facts.run.state
+        const inChat = META_PLAYBOOKS.some((id) => isConversationStep(c.project.workflows[id]?.steps[state]))
+        return inChat
+          ? { applied: false, code: 'draft.in_chat', message: DRAFT_MESSAGES.in_chat, runId: facts.run.runId, caseId: facts.run.caseId }
+          : { applied: false, code: 'draft.in_review', message: DRAFT_MESSAGES.in_review, runId: facts.run.runId, caseId: facts.run.caseId }
+      }
       const pending = got.edits.filter((e) => e.status === 'pending').length
       if (pending) return { applied: false, code: 'draft.pending_edits', message: `${DRAFT_MESSAGES.pending_edits} (${pending})` }
       const errors = (await authoring.quickCheck(draftId)).filter((x) => x.severity === 'error')

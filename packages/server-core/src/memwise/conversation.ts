@@ -172,6 +172,17 @@ export async function conversationBlock(svc: MemwiseService, s: ConversationStat
   return lines.join('\n')
 }
 
+/** The hidden turn that tells a reopened chat its draft came back from review, and why. */
+export function sentBackMessage(note: { outcome: string; text: string }, by: string | undefined): string {
+  return [
+    `The review sent the draft back (${note.outcome}). ${by ?? 'The reviewer'} wrote:`,
+    '',
+    `> ${note.text.replace(/\n/g, '\n> ')}`,
+    '',
+    'Briefly tell me what they asked for, then address it in the draft and check it again.',
+  ].join('\n')
+}
+
 /** The short hidden turn that makes the agent speak first. */
 export function kickoffMessage(kind: 'conversation' | 'explain'): string {
   return kind === 'conversation'

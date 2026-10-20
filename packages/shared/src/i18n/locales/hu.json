@@ -1092,6 +1092,7 @@
   "memwise.result.dismiss.unsupported": "Csak az emlékeztetők jelölhetők olvasottnak.",
   "memwise.result.draft.conflict": "Az élő playbook módosult, mióta ez a piszkozat készült.",
   "memwise.result.draft.errors": "A piszkozatban előbb javítandó problémák vannak.",
+  "memwise.result.draft.in_chat": "Ez a vázlat egy csevegésben készül. Ott fejezze be.",
   "memwise.result.draft.in_review": "Ez a vázlat már ellenőrzésre vár.",
   "memwise.result.draft.missing": "A piszkozat nem található.",
   "memwise.result.draft.not_checked": "Előbb ellenőrizze a piszkozatot.",

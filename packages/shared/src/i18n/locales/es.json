@@ -1092,6 +1092,7 @@
   "memwise.result.dismiss.unsupported": "Solo los recordatorios se pueden marcar como leídos.",
   "memwise.result.draft.conflict": "El playbook en uso cambió desde que se creó este borrador.",
   "memwise.result.draft.errors": "El borrador tiene problemas que hay que corregir primero.",
+  "memwise.result.draft.in_chat": "Este borrador se está creando en un chat. Termínalo allí.",
   "memwise.result.draft.in_review": "Este borrador ya está esperando revisión.",
   "memwise.result.draft.missing": "No se encontró ese borrador.",
   "memwise.result.draft.not_checked": "Comprueba primero el borrador.",

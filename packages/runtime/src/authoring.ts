@@ -6,7 +6,7 @@ import { actorLabel, PgVersionStore } from '@memwise/db';
 import {
   applyDraft, checkProject, createDraft, describeStructuralDiff, diffDraft, discardDraftEdit, DraftConflictError, draftContentHash,
   draftDir, DraftStaleError, exampleToYaml, listDrafts, loadDraft, loadWorkflow, readDraft, SCALAR_TYPES, setDraftEditStatus,
-  updateDraftMeta, writeDraftFiles, writeDraftReport,
+  updateDraftMeta, WORKFLOW_ID_PATTERN, writeDraftFiles, writeDraftReport,
   type CheckEnvironment, type Diagnostic, type DraftReport, type ExampleCase, type ExampleOutcome, type Impact,
   type ImpactTool, type PastCaseOutcome, type ProjectDefs, type StructuralDiff, type WorkflowDef,
 } from '@memwise/defs';
@@ -24,7 +24,7 @@ import {
   CHANGE_PLAYBOOK, CREATE_PLAYBOOK, type Actor, type Authoring, type KernelChange, type RunRecord, type StartRunInput, type TestRunner,
   type Vocabulary,
 } from './types.ts';
-import { pathOf } from './views.ts';
+import { maySee, pathOf } from './views.ts';
 
 export interface AuthoringDeps {
   projectDir: string;
@@ -173,7 +173,10 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       try {
         const example = await deps.caseToExample(r.case_id, { name: `${PAST_PREFIX}${r.case_id.replace(/^case_/, '').slice(-8).toLowerCase()}` });
         const transitions = await getTransitions(deps.pool, r.id);
-        const firstText = Object.values((r.values ?? {}) as Record<string, { value: unknown }>).map((v) => v.value).find((v) => typeof v === 'string');
+        // A title from the first text value anyone may see; restricted fields never reach the report.
+        const fields = live.caseType.fields;
+        const firstText = Object.entries((r.values ?? {}) as Record<string, { value: unknown }>)
+          .filter(([k]) => !fields[k]?.access?.length).map(([, v]) => v.value).find((v) => typeof v === 'string');
         out.push({ caseId: r.case_id as string, title: (firstText as string | undefined) ?? r.case_id, livePath: pathOf(transitions[0]?.from ?? live.start, transitions), example });
       } catch { /* a case that can't be turned into a replay is left out */ }
     }
@@ -321,6 +324,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async read({ draftId, workflowId, path }) {
+      // The id becomes a folder path: a chat must not list folders outside the project with it.
+      if (workflowId !== undefined && !WORKFLOW_ID_PATTERN.test(workflowId)) throw new Error(`\`${workflowId}\` is not a playbook id`);
       let base = root;
       let workflow = workflowId;
       if (draftId) {
@@ -460,11 +465,18 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       const runId = newRunId();
       const title = input.title ?? `Change ${live.title ?? live.id}`;
       const meta = await createDraft(root, { workflowId: input.workflowId, title, kind: 'change', createdBy: by.personId, runId });
+      let started;
+      try {
+        started = await deps.startRun({
+          workflowId: CHANGE_PLAYBOOK, runId, by: by.personId,
+          case: { playbook: input.workflowId, title, draft: meta.id, ...(input.request ? { request: input.request } : {}) },
+        });
+      } catch (e) {
+        // No change run: don't leave an open draft behind that points at one.
+        await updateDraftMeta(root, meta.id, { status: 'discarded' }).catch(() => undefined);
+        throw e;
+      }
       emit(meta.id);
-      const started = await deps.startRun({
-        workflowId: CHANGE_PLAYBOOK, runId, by: by.personId,
-        case: { playbook: input.workflowId, title, draft: meta.id, ...(input.request ? { request: input.request } : {}) },
-      });
       return { ...started, stepRunId: await waitingConversation(started.runId) };
     },
 
@@ -485,9 +497,16 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async exampleFromCase(input, by) {
+      // An example replays the whole case (its values, tool results and model turns) into a file
+      // anyone building playbooks can read: only someone who may see every field of it may save it.
+      const { rows: runRows } = await deps.pool.query(
+        `select r.workflow_id, c.values from mw.runs r join mw.cases c on c.id = r.case_id where r.case_id = $1 order by r.created_at limit 1`, [input.caseId]);
+      const caseWorkflow = runRows[0] ? await liveWorkflow(runRows[0].workflow_id as string) : undefined;
+      const fields = caseWorkflow?.caseType.fields ?? {};
+      const hidden = Object.keys((runRows[0]?.values ?? {}) as Record<string, unknown>).filter((k) => !maySee(by, fields[k]));
+      if (hidden.length) throw new Error(`This case has fields you can't see (${hidden.join(', ')}), so only someone who can see them can save it as an example`);
       const example = await deps.caseToExample(input.caseId, { ...(input.name ? { name: input.name } : {}), ...(input.correction ? { correction: input.correction } : {}) });
-      const { rows } = await deps.pool.query(`select workflow_id from mw.runs where case_id = $1 order by created_at limit 1`, [input.caseId]);
-      const workflowId = rows[0]?.workflow_id as string;
+      const workflowId = runRows[0]?.workflow_id as string;
       let draftId = input.draftId;
       if (draftId) {
         const { meta } = await requireDraft(draftId);

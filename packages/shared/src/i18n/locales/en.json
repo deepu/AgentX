@@ -1092,6 +1092,7 @@
   "memwise.result.dismiss.unsupported": "Only reminders can be marked as read.",
   "memwise.result.draft.conflict": "The live playbook changed since this draft was made.",
   "memwise.result.draft.errors": "The draft has problems to fix first.",
+  "memwise.result.draft.in_chat": "This draft is being built in a chat. Finish it there.",
   "memwise.result.draft.in_review": "This draft is already waiting for review.",
   "memwise.result.draft.missing": "That draft was not found.",
   "memwise.result.draft.not_checked": "Check the draft first.",

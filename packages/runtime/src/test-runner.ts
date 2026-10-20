@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import pg from 'pg';
 import type { TestRunner } from './types.ts';
 
 export interface TestRunnerOptions {
@@ -75,8 +76,30 @@ export function defaultTestRunner(opts: TestRunnerOptions = {}): TestRunner {
       return [{ name: '(example cases)', status: 'fail', differences: [`the example cases could not run (exit ${code ?? 'killed'})`], reason: tail || 'no output' }];
     } finally {
       if (tmp) rmSync(tmp, { recursive: true, force: true });
+      if (adminUrl) await dropAbandonedExampleDatabases(adminUrl, opts.timeoutMs ?? 600_000).catch(() => undefined);
     }
   };
+}
+
+/**
+ * A CLI killed on timeout never drops its example databases (`mw_example_<base36 time>_<hex>`).
+ * Anything older than the timeout (and a minute) can't belong to a run still going: drop it.
+ */
+export async function dropAbandonedExampleDatabases(adminUrl: string, timeoutMs: number): Promise<string[]> {
+  const client = new pg.Client({ connectionString: adminUrl });
+  await client.connect();
+  try {
+    const cutoff = Date.now() - timeoutMs - 60_000;
+    const { rows } = await client.query<{ datname: string }>(`select datname from pg_database where datname like 'mw\\_example\\_%'`);
+    const old = rows.map((r) => r.datname).filter((name) => {
+      const at = parseInt(name.split('_')[2] ?? '', 36);
+      return Number.isFinite(at) && at < cutoff;
+    });
+    for (const name of old) await client.query(`drop database if exists "${name.replace(/"/g, '""')}" with (force)`).catch(() => undefined);
+    return old;
+  } finally {
+    await client.end();
+  }
 }
 
 function run(command: string[], args: string[], env: Record<string, string>, timeoutMs: number) {

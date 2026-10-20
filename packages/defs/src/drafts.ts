@@ -32,7 +32,7 @@ export class DraftStaleError extends Error {
 }
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
-const WORKFLOW_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+export const WORKFLOW_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 const hashOf = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 
@@ -390,6 +390,29 @@ async function changedFiles(root: string, dir: string, meta: DraftMeta): Promise
   return out;
 }
 
+/**
+ * Files of the draft's playbook that changed live since the draft was made, whether or not the
+ * draft touched them: once another draft of the same playbook is published, this one was made
+ * from an older version and would publish an unreviewed mix of both under the same number.
+ */
+async function playbookMovedOn(root: string, meta: DraftMeta): Promise<string[]> {
+  const prefix = `workflows/${meta.workflowId}/`;
+  const live = (await listFiles(join(resolve(root), 'workflows', meta.workflowId))).map((f) => prefix + f);
+  const paths = [...new Set([...Object.keys(meta.base).filter((p) => p.startsWith(prefix)), ...live])].sort();
+  const out: string[] = [];
+  for (const path of paths) {
+    const full = join(resolve(root), path);
+    const liveHash = (await isFile(full)) ? hashOf(await readFile(full)) : undefined;
+    if (liveHash !== meta.base[path]) out.push(path);
+  }
+  return out;
+}
+
+/** Conflicts: changed files whose live copy moved on, and any file of the playbook that did. */
+async function conflictsOf(root: string, meta: DraftMeta, changes: PendingChange[]): Promise<string[]> {
+  return [...new Set([...changes.filter((c) => c.conflict).map((c) => c.path), ...(await playbookMovedOn(root, meta))])].sort();
+}
+
 /** What publishing the draft would change in the live project: file diffs, structure, conflicts. */
 export async function diffDraft(root: string, id: string, opts: { context?: number } = {}): Promise<DraftDiff> {
   const { dir, meta } = await requireMeta(root, id);
@@ -402,7 +425,7 @@ export async function diffDraft(root: string, id: string, opts: { context?: numb
     hunks: lineDiff(c.live ?? '', c.draft ?? '', opts.context ?? 3),
     ...(c.conflict ? { conflict: true } : {}),
   }));
-  const diff: DraftDiff = { draftId: id, workflowId: meta.workflowId, files, conflicts: changes.filter((c) => c.conflict).map((c) => c.path) };
+  const diff: DraftDiff = { draftId: id, workflowId: meta.workflowId, files, conflicts: await conflictsOf(root, meta, changes) };
   const draft = await loadProject(dir);
   const after = draft.project.workflows[meta.workflowId];
   if (after) {
@@ -419,9 +442,9 @@ export async function diffDraft(root: string, id: string, opts: { context?: numb
 
 /**
  * Publishes a draft: copies the files it changed over the live ones (deleting those it deleted)
- * and marks it published. Refuses with DraftConflictError, changing nothing, when a live file
- * changed since the draft was made; with `hash`, refuses with DraftStaleError when the draft's
- * content isn't the one checked. Files are written under temporary names first and renamed into
+ * and marks it published. Refuses with DraftConflictError, changing nothing, when a live file it
+ * changed, or any file of its playbook, changed since the draft was made; with `hash`, refuses
+ * with DraftStaleError when the draft's content isn't the one checked. Files are written under temporary names first and renamed into
  * place; if anything fails, the live files are put back.
  */
 export async function applyDraft(root: string, id: string, opts: { hash?: string } = {}): Promise<{ workflowId: string; version: number; files: string[] }> {
@@ -433,7 +456,7 @@ export async function applyDraft(root: string, id: string, opts: { hash?: string
     if (actual !== opts.hash) throw new DraftStaleError(opts.hash, actual);
   }
   const changes = await changedFiles(abs, dir, meta);
-  const conflicts = changes.filter((c) => c.conflict).map((c) => c.path);
+  const conflicts = await conflictsOf(abs, meta, changes);
   if (conflicts.length) throw new DraftConflictError(conflicts);
 
   const shapeText = await readText(join(dir, 'workflows', meta.workflowId, 'workflow.yaml'));

@@ -12,7 +12,8 @@ import { join } from 'node:path';
 import { createKernel } from '../src/kernel.ts';
 import { returnedComments } from '../src/prepare.ts';
 import { sampleTools } from '../src/sample-tools.ts';
-import { defaultTestRunner } from '../src/test-runner.ts';
+import pg from 'pg';
+import { defaultTestRunner, dropAbandonedExampleDatabases } from '../src/test-runner.ts';
 import type { Actor, Authoring, Kernel, TestRunner } from '../src/types.ts';
 import { INTAKE_DIR } from './fixtures/exit-setup.ts';
 import { step, workflow } from './fixtures/workflows.ts';
@@ -175,6 +176,22 @@ describe.skipIf(!pgAvailable)('Phase 3 kernel', () => {
     expect(outcomes.filter((o) => o.status === 'fail')).toEqual([]);
   }, 300_000);
 
+  test('example databases left behind by a killed run are dropped once they are older than the timeout', async () => {
+    const client = new pg.Client({ connectionString: adminUrl });
+    await client.connect();
+    try {
+      const old = `mw_example_${(Date.now() - 3_600_000).toString(36)}_dead`;
+      const fresh = `mw_example_${Date.now().toString(36)}_live`;
+      for (const name of [old, fresh]) await client.query(`create database ${name}`);
+      expect(await dropAbandonedExampleDatabases(adminUrl, 600_000)).toEqual([old]);
+      const { rows } = await client.query(`select datname from pg_database where datname = any($1::text[])`, [[old, fresh]]);
+      expect(rows.map((r) => r.datname)).toEqual([fresh]);
+      await client.query(`drop database ${fresh}`);
+    } finally {
+      await client.end();
+    }
+  });
+
   let v1Run = { runId: '', caseId: '', hash: '' };
 
   test('conversation steps: the inbox shows them; only their chat answers, for the assignee role', async () => {
@@ -199,6 +216,7 @@ describe.skipIf(!pgAvailable)('Phase 3 kernel', () => {
     expect(diagnostics).toEqual([]);
     expect(await authoring.keepEdit(draft.id, edit.id, staff)).toEqual({ applied: true });
     expect(await authoring.read({ draftId: draft.id })).toEqual({ files: expect.arrayContaining(['workflows/tiny-approval/steps/approve.md', 'domain/roles.yaml']) });
+    await expect(authoring.read({ workflowId: '../../..' })).rejects.toThrow(/not a playbook id/);
 
     const values = { playbook: 'tiny-approval', title: 'Tiny approval', draft: draft.id, summary: 'A manager approves or declines a note.' };
     expect(await kernel.submitStep({ stepRunId, outcome: 'drafted', values, by: staff })).toMatchObject({ applied: false, status: 'forbidden' });

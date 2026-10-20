@@ -1092,6 +1092,7 @@
   "memwise.result.dismiss.unsupported": "Nur Erinnerungen können als gelesen markiert werden.",
   "memwise.result.draft.conflict": "Das aktive Playbook wurde geändert, seit dieser Entwurf erstellt wurde.",
   "memwise.result.draft.errors": "Der Entwurf hat zuerst zu behebende Probleme.",
+  "memwise.result.draft.in_chat": "Dieser Entwurf wird gerade in einem Chat erstellt. Schließen Sie ihn dort ab.",
   "memwise.result.draft.in_review": "Dieser Entwurf wartet bereits auf Prüfung.",
   "memwise.result.draft.missing": "Dieser Entwurf wurde nicht gefunden.",
   "memwise.result.draft.not_checked": "Prüfen Sie den Entwurf zuerst.",
