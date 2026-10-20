@@ -11,13 +11,14 @@
 //                      runs.seq, a transitions row, the step's case writes, timers armed/cancelled
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
-import { crashPoint, END_STATE, type CaseValue, type WorkflowDef } from '@memwise/defs';
+import { crashPoint, END_STATE, type CaseValue, type Provenance, type WorkflowDef } from '@memwise/defs';
 import type { StepResult, StepRunInput } from '@memwise/step-engine';
 import type pg from 'pg';
 import { transition, type AnyStateMachine } from 'xstate';
 import { stepRunIdOf } from './ids.ts';
 import { answeredBySubmit, compileMachine, REMIND_EVENT, stateKind, type RunEvent } from './machine.ts';
 import { openWaitingStep, prepareAgentStep, type PreparedStep } from './prepare.ts';
+import { closeStepLinks } from './submit.ts';
 import { PgCaseStore, PgNotificationStore } from '@memwise/db';
 import { loadRunRow, loadWorkflowDef, type Queryable, type RunRow } from './runs.ts';
 import type { Actor, SendEventResult } from './types.ts';
@@ -53,6 +54,15 @@ export interface Submission {
   comment?: string;
   /** A conversation step's chat answered it (Phase 3): its writes are the chat's judgement, for `by`. */
   via?: { chatId: string; rationale?: string };
+  /**
+   * Phase 5: an outside participant answered through a link (`by` is `external:<linkId>`): the
+   * values are theirs, provenance `external`, always tainted (D67).
+   */
+  external?: { linkId: string; label: string };
+  /** Phase 5: per field, provenance that replaces the answerer's own (a value kept as extraction suggested it, D68). */
+  provenance?: Record<string, Provenance>;
+  /** Phase 5: how the answer came in when not through the app (an inbox link: `email`, `whatsapp`). */
+  channel?: string;
 }
 
 /** The DBOS message `submitStep` sends: the event plus the submission, split apart by the driver. */
@@ -222,9 +232,11 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
       for (const [field, value] of Object.entries(sub.values)) {
         writes[field] = {
           value,
-          provenance: sub.via
+          provenance: sub.provenance?.[field] ?? (sub.via
             ? { kind: 'judgement', at: sub.at, stepRunId: sub.stepRunId, ...(sub.via.rationale ? { rationale: sub.via.rationale } : {}), chatId: sub.via.chatId, by: sub.by }
-            : { kind: 'person', at: sub.at, by: sub.by, stepRunId: sub.stepRunId },
+            : sub.external
+              ? { kind: 'external', at: sub.at, by: sub.external.label, linkId: sub.external.linkId, stepRunId: sub.stepRunId, tainted: true }
+              : { kind: 'person', at: sub.at, by: sub.by, stepRunId: sub.stepRunId }),
         };
       }
     }
@@ -237,11 +249,14 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
       `update mw.step_runs set status = 'completed', outcome = $3, finished_at = now(),
               decided_by = coalesce($4, decided_by), comment = coalesce($5, comment),
               outputs = case when $6::jsonb is null then outputs else $6::jsonb end,
-              rationale = coalesce($7, rationale)
+              rationale = coalesce($7, rationale), decided_via = coalesce($8, decided_via),
+              tainted = tainted or $9
         where id = $1 and status = 'waiting' and run_id = $2`,
       [waitingId, c.runId, c.event.type, sub?.by ?? null, sub?.comment ?? null, sub ? JSON.stringify(writes ?? {}) : null,
-        sub?.via?.rationale ?? null]);
+        sub?.via?.rationale ?? null, sub?.channel ?? null, !!sub?.external]);
     await notifications.markReadForStep(db, waitingId);
+    // Links to the state just left can't be used any more (23 §3); answered ones were closed with the answer.
+    await closeStepLinks(db, c.runId, run.state, sub ? 'answered' : 'left');
   }
   if (c.stepError && c.stepRunId) {
     // The step never reported back, so its record would stay `running`: close it here.
@@ -257,6 +272,9 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
   await applyTimerActions(db, c.runId, newSeq, actions);
   if (status !== 'active') {
     await db.query(`update mw.timers set status = 'cancelled' where run_id = $1 and status = 'pending'`, [c.runId]);
+    // A run that ended or stopped has nothing left a link could answer.
+    await db.query(`update mw.external_links set closed_at = now(), closed_reason = 'left'
+                     where run_id = $1 and used_at is null and closed_at is null`, [c.runId]);
   }
   crashPoint('in-commit', run.state);
   const after = await loadRunRow(db, c.runId);

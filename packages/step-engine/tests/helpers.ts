@@ -20,7 +20,8 @@ import { join } from 'node:path';
 import type { StepRunInput } from '../src/index.ts';
 
 export const APP_VERSION = 'memwise-step-engine-test-1';
-export const PROJECT_ROOT = join(import.meta.dir, '../../../examples/intake');
+// Client intake version 1, frozen: its check step emails the client itself (the live sample is version 2).
+export const PROJECT_ROOT = join(import.meta.dir, 'fixtures/intake-v1');
 
 // ---------------------------------------------------------------- databases and DBOS
 

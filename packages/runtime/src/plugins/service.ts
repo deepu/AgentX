@@ -16,7 +16,7 @@ import {
 } from '@memwise/defs';
 import { createToolGateway, type ToolContext, type ToolDefinition, type ToolGateway } from '@memwise/gateway';
 import { PgEffectLedger, PgRateCounter } from '@memwise/db';
-import { compilePolicy, layersFor, PLATFORM_DEFAULTS, pluginLayers, violationsToDiagnostics } from '@memwise/policy';
+import { compilePolicy, extractDiagnostics, layersFor, PLATFORM_DEFAULTS, pluginLayers, violationsToDiagnostics } from '@memwise/policy';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -461,8 +461,8 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
     const seen = new Set<string>();
     for (const wf of Object.values(project.workflows)) {
       for (const step of [undefined, ...Object.values(wf.steps)]) {
-        const { violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins: pluginLayers(policies, wf, step), workflow: wf, step }));
-        for (const x of violationsToDiagnostics(violations)) {
+        const { effective, violations } = compilePolicy(layersFor({ domainPolicy: project.domainPolicy, plugins: pluginLayers(policies, wf, step), workflow: wf, step }));
+        for (const x of [...violationsToDiagnostics(violations), ...extractDiagnostics(step, effective, tools)]) {
           const key = `${x.file}|${x.path}|${x.message}`;
           if (!seen.has(key)) { seen.add(key); all.push(x); }
         }

@@ -1,0 +1,13 @@
+entity: Customer
+fields:
+  name:         PersonName
+  email:        Email
+  gstin:        Identifier(GSTIN)
+  pan:          Identifier(PAN)
+  credit_limit: Money
+  bank_account: { type: Text, access: [finance] }
+relationships:
+  engagements: many Engagement
+lifecycle: [prospect, active, dormant, closed]
+ownership:
+  email: crm

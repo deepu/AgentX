@@ -1,8 +1,9 @@
 # Sample project: client intake
 
-The project folder the kernel runs against (docs/memwise/17-build-plan.md, Phases 1 and 2): staff fill
-the intake form for a client, an agent checks it against the uploaded documents, a manager approves or
-sends it back, and the onboard step (a system step, no model) writes the client into `domain.customer`.
+The project folder the kernel runs against (docs/memwise/17-build-plan.md): staff say who the client is,
+the client is sent a link to the intake form (or staff fill it in for them), an agent checks it against
+the uploaded documents, a manager approves or sends it back, and the onboard step (a system step, no
+model) writes the client into `domain.customer`.
 
 ```
 memwise check examples/intake
@@ -43,3 +44,22 @@ and do nothing until they are bound (docs/memwise/22-phase-4-interfaces.md). Bin
 
 The `plugins.*` and `identity.resolve` tools are bound by the kernel when it has a project folder; the example cases stub them
 and script the binder.
+
+## Clients fill the form themselves (Phase 5)
+
+Client intake is at version 2 (docs/memwise/23-phase-5-interfaces.md §10):
+
+- `prepare` (staff): the client's name, email, phone and `contact_by` (email or WhatsApp); then **send link** or
+  **fill for client**.
+- `invite` (a system step): `external.invite`, the kernel's tool, issues a single-use link to `fill` and sends it by
+  the channel the case names. Its preview is the exact message, and staff or a manager approve it before it goes
+  (`approvals: { by: [staff, manager] }` in `policy.yaml`). Without a public address the case goes to a person.
+- `fill` (external): the client's form, behind the link. Its `extract:` lets the form read the uploaded PAN card and
+  GST certificate with `intake.extract_fields` and offer what it found; staff can still fill it in.
+- `check` no longer emails the client: when something is missing it writes `client_message` and finishes
+  `needs_info`, and `invite` sends a new link with that note. A send-back sends a new link too, with the
+  manager's comment on the form.
+
+The example cases run the real `external.invite` (through the sample `email.send`) with links made from
+`https://memwise.example`; an external step with an open link is answered through it, as the client.
+`examples/plugins/client-intake/` stays at its Phase 4 shape.

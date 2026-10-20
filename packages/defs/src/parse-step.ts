@@ -4,7 +4,7 @@ import { stepFormat } from './formats.ts';
 import { toPolicyDoc } from './parse-policy.ts';
 import { typeAt } from './parse-types.ts';
 import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, sha256, type ParseResult } from './source.ts';
-import type { ArgSource, Performer, StepDef, StepEngine, Strictness, WriteDef, WriteSource } from './types.ts';
+import type { ArgSource, ExtractDef, Performer, StepDef, StepEngine, Strictness, WriteDef, WriteSource } from './types.ts';
 import { parseCount, parseDuration } from './value-types.ts';
 
 const PERFORMERS: Performer[] = ['agent', 'person', 'external', 'system'];
@@ -35,6 +35,40 @@ export function argSource(raw: unknown): ArgSource {
   if (typeof raw === 'string' && /^case\.[A-Za-z_][\w.]*$/.test(raw.trim())) return { case: raw.trim().slice(5) };
   if (isRecord(raw) && Object.keys(raw).length === 1 && 'value' in raw) return { value: raw.value };
   return { value: raw };
+}
+
+/** Default `extract.min_confidence` (23 §5). */
+export const DEFAULT_MIN_CONFIDENCE = 0.8;
+
+/**
+ * `fields` of `extract:` as result name -> write: a list of names (`[pan, gstin]`), whose items
+ * may map a result name to another write (`{ legal_name: client_name }` or `{ legal_name: { as: client_name } }`),
+ * or the same as one map.
+ */
+function extractFields(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  const add = (name: string, target: unknown) => {
+    const to = typeof target === 'string' ? target : isRecord(target) && typeof target.as === 'string' ? target.as : undefined;
+    if (to) out[name] = to;
+  };
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (typeof item === 'string') out[item] = item;
+      else if (isRecord(item)) for (const [name, target] of Object.entries(item)) add(name, target);
+    }
+  } else if (isRecord(raw)) {
+    for (const [name, target] of Object.entries(raw)) add(name, target === null ? name : target);
+  }
+  return out;
+}
+
+/** `extract: { tool, documents, fields, min_confidence }` on an external or person step (23 §5). */
+function parseExtract(raw: Record<string, unknown>): ExtractDef | undefined {
+  const tool = asString(raw.tool);
+  const documents = asString(raw.documents);
+  if (!tool || !documents) return undefined;
+  const min = typeof raw.min_confidence === 'number' ? raw.min_confidence : DEFAULT_MIN_CONFIDENCE;
+  return { tool, documents, fields: extractFields(raw.fields), minConfidence: min };
 }
 
 /** `file` is relative to the project root; the step id is the file name without `.md`. */
@@ -105,6 +139,7 @@ export function parseStepFile(text: string, file: string): ParseResult<StepDef> 
     outcomeFrom: isRecord(data.outcomeFrom) && typeof data.outcomeFrom.tool === 'string' && typeof data.outcomeFrom.field === 'string'
       ? { tool: data.outcomeFrom.tool, field: data.outcomeFrom.field }
       : undefined,
+    extract: isRecord(data.extract) ? parseExtract(data.extract) : undefined,
     instructions: parts.body.trim(),
     file,
     hash: sha256(text),

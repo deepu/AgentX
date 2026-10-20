@@ -1,5 +1,7 @@
 policy: client-intake
 effects:
   irreversible: deny       # no irreversible actions anywhere in intake
+approvals:
+  by: [staff, manager]     # staff or a manager approve the link sent to the client
 budgets:
   tokens: 100000

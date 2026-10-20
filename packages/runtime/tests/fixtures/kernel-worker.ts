@@ -3,6 +3,9 @@
 //   bun kernel-worker.ts fake <databaseUrl> <runId>   fake step; starts the intake run at `check`
 //   bun kernel-worker.ts exit <databaseUrl> <runId> <counterFile>
 //                                                    the real step engine on examples/intake (exit test)
+//   bun kernel-worker.ts invite <databaseUrl> <runId> <filesDir>
+//                                                    client intake v2 at `invite` (Phase 5): the link
+//                                                    is issued and emailed once, after its approval
 //   bun kernel-worker.ts onboard <databaseUrl> <runId> <filesDir>
 //                                                    examples/intake indexed, the run starts at the
 //                                                    system step `onboard` (domain.customer.create)
@@ -20,7 +23,24 @@ let kernel: Kernel;
 let approvals: Record<string, 'approve' | 'reject'> = {};
 let start: { workflowId: string; case: Record<string, unknown>; startAt: string };
 
-if (mode === 'onboard') {
+if (mode === 'invite') {
+  // Phase 5: client intake v2 at its system step `invite` (external.invite → email.send), with a
+  // public address; the invite's approval is answered by the loop below.
+  const { SAMPLE_DIR } = await import('./exit-setup.ts');
+  const { sampleTools } = await import('../../src/sample-tools.ts');
+  const { cpSync, mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const projectDir = join(mkdtempSync(join(tmpdir(), 'mw-invite-')), 'intake');
+  cpSync(SAMPLE_DIR, projectDir, { recursive: true });
+  kernel = await createKernel({
+    databaseUrl, projectDir, tools: sampleTools({ databaseUrl }), modelRoles: {}, providers: [], filesDir: counterFile,
+    publicUrl: () => 'https://memwise.example', businessName: 'Acme Advisors',
+  });
+  await kernel.index();
+  approvals = { 'external.invite': 'approve' };
+  start = { workflowId: 'client-intake', startAt: 'invite', case: { client_name: 'Asha Rao', client_email: 'asha@acme-traders.example', contact_by: 'email' } };
+} else if (mode === 'onboard') {
   const { INTAKE_DIR } = await import('./exit-setup.ts');
   const { sampleTools } = await import('../../src/sample-tools.ts');
   kernel = await createKernel({ databaseUrl, projectDir: INTAKE_DIR, tools: sampleTools({ databaseUrl }), modelRoles: {}, providers: [], filesDir: counterFile });

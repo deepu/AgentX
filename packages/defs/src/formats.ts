@@ -112,6 +112,16 @@ export const stepFormat = z.strictObject({
     tool: z.string().meta({ description: 'A tool in tools.required.' }),
     field: z.string().meta({ description: 'Dotted path inside its last result.' }),
   }).optional().meta({ description: 'System steps: the outcome is this field of this tool\'s last result (one of `outcomes`).' }),
+  extract: z.strictObject({
+    tool: z.string().meta({ description: 'A tool that is `read` in the step\'s effective policy, e.g. intake.extract_fields.' }),
+    documents: z.string().meta({ description: 'The Document or List<Document> write whose files it reads.' }),
+    fields: z.union([
+      z.array(z.union([z.string(), z.record(z.string(), z.union([z.string(), z.strictObject({ as: z.string() })]))])),
+      z.record(z.string(), z.union([z.string(), z.strictObject({ as: z.string() }), z.null()])),
+    ], { error: 'expected a list of writes, e.g. [pan, gstin], or a map of result names to writes' }).optional()
+      .meta({ description: 'Writes it may fill; `{ legal_name: client_name }` takes a result named legal_name into client_name.' }),
+    min_confidence: z.number().min(0).max(1).optional().meta({ description: 'Suggestions at or above this (and found in the document) are pre-filled. Default 0.8.' }),
+  }).optional().meta({ description: 'External and person steps: what the form may read from the uploaded documents while the step waits (Phase 5).' }),
 }).meta({ title: 'MemWise step', description: 'The front matter of workflows/<id>/steps/<state>.md.' });
 
 export const caseFormat = z.strictObject({

@@ -1,7 +1,7 @@
 ---
 title: Client fills in the intake form
 performer: external
-assignee: staff                # staff fill the form on the client's behalf until external links arrive
+assignee: staff                # staff can still fill the form for the client
 strictness: strict
 writes:
   client_name:     { type: PersonName, from: person }
@@ -10,7 +10,12 @@ writes:
   gstin:           { type: Identifier(GSTIN), from: person }
   annual_turnover: { type: Money, from: person }
   documents:       { type: List<Document>, from: person }
+extract:
+  tool: intake.extract_fields
+  documents: documents
+  fields: [pan, gstin, client_name]
+  min_confidence: 0.8
 outcomes: [submitted]
 ---
-The client enters their details and uploads their PAN card and GST certificate.
-Until clients can be sent a link to the form, a member of staff fills it in for them.
+Enter your details and upload your PAN card and GST certificate. Once a document is uploaded,
+the form can read your PAN and GSTIN from it for you to check.

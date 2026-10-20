@@ -44,8 +44,17 @@ export interface ToolDefinition<A = any, R = any> {
   idempotent?: boolean;
   /** Secret names to inject into `ctx.secrets`. */
   secrets?: string[];
-  /** What would happen, for `draft`, `outbound` and `irreversible` tools. */
-  preview?(args: A): EffectPreview | Promise<EffectPreview>;
+  /**
+   * What would happen, for `draft`, `outbound` and `irreversible` tools. `ctx` (Phase 5) names
+   * the step the call is for, so a preview can show what it depends on (who a link is for).
+   */
+  preview?(args: A, ctx?: { token: StepToken }): EffectPreview | Promise<EffectPreview>;
+  /**
+   * Phase 5: why the tool can't run at all right now (e.g. "connect a public address"), or
+   * undefined. Asked at the policy check, so a call that could never run is refused before anyone
+   * is asked to approve it.
+   */
+  unavailable?(): string | undefined;
   execute(args: A, ctx: ToolContext): Promise<R>;
   source?: { plugin?: string; mcpServer?: string; annotations?: McpToolAnnotations };
 }

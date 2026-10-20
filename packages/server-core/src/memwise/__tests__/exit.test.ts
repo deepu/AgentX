@@ -1,9 +1,11 @@
 /**
  * Phase 2 exit test (19 §11): the app API driven as two people (staff, manager) against a real
- * Postgres with scripted models. Staff start an intake and fill the form on the client's behalf
- * (with documents), the check step runs, the manager approves from the inbox and onboard writes
- * a Customer; a second case is sent back with a comment; live counts show where cases are; and
- * "why was this flagged?" is answered from the step record with citations.
+ * Postgres with scripted models. Staff start an intake, say who the client is and fill the form on
+ * the client's behalf (with documents), the check step runs, the manager approves from the inbox
+ * and onboard writes a Customer; a second case is sent back with a comment (since Phase 5 the
+ * client is sent a new link, after staff approve the message; staff take the form back and fill
+ * it again); live counts show where cases are; and "why was this flagged?" is answered from the
+ * step record with citations.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -33,6 +35,7 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
   const sessions = fakeSessions()
   let staff: RequestContext
   let manager: RequestContext
+  let priyaId: string
   const admin = ctxFor('admin-client')
 
   const filled = (docs: unknown[]) => ({
@@ -48,16 +51,32 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     return until(`case ${caseId} at ${state}`, () => api.call<MwCase>(staff, ch.CASES_GET, caseId), (c) => c.state === state || c.status === 'stopped')
   }
 
+  /** The input item of `step` for the case in the staff inbox, once the driver has opened it. */
+  async function formFor(caseId: string, step: string) {
+    const inbox = await until(`the ${step} form`, () => api.call<MwInboxItem[]>(staff, ch.INBOX_LIST),
+      (items) => items.some((i) => i.kind === 'input' && i.caseId === caseId && i.stepRunId.endsWith(`/${step}`)), 15_000)
+    const form = inbox.find((i) => i.kind === 'input' && i.caseId === caseId && i.stepRunId.endsWith(`/${step}`))
+    if (form?.kind !== 'input') throw new Error(`no ${step} form in the staff inbox: ${JSON.stringify(inbox)}`)
+    return form
+  }
+
   async function startAndFill(): Promise<MwCase> {
     const started = await api.call(staff, ch.CASES_START, { workflowId: 'client-intake', values: {} })
-    expect(started.state).toBe('fill')
+    expect(started.state).toBe('prepare')
     expect(started.waitingOn).toEqual({ kind: 'role', role: 'staff' })
 
-    // The driver opens the fill step just after the run starts.
-    const inbox = await until('the fill form', () => api.call<MwInboxItem[]>(staff, ch.INBOX_LIST),
-      (items) => items.some((i) => i.kind === 'input' && i.caseId === started.caseId), 15_000)
-    const form = inbox.find((i) => i.kind === 'input' && i.caseId === started.caseId)
-    if (form?.kind !== 'input') throw new Error(`no fill form in the staff inbox: ${JSON.stringify(inbox)}`)
+    // Client intake v2 (Phase 5): staff first say who the client is and how to reach them, then
+    // choose to fill the form for the client instead of sending them a link.
+    const prepare = await formFor(started.caseId, 'prepare')
+    expect(prepare.fields.map((f) => f.name)).toEqual(['client_name', 'client_email', 'client_phone', 'contact_by'])
+    expect(prepare.outcomes).toEqual(['send_link', 'fill_for_client'])
+    const prepared = await api.call(staff, ch.INBOX_SUBMIT, {
+      stepRunId: prepare.stepRunId, outcome: 'fill_for_client',
+      values: { client_name: 'Asha Rao', client_email: 'asha@acme-traders.example', contact_by: 'email' },
+    })
+    expect(prepared).toEqual({ applied: true })
+
+    const form = await formFor(started.caseId, 'fill')
     expect(form.fields.map((f) => f.name)).toEqual(['client_name', 'client_email', 'pan', 'gstin', 'annual_turnover', 'documents'])
     expect(form.fields.find((f) => f.name === 'pan')?.schema).toMatchObject({ type: 'string' })
     expect(form.outcomes).toEqual(['submitted'])
@@ -78,7 +97,11 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     return inbox?.find((i) => i.kind === 'decision' && i.caseId === caseId)
   }
 
+  const publicUrl = process.env.MEMWISE_PUBLIC_URL
+
   beforeAll(async () => {
+    // A send-back sends the client a new link, so the server needs a public address (23 §3).
+    process.env.MEMWISE_PUBLIC_URL = 'https://memwise.example'
     db = await createTestDatabase('mw_exit', { migrate: false })
     dir = mkdtempSync(join(tmpdir(), 'mw-exit-'))
     const started = await startMemwiseService({
@@ -95,12 +118,15 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     svc = started!
     registerMemwiseHandlers(api.server, { sessionManager: sessions.manager, platform: { logger: quiet } } as unknown as HandlerDeps)
     const priya = await svc.kernel.people.create({ name: 'Priya', email: 'priya@example.com', roles: ['staff'] })
+    priyaId = priya.id
     const ravi = await svc.kernel.people.create({ name: 'Ravi', email: 'ravi@example.com', roles: ['manager'] })
     staff = ctxFor('staff-client', priya.id)
     manager = ctxFor('manager-client', ravi.id)
   }, 120_000)
 
   afterAll(async () => {
+    if (publicUrl === undefined) delete process.env.MEMWISE_PUBLIC_URL
+    else process.env.MEMWISE_PUBLIC_URL = publicUrl
     await svc?.stop()
     resetMemwiseHost()
     await db?.drop()
@@ -123,9 +149,9 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
 
     const list = await api.call(staff, ch.PLAYBOOKS_LIST)
     // Client intake, plus the meta playbooks that build and change playbooks (Phase 3)
-    expect(list).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'client-intake', title: 'Client intake', stepCount: 4 })]))
+    expect(list).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'client-intake', title: 'Client intake', stepCount: 6 })]))
     const pb = await api.call(staff, ch.PLAYBOOKS_GET, 'client-intake')
-    expect(pb.states[0].id).toBe('fill')
+    expect(pb.states[0].id).toBe('prepare')
     expect(pb.steps.verify).toMatchObject({ performer: 'person', assignee: 'manager', outcomes: ['approved', 'sent_back'] })
     expect(pb.steps.check.policy).toEqual(expect.arrayContaining([
       expect.objectContaining({ subject: 'outbound', value: 'needs approval', layer: 'domain', layerName: 'Domain policy' }),
@@ -145,8 +171,10 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     expect(firstCase.waitingOn).toEqual({ kind: 'role', role: 'manager' })
     expect(firstCase.values.client_name).toMatchObject({ value: 'Asha Rao', provenance: { kind: 'person' } })
     expect(firstCase.values.gstin_ok?.value).toBe(true)
-    expect(firstCase.timeline.map((t) => [t.stepId, t.status])).toEqual([['fill', 'completed'], ['check', 'completed'], ['verify', 'waiting']])
-    expect(firstCase.path.slice(0, 3)).toEqual(['fill', 'check', 'verify'])
+    expect(firstCase.timeline.map((t) => [t.stepId, t.status])).toEqual([
+      ['prepare', 'completed'], ['fill', 'completed'], ['check', 'completed'], ['verify', 'waiting'],
+    ])
+    expect(firstCase.path.slice(0, 4)).toEqual(['prepare', 'fill', 'check', 'verify'])
 
     const item = await verifyItem(manager, firstCase.caseId)
     expect(item).toMatchObject({ kind: 'decision', caseTitle: 'Asha Rao', stepTitle: 'Manager approves onboarding', outcomes: ['approved', 'sent_back'] })
@@ -198,15 +226,34 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     const comment = 'Please attach a clearer scan of the PAN card.'
     const r = await api.call(manager, ch.INBOX_SUBMIT, { stepRunId: (item as { stepRunId: string }).stepRunId, outcome: 'sent_back', comment })
     expect(r.applied).toBe(true)
+
+    // The client gets a new link (Phase 5): staff (or a manager) approve the message first.
+    const pending = await until('the invite approval', () => api.call<MwInboxItem[]>(staff, ch.INBOX_LIST),
+      (items) => items.some((i) => i.kind === 'approval' && i.caseId === second.caseId), 15_000)
+    const approval = pending.find((i) => i.kind === 'approval' && i.caseId === second.caseId)
+    if (approval?.kind !== 'approval') throw new Error('no invite approval')
+    expect(await api.call<{ applied: boolean }>(staff, ch.INBOX_DECIDE_APPROVAL, { approvalId: approval.approvalId, status: 'approved' })).toEqual({ applied: true })
+
     const back = await caseAt(second.caseId, 'fill')
     expect(back.state).toBe('fill')
     expect(back.timeline.find((t) => t.stepId === 'verify')).toMatchObject({ outcome: 'sent_back', comment })
-    const form = (await api.call<MwInboxItem[]>(staff, ch.INBOX_LIST)).find((i) => i.kind === 'input' && i.caseId === second.caseId)
+    // While the client has an open link the form waits on them, not in the staff inbox.
+    const links = await svc.kernel.external.links({ caseId: second.caseId })
+    expect(links.map((l) => [l.stepId, l.status, l.via])).toEqual([['fill', 'open', 'email']])
+    expect((await api.call<MwInboxItem[]>(staff, ch.INBOX_LIST)).some((i) => i.kind === 'input' && i.caseId === second.caseId)).toBe(false)
+    // Staff take it back and fill it in for the client.
+    const priya = await svc.kernel.people.actorFor(priyaId)
+    expect(await svc.kernel.external.revoke(links[0]!.id, priya)).toEqual({ applied: true })
+
+    const form = await formFor(second.caseId, 'fill')
     expect(form?.kind).toBe('input')
     if (form?.kind === 'input') {
       expect(form.prefill.client_name?.value).toBe('Asha Rao')
-      // The form says who sent it back and why.
-      expect(form.returned).toMatchObject({ stepTitle: 'Manager approves onboarding', outcome: 'sent_back', text: comment })
+      // The form says who sent it back and why: the comment returns to this fill step run (the
+      // client's form shows the same). Since v2 the step run just before is `invite`, not
+      // `verify`, so it is read from the kernel's returned comments rather than `form.returned`.
+      const { returnedComments } = await import('@memwise/runtime')
+      expect((await returnedComments(svc.kernel.pool, form.stepRunId)).at(-1)).toMatchObject({ stepId: 'verify', outcome: 'sent_back', comment, who: 'Ravi' })
     }
 
     const summaries = await api.call(staff, ch.CASES_LIST, { workflowId: 'client-intake' })
@@ -214,7 +261,8 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     const live = await api.call(staff, ch.PLAYBOOKS_LIVE, 'client-intake')
     expect(live.byState.fill).toBe(1)
     expect(live.edges['check>verify']).toBe(2)
-    expect(live.edges['verify>fill']).toBe(1)
+    expect(live.edges['verify>invite']).toBe(1)
+    expect(live.edges['invite>fill']).toBe(1)
     const pbs = await api.call(staff, ch.PLAYBOOKS_LIST)
     expect(pbs.find((p: { id: string }) => p.id === 'client-intake')).toMatchObject({ open: 1, done: 1, waitingOnMe: 1 })
   }, 180_000)
