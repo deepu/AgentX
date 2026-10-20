@@ -167,7 +167,7 @@ Checks run continuously while editing, so problems show as you type.
 | View | For | Notes |
 |---|---|---|
 | **Playbook** | Domain experts (the default view) | The workflow read as a document: numbered steps, who does each, instructions, and what happens on failure. Editing a paragraph edits that step's instructions. |
-| **Map** | Seeing the shape and monitoring | The statechart drawn left to right, failure paths below. Laid out with ELK, drawn with React Flow, Mermaid export. Three modes: **design**, **live** (cases per step, one case's path highlighted) and **proposed change** (a diff: added in green, changed in amber). **View only at first**; shape changes go through chat or the editor. |
+| **Map** | Seeing the shape and monitoring | The statechart drawn left to right, failure paths below. Drawn as SVG with a small layered layout of our own while it is view only (D50); React Flow and ELK when it becomes editable. Mermaid export. Three modes: **design**, **live** (cases per step, one case's path highlighted) and **proposed change** (a diff: added in green, changed in amber). **View only at first**; shape changes go through chat or the editor. |
 | **Step editor** | Changing a step | One card: instructions with strictness, reads and writes, tools (with effect class and source plugin), effective policy (each rule labelled with the layer it came from), checkpoint and outcomes. Chat sits beside it. |
 
 The notation borrows a few ideas from BPMN (performer lanes, timer events, error paths) without its complexity.

@@ -164,7 +164,7 @@ Navigation gains three top-level sections, above the existing chat sessions, whi
 - **Playbooks**: the playbook view (numbered steps, who does each, instructions, what happens on each outcome, the effective policy per step), and the map in design and live modes (view only), with a "Start" button that opens the start form.
 - **Acting as**: a person switcher in the sidebar footer on desktop.
 
-The map is drawn with React Flow and laid out with ELK (05 §9), left to right, failure paths below.
+The map is drawn with plain SVG and laid out by a small layered layout of our own (`components/memwise/map/layout.ts`), left to right, failure paths below, with a Mermaid export (D50). React Flow and ELK wait until the map becomes editable.
 
 ## 11. Exit test
 
