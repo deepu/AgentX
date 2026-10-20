@@ -6,7 +6,7 @@
  * is reached (and, if given, the detail matches). Unset in production: a no-op.
  *
  * Points used by the kernel:
- *   after-model-call@<n>        step engine, after the n-th model call (1-based) returned, before DBOS records it
+ *   after-model-call@<n>        step engine, after the n-th model call (1-based, verifier calls included) is journaled
  *   after-tool-effect@<tool>    gateway, after the tool ran, before the ledger marks the key done
  *   after-ledger-complete@<tool> gateway, after the ledger marked the key done, before DBOS records the step
  *   waiting-approval@<tool>     step engine, after the approval request is recorded, while waiting

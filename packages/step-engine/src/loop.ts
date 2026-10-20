@@ -189,32 +189,32 @@ class StepRun {
     let ran: { value: ModelOutcome; executed: boolean };
     try {
       ran = await this.step(name, async (): Promise<ModelOutcome> => {
-      const startedAt = new Date().toISOString();
-      const attempt = DBOS.stepStatus?.currentAttempt;
-      try {
-        const call = await deps.models.call(request, { role, sessionId: input.stepRunId, signal: stepSignal(), budget: this.budget, spent });
-        const { message } = call;
-        if (message.stopReason === 'error' || message.stopReason === 'aborted') {
-          throw new Error(`model call ${message.stopReason}: ${message.errorMessage ?? 'no message'}`);
+        const startedAt = new Date().toISOString();
+        const attempt = DBOS.stepStatus?.currentAttempt;
+        try {
+          const call = await deps.models.call(request, { role, sessionId: input.stepRunId, signal: stepSignal(), budget: this.budget, spent });
+          const { message } = call;
+          if (message.stopReason === 'error' || message.stopReason === 'aborted') {
+            throw new Error(`model call ${message.stopReason}: ${message.errorMessage ?? 'no message'}`);
+          }
+          await this.journal({
+            journalKey: name, kind: 'model', name: role, request: journalRequest,
+            response: { content: message.content, stopReason: message.stopReason },
+            model: { provider: call.provider, model: call.model, usage: call.usage, stopReason: message.stopReason },
+            attempt, startedAt, durationMs: call.durationMs,
+          });
+          await after?.(call);
+          return { kind: 'ok', call };
+        } catch (e) {
+          const error = e instanceof Error ? e.message : String(e);
+          if (isBudgetError(e)) {
+            await this.journal({ journalKey: name, kind: 'model', name: role, request: journalRequest, error, attempt, startedAt });
+            return { kind: 'budget', limit: e.limit, message: `budget exceeded: ${e.limit} (limit ${e.budget[e.limit]}, spent ${JSON.stringify(e.spent)})` };
+          }
+          // Each failed attempt is kept in the record (D38), so lost calls are visible in metering.
+          await this.journal({ journalKey: `${name}#${attempt ?? 1}`, kind: 'model', name: role, request: journalRequest, error, attempt, startedAt });
+          throw e;
         }
-        await this.journal({
-          journalKey: name, kind: 'model', name: role, request: journalRequest,
-          response: { content: message.content, stopReason: message.stopReason },
-          model: { provider: call.provider, model: call.model, usage: call.usage, stopReason: message.stopReason },
-          attempt, startedAt, durationMs: call.durationMs,
-        });
-        await after?.(call);
-        return { kind: 'ok', call };
-      } catch (e) {
-        const error = e instanceof Error ? e.message : String(e);
-        if (isBudgetError(e)) {
-          await this.journal({ journalKey: name, kind: 'model', name: role, request: journalRequest, error, attempt, startedAt });
-          return { kind: 'budget', limit: e.limit, message: `budget exceeded: ${e.limit} (limit ${e.budget[e.limit]}, spent ${JSON.stringify(e.spent)})` };
-        }
-        // Each failed attempt is kept in the record (D38), so lost calls are visible in metering.
-        await this.journal({ journalKey: `${name}#${attempt ?? 1}`, kind: 'model', name: role, request: journalRequest, error, attempt, startedAt });
-        throw e;
-      }
       }, MODEL_STEP);
     } catch (e) {
       // DBOS replays a recorded failure as the same throw, so this path is deterministic too.
