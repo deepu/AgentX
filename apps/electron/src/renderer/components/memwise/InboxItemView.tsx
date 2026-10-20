@@ -708,7 +708,7 @@ function IdentityBody({ item, actions }: { item: Extract<MwInboxItem, { kind: 'i
       <Info_Alert variant="info" icon={<Link2 />}>
         <Info_Alert.Title>{t('memwise.inbox.identity.title', { entity: humanize(item.entity).toLowerCase(), plugin: item.pluginTitle })}</Info_Alert.Title>
         <Info_Alert.Description>
-          {t('memwise.inbox.identity.description', { score: scorePercent(item.score), source: item.source })}
+          {t('memwise.inbox.identity.description', { score: scorePercent(item.score), source: `${item.pluginTitle} ${item.source}` })}
         </Info_Alert.Description>
       </Info_Alert>
       <Info_Section title={t('memwise.inbox.identity.compare')}>
@@ -724,8 +724,8 @@ function IdentityBody({ item, actions }: { item: Extract<MwInboxItem, { kind: 'i
             {rows.map(r => (
               <tr key={r.field} className="border-b border-separator last:border-0" data-same={r.same === null ? 'unknown' : String(r.same)}>
                 <td className="px-4 py-2 text-secondary">{humanize(r.field)}</td>
-                <td className={cn('px-4 py-2', r.same === false && 'text-warning')}>{formatValueInline(r.ours, t, i18n.language)}</td>
-                <td className={cn('px-4 py-2', r.same === false && 'text-warning')}>{formatValueInline(r.theirs, t, i18n.language)}</td>
+                <td className={cn('px-4 py-2', r.same === false && 'font-medium text-info')}>{formatValueInline(r.ours, t, i18n.language)}</td>
+                <td className={cn('px-4 py-2', r.same === false && 'font-medium text-info')}>{formatValueInline(r.theirs, t, i18n.language)}</td>
               </tr>
             ))}
           </tbody>

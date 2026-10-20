@@ -118,7 +118,7 @@ export function PluginsList({ plugins, entityTypes, selectedPluginId, selectedEn
                 icon={<Puzzle className="h-3.5 w-3.5 text-foreground/60" />}
                 title={p.title}
                 subtitle={pluginSubtitle(p, t)}
-                subtitleTrailing={<EntityListBadge colorClass={TONE_BADGE[badge.tone]}>{badge.label}</EntityListBadge>}
+                titleTrailing={<EntityListBadge colorClass={TONE_BADGE[badge.tone]}>{badge.label}</EntityListBadge>}
                 dataAttributes={{ 'data-plugin': p.id, 'data-binding-status': p.binding.status }}
               />
             )

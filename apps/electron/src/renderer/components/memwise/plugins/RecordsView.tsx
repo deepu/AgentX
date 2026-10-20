@@ -40,7 +40,7 @@ export function SourceBadge({ label, title }: { label: string; title?: string })
 export interface RecordsTableProps {
   entity: string
   rows: MwEntityRow[]
-  /** The entity's fields, for up to three columns beside the title. */
+  /** The entity's fields, for up to two columns beside the title. */
   fields?: MwField[]
   selectedId?: string | null
   onOpen: (id: string) => void
@@ -51,7 +51,8 @@ export function RecordsTable({ entity, rows, fields = [], selectedId, onOpen }: 
   if (rows.length === 0) {
     return <EntityListEmptyScreen icon={<Database />} title={t('memwise.records.emptyTitle')} description={t('memwise.records.emptyDescription')} />
   }
-  const columns = fields.filter(f => !['name', 'legal_name', 'title'].includes(f.name)).slice(0, 3)
+  // Two columns beside the title keep the table inside the page; the record itself shows every field.
+  const columns = fields.filter(f => !['name', 'legal_name', 'title'].includes(f.name)).slice(0, 2)
   return (
     <div className="overflow-x-auto rounded-lg bg-raised shadow-elev-1">
       <table className="w-full text-label" data-records={entity}>
@@ -59,7 +60,6 @@ export function RecordsTable({ entity, rows, fields = [], selectedId, onOpen }: 
           <tr className="border-b border-separator text-left text-label-sm text-tertiary">
             <th className="px-4 py-2 font-medium">{t('memwise.records.record')}</th>
             {columns.map(f => <th key={f.name} className="px-4 py-2 font-medium">{humanize(f.name)}</th>)}
-            <th className="px-4 py-2 font-medium">{t('memwise.records.linked')}</th>
           </tr>
         </thead>
         <tbody>
@@ -70,15 +70,18 @@ export function RecordsTable({ entity, rows, fields = [], selectedId, onOpen }: 
               onClick={() => onOpen(row.id)}
               data-record={row.id}
             >
-              <td className="px-4 py-2 font-medium text-foreground">{rowTitle(entity, row)}</td>
-              {columns.map(f => <td key={f.name} className="px-4 py-2 text-secondary">{formatValueInline(row.values[f.name]?.value, t, i18n.language)}</td>)}
-              <td className="px-4 py-2">
-                <span className="flex flex-wrap gap-1">
-                  {(row.links ?? []).map(l => (
-                    <SourceBadge key={`${l.plugin}:${l.source}`} label={linkBadgeLabel(l)} title={matchMethodLabel(l.method, t)} />
-                  ))}
-                </span>
+              {/* The source badges sit under the title, so a wide row never scrolls them out of sight. */}
+              <td className="px-4 py-2 align-top">
+                <div className="font-medium text-foreground">{rowTitle(entity, row)}</div>
+                {(row.links ?? []).length > 0 && (
+                  <span className="mt-1 flex flex-wrap gap-1" aria-label={t('memwise.records.linked')}>
+                    {(row.links ?? []).map(l => (
+                      <SourceBadge key={`${l.plugin}:${l.source}`} label={linkBadgeLabel(l)} title={matchMethodLabel(l.method, t)} />
+                    ))}
+                  </span>
+                )}
               </td>
+              {columns.map(f => <td key={f.name} className="px-4 py-2 align-top text-secondary">{formatValueInline(row.values[f.name]?.value, t, i18n.language)}</td>)}
             </tr>
           ))}
         </tbody>

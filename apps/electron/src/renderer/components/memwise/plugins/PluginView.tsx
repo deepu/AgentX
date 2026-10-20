@@ -16,6 +16,7 @@ import { Info_Table } from '@/components/info/Info_Table'
 import { cn } from '@/lib/utils'
 import { absoluteTime, humanize, relativeTime } from '../format'
 import { EffectBadge, Pill } from '../playbook/Tags'
+import { effectLabel } from '../playbook/labels'
 import { bindingBadge, classSourceLabel, trustLabel } from './plugin-model'
 
 export interface PluginOverviewProps {
@@ -63,7 +64,15 @@ function ToolRow({ tool }: { tool: MwPluginTool }) {
         ) : (
           <EffectBadge effect={tool.effect ?? 'irreversible'} classified={!!tool.effect} />
         )}
-        <span className="text-label-sm text-tertiary">{classSourceLabel(tool.from, t, tool)}</span>
+        <span className="text-label-sm text-tertiary">
+          {/* MCP hints only suggest a class; until the binding sets one the tool counts as irreversible. */}
+          {!tool.effect && tool.hinted
+            ? <>{t('memwise.plugins.classFrom.none')} · {t('memwise.binding.hintedAs', { effect: effectLabel(tool.hinted, t) })}</>
+            : tool.from === 'binding' && !tool.reason && tool.declared && tool.effect === tool.declared
+              // The binding kept the plugin's declared class as it is.
+              ? t('memwise.plugins.classFrom.declared')
+              : classSourceLabel(tool.from, t, tool)}
+        </span>
         {tool.capability && <Pill className="bg-fill-hover text-secondary">{t('memwise.binding.provides', { capability: tool.capability })}</Pill>}
       </div>
       {tool.description && <p className="text-label-sm text-secondary">{tool.description}</p>}
@@ -134,12 +143,12 @@ export function PluginOverview({ plugin, onOpenPlaybook, now }: PluginOverviewPr
         <Info_Section title={t('memwise.binding.section.capabilities')}>
           <Info_Table>
             {plugin.providesList.map(c => (
-              <Info_Table.Row key={`p:${c.name}`} label={c.name} value={t('memwise.plugins.capabilityProvided', { tool: c.tool })} />
+              <Info_Table.Row key={`p:${c.name}`} label={t('memwise.binding.provides', { capability: c.name })} value={t('memwise.plugins.capabilityProvided', { tool: c.tool })} />
             ))}
             {plugin.requiresList.map(c => (
               <Info_Table.Row
                 key={`r:${c.name}`}
-                label={c.name}
+                label={t('memwise.plugins.capabilityNeeds', { capability: c.name })}
                 value={c.boundTo
                   ? t('memwise.plugins.capabilityBound', { tool: c.boundTo })
                   : c.optional ? t('memwise.plugins.capabilityOptional') : t('memwise.binding.noProvider')}

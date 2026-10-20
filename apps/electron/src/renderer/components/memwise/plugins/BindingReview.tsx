@@ -173,6 +173,7 @@ export function BindingReview({ view, roles = [], mode, onSave, actions, now }: 
                 { value: 'off', label: t('memwise.binding.toolOff') },
               ]
               const changed = choice !== toolChoice(view.binding, tool.name)
+              const keptDeclared = tool.from === 'binding' && !tool.reason && !!tool.declared && tool.effect === tool.declared
               return (
                 <li key={tool.name} className="px-4 py-2.5" data-tool={tool.name} data-tool-class={choice === 'unset' ? tool.effect ?? 'none' : choice}>
                   <div className="flex flex-wrap items-center gap-2">
@@ -197,8 +198,9 @@ export function BindingReview({ view, roles = [], mode, onSave, actions, now }: 
                   </div>
                   {tool.description && <p className="mt-0.5 text-label-sm text-secondary">{tool.description}</p>}
                   <p className="mt-0.5 text-label-sm text-tertiary" data-class-from={changed ? 'person' : tool.from}>
-                    {changed ? t('memwise.plugins.classFrom.person') : classSourceLabel(tool.from, t, tool)}
-                    {tool.declared && tool.from !== 'declared' && <> · {t('memwise.binding.declaredAs', { effect: effectLabel(tool.declared, t) })}</>}
+                    {/* The binding keeps the plugin's declared class as it is: that class came from the plugin. */}
+                    {changed ? t('memwise.plugins.classFrom.person') : keptDeclared ? t('memwise.plugins.classFrom.declared') : classSourceLabel(tool.from, t, tool)}
+                    {tool.declared && tool.from !== 'declared' && !keptDeclared && <> · {t('memwise.binding.declaredAs', { effect: effectLabel(tool.declared, t) })}</>}
                     {tool.hinted && tool.from !== 'annotations' && <> · {t('memwise.binding.hintedAs', { effect: effectLabel(tool.hinted, t) })}</>}
                     {!changed && tool.reason && <> · “{tool.reason}”</>}
                   </p>
@@ -274,7 +276,13 @@ export function BindingReview({ view, roles = [], mode, onSave, actions, now }: 
                                   <Choice label={t('memwise.binding.fieldFor', { field: f.name })} value={to}
                                     options={domainFields.map(d => ({ value: d.name, label: `${d.name} · ${d.type}` }))}
                                     noneLabel={t('memwise.binding.notMapped')} onChange={v => edit(setFieldRename(binding, pe.name, f.name, v))} />
-                                ) : to ? <Mono>{to}</Mono> : <span className={f.required ? 'text-destructive' : 'text-tertiary'}>{t('memwise.binding.notMapped')}</span>}
+                                ) : to ? (
+                                  // A rename stands out; a field kept under its own name stays quiet.
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="text-tertiary">→</span>
+                                    <Mono className={to !== f.name ? 'font-semibold text-accent' : 'text-secondary'}>{to}</Mono>
+                                  </span>
+                                ) : <span className={f.required ? 'text-destructive' : 'text-tertiary'}>{t('memwise.binding.notMapped')}</span>}
                               </td>
                             </tr>
                           )
@@ -321,6 +329,7 @@ export function BindingReview({ view, roles = [], mode, onSave, actions, now }: 
           entityOptions={entityOptions}
           domainFields={fieldsOf(binding.records[src.name]?.entity)}
           samples={samplesOf(view.report?.records, src.name)}
+          showSamples={!isFrozenView(view)}
           onChange={edit}
         />
       ))}
@@ -391,13 +400,15 @@ export function BindingReview({ view, roles = [], mode, onSave, actions, now }: 
 
 // ---------------------------------------------------------------- records
 
-function RecordMapping({ source, binding, editing, entityOptions, domainFields, samples, onChange }: {
+function RecordMapping({ source, binding, editing, entityOptions, domainFields, samples, showSamples = true, onChange }: {
   source: MwBindingView['records'][number]
   binding: MwBinding
   editing: boolean
   entityOptions: { value: string; label: string }[]
   domainFields: { name: string; type: string }[]
   samples: MwMappedRecord[]
+  /** False for a frozen binding: its dry run (and the sample records) stay with the binding case. */
+  showSamples?: boolean
   onChange: (b: MwBinding) => void
 }) {
   const { t, i18n } = useTranslation()
@@ -468,7 +479,7 @@ function RecordMapping({ source, binding, editing, entityOptions, domainFields, 
                 <IdentityEditor rules={identity} fields={rows} onChange={r => onChange(setIdentity(binding, source.name, r))} />
               ) : identity ? (
                 <ul className="space-y-0.5 text-label">
-                  <li>{t('memwise.binding.identity.keys')}: {identity.keys.length ? identity.keys.map(k => <Mono key={k} className="mr-1.5">{k}</Mono>) : <span className="text-tertiary">{t('memwise.binding.identity.noKeys')}</span>}</li>
+                  <li>{t('memwise.binding.identity.keys')}: {identity.keys.length ? identity.keys.map((k, i) => <React.Fragment key={k}>{i > 0 && ', '}<Mono>{k}</Mono></React.Fragment>) : <span className="text-tertiary">{t('memwise.binding.identity.noKeys')}</span>}</li>
                   {identity.fuzzy && <li>{t('memwise.binding.identity.fuzzyLine', { field: identity.fuzzy.field, auto: identity.fuzzy.auto, review: identity.fuzzy.review })}</li>}
                   <li>{identity.createMissing ? t('memwise.binding.identity.createMissing') : t('memwise.binding.identity.leaveUnlinked')}</li>
                 </ul>
@@ -476,17 +487,17 @@ function RecordMapping({ source, binding, editing, entityOptions, domainFields, 
             </div>
 
             {/* Sample records from the dry run, before and after */}
-            <div className="border-t border-separator px-4 py-3" data-samples={samples.length}>
+            {showSamples && <div className="border-t border-separator px-4 py-3" data-samples={samples.length}>
               <h4 className="mb-1.5 text-label-sm font-semibold text-secondary">{t('memwise.binding.samples.title')}</h4>
               {samples.length === 0 ? <p className="text-label-sm text-tertiary">{t('memwise.binding.samples.none')}</p> : (
                 <div className="space-y-3">
                   {samples.map(s => (
                     <div key={s.externalId} className="rounded-md bg-fill-hover/40 p-2" data-sample={s.externalId}>
                       <p className="mb-1 text-label-sm text-tertiary">{t('memwise.binding.samples.record', { id: s.externalId })}</p>
-                      <table className="w-full text-label-sm">
+                      <table className="w-full table-fixed text-label-sm">
                         <thead>
                           <tr className="text-left text-tertiary">
-                            <th className="py-0.5 pr-2 font-medium">{t('memwise.binding.col.domainField')}</th>
+                            <th className="w-28 py-0.5 pr-2 font-medium">{t('memwise.binding.col.domainField')}</th>
                             <th className="py-0.5 pr-2 font-medium">{t('memwise.binding.samples.before')}</th>
                             <th className="py-0.5 font-medium">{t('memwise.binding.samples.after')}</th>
                           </tr>
@@ -494,11 +505,15 @@ function RecordMapping({ source, binding, editing, entityOptions, domainFields, 
                         <tbody>
                           {Object.entries(s.values).map(([field, after]) => {
                             const before = beforeValue(s, rec.fields[field]?.from)
+                            const shownBefore = before === undefined ? '—' : formatValueInline(before, t, i18n.language)
+                            const shownAfter = formatValueInline(after, t, i18n.language)
+                            // The mapping changed the value (a transform): the new value stands out.
+                            const transformed = before !== undefined && shownBefore !== shownAfter
                             return (
-                              <tr key={field}>
+                              <tr key={field} data-transformed={transformed || undefined}>
                                 <td className="py-0.5 pr-2"><Mono>{field}</Mono></td>
-                                <td className="py-0.5 pr-2 text-secondary">{before === undefined ? '—' : formatValueInline(before, t, i18n.language)}</td>
-                                <td className="py-0.5">{formatValueInline(after, t, i18n.language)}</td>
+                                <td className="py-0.5 pr-2 text-secondary [overflow-wrap:anywhere]">{shownBefore}</td>
+                                <td className={cn('py-0.5 [overflow-wrap:anywhere]', transformed && 'font-medium text-accent')}>{shownAfter}</td>
                               </tr>
                             )
                           })}
@@ -513,7 +528,7 @@ function RecordMapping({ source, binding, editing, entityOptions, domainFields, 
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
           </>
         )}
       </div>
@@ -586,10 +601,17 @@ function IdentityEditor({ rules, fields, onChange }: { rules: MwBinding['records
 
 // ---------------------------------------------------------------- the dry run
 
+/** The live, frozen binding shown without a dry-run report (the plugin page's Binding tab). */
+function isFrozenView(view: MwBindingView): boolean {
+  return !view.draftId && !!view.binding.frozen && !view.report
+}
+
 function DryRunReport({ view, now }: { view: MwBindingView; now?: number }) {
   const { t, i18n } = useTranslation()
   const r = view.report
   if (!r) {
+    // A frozen binding keeps no report of its own (it stays with the binding case): nothing to say.
+    if (isFrozenView(view)) return null
     return (
       <Info_Section title={t('memwise.binding.section.dryRun')}>
         <Empty>{t('memwise.binding.noReport')}</Empty>
