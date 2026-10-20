@@ -125,13 +125,14 @@ export class Dispatcher {
     }
   }
 
+  /** Events after the cursor, up to `upTo`, that some consumer hasn't handled (a consumer added later starts at the cursor). */
   private async undelivered(upTo: number): Promise<number> {
     const names = this.deps.consumers().map((c) => c.name);
     const { rows } = await this.deps.pool.query(
       `select count(*)::int as n from mw.entity_events e
-        where e.seq <= $1
+        where e.seq > $3 and e.seq <= $1
           and (select count(*) from mw.event_deliveries d where d.event_id = e.id and d.consumer = any($2::text[])) < cardinality($2::text[])`,
-      [upTo, names]);
+      [upTo, names, await this.cursor()]);
     return rows[0].n;
   }
 
