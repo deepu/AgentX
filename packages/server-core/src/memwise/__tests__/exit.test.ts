@@ -12,7 +12,8 @@ import { join } from 'node:path'
 import { createTestDatabase, postgresAvailable, type TestDatabase } from '@memwise/db'
 import type { MwCase, MwChange, MwInboxItem } from '@memwise/shared/protocol'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
-import type { RequestContext, RpcServer } from '../../transport/types'
+import type { RequestContext } from '../../transport/types'
+import { ctxFor, fakeServer, fakeSessions, quiet, until, WS } from './api-harness'
 import { registerMemwiseHandlers } from '../../handlers/rpc/memwise'
 import type { HandlerDeps } from '../../handlers/handler-deps'
 import { resetMemwiseHost } from '../host'
@@ -21,60 +22,6 @@ import { startMemwiseService, type MemwiseService } from '../service'
 
 const REPO = join(import.meta.dir, '..', '..', '..', '..', '..')
 const ch = RPC_CHANNELS.memwise
-const WS = 'ws-test'
-const quiet = { info() {}, warn() {}, error: (...a: unknown[]) => console.error(...a) }
-
-type Handler = (ctx: RequestContext, ...args: any[]) => Promise<any>
-
-/** A server that records handlers and pushes, so tests call channels the way clients do. */
-function fakeServer() {
-  const handlers = new Map<string, Handler>()
-  const pushes: { channel: string; args: unknown[] }[] = []
-  const server: RpcServer = {
-    handle(channel, handler) { handlers.set(channel, handler as Handler) },
-    push(channel, _target, ...args) { pushes.push({ channel, args }) },
-    async invokeClient() {},
-    hasClientCapability: () => false,
-    findClientsWithCapability: () => [],
-  }
-  const call = async <T = any>(ctx: RequestContext, channel: string, ...args: unknown[]): Promise<T> => {
-    const h = handlers.get(channel)
-    if (!h) throw new Error(`no handler for ${channel}`)
-    return h(ctx, WS, ...args)
-  }
-  return { server, handlers, pushes, call }
-}
-
-function fakeSessions() {
-  const created: { workspaceId: string; name?: string; id: string }[] = []
-  const sent: { sessionId: string; message: string; hidden?: boolean }[] = []
-  return {
-    created,
-    sent,
-    manager: {
-      async createSession(workspaceId: string, options?: { name?: string }) {
-        const id = `session-${created.length + 1}`
-        created.push({ workspaceId, name: options?.name, id })
-        return { id, workspaceId, name: options?.name } as any
-      },
-      async sendMessage(sessionId: string, message: string, _a?: unknown, _b?: unknown, options?: { hidden?: boolean }) {
-        sent.push({ sessionId, message, hidden: options?.hidden })
-      },
-    },
-  }
-}
-
-const ctxFor = (clientId: string, personId?: string): RequestContext => ({ clientId, workspaceId: WS, webContentsId: null, ...(personId ? { personId } : {}) })
-
-async function until<T>(what: string, fn: () => Promise<T>, ok: (v: T) => boolean, timeoutMs = 60_000): Promise<T> {
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
-    const v = await fn()
-    if (ok(v)) return v
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}: ${JSON.stringify(v).slice(0, 500)}`)
-    await new Promise((r) => setTimeout(r, 150))
-  }
-}
 
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64')
 
@@ -175,7 +122,8 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     await expect(api.call(staff, ch.PEOPLE_ACT_AS, people[0].id)).rejects.toThrow()
 
     const list = await api.call(staff, ch.PLAYBOOKS_LIST)
-    expect(list).toEqual([expect.objectContaining({ id: 'client-intake', title: 'Client intake', stepCount: 4 })])
+    // Client intake, plus the meta playbooks that build and change playbooks (Phase 3)
+    expect(list).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'client-intake', title: 'Client intake', stepCount: 4 })]))
     const pb = await api.call(staff, ch.PLAYBOOKS_GET, 'client-intake')
     expect(pb.states[0].id).toBe('fill')
     expect(pb.steps.verify).toMatchObject({ performer: 'person', assignee: 'manager', outcomes: ['approved', 'sent_back'] })
@@ -268,7 +216,7 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     expect(live.edges['check>verify']).toBe(2)
     expect(live.edges['verify>fill']).toBe(1)
     const pbs = await api.call(staff, ch.PLAYBOOKS_LIST)
-    expect(pbs[0]).toMatchObject({ open: 1, done: 1, waitingOnMe: 1 })
+    expect(pbs.find((p: { id: string }) => p.id === 'client-intake')).toMatchObject({ open: 1, done: 1, waitingOnMe: 1 })
   }, 180_000)
 
   it('"why was this flagged?" is answered from the step record with citations', async () => {
@@ -284,15 +232,20 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     expect(e.cites.some((c: { kind: string }) => c.kind === 'journal')).toBe(true)
   }, 60_000)
 
-  it('opens a chat anchored to a step with the record as hidden context', async () => {
+  it('opens a chat anchored to a step with the record as its MemWise context, not a message', async () => {
     const check = firstCase.timeline.find((t) => t.stepId === 'check')!
     const { sessionId } = await api.call(manager, ch.CHAT_OPEN, { anchor: { kind: 'step', id: check.stepRunId } })
     expect(sessionId).toBe(sessions.created.at(-1)!.id)
     expect(sessions.created.at(-1)).toMatchObject({ workspaceId: WS, name: 'About Asha Rao' })
+    const context = sessions.contexts.get(sessionId)!
+    expect(context).toMatchObject({ anchor: { kind: 'step', id: check.stepRunId } })
+    expect(context.conversation).toBeUndefined()
+    expect(context.block).toContain('Asha Rao')
+    expect(context.block).toContain('gst.validate_gstin')
+    // The first turn is a short hidden kick-off; the record is not in it.
     const first = sessions.sent.find((m) => m.sessionId === sessionId)!
     expect(first.hidden).toBe(true)
-    expect(first.message).toContain('Asha Rao')
-    expect(first.message).toContain('gst.validate_gstin')
+    expect(first.message).not.toContain('gst.validate_gstin')
     const { rows } = await svc.kernel.pool.query('select anchor_kind, anchor_id from mw.chat_anchors where chat_id = $1', [sessionId])
     expect(rows[0]).toEqual({ anchor_kind: 'step', anchor_id: check.stepRunId })
   }, 60_000)

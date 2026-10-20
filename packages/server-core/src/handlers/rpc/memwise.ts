@@ -8,15 +8,23 @@ import type {
   MwCase, MwCaseSummary, MwDecideApprovalInput, MwDocument, MwEntityRow, MwEntityType, MwExplainInput, MwExplanation,
   MwInboxItem, MwReturnedNote, MwLiveCounts, MwOpenChatInput, MwPerson, MwPlaybook, MwPlaybookSummary, MwRole, MwRunStatus,
   MwSendEventInput, MwStartCaseInput, MwStartCaseRefusal, MwStatus, MwStepRecord, MwSubmitResult, MwSubmitStepInput,
+  MwBuildPlaybookInput, MwBuildPlaybookResult, MwCheckDraftInput, MwCreateDraftInput, MwDraft, MwDraftEditInput,
+  MwDraftReport, MwDraftSummary, MwExampleFromCaseInput, MwExampleFromCaseResult, MwSubmitDraftResult, MwVersion,
+  MwWriteDraftInput, MwWriteDraftResult,
 } from '@memwise/shared/protocol'
-import type { ApprovalDecision } from '@memwise/defs'
+import type { ApprovalDecision, DraftDiff, DraftMeta } from '@memwise/defs'
 import type { CompiledPolicy } from '@memwise/policy'
 import type { Actor, CaseView, InboxItem } from '@memwise/runtime'
 import { pushTyped, type RequestContext, type RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange } from '../../memwise/host'
 import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../memwise/service'
-import type { DtoContext } from '../../memwise/dto'
+import type { DraftFacts, DtoContext } from '../../memwise/dto'
+import {
+  authoringOf, conversationBlock, conversationState, draftForRun, isConversationStep, kickoffMessage, personName, plainValues,
+  sendBackNote, sentBackMessage,
+  type KernelWithAuthoring,
+} from '../../memwise/conversation'
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.STATUS,
@@ -41,6 +49,19 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.ENTITIES_TYPES,
   RPC_CHANNELS.memwise.FILES_UPLOAD,
   RPC_CHANNELS.memwise.CHAT_OPEN,
+  // Phase 3
+  RPC_CHANNELS.memwise.PLAYBOOKS_VERSIONS,
+  RPC_CHANNELS.memwise.PLAYBOOKS_BUILD,
+  RPC_CHANNELS.memwise.DRAFTS_LIST,
+  RPC_CHANNELS.memwise.DRAFTS_GET,
+  RPC_CHANNELS.memwise.DRAFTS_CREATE,
+  RPC_CHANNELS.memwise.DRAFTS_WRITE,
+  RPC_CHANNELS.memwise.DRAFTS_KEEP,
+  RPC_CHANNELS.memwise.DRAFTS_DISCARD_EDIT,
+  RPC_CHANNELS.memwise.DRAFTS_DISCARD,
+  RPC_CHANNELS.memwise.DRAFTS_CHECK,
+  RPC_CHANNELS.memwise.DRAFTS_SUBMIT,
+  RPC_CHANNELS.memwise.EXAMPLES_FROM_CASE,
 ] as const
 
 /** Largest upload accepted through the API (base64 travels inside one WS message). */
@@ -75,7 +96,28 @@ const EVENT_MESSAGES: Record<string, string> = {
   forbidden: 'This needs someone with a different role.',
   already: 'This was already answered.',
 }
+const DRAFT_MESSAGES: Record<string, string> = {
+  missing: 'That draft was not found.',
+  not_open: 'This draft was already published or discarded.',
+  edit_missing: 'That change was not found in the draft.',
+  edit_not_pending: 'That change was already kept or discarded.',
+  edit_conflict: 'The files changed again since that edit, so it cannot be undone on its own.',
+  pending_edits: 'Keep or discard the changes from chat before sending the draft for review.',
+  conflict: 'The live playbook changed since this draft was made; look at the conflicting files first.',
+  write_failed: 'The draft could not be changed.',
+  in_review: 'This draft is already waiting for approval.',
+  in_chat: 'This draft is being built in a chat; finish it there.',
+  errors: 'Fix the errors in the draft before sending it for review.',
+  submit_failed: 'The draft could not be sent for review.',
+  create_failed: 'The draft could not be made.',
+  check_failed: 'The draft could not be checked.',
+}
 const refusal = (code: string, message: string): MwSubmitResult => ({ applied: false, code, message })
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
+/** The meta playbooks that build and change playbooks (20 §3). */
+const META_PLAYBOOKS = ['create-playbook', 'change-playbook']
+/** Larger files are left out of `MwDraft.fileTexts` (the diff still shows them). */
+const FILE_TEXT_MAX = 256_000
 
 function clientOf(ctx: RequestContext): ClientIdentity {
   return { clientId: ctx.clientId, personId: ctx.personId ?? null }
@@ -204,6 +246,24 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           })
           break
         }
+        case 'conversation': {
+          const plain = plainValues(Object.fromEntries(Object.entries(values).filter(([, x]) => !x.hidden)))
+          const { PgChatAnchorStore } = await import('@memwise/db')
+          const chat = (await new PgChatAnchorStore().forAnchor(svc.kernel.pool, 'step', item.stepRunId, actor.personId).catch(() => []))[0]
+          const authoring = (svc.kernel as KernelWithAuthoring).authoring
+          const draft = authoring ? await draftForRun(authoring, item.runId, plain) : undefined
+          out.push({
+            kind: 'conversation', id: item.id, stepRunId: item.stepRunId, caseId: item.caseId, runId: item.runId,
+            caseTitle: typeof plain.title === 'string' && plain.title.trim() ? plain.title.trim()
+              : typeof plain.request === 'string' && plain.request.trim() ? plain.request.trim().slice(0, 80) : caseTitle,
+            workflowId: item.workflowId, stepTitle: d.stateTitle(wf, item.stepId),
+            ...(item.assignee ? { assignee: item.assignee } : {}),
+            ...(chat ? { sessionId: chat.chatId } : {}),
+            ...(draft ? { draftId: draft.id } : {}),
+            since: item.since,
+          })
+          break
+        }
         case 'reminder':
           out.push({
             kind: 'reminder', id: item.id, caseId: item.caseId, runId: item.runId, caseTitle, workflowId: item.workflowId,
@@ -268,6 +328,184 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     let digest = lines.join('\n')
     if (digest.length > DIGEST_MAX_CHARS) digest = `${digest.slice(0, DIGEST_MAX_CHARS)}\n… (shortened)`
     return { title: mw.title, digest, caseId }
+  }
+
+  async function peopleNames(svc: MemwiseService): Promise<Map<string, string>> {
+    try { return new Map((await svc.kernel.people.list()).map((p) => [p.id, p.name])) } catch { return new Map() }
+  }
+
+  /** An ordinary chat about a case, step or playbook: its record goes into the chat's system prompt. */
+  async function openExplainChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, workspaceId: string, anchor: MwOpenChatInput['anchor']): Promise<string> {
+    const { title, digest } = await caseDigest(svc, actor, c, d, anchor)
+    const session = await deps.sessionManager.createSession(workspaceId, { name: `About ${title}` })
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    // The anchors table names cases and steps; a playbook anchor is stored the same way.
+    await new PgChatAnchorStore().set(svc.kernel.pool, {
+      chatId: session.id, anchorKind: anchor.kind as 'case' | 'step', anchorId: anchor.id, personId: actor.personId,
+    })
+    const kind = anchor.kind === 'workflow' ? 'playbook' : anchor.kind
+    deps.sessionManager.setMemwiseContext(session.id, {
+      anchor: { kind: anchor.kind, id: anchor.id },
+      block: [
+        digest,
+        '',
+        `This chat is about the ${kind} above. Answer only from this record; say "not recorded" when it does not say.`,
+      ].join('\n'),
+      personName: (await personName(svc, actor.personId)) ?? undefined,
+    })
+    kickoff(session.id, 'explain')
+    return session.id
+  }
+
+  /**
+   * The chat of a conversation step (building or changing a playbook): one per step and person.
+   * Reuses the person's chat on this step, or on an earlier attempt of it in the same run (after a
+   * review sent it back), re-anchoring it to the waiting attempt; otherwise makes one.
+   */
+  async function openConversationChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, stepRunId: string): Promise<string> {
+    const s = await conversationState(svc, stepRunId, actor)
+    const wf = c.project.workflows[s.workflowId]
+    const step = wf?.steps[s.stepId]
+    if (step?.assignee && !actor.roles.includes(step.assignee)) {
+      throw new Error(`This step is for someone with the ${step.assignee} role.`)
+    }
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    const store = new PgChatAnchorStore()
+    const attempts = [s.stepRunId, ...(s.view?.stepRuns ?? []).filter((r) => r.stepId === s.stepId && r.stepRunId !== s.stepRunId).map((r) => r.stepRunId).reverse()]
+    for (const id of attempts) {
+      for (const a of await store.forAnchor(svc.kernel.pool, 'step', id, actor.personId)) {
+        if (!(await deps.sessionManager.getSession(a.chatId).catch(() => null))) continue
+        if (id !== s.stepRunId) {
+          // A new attempt after the review sent it back: re-anchor the chat, refresh its context,
+          // and pass the reviewer's comment on so the person needn't repeat it.
+          await store.set(svc.kernel.pool, { chatId: a.chatId, anchorKind: 'step', anchorId: s.stepRunId, personId: actor.personId })
+          const who = (await personName(svc, actor.personId)) ?? 'the person in this chat'
+          deps.sessionManager.setMemwiseContext(a.chatId, {
+            anchor: { kind: 'step', id: s.stepRunId }, conversation: true, block: await conversationBlock(svc, s, actor, who), personName: who,
+          })
+          const note = sendBackNote(s.view, s.stepRunId, s.stepId)
+          if (note) {
+            const by = (await personName(svc, note.by)) ?? undefined
+            deps.sessionManager.sendMessage(a.chatId, sentBackMessage(note, by), undefined, undefined, { hidden: true }).catch((e: unknown) => {
+              log.warn(`[memwise] chat ${a.chatId}: passing the review's comment on failed: ${errText(e)}`)
+            })
+          }
+        }
+        return a.chatId
+      }
+    }
+    const v = s.values
+    const changing = s.workflowId === 'change-playbook' || (!!s.draft && s.draft.kind === 'change')
+    const playbookId = typeof v.playbook === 'string' && v.playbook ? v.playbook : s.draft?.workflowId
+    const name = changing
+      ? `Changing: ${(playbookId && c.project.workflows[playbookId]?.title) || (typeof v.title === 'string' && v.title) || playbookId || 'a playbook'}`
+      : `Building: ${(typeof v.title === 'string' && v.title.trim()) || (typeof v.request === 'string' && v.request.trim().slice(0, 60)) || 'a new playbook'}`
+    const session = await deps.sessionManager.createSession(workspaceId, { name })
+    await store.set(svc.kernel.pool, { chatId: session.id, anchorKind: 'step', anchorId: s.stepRunId, personId: actor.personId })
+    const who = (await personName(svc, actor.personId)) ?? 'the person in this chat'
+    deps.sessionManager.setMemwiseContext(session.id, {
+      anchor: { kind: 'step', id: s.stepRunId },
+      conversation: true,
+      block: await conversationBlock(svc, s, actor, who),
+      personName: who,
+    })
+    kickoff(session.id, 'conversation')
+    return session.id
+  }
+
+  /** The short hidden first turn, so the agent speaks first; its context is in the system prompt. */
+  function kickoff(sessionId: string, kind: 'conversation' | 'explain'): void {
+    deps.sessionManager.sendMessage(sessionId, kickoffMessage(kind), undefined, undefined, { hidden: true }).catch((e: unknown) => {
+      log.warn(`[memwise] anchored chat ${sessionId}: first turn failed: ${errText(e)}`)
+    })
+  }
+
+  /** Per request: draft facts (edits, report, the change run, names) for the DTOs. */
+  function draftLookup(svc: MemwiseService, actor: PersonActor, c: DtoContext) {
+    const authoring = authoringOf(svc)
+    let names: Promise<Map<string, string>> | undefined
+    let metaRuns: Promise<{ runId: string; caseId: string; state: string; status: string; draft?: string }[]> | undefined
+    const activeMetaRuns = () => (metaRuns ??= (async () => {
+      const out: { runId: string; caseId: string; state: string; status: string; draft?: string }[] = []
+      for (const workflowId of META_PLAYBOOKS) {
+        if (!c.project.workflows[workflowId]) continue
+        const cases = await svc.kernel.listCases({ workflowId, status: 'active' }, actor).catch(() => [])
+        for (const cs of cases) {
+          const snap = await svc.kernel.getCase(cs.caseId).catch(() => undefined)
+          const draft = snap?.values.draft?.value
+          out.push({ runId: cs.runId, caseId: cs.caseId, state: cs.state, status: cs.status, ...(typeof draft === 'string' ? { draft } : {}) })
+        }
+      }
+      return out
+    })())
+    async function runOf(meta: DraftMeta): Promise<DraftFacts['run']> {
+      if (meta.runId) {
+        const run = await svc.kernel.getRun(meta.runId).catch(() => undefined)
+        if (run && run.status === 'active') return { runId: run.id, caseId: run.caseId, state: run.state, status: run.status }
+      }
+      const found = (await activeMetaRuns()).find((r) => r.draft === meta.id)
+      if (found) return { runId: found.runId, caseId: found.caseId, state: found.state, status: found.status }
+      if (meta.runId) {
+        const run = await svc.kernel.getRun(meta.runId).catch(() => undefined)
+        if (run) return { runId: run.id, caseId: run.caseId, state: run.state, status: run.status }
+      }
+      return undefined
+    }
+    return {
+      async facts(meta: DraftMeta, pre: { got?: Awaited<ReturnType<typeof authoring.getDraft>>; diff?: DraftDiff } = {}): Promise<DraftFacts> {
+        const got = pre.got ?? (await authoring.getDraft(meta.id))
+        if (!got) throw new Error(DRAFT_MESSAGES.missing)
+        const diff = pre.diff ?? (meta.status === 'open' ? await authoring.diff(meta.id).catch(() => undefined) : undefined)
+        const changedFiles = diff ? diff.files.length : new Set(got.edits.filter((e) => e.status !== 'discarded').flatMap((e) => e.files.map((f) => f.path))).size
+        return {
+          meta: got.meta, edits: got.edits, ...(got.report ? { report: got.report } : {}), contentHash: got.contentHash,
+          run: await runOf(got.meta), changedFiles,
+          playbookTitle: c.project.workflows[got.meta.workflowId]?.title ?? got.meta.title,
+          names: await (names ??= peopleNames(svc)),
+        }
+      },
+    }
+  }
+
+  /**
+   * The draft's files as text for the step editor: every file of its playbook folder, and the
+   * domain files it changes. Each read is bounded so one odd file can't stall the screen.
+   */
+  async function draftFileTexts(authoring: ReturnType<typeof authoringOf>, meta: DraftMeta, diff: DraftDiff | undefined): Promise<Record<string, string>> {
+    const out: Record<string, string> = {}
+    const listed = await authoring.read({ draftId: meta.id }).catch(() => undefined)
+    const folder = `workflows/${meta.workflowId}/`
+    const paths = new Set<string>(((listed as { files?: string[] } | undefined)?.files ?? []).filter((p) => p.startsWith(folder)))
+    for (const f of diff?.files ?? []) {
+      if (f.status !== 'deleted' && f.path.startsWith('domain/')) paths.add(f.path)
+    }
+    for (const path of [...paths].sort()) {
+      const changed = diff?.files.find((f) => f.path === path)
+      if (changed && typeof changed.after === 'string') { out[path] = changed.after; continue }
+      const r = await authoring.read({ draftId: meta.id, path }).catch(() => undefined) as { content?: string | null } | undefined
+      if (typeof r?.content === 'string' && r.content.length <= FILE_TEXT_MAX) out[path] = r.content
+    }
+    return out
+  }
+
+  /** The draft read as a playbook, with policies compiled from the draft's own files. */
+  async function draftPlaybook(svc: MemwiseService, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, draftId: string): Promise<MwPlaybook | undefined> {
+    try {
+      const { loadDraft } = await import('@memwise/defs')
+      const loaded = await loadDraft(svc.projectDir, draftId)
+      const wf = loaded.workflow
+      if (!wf) return undefined
+      const { compilePolicy, layersFor } = await import('@memwise/policy')
+      const policies: Record<string, CompiledPolicy | undefined> = {}
+      for (const step of Object.values(wf.steps)) {
+        try { policies[step.id] = compilePolicy(layersFor({ ...(loaded.project.domainPolicy ? { domainPolicy: loaded.project.domainPolicy } : {}), workflow: wf, step })) } catch { /* shown without */ }
+      }
+      const ctxD: DtoContext = { ...c, project: loaded.project, diagnostics: loaded.diagnostics }
+      const { startFields } = await import('@memwise/runtime')
+      return { ...d.toPlaybook(ctxD, wf, policies), startFields: startFields(wf) }
+    } catch {
+      return undefined
+    }
   }
 
   return {
@@ -463,27 +701,225 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
 
     async openChat(ctx: RequestContext, workspaceId: string, input: MwOpenChatInput): Promise<{ sessionId: string }> {
       const { svc, actor, c, d } = await begin(ctx)
-      const { title, digest } = await caseDigest(svc, actor, c, d, input.anchor)
-      const session = await deps.sessionManager.createSession(workspaceId, { name: `About ${title}` })
-      const { PgChatAnchorStore } = await import('@memwise/db')
-      // The anchors table names cases and steps; a playbook anchor is stored the same way.
-      await new PgChatAnchorStore().set(svc.kernel.pool, {
-        chatId: session.id, anchorKind: input.anchor.kind as 'case' | 'step', anchorId: input.anchor.id, personId: actor.personId,
-      })
-      // The first turn carries the record as hidden context; the reply is a short summary the
-      // person sees when the chat opens.
-      const kind = input.anchor.kind === 'workflow' ? 'playbook' : input.anchor.kind
-      const prompt = [
-        `<memwise_context kind="${kind}" id="${input.anchor.id}">`,
-        digest,
-        '</memwise_context>',
-        `This chat is about the ${kind} above. Answer only from this record; say "not recorded" when it does not say.`,
-        'Start with two or three plain sentences on where it stands, then offer to answer questions about it.',
-      ].join('\n')
-      deps.sessionManager.sendMessage(session.id, prompt, undefined, undefined, { hidden: true }).catch((e: unknown) => {
-        log.warn(`[memwise] anchored chat ${session.id}: first turn failed: ${e instanceof Error ? e.message : String(e)}`)
-      })
-      return { sessionId: session.id }
+      if (input?.anchor?.kind === 'step') {
+        const rec = await svc.kernel.getStepRecord(input.anchor.id)
+        const step = rec ? c.project.workflows[rec.workflowId]?.steps[rec.stepId] : undefined
+        if (rec && isConversationStep(step)) {
+          const s = await conversationState(svc, rec.stepRunId, actor)
+          // A finished conversation opens as an ordinary chat about it.
+          if (s.status === 'waiting') return { sessionId: await openConversationChat(svc, actor, c, workspaceId, s.stepRunId) }
+        }
+      }
+      return { sessionId: await openExplainChat(svc, actor, c, d, workspaceId, input.anchor) }
+    },
+
+    // ---------------------------------------------------------------- Phase 3 (20 §6)
+
+    async listVersions(ctx: RequestContext, workflowId: string): Promise<MwVersion[]> {
+      const { svc, d } = await begin(ctx)
+      const versions = (svc.kernel as KernelWithAuthoring).versions
+      if (!versions) return []
+      const [rows, names] = await Promise.all([versions.call(svc.kernel, workflowId), peopleNames(svc)])
+      return rows.map((v) => d.toVersion(v, names))
+    },
+
+    async buildPlaybook(ctx: RequestContext, workspaceId: string, input: MwBuildPlaybookInput = {}): Promise<MwBuildPlaybookResult> {
+      const { svc, actor, c } = await begin(ctx)
+      if (input.workflowId && !c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
+      // Checked before anything starts, so a refusal leaves no run behind (`build.forbidden`;
+      // RPC errors carry only the message, which the dialog shows).
+      const meta = c.project.workflows[input.workflowId ? 'change-playbook' : 'create-playbook']
+      if (!meta) throw new Error('Building playbooks by chat is not set up in this project (the create-playbook and change-playbook playbooks are missing).')
+      const assignee = meta.steps[meta.start]?.assignee
+      if (assignee && !actor.roles.includes(assignee)) {
+        throw Object.assign(new Error(`Building and changing playbooks is for someone with the ${assignee} role.`), { code: 'build.forbidden' })
+      }
+      const authoring = authoringOf(svc)
+      const started = await authoring.startBuild({
+        ...(input.workflowId ? { workflowId: input.workflowId } : {}),
+        ...(input.request?.trim() ? { request: input.request.trim() } : {}),
+        ...(input.title?.trim() ? { title: input.title.trim() } : {}),
+      }, actor)
+      const sessionId = await openConversationChat(svc, actor, c, workspaceId, started.stepRunId)
+      return { sessionId, runId: started.runId, caseId: started.caseId, stepRunId: started.stepRunId }
+    },
+
+    async listDrafts(ctx: RequestContext, filter: { workflowId?: string } = {}): Promise<MwDraftSummary[]> {
+      const { svc, actor, c, d } = await begin(ctx)
+      const authoring = authoringOf(svc)
+      const metas = await authoring.listDrafts(filter?.workflowId ? { workflowId: filter.workflowId } : undefined)
+      const lookup = draftLookup(svc, actor, c)
+      const out: MwDraftSummary[] = []
+      for (const meta of metas) {
+        const facts = await lookup.facts(meta).catch(() => undefined)
+        if (facts) out.push(d.toDraftSummary(facts))
+      }
+      return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    },
+
+    async getDraft(ctx: RequestContext, draftId: string): Promise<MwDraft> {
+      const { svc, actor, c, d } = await begin(ctx)
+      const authoring = authoringOf(svc)
+      const lookup = draftLookup(svc, actor, c)
+      const got = await authoring.getDraft(draftId)
+      if (!got) throw new Error(DRAFT_MESSAGES.missing)
+      const diff = await authoring.diff(draftId).catch(() => undefined)
+      const facts = await lookup.facts(got.meta, { got, diff })
+      const pending = d.pendingEditByPath(got.edits)
+      const diagnostics = await authoring.quickCheck(draftId).catch((e: unknown) => [{ severity: 'error' as const, code: 'draft-unreadable', message: errText(e) }])
+      const playbook = await draftPlaybook(svc, c, d, draftId)
+      return {
+        ...d.toDraftSummary(facts),
+        edits: got.edits.map((e) => d.toDraftEdit(e, facts.names)),
+        files: (diff?.files ?? []).map((f) => d.toFileChange(f, pending)),
+        ...(diff?.structure ? { structure: d.toStructuralDiff(diff.structure) } : {}),
+        conflicts: [...(diff?.conflicts ?? [])],
+        ...(got.report ? { report: d.toDraftReport(got.report) } : {}),
+        reportStale: !!got.report && got.report.hash !== got.contentHash,
+        ...(playbook ? { playbook } : {}),
+        diagnostics: diagnostics.map(d.toDiagnostic),
+        ...(got.meta.status === 'open' ? { fileTexts: await draftFileTexts(authoring, got.meta, diff) } : {}),
+      }
+    },
+
+    async createDraft(ctx: RequestContext, input: MwCreateDraftInput): Promise<MwDraftSummary> {
+      const { svc, actor, c, d } = await begin(ctx)
+      if (!input?.workflowId?.trim()) throw new Error('Name the playbook the draft is for.')
+      const kind = input.kind ?? (c.project.workflows[input.workflowId] ? 'change' : 'create')
+      if (kind === 'change' && !c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
+      if (kind === 'create' && c.project.workflows[input.workflowId]) throw new Error('A playbook with that id already exists.')
+      const meta = await authoringOf(svc).createDraft({
+        workflowId: input.workflowId.trim(), title: input.title?.trim() || c.project.workflows[input.workflowId]?.title || d.humanize(input.workflowId), kind,
+      }, actor)
+      emitMemwiseChange({ kind: 'drafts', id: meta.id })
+      return d.toDraftSummary(await draftLookup(svc, actor, c).facts(meta))
+    },
+
+    async writeDraft(ctx: RequestContext, input: MwWriteDraftInput): Promise<MwWriteDraftResult> {
+      const { svc, actor, d } = await begin(ctx)
+      const authoring = authoringOf(svc)
+      const got = await authoring.getDraft(input?.draftId)
+      if (!got) return { applied: false, diagnostics: [], code: 'draft.missing', message: DRAFT_MESSAGES.missing }
+      if (got.meta.status !== 'open') return { applied: false, diagnostics: [], code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
+      if (!Array.isArray(input.files) || !input.files.length) return { applied: false, diagnostics: [], code: 'draft.write_failed', message: 'Nothing to write.' }
+      try {
+        const { edit, diagnostics } = await authoring.write({
+          draftId: input.draftId, files: input.files, summary: input.summary?.trim() || 'Edited in the app', via: 'editor',
+        }, actor)
+        emitMemwiseChange({ kind: 'drafts', id: input.draftId })
+        return { applied: true, editId: edit.id, diagnostics: diagnostics.map(d.toDiagnostic) }
+      } catch (e) {
+        return { applied: false, diagnostics: [], code: 'draft.write_failed', message: errText(e) }
+      }
+    },
+
+    async keepEdit(ctx: RequestContext, input: MwDraftEditInput): Promise<MwSubmitResult> {
+      const { svc, actor } = await begin(ctx)
+      const authoring = authoringOf(svc)
+      const got = await authoring.getDraft(input?.draftId)
+      if (!got) return refusal('draft.missing', DRAFT_MESSAGES.missing!)
+      if (got.meta.status !== 'open') return refusal('draft.not_open', DRAFT_MESSAGES.not_open!)
+      const edit = got.edits.find((e) => e.id === input.editId)
+      if (!edit) return refusal('edit.missing', DRAFT_MESSAGES.edit_missing!)
+      if (edit.status !== 'pending') return refusal('edit.not_pending', DRAFT_MESSAGES.edit_not_pending!)
+      const r = await authoring.keepEdit(input.draftId, input.editId, actor)
+      if (!r.applied) return refusal('edit.missing', r.message ?? DRAFT_MESSAGES.edit_missing!)
+      emitMemwiseChange({ kind: 'drafts', id: input.draftId })
+      return { applied: true }
+    },
+
+    async discardEdit(ctx: RequestContext, input: MwDraftEditInput): Promise<MwSubmitResult> {
+      const { svc, actor } = await begin(ctx)
+      const authoring = authoringOf(svc)
+      const got = await authoring.getDraft(input?.draftId)
+      if (!got) return refusal('draft.missing', DRAFT_MESSAGES.missing!)
+      if (got.meta.status !== 'open') return refusal('draft.not_open', DRAFT_MESSAGES.not_open!)
+      const edit = got.edits.find((e) => e.id === input.editId)
+      if (!edit) return refusal('edit.missing', DRAFT_MESSAGES.edit_missing!)
+      if (edit.status !== 'pending') return refusal('edit.not_pending', DRAFT_MESSAGES.edit_not_pending!)
+      const r = await authoring.discardEdit(input.draftId, input.editId, actor)
+      if (!r.applied) {
+        const names = r.conflicts?.length ? ` (${r.conflicts.join(', ')})` : ''
+        return r.conflicts?.length
+          ? refusal('edit.conflict', `${DRAFT_MESSAGES.edit_conflict}${names}`)
+          : refusal('edit.missing', r.message ?? DRAFT_MESSAGES.edit_missing!)
+      }
+      emitMemwiseChange({ kind: 'drafts', id: input.draftId })
+      return { applied: true }
+    },
+
+    async discardDraft(ctx: RequestContext, draftId: string): Promise<MwSubmitResult> {
+      const { svc, actor } = await begin(ctx)
+      const authoring = authoringOf(svc)
+      const got = await authoring.getDraft(draftId)
+      if (!got) return refusal('draft.missing', DRAFT_MESSAGES.missing!)
+      if (got.meta.status !== 'open') return refusal('draft.not_open', DRAFT_MESSAGES.not_open!)
+      await authoring.discardDraft(draftId, actor)
+      emitMemwiseChange({ kind: 'drafts', id: draftId })
+      return { applied: true }
+    },
+
+    async checkDraft(ctx: RequestContext, input: MwCheckDraftInput): Promise<MwDraftReport> {
+      const { svc, d } = await begin(ctx)
+      const authoring = authoringOf(svc)
+      const got = await authoring.getDraft(input?.draftId)
+      if (!got) throw new Error(DRAFT_MESSAGES.missing)
+      const report = await authoring.check(input.draftId, { ...(typeof input.pastCases === 'number' ? { pastCases: input.pastCases } : {}) })
+      emitMemwiseChange({ kind: 'drafts', id: input.draftId })
+      return d.toDraftReport(report)
+    },
+
+    async submitDraft(ctx: RequestContext, draftId: string): Promise<MwSubmitDraftResult> {
+      const { svc, actor, c } = await begin(ctx)
+      const authoring = authoringOf(svc)
+      const got = await authoring.getDraft(draftId)
+      if (!got) return { applied: false, code: 'draft.missing', message: DRAFT_MESSAGES.missing }
+      if (got.meta.status !== 'open') return { applied: false, code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
+      const facts = await draftLookup(svc, actor, c).facts(got.meta, { got })
+      if (facts.run?.status === 'active') {
+        // Still in its chat (the meta playbook's conversation step), or past it on the way to review.
+        const state = facts.run.state
+        const inChat = META_PLAYBOOKS.some((id) => isConversationStep(c.project.workflows[id]?.steps[state]))
+        return inChat
+          ? { applied: false, code: 'draft.in_chat', message: DRAFT_MESSAGES.in_chat, runId: facts.run.runId, caseId: facts.run.caseId }
+          : { applied: false, code: 'draft.in_review', message: DRAFT_MESSAGES.in_review, runId: facts.run.runId, caseId: facts.run.caseId }
+      }
+      const pending = got.edits.filter((e) => e.status === 'pending').length
+      if (pending) return { applied: false, code: 'draft.pending_edits', message: `${DRAFT_MESSAGES.pending_edits} (${pending})` }
+      const errors = (await authoring.quickCheck(draftId)).filter((x) => x.severity === 'error')
+      if (errors.length) return { applied: false, code: 'draft.errors', message: `${DRAFT_MESSAGES.errors} (${errors.length})` }
+      const conflicts = (await authoring.diff(draftId).catch(() => undefined))?.conflicts ?? []
+      if (conflicts.length) return { applied: false, code: 'draft.conflict', message: `${DRAFT_MESSAGES.conflict} (${conflicts.join(', ')})` }
+      try {
+        const r = await authoring.submitDraft(draftId, actor)
+        emitMemwiseChange({ kind: 'drafts', id: draftId })
+        return { applied: true, runId: r.runId, caseId: r.caseId }
+      } catch (e) {
+        return { applied: false, code: 'draft.submit_failed', message: errText(e) }
+      }
+    },
+
+    async exampleFromCase(ctx: RequestContext, input: MwExampleFromCaseInput): Promise<MwExampleFromCaseResult> {
+      const { svc, actor } = await begin(ctx)
+      if (!input?.caseId) return { applied: false, code: 'example.missing', message: 'That case was not found.' }
+      const v = await svc.kernel.getCaseView(input.caseId, actor)
+      if (!v) return { applied: false, code: 'example.missing', message: 'That case was not found.' }
+      if (input.draftId) {
+        const got = await authoringOf(svc).getDraft(input.draftId)
+        if (!got || got.meta.status !== 'open') return { applied: false, code: 'example.no_draft', message: 'That draft is not open for changes any more; save the example into a new draft.' }
+      }
+      try {
+        const r = await authoringOf(svc).exampleFromCase({
+          caseId: input.caseId,
+          ...(input.name?.trim() ? { name: input.name.trim() } : {}),
+          ...(input.correction ? { correction: input.correction } : {}),
+          ...(input.draftId ? { draftId: input.draftId } : {}),
+        }, actor)
+        emitMemwiseChange({ kind: 'drafts', id: r.draftId })
+        return { applied: true, draftId: r.draftId, path: r.path }
+      } catch (e) {
+        return { applied: false, code: 'example.failed', message: errText(e) }
+      }
     },
   }
 }
@@ -517,6 +953,19 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.ENTITIES_TYPES, (ctx) => api.listEntityTypes(ctx))
   server.handle(ch.FILES_UPLOAD, (ctx, _ws: string, input) => api.uploadFile(ctx, input))
   server.handle(ch.CHAT_OPEN, (ctx, ws: string, input) => api.openChat(ctx, ws, input))
+  // Phase 3
+  server.handle(ch.PLAYBOOKS_VERSIONS, (ctx, _ws: string, workflowId: string) => api.listVersions(ctx, workflowId))
+  server.handle(ch.PLAYBOOKS_BUILD, (ctx, ws: string, input) => api.buildPlaybook(ctx, ws, input ?? {}))
+  server.handle(ch.DRAFTS_LIST, (ctx, _ws: string, filter) => api.listDrafts(ctx, filter ?? {}))
+  server.handle(ch.DRAFTS_GET, (ctx, _ws: string, draftId: string) => api.getDraft(ctx, draftId))
+  server.handle(ch.DRAFTS_CREATE, (ctx, _ws: string, input) => api.createDraft(ctx, input))
+  server.handle(ch.DRAFTS_WRITE, (ctx, _ws: string, input) => api.writeDraft(ctx, input))
+  server.handle(ch.DRAFTS_KEEP, (ctx, _ws: string, input) => api.keepEdit(ctx, input))
+  server.handle(ch.DRAFTS_DISCARD_EDIT, (ctx, _ws: string, input) => api.discardEdit(ctx, input))
+  server.handle(ch.DRAFTS_DISCARD, (ctx, _ws: string, draftId: string) => api.discardDraft(ctx, draftId))
+  server.handle(ch.DRAFTS_CHECK, (ctx, _ws: string, input) => api.checkDraft(ctx, input))
+  server.handle(ch.DRAFTS_SUBMIT, (ctx, _ws: string, draftId: string) => api.submitDraft(ctx, draftId))
+  server.handle(ch.EXAMPLES_FROM_CASE, (ctx, _ws: string, input) => api.exampleFromCase(ctx, input))
 
   onMemwiseChange((change) => {
     pushTyped(server, RPC_CHANNELS.memwise.CHANGED, { to: 'all' }, change)

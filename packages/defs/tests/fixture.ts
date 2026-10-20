@@ -9,7 +9,9 @@ export const SAMPLE = join(import.meta.dir, '..', '..', '..', 'examples', 'intak
 
 export const SAMPLE_ENV: CheckEnvironment = {
   tools: Object.fromEntries(
-    ['gst.validate_gstin', 'intake.extract_fields', 'email.send', 'recall.step_record', 'recall.similar_cases', 'crm.create_customer', 'domain.customer.create', 'domain.customer.get']
+    ['gst.validate_gstin', 'intake.extract_fields', 'email.send', 'recall.step_record', 'recall.similar_cases', 'crm.create_customer', 'domain.customer.create', 'domain.customer.get',
+      // The meta playbooks' tools (Phase 3, bound by the kernel).
+      'playbooks.check_draft', 'playbooks.publish_draft', 'playbooks.vocabulary', 'playbooks.read', 'playbooks.write', 'playbooks.diff', 'playbooks.check']
       .map((t) => [t, {}]),
   ),
 };

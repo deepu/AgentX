@@ -12,4 +12,4 @@ export {
   type Evidence, type FinishArgs, type StructuralResult,
 } from './checkpoint.ts';
 export { recallTools } from './recall.ts';
-export { SYSTEM_STEP_WORKFLOW, systemStepWorkflow, mapArgs, valueAt } from './system.ts';
+export { SYSTEM_STEP_WORKFLOW, systemStepWorkflow, mapArgs, outcomeOf, valueAt } from './system.ts';

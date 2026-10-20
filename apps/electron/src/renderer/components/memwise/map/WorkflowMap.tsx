@@ -1,17 +1,23 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Flag, Hourglass } from 'lucide-react'
-import type { MwLiveCounts, MwPlaybook, MwRole } from '@memwise/shared/protocol'
+import type { MwChangeKind, MwLiveCounts, MwPlaybook, MwRole, MwStructuralDiff } from '@memwise/shared/protocol'
 import { cn } from '@/lib/utils'
 import { PerformerTag } from '../playbook/Tags'
 import { formatDuration, humanize, performerLabel, stateTitle, stepOf } from '../playbook/labels'
 import { END_ID, TIMEOUT_EVENT, edgePath, endAngle, layoutWorkflow, type MapEdge, type MapEdgeKind, type MapNode } from './layout'
+import { eventName, mergeForChange } from './change'
 
 export interface WorkflowMapProps {
   playbook: MwPlaybook
-  /** design: the shape only. live: open cases per step and how often each path is taken. */
-  mode?: 'design' | 'live'
+  /**
+   * design: the shape only. live: open cases per step and how often each path is taken.
+   * change: a draft's proposed change (`change`): added in green, changed in amber, removed in red.
+   */
+  mode?: 'design' | 'live' | 'change'
   live?: MwLiveCounts
+  /** For `change` mode: the draft's structural diff, and the live playbook to draw what it removes. */
+  change?: { diff: MwStructuralDiff; live?: MwPlaybook | null }
   /** One case's states in order; visited steps and paths are highlighted, the last is "now". */
   highlightPath?: string[]
   onSelectState?: (stateId: string) => void
@@ -21,11 +27,31 @@ export interface WorkflowMapProps {
   className?: string
 }
 
-const STROKE: Record<MapEdgeKind | 'visited', string> = {
+const STROKE: Record<MapEdgeKind | 'visited' | MwChangeKind, string> = {
   forward: 'var(--text-tertiary)',
   back: 'var(--text-tertiary)',
   failure: 'var(--destructive-raw)',
   visited: 'var(--accent-raw)',
+  added: 'var(--success-raw)',
+  changed: 'var(--info-raw)',
+  removed: 'var(--destructive-raw)',
+}
+
+/** Node card styles in proposed-change mode; the badge says it in words too. */
+const CHANGE_NODE: Record<MwChangeKind, string> = {
+  added: 'border-success bg-success-tint ring-1 ring-success/40',
+  changed: 'border-info bg-info-tint ring-1 ring-info/40',
+  removed: 'border-dashed border-destructive opacity-70',
+}
+const CHANGE_BADGE: Record<MwChangeKind, string> = {
+  added: 'text-success',
+  changed: 'text-info',
+  removed: 'text-destructive',
+}
+const CHANGE_LABEL: Record<MwChangeKind, string> = {
+  added: 'text-success',
+  changed: 'text-info',
+  removed: 'text-destructive line-through',
 }
 
 /** Smallest shrink-to-fit scale before the map scrolls instead. */
@@ -37,8 +63,13 @@ function edgeWidth(count: number | undefined, max: number): number {
 }
 
 /** The playbook drawn left to right, problems below. View only. */
-export function WorkflowMap({ playbook, mode = 'design', live, highlightPath, onSelectState, roles, selectedStateId, className }: WorkflowMapProps) {
+export function WorkflowMap({ playbook: drawn, mode = 'design', live, change, highlightPath, onSelectState, roles, selectedStateId, className }: WorkflowMapProps) {
   const { t } = useTranslation()
+  const changes = React.useMemo(
+    () => (mode === 'change' && change ? mergeForChange(drawn, change.diff, change.live) : null),
+    [mode, change, drawn],
+  )
+  const playbook = changes?.playbook ?? drawn
   const layout = React.useMemo(() => layoutWorkflow(playbook), [playbook])
   const markerBase = React.useId().replace(/:/g, '')
   const isLive = mode === 'live' && !!live
@@ -55,7 +86,7 @@ export function WorkflowMap({ playbook, mode = 'design', live, highlightPath, on
   const maxEdge = isLive ? Math.max(0, ...Object.values(live!.edges)) : 0
 
   const edgeText = (edge: MapEdge) =>
-    edge.events
+    [...new Set(edge.events.map(eventName))]
       .map((e) => (e === TIMEOUT_EVENT && edge.timeoutMs !== undefined ? t('memwise.map.timeoutAfter', { duration: formatDuration(edge.timeoutMs, t) }) : humanize(e)))
       .join(', ')
 
@@ -96,7 +127,7 @@ export function WorkflowMap({ playbook, mode = 'design', live, highlightPath, on
           <div className="relative origin-top-left" style={{ width: layout.width, height: layout.height, ...(scale < 1 ? { transform: `scale(${scale})` } : {}) }}>
             <svg width={layout.width} height={layout.height} className="absolute inset-0" aria-hidden>
               <defs>
-                {(['forward', 'failure', 'visited'] as const).map((key) => (
+                {(['forward', 'failure', 'visited', 'added', 'changed', 'removed'] as const).map((key) => (
                   <marker key={key} id={markerId(key)} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
                     <path d="M 0 1 L 9 5 L 0 9 z" fill={STROKE[key]} />
                   </marker>
@@ -107,8 +138,11 @@ export function WorkflowMap({ playbook, mode = 'design', live, highlightPath, on
                 const on = visitedEdges.has(key)
                 const dim = !!path && !on
                 const count = isLive ? live!.edges[key] : undefined
-                const width = on ? Math.max(2.25, edgeWidth(count, maxEdge)) : edgeWidth(count, maxEdge)
-                const stroke = on ? STROKE.visited : STROKE[edge.kind]
+                const changed = changes?.edges[key]
+                const width = on ? Math.max(2.25, edgeWidth(count, maxEdge)) : changed ? 2.25 : edgeWidth(count, maxEdge)
+                const stroke = on ? STROKE.visited : changed ? STROKE[changed] : STROKE[edge.kind]
+                const dash = changed === 'removed' ? '6 4' : edge.kind === 'back' && !on && !changed ? '5 4' : undefined
+                const marker = on ? 'visited' : changed ?? (edge.kind === 'failure' ? 'failure' : 'forward')
                 return (
                   <path
                     key={key}
@@ -116,11 +150,12 @@ export function WorkflowMap({ playbook, mode = 'design', live, highlightPath, on
                     fill="none"
                     stroke={stroke}
                     strokeWidth={width}
-                    strokeOpacity={dim ? 0.35 : edge.kind === 'failure' && !on ? 0.75 : 1}
-                    strokeDasharray={edge.kind === 'back' && !on ? '5 4' : undefined}
+                    strokeOpacity={dim ? 0.35 : changes && !changed ? 0.55 : edge.kind === 'failure' && !on && !changed ? 0.75 : 1}
+                    strokeDasharray={dash}
                     strokeLinecap="round"
-                    markerEnd={`url(#${markerId(on ? 'visited' : edge.kind === 'failure' ? 'failure' : 'forward')})`}
+                    markerEnd={`url(#${markerId(marker)})`}
                     data-edge={key}
+                    data-change={changed}
                     data-angle={Math.round(endAngle(edge.points))}
                   />
                 )
@@ -131,13 +166,15 @@ export function WorkflowMap({ playbook, mode = 'design', live, highlightPath, on
               const key = `${edge.from}>${edge.to}`
               const on = visitedEdges.has(key)
               const count = isLive ? live!.edges[key] : undefined
+              const changed = changes?.edges[key]
               return (
                 <span
                   key={`label-${key}`}
                   className={cn(
                     'pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-sunken px-1 text-[11px] leading-4',
-                    on ? 'font-medium text-accent' : edge.kind === 'failure' ? 'text-destructive' : 'text-secondary',
+                    on ? 'font-medium text-accent' : changed ? cn('font-medium', CHANGE_LABEL[changed]) : edge.kind === 'failure' ? 'text-destructive' : 'text-secondary',
                     path && !on && 'opacity-60',
+                    changes && !changed && 'opacity-70',
                   )}
                   style={{ left: edge.labelAt.x, top: edge.labelAt.y }}
                 >
@@ -154,6 +191,7 @@ export function WorkflowMap({ playbook, mode = 'design', live, highlightPath, on
                 playbook={playbook}
                 roles={roles}
                 count={isLive ? live!.byState[node.id] : undefined}
+                change={changes?.states[node.id]}
                 visited={visited.has(node.id)}
                 current={current === node.id}
                 dim={!!path && !visited.has(node.id)}
@@ -164,7 +202,7 @@ export function WorkflowMap({ playbook, mode = 'design', live, highlightPath, on
           </div>
         </div>
       </div>
-      <Legend live={isLive} highlighted={!!path} />
+      <Legend live={isLive} highlighted={!!path} change={!!changes} />
     </div>
   )
 }
@@ -174,6 +212,7 @@ function MapNodeCard({
   playbook,
   roles,
   count,
+  change,
   visited,
   current,
   dim,
@@ -184,6 +223,7 @@ function MapNodeCard({
   playbook: MwPlaybook
   roles?: MwRole[]
   count?: number
+  change?: MwChangeKind
   visited: boolean
   current: boolean
   dim: boolean
@@ -222,11 +262,14 @@ function MapNodeCard({
   return (
     <Tag
       {...(onSelect ? { type: 'button' as const, onClick: onSelect } : {})}
-      title={unreachable ? t('memwise.map.unreachable') : undefined}
+      title={unreachable && change !== 'removed' ? t('memwise.map.unreachable') : undefined}
       aria-current={current ? 'step' : undefined}
+      data-state={node.id}
+      data-change={change}
       className={cn(
         'absolute flex flex-col items-start justify-start gap-1.5 overflow-visible rounded-lg border bg-raised px-2.5 py-2 text-left shadow-elev-1 transition-colors',
         waiting || unreachable ? 'border-dashed border-strong' : 'border-border',
+        change && CHANGE_NODE[change],
         onSelect && 'cursor-pointer hover:border-strong hover:bg-floating focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
         visited && 'border-accent/60',
         current && 'border-accent ring-2 ring-accent/40',
@@ -239,8 +282,13 @@ function MapNodeCard({
         {waiting && <Hourglass className="size-3 shrink-0 text-tertiary" aria-hidden />}
         <PerformerTag performer={performer} className="h-[18px] px-1.5 text-[11px]" />
         {current && <span className="ml-auto rounded-full bg-accent-solid px-1.5 text-[11px] font-medium leading-[18px] text-on-accent">{t('memwise.map.now')}</span>}
+        {change && !current && (
+          <span className={cn('ml-auto text-[11px] font-medium leading-[18px]', CHANGE_BADGE[change])}>
+            {t(`memwise.map.change.${change}`)}
+          </span>
+        )}
       </span>
-      <span className="line-clamp-2 w-full text-label font-medium leading-[17px] text-foreground">{title}</span>
+      <span className={cn('line-clamp-2 w-full text-label font-medium leading-[17px] text-foreground', change === 'removed' && 'line-through decoration-destructive/60')}>{title}</span>
       {count !== undefined && count > 0 && (
         <span
           className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-[11px] font-semibold text-background tabular-nums shadow-minimal"
@@ -253,7 +301,7 @@ function MapNodeCard({
   )
 }
 
-function Legend({ live, highlighted }: { live: boolean; highlighted: boolean }) {
+function Legend({ live, highlighted, change }: { live: boolean; highlighted: boolean; change?: boolean }) {
   const { t } = useTranslation()
   const line = (stroke: string, dash?: string) => (
     <svg width="22" height="8" aria-hidden className="shrink-0">
@@ -267,6 +315,13 @@ function Legend({ live, highlighted }: { live: boolean; highlighted: boolean }) 
       <span className="inline-flex items-center gap-1.5">{line(STROKE.failure)}{t('memwise.map.legend.failure')}</span>
       {highlighted && <span className="inline-flex items-center gap-1.5">{line(STROKE.visited)}{t('memwise.map.legend.path')}</span>}
       {live && <span>{t('memwise.map.legend.live')}</span>}
+      {change && (
+        <>
+          <span className="inline-flex items-center gap-1.5" data-legend="added">{line(STROKE.added)}{t('memwise.map.legend.added')}</span>
+          <span className="inline-flex items-center gap-1.5" data-legend="changed">{line(STROKE.changed)}{t('memwise.map.legend.changed')}</span>
+          <span className="inline-flex items-center gap-1.5" data-legend="removed">{line(STROKE.removed, '6 4')}{t('memwise.map.legend.removed')}</span>
+        </>
+      )}
     </div>
   )
 }

@@ -29,6 +29,14 @@ export interface KernelOptions {
   filesDir?: string;
   /** Model role for quarantined reading (`intake.extract_fields`). Default `extractor`. */
   extractorRole?: string;
+  /** Phase 3: runs example cases for draft checks; default spawns the `memwise` CLI. */
+  testRunner?: TestRunner;
+  /**
+   * Phase 3: admin URL of the Postgres server the default TestRunner makes its throwaway
+   * databases on (`memwise test --database-url`); default `MEMWISE_TEST_DATABASE_URL`, else a
+   * throwaway cluster of the CLI's own.
+   */
+  testDatabaseUrl?: string;
 }
 
 export type RunStatus = 'active' | 'done' | 'stopped';
@@ -106,7 +114,7 @@ export interface StartRunInput {
   by?: string;
 }
 
-export interface Kernel extends KernelPhase2 {
+export interface Kernel extends KernelPhase2, KernelPhase3 {
   /** Load the project folder and index it; returns the loader's diagnostics. */
   index(): Promise<Diagnostic[]>;
   startRun(input: StartRunInput): Promise<{ runId: string; caseId: string }>;
@@ -173,6 +181,12 @@ export interface SubmitStepInput {
   values?: Record<string, unknown>;
   comment?: string;
   by: Extract<Actor, { kind: 'person' }>;
+  /**
+   * Phase 3: a conversation step (`engine: open`) is answered by its chat, acting for `by`.
+   * Its writes get provenance `judgement` with the rationale and the chat id, not `person`.
+   * Person and external steps refuse it; conversation steps accept only it.
+   */
+  via?: { chatId: string; rationale?: string };
 }
 
 export interface SubmitResult {
@@ -191,7 +205,10 @@ export type InboxItem =
   | { kind: 'attention'; id: string; runId: string; caseId: string; workflowId: string; state: string; reason: string;
       events: string[]; since: string }
   | { kind: 'reminder'; id: string; runId: string; caseId: string; workflowId: string; stepId: string; stepRunId?: string;
-      text: string; since: string };
+      text: string; since: string }
+  /** Phase 3: a conversation step (`engine: open`) waiting on its chat, for its assignee role. */
+  | { kind: 'conversation'; id: string; stepRunId: string; runId: string; caseId: string; workflowId: string; stepId: string;
+      assignee?: string; since: string };
 
 export interface CaseSummary {
   caseId: string; runId: string; workflowId: string; workflowVersion: number; workflowHash: string;
@@ -230,7 +247,9 @@ export interface EntityRow { id: string; values: Record<string, unknown>; hidden
 export type KernelChange =
   | { kind: 'run'; runId: string; caseId: string; workflowId: string }
   | { kind: 'inbox' }
-  | { kind: 'definitions' };
+  | { kind: 'definitions' }
+  /** Phase 3: a draft changed (created, edited, checked, published, discarded). */
+  | { kind: 'drafts'; draftId: string };
 
 export interface KernelPhase2 {
   readonly people: PeopleService;
@@ -249,3 +268,95 @@ export interface KernelPhase2 {
   /** Pushed after commits (LISTEN/NOTIFY on channel `mw_changes`). */
   onChange(listener: (change: KernelChange) => void): () => void;
 }
+
+// ================================================================ Phase 3 (docs/memwise/20-phase-3-interfaces.md)
+// PHASE 3 CONTRACT. `@memwise/server-core` codes against these; change only additively.
+
+import type {
+  DiffHunk as _DiffHunk, Diagnostic as _Diagnostic, DraftDiff, DraftEdit, DraftMeta, DraftReport, ExampleCase, ExampleOutcome,
+  WorkflowVersion,
+} from '@memwise/defs';
+
+/** The meta playbooks that build and change playbooks (11 §3); shipped in the project folder. */
+export const CREATE_PLAYBOOK = 'create-playbook';
+export const CHANGE_PLAYBOOK = 'change-playbook';
+
+/**
+ * Runs a project's example cases out of process (DBOS is process-wide, so the kernel can't host
+ * a second one): `memwise test <projectDir> --workflow <id> --json [--examples-file f] [--database-url admin]`.
+ */
+export type TestRunner = (req: {
+  projectDir: string;
+  workflowId: string;
+  /** Extra examples to run too (past cases replayed), not written into the project. */
+  extraExamples?: ExampleCase[];
+}) => Promise<ExampleOutcome[]>;
+
+/** What a playbook may use, for the authoring chat and the editor (05 §10: only what's available). */
+export interface Vocabulary {
+  tools: { name: string; description?: string; effect?: import('@memwise/defs').EffectClass; plugin?: string; inputSchema?: Record<string, unknown> }[];
+  entities: { name: string; fields: { name: string; type: string }[]; lifecycle?: string[] }[];
+  roles: { id: string; title: string; description?: string }[];
+  /** Model roles a step may name (`model:`). */
+  modelRoles: string[];
+  /** Value type names and the forms they take (`Identifier(<scheme>)`, `List<T>`...). */
+  valueTypes: string[];
+  playbooks: { id: string; title: string; version?: number; live: boolean }[];
+}
+
+export type PublishResult =
+  | { status: 'published'; workflowId: string; version: number; hash: string }
+  /** The draft changed after it was checked (`hash` differs), or the live files changed under it. */
+  | { status: 'stale' | 'conflict' | 'failed'; message: string };
+
+/**
+ * Drafts and change control (05 §10, 08 §3), over the project folder (`@memwise/defs` drafts)
+ * and the kernel. Every method acts for a person; who may do what:
+ * - anyone signed in may create and edit drafts (they change nothing live);
+ * - publishing happens only through a change run's publish step (the kernel's
+ *   `playbooks.publish_draft` tool), after its review step was approved, or `memwise push`.
+ */
+export interface Authoring {
+  readonly projectDir: string;
+  vocabulary(): Promise<Vocabulary>;
+  listDrafts(filter?: { workflowId?: string; status?: DraftMeta['status'] }): Promise<DraftMeta[]>;
+  getDraft(draftId: string): Promise<{ meta: DraftMeta; edits: DraftEdit[]; report?: DraftReport; contentHash: string } | undefined>;
+  /** A change draft copies the live playbook; a create draft starts empty (workflowId must be new). */
+  createDraft(input: { workflowId: string; title: string; kind?: DraftMeta['kind']; runId?: string }, by: Actor): Promise<DraftMeta>;
+  /** Files of the live project (no draftId) or of a draft: without `path` the list, with it the content. */
+  read(input: { draftId?: string; workflowId?: string; path?: string }): Promise<{ files: string[] } | { path: string; content: string | null }>;
+  /** Write (or delete, content null) whole files in a draft; records one edit; returns the checks after it. */
+  write(input: {
+    draftId: string; files: { path: string; content: string | null }[]; summary: string; via: DraftEdit['via']; chatId?: string;
+  }, by: Actor): Promise<{ edit: DraftEdit; diagnostics: _Diagnostic[] }>;
+  keepEdit(draftId: string, editId: string, by: Actor): Promise<{ applied: boolean; message?: string }>;
+  /** Restores the files the edit changed, unless they changed again since (then refused, naming them). */
+  discardEdit(draftId: string, editId: string, by: Actor): Promise<{ applied: boolean; message?: string; conflicts?: string[] }>;
+  discardDraft(draftId: string, by: Actor): Promise<void>;
+  diff(draftId: string): Promise<DraftDiff>;
+  /** Structure and policy checks only (fast; run after every edit). */
+  quickCheck(draftId: string): Promise<_Diagnostic[]>;
+  /** Checks, example cases (TestRunner), past cases replayed, impact; writes report.json. */
+  check(draftId: string, opts?: { pastCases?: number }): Promise<DraftReport>;
+  /** Apply the draft to the project folder as the next version, if its content hash is still `hash`. */
+  publish(draftId: string, opts: { hash: string; by?: string; runId?: string; source: 'app' | 'cli' }): Promise<PublishResult>;
+  /** Start create-playbook (no workflowId) or change-playbook at its conversation step. */
+  startBuild(input: { workflowId?: string; request?: string; title?: string }, by: Extract<Actor, { kind: 'person' }>): Promise<{ runId: string; caseId: string; stepRunId: string }>;
+  /** Send an edited draft to review: change-playbook started at its check step with the draft. */
+  submitDraft(draftId: string, by: Extract<Actor, { kind: 'person' }>): Promise<{ runId: string; caseId: string }>;
+  /** Turn a recorded case into an example case in a draft (a correction becomes a test, 05 §12). */
+  exampleFromCase(input: {
+    caseId: string; name?: string; correction?: { step: string; outcome: string; note?: string }; draftId?: string;
+  }, by: Actor): Promise<{ draftId: string; path: string; example: ExampleCase }>;
+}
+
+export interface KernelPhase3 {
+  /** The version index, newest first (mw.workflow_versions). */
+  versions(workflowId: string): Promise<WorkflowVersion[]>;
+  /** Present when the kernel was given a project folder. */
+  readonly authoring?: Authoring;
+  /** A recorded case as an example case: inputs, recorded tool results and model turns, answers (a replay). */
+  caseToExample(caseId: string, opts?: { name?: string; correction?: { step: string; outcome: string; note?: string } }): Promise<ExampleCase>;
+}
+
+export type { _DiffHunk as DiffHunk };

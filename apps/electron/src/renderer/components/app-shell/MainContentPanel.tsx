@@ -50,7 +50,7 @@ import ProjectInfoPage from '@/pages/ProjectInfoPage'
 import { KanbanBoardContainer } from './kanban/KanbanBoardContainer'
 import { PagesHome } from '../pages/PagesHome'
 import { PageView } from '../pages/PageView'
-import { InboxDetailPage, CasePage, PlaybookPage } from '../memwise'
+import { InboxDetailPage, CasePage, PlaybookPage, DraftPage } from '../memwise'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -379,7 +379,11 @@ export function MainContentPanel({
   if (isPlaybooksNavigation(navState)) {
     return wrapWithStoplight(
       <Panel variant="grow" className={className}>
-        <PlaybookPage playbookId={navState.details?.playbookId ?? null} />
+        {navState.details?.type === 'draft' ? (
+          <DraftPage key={navState.details.draftId} draftId={navState.details.draftId} />
+        ) : (
+          <PlaybookPage playbookId={navState.details?.playbookId ?? null} />
+        )}
       </Panel>
     )
   }

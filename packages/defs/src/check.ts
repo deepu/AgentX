@@ -24,7 +24,16 @@ export interface CheckOptions {
 export const systemOutcome = (step: StepDef): string => step.outcomes[0] ?? 'done';
 
 /** Effective outcomes of a step, for the transition checks. */
-const outcomesOf = (step: StepDef) => (step.performer === 'system' && !step.outcomes.length ? ['done'] : step.outcomes);
+const outcomesOf = (step: StepDef) => (step.performer === 'system' && !step.outcomes.length && !step.outcomeFrom ? ['done'] : step.outcomes);
+
+/**
+ * A conversation step (Phase 3): an agent step on the open engine, i.e. a chat with a person.
+ * The run waits on it like a person step, so it gets the person-step rules (assignee, timeout).
+ */
+export const isConversationStep = (step: StepDef): boolean => step.performer === 'agent' && step.engine === 'open';
+
+/** Steps the run waits on: a person, someone outside the business, or a chat. */
+const waitsOnSomeone = (step: StepDef) => step.performer === 'person' || step.performer === 'external' || isConversationStep(step);
 
 class Diagnostics {
   readonly list: Diagnostic[] = [];
@@ -88,9 +97,11 @@ export function checkWorkflow(workflow: WorkflowDef, env: CheckEnvironment, opts
     }
 
     const step = state.step ? workflow.steps[state.step] : undefined;
-    const waits = !step || step.performer === 'person' || step.performer === 'external';
+    const waits = !step || waitsOnSomeone(step);
     if (waits && !timeout) {
-      const who = step ? `waits for a ${step.performer === 'person' ? 'person' : 'participant outside the business'}` : 'waits for an outside event (it has no step file)';
+      const who = !step ? 'waits for an outside event (it has no step file)'
+        : isConversationStep(step) ? 'waits for a conversation in chat'
+        : `waits for a ${step.performer === 'person' ? 'person' : 'participant outside the business'}`;
       shape('warning', 'wait-without-timeout', `\`${name}\` ${who} but has no timeout: add \`wait: { timeout: 7d → needs_person }\` so it can't stall`, ['steps', name]);
     }
   }
@@ -156,14 +167,29 @@ function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, ste
   const state = workflow.states[stateName]!;
   const caseFields = workflow.caseType.fields;
 
+  const conversation = isConversationStep(step);
+  if (step.engine === 'open' && !(step.performer === 'agent' && step.strictness === 'open')) {
+    at('error', 'open-engine-needs-open-step', step.performer === 'agent'
+      ? `\`engine: open\` runs the step as a chat, so it needs \`strictness: open\` (this one is ${step.strictness})`
+      : `only agent steps run on an engine; \`engine: open\` makes no sense on a ${step.performer} step`, ['engine']);
+  }
   if (step.performer === 'agent') {
-    if (!step.model) at('error', 'missing-model-role', 'an agent step names a model role, e.g. `model: checker`', []);
+    // A conversation's model is the chat's own, so it names no model role.
+    if (!step.model && !conversation) at('error', 'missing-model-role', 'an agent step names a model role, e.g. `model: checker`', []);
     if (!step.outcomes.length) at('error', 'no-outcomes', 'an agent step declares at least one outcome, e.g. `outcomes: [done]`', []);
   }
-  if (step.performer === 'person' || step.performer === 'external') {
+  if (step.outcomeFrom) {
+    if (step.performer !== 'system') {
+      at('error', 'outcome-from-system-only', `only system steps take their outcome from a tool result; a ${step.performer} step chooses its own`, ['outcomeFrom']);
+    } else if (!step.tools.required.includes(step.outcomeFrom.tool)) {
+      at('error', 'outcome-from-not-required', `the outcome comes from ${step.outcomeFrom.tool}, which this step does not call: add it to tools.required`, ['outcomeFrom', 'tool']);
+    }
+  }
+  if (waitsOnSomeone(step)) {
     const roles = env.roles;
+    const kind = conversation ? 'conversation' : step.performer;
     if (roles && step.assignee === undefined) {
-      at('error', 'missing-assignee', `a ${step.performer} step names the role that does it, e.g. \`assignee: ${roles[0] ?? 'staff'}\``, []);
+      at('error', 'missing-assignee', `a ${kind} step names the role that does it, e.g. \`assignee: ${roles[0] ?? 'staff'}\``, []);
     } else if (roles && step.assignee !== undefined && !roles.includes(step.assignee)) {
       at('error', 'unknown-role', `assignee \`${step.assignee}\` is not a role in domain/roles.yaml (roles: ${roles.join(', ') || 'none'})`, ['assignee']);
     }
@@ -220,7 +246,10 @@ function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, ste
  */
 function checkSystemStep(d: Diagnostics, workflow: WorkflowDef, step: StepDef, env: CheckEnvironment, entities?: Record<string, EntityTypeDef>): void {
   const at = (severity: Severity, code: string, message: string, path: PathKey[]) => d.add(severity, code, message, step.file, step, path);
-  if (step.outcomes.length > 1) at('error', 'system-step-outcomes', `a system step finishes with one outcome; this one declares ${step.outcomes.join(', ')}`, ['outcomes']);
+  if (step.outcomeFrom) {
+    // The tool result picks among the declared outcomes, so there must be some to pick from.
+    if (!step.outcomes.length) at('error', 'no-outcomes', `the outcome comes from ${step.outcomeFrom.tool}: declare the outcomes it may give, e.g. \`outcomes: [passed, failed]\``, []);
+  } else if (step.outcomes.length > 1) at('error', 'system-step-outcomes', `a system step finishes with one outcome; this one declares ${step.outcomes.join(', ')}`, ['outcomes']);
   if (!step.tools.required.length) at('warning', 'system-step-no-tools', 'a system step calls its `tools.required` in order; this one has none, so it does nothing', ['tools']);
   const calls = new Set(step.tools.required);
   const map = step.map ?? {};
@@ -287,8 +316,8 @@ function checkExamples(d: Diagnostics, workflow: WorkflowDef, env: CheckEnvironm
     for (const [state, answers] of Object.entries(ex.submit ?? {})) {
       const target = workflow.states[state];
       const s = target?.step ? workflow.steps[target.step] : undefined;
-      if (!s || (s.performer !== 'person' && s.performer !== 'external')) {
-        at('example-unknown-state', `submit.${state}: \`${state}\` is not a person or external step`, ['submit', state]);
+      if (!s || !waitsOnSomeone(s)) {
+        at('example-unknown-state', `submit.${state}: \`${state}\` is not a person, external or conversation step`, ['submit', state]);
         continue;
       }
       (Array.isArray(answers) ? answers : [answers]).forEach((a) => {

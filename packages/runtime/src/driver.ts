@@ -16,7 +16,7 @@ import type { StepResult, StepRunInput } from '@memwise/step-engine';
 import type pg from 'pg';
 import { transition, type AnyStateMachine } from 'xstate';
 import { stepRunIdOf } from './ids.ts';
-import { compileMachine, REMIND_EVENT, stateKind, type RunEvent } from './machine.ts';
+import { answeredBySubmit, compileMachine, REMIND_EVENT, stateKind, type RunEvent } from './machine.ts';
 import { openWaitingStep, prepareAgentStep, type PreparedStep } from './prepare.ts';
 import { PgCaseStore, PgNotificationStore } from '@memwise/db';
 import { loadRunRow, loadWorkflowDef, type Queryable, type RunRow } from './runs.ts';
@@ -51,6 +51,8 @@ export interface Submission {
   at: string;
   values: Record<string, unknown>;
   comment?: string;
+  /** A conversation step's chat answered it (Phase 3): its writes are the chat's judgement, for `by`. */
+  via?: { chatId: string; rationale?: string };
 }
 
 /** The DBOS message `submitStep` sends: the event plus the submission, split apart by the driver. */
@@ -106,7 +108,7 @@ export function registerRunDriver({ pool, dataSource, stepWorkflow, systemWorkfl
       } else if (kind === 'final') {
         break; // unreachable: entering `end` sets status done
       } else {
-        if (kind === 'person-step' || kind === 'external-step') {
+        if (answeredBySubmit(kind)) {
           await DBOS.runStep(() => openWaitingStep(pool, run, workflow, stepRunId), { name: 'openWaitingStep' });
         }
         next = await waitForEvent(run);
@@ -218,7 +220,12 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
     if (sub) {
       writes = {};
       for (const [field, value] of Object.entries(sub.values)) {
-        writes[field] = { value, provenance: { kind: 'person', at: sub.at, by: sub.by, stepRunId: sub.stepRunId } };
+        writes[field] = {
+          value,
+          provenance: sub.via
+            ? { kind: 'judgement', at: sub.at, stepRunId: sub.stepRunId, ...(sub.via.rationale ? { rationale: sub.via.rationale } : {}), chatId: sub.via.chatId, by: sub.by }
+            : { kind: 'person', at: sub.at, by: sub.by, stepRunId: sub.stepRunId },
+        };
       }
     }
     if (writes && Object.keys(writes).length) {
@@ -229,9 +236,11 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
     await db.query(
       `update mw.step_runs set status = 'completed', outcome = $3, finished_at = now(),
               decided_by = coalesce($4, decided_by), comment = coalesce($5, comment),
-              outputs = case when $6::jsonb is null then outputs else $6::jsonb end
+              outputs = case when $6::jsonb is null then outputs else $6::jsonb end,
+              rationale = coalesce($7, rationale)
         where id = $1 and status = 'waiting' and run_id = $2`,
-      [waitingId, c.runId, c.event.type, sub?.by ?? null, sub?.comment ?? null, sub ? JSON.stringify(writes ?? {}) : null]);
+      [waitingId, c.runId, c.event.type, sub?.by ?? null, sub?.comment ?? null, sub ? JSON.stringify(writes ?? {}) : null,
+        sub?.via?.rationale ?? null]);
     await notifications.markReadForStep(db, waitingId);
   }
   if (c.stepError && c.stepRunId) {
@@ -252,11 +261,10 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
   crashPoint('in-commit', run.state);
   const after = await loadRunRow(db, c.runId);
   if (moved && workflow && status === 'active') {
-    // Open the person or external step in the same transaction that enters its state, so the
-    // run is never seen in that state without its waiting step run. The driver's own
-    // openWaitingStep stays as the path for a run that starts in such a state (idempotent).
-    const kind = stateKind(workflow, to);
-    if (kind === 'person-step' || kind === 'external-step') {
+    // Open the person, external or conversation step in the same transaction that enters its
+    // state, so the run is never seen in that state without its waiting step run. The driver's
+    // own openWaitingStep stays as the path for a run that starts in such a state (idempotent).
+    if (answeredBySubmit(stateKind(workflow, to))) {
       await openWaitingStep(db, after, workflow, stepRunIdOf(c.runId, after.enteredSeq, to));
     }
   }
@@ -282,14 +290,13 @@ export function assigneeOf(workflow: WorkflowDef, state: string): string | undef
 }
 
 /**
- * Why an outside event may not decide `state` (kernel.sendEvent). A person or external step is
- * answered only through submitStep, which checks its assignee, so the step run records who
+ * Why an outside event may not decide `state` (kernel.sendEvent). A person, external or
+ * conversation step is answered only through submitStep, which checks its assignee, so the step run records who
  * decided. Any other state, sent by a person: they must hold its assignee role or the owner's.
  */
 export function outsideEventRefusal(workflow: WorkflowDef, state: string, by?: Actor): Omit<SendEventResult, 'sent'> | undefined {
   if (state === END_STATE || !workflow.states[state]) return undefined;
-  const kind = stateKind(workflow, state);
-  if (kind === 'person-step' || kind === 'external-step') {
+  if (answeredBySubmit(stateKind(workflow, state))) {
     return { reason: 'use_submit', message: `${state} is answered through its step, not by an outside event` };
   }
   if (by?.kind !== 'person') return undefined;
@@ -304,7 +311,7 @@ export function outsideEventRefusal(workflow: WorkflowDef, state: string, by?: A
 async function remind(db: Queryable, workflow: WorkflowDef, run: RunRow, c: Commit) {
   const def = workflow.states[run.state];
   const step = def ? workflow.steps[def.step ?? run.state] : undefined;
-  const hasStep = !!step && (step.performer === 'person' || step.performer === 'external');
+  const hasStep = answeredBySubmit(stateKind(workflow, run.state));
   const role = assigneeOf(workflow, run.state);
   const what = step?.title ? `"${step.title}"` : `the ${run.state} step`;
   await notifications.add(db, {

@@ -31,3 +31,6 @@ export {
   entityTableName, snake, syncEntityTables, SYSTEM_COLUMNS, type ColumnType, type EntityColumn, type RlsOptions,
 } from './domain/tables.ts';
 export { PgEntityStore, type CreateEntityOptions, type StoredEntityRow } from './domain/entities.ts';
+
+// ---------------------------------------------------------------- Phase 3 (docs/memwise/20-phase-3-interfaces.md)
+export { PgVersionStore, type VersionRow, type NewVersion } from './stores/versions.ts';

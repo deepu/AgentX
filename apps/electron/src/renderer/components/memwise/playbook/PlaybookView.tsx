@@ -18,6 +18,8 @@ export interface PlaybookViewProps {
   description?: string
   /** Highlights a step and shows its details. */
   selectedStepId?: string
+  /** Replaces the plain "Version N" (the playbook page shows who published it, and the other versions). */
+  versionLine?: React.ReactNode
   className?: string
 }
 
@@ -147,7 +149,7 @@ function StepEntry({
 }
 
 /** The playbook read as a document: numbered steps, who does each, and what happens next. */
-export function PlaybookView({ playbook, onSelectStep, roles, description, selectedStepId, className }: PlaybookViewProps) {
+export function PlaybookView({ playbook, onSelectStep, roles, description, selectedStepId, versionLine, className }: PlaybookViewProps) {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState<Set<string>>(() => new Set(selectedStepId ? [selectedStepId] : []))
   React.useEffect(() => {
@@ -170,7 +172,7 @@ export function PlaybookView({ playbook, onSelectStep, roles, description, selec
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h2 className="text-title font-semibold tracking-[var(--tracking-title)] text-foreground">{playbook.title}</h2>
           <span className="flex items-center gap-2 text-label-sm text-tertiary">
-            <span>{t('memwise.playbook.version', { version: playbook.version })}</span>
+            {versionLine ?? <span>{t('memwise.playbook.version', { version: playbook.version })}</span>}
             <span aria-hidden>·</span>
             <span>{t('memwise.playbook.stepCount', { count: stepStates.length })}</span>
           </span>

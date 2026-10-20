@@ -137,7 +137,7 @@ import {
   ActingAsSwitcher,
   SidebarStatusNotice,
 } from "@/components/memwise"
-import { memwiseInboxCountAtom, memwiseCasesAtom, memwisePlaybooksAtom, memwiseStartCaseDialogAtom, memwiseCaseFilterAtom, memwisePeopleOnlyAtom, memwiseStatusAtom } from "@/atoms/memwise"
+import { memwiseInboxCountAtom, memwiseCasesAtom, memwisePlaybooksAtom, memwiseStartCaseDialogAtom, memwiseNewPlaybookDialogAtom, memwiseCaseFilterAtom, memwisePeopleOnlyAtom, memwiseStatusAtom } from "@/atoms/memwise"
 import type { SettingsSubpage } from "../../../shared/types"
 import { SourcesListPanel } from "./SourcesListPanel"
 import { SkillsListPanel } from "./SkillsListPanel"
@@ -1605,6 +1605,7 @@ function AppShellContent({
   const memwisePlaybooks = useAtomValue(memwisePlaybooksAtom)
   const memwiseCaseFilter = useAtomValue(memwiseCaseFilterAtom)
   const setMemwiseStartCase = useSetAtom(memwiseStartCaseDialogAtom)
+  const setMemwiseNewPlaybook = useSetAtom(memwiseNewPlaybookDialogAtom)
   // A person signed in with their own account: the playbook screens only (the server refuses the rest)
   const peopleOnly = useAtomValue(memwisePeopleOnlyAtom)
   const memwiseStatus = useAtomValue(memwiseStatusAtom)
@@ -2656,6 +2657,14 @@ function AppShellContent({
                       onClick={() => setMemwiseStartCase({ open: true, workflowId: memwiseCaseFilter.workflowId })}
                     />
                   )}
+                  {/* New playbook (playbooks mode): starts building one by chat, so not for a person's own sign-in */}
+                  {isPlaybooksNavigation(navState) && !peopleOnly && (
+                    <HeaderIconButton
+                      icon={<Plus className="h-4 w-4" />}
+                      tooltip={t("memwise.build.newPlaybook")}
+                      onClick={() => setMemwiseNewPlaybook(true)}
+                    />
+                  )}
                   {/* Add Project button (only for projects mode) */}
                   {isProjectsNavigation(navState) && activeWorkspace && (
                     <HeaderIconButton
@@ -2682,8 +2691,10 @@ function AppShellContent({
             )}
             {isPlaybooksNavigation(navState) && (
               <PlaybooksListPanel
-                selectedId={navState.details?.playbookId ?? null}
+                selectedId={navState.details?.type === 'playbook' ? navState.details.playbookId : null}
+                selectedDraftId={navState.details?.type === 'draft' ? navState.details.draftId : null}
                 onSelect={(id) => navigate(routes.view.playbooks(id))}
+                onSelectDraft={(id) => navigate(routes.view.draft(id))}
               />
             )}
             {/* Content: SessionList, SourcesListPanel, or SettingsNavigator based on navigation state */}

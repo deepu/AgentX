@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { initialTransition, transition } from 'xstate';
-import { compileMachine, metaOf, stateKind } from '../src/machine.ts';
-import { intakeShape, timerShape } from './fixtures/workflows.ts';
+import { outsideEventRefusal } from '../src/driver.ts';
+import { answeredBySubmit, compileMachine, metaOf, stateKind } from '../src/machine.ts';
+import { intakeShape, step, timerShape, workflow } from './fixtures/workflows.ts';
 
 describe('compileMachine', () => {
   const machine = compileMachine(intakeShape);
@@ -20,6 +21,19 @@ describe('compileMachine', () => {
     expect(stateKind(intakeShape, 'end')).toBe('final');
     expect(metaOf(machine, 'check')).toMatchObject({ kind: 'agent-step', step: 'check', performer: 'agent' });
     expect(metaOf(machine, 'fill').wait?.timeout?.target).toBe('needs_person');
+  });
+
+  test('an agent step on the open engine is a conversation step, answered like a person step', () => {
+    const chat = workflow('chat-test', 'talk', { talk: { on: { drafted: 'end' }, step: 'talk' }, think: { on: { done: 'end' }, step: 'think' } }, [
+      step('talk', 'agent', { engine: 'open', strictness: 'open', assignee: 'staff', outcomes: ['drafted'] }),
+      step('think', 'agent', { engine: 'step', model: 'checker', outcomes: ['done'] }),
+    ]);
+    expect(stateKind(chat, 'talk')).toBe('conversation-step');
+    expect(stateKind(chat, 'think')).toBe('agent-step');
+    expect(answeredBySubmit('conversation-step')).toBe(true);
+    expect(answeredBySubmit('agent-step')).toBe(false);
+    expect(outsideEventRefusal(chat, 'talk')).toMatchObject({ reason: 'use_submit' });
+    expect(outsideEventRefusal(chat, 'think')).toBeUndefined();
   });
 
   test('transitions follow `on`, the loop back to fill re-arms its timers', () => {

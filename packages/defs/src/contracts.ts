@@ -15,7 +15,7 @@ export type Provenance =
   | { kind: 'input'; at: string; by?: string }
   /** `tainted`: the value came from (or was judged after reading) untrusted content (Phase 2, D21). */
   | { kind: 'tool'; at: string; stepRunId: string; tool: string; callId: string; tainted?: boolean }
-  | { kind: 'judgement'; at: string; stepRunId: string; rationale?: string; tainted?: boolean }
+  | { kind: 'judgement'; at: string; stepRunId: string; rationale?: string; tainted?: boolean; /** A conversation step's chat wrote it, for this person (Phase 3). */ chatId?: string; by?: string }
   | { kind: 'person'; at: string; by: string; stepRunId?: string }
   | { kind: 'system'; at: string; note?: string };
 

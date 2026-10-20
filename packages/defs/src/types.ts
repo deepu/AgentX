@@ -26,6 +26,12 @@ export type EffectClass = (typeof EFFECT_CLASSES)[number];
 
 export type Performer = 'agent' | 'person' | 'external' | 'system';
 export type Strictness = 'strict' | 'guided' | 'open';
+/**
+ * Which engine runs an agent step (Phase 3, D17): `step` our own journaled loop (the default);
+ * `open` the open engine, i.e. a chat with the person (05 §3, 09 §3). An open-engine step is a
+ * conversation: the run waits on it like a person step, and the chat ends it with an outcome.
+ */
+export type StepEngine = 'step' | 'open';
 
 /** Milliseconds. Files write durations as `30s`, `10m`, `3d`, `1h30m`. */
 export type DurationMs = number;
@@ -173,6 +179,13 @@ export interface StepDef {
   assignee?: string;
   /** System steps: the arguments of each tool call, by tool then argument, in call order (Phase 2). */
   map?: Record<string, Record<string, ArgSource>>;
+  /** Agent steps: `open` runs the step as a conversation in chat (Phase 3). Absent means `step`. */
+  engine?: StepEngine;
+  /**
+   * System steps: the outcome is this field of this required tool's result (Phase 3), and must
+   * be one of the step's outcomes. Front matter: `outcomeFrom: { tool: playbooks.check_draft, field: outcome }`.
+   */
+  outcomeFrom?: { tool: string; field: string };
   /** The Markdown body: the instructions in the expert's own words. */
   instructions: string;
   file: string;

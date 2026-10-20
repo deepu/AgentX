@@ -220,7 +220,8 @@ function extractLastFinalMessageId(messages: StoredMessage[]): string | undefine
  * Returns first 150 chars.
  */
 function extractPreview(messages: StoredMessage[]): string | undefined {
-  const firstUserMessage = messages.find(m => m.type === 'user');
+  // Hidden messages (a MemWise chat's kick-off, auto-retries, nudges) are not the person's words.
+  const firstUserMessage = messages.find(m => m.type === 'user' && !(m as { hidden?: boolean }).hidden);
   if (!firstUserMessage?.content) return undefined;
 
   // Sanitize: strip special blocks, tags, and bracket mentions, normalize whitespace

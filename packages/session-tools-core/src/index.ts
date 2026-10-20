@@ -191,6 +191,14 @@ export type {
   DecisionToolUsage,
   DecisionToolError,
   DecisionToolResult,
+  // MemWise playbook tool types
+  MemwiseToolCallbacks,
+  PlaybookFileWrite,
+  PlaybookReadInput,
+  PlaybookWriteInput,
+  PlaybookCheckInput,
+  PlaybookFinishInput,
+  PlaybookToolDiagnostic,
 } from './context.ts';
 
 export { createNodeFileSystem } from './context.ts';
@@ -238,6 +246,13 @@ export {
   handleDeletePage,
   // Decision model
   handleDecide,
+  // MemWise playbooks
+  handlePlaybookVocabulary,
+  handlePlaybookRead,
+  handlePlaybookWrite,
+  handlePlaybookDiff,
+  handlePlaybookCheck,
+  handlePlaybookFinish,
 } from './handlers/index.ts';
 
 export type {
@@ -301,6 +316,14 @@ export {
   UpdatePageSchema,
   WritePageDataSchema,
   DeletePageSchema,
+  // MemWise playbook schemas
+  PlaybookVocabularySchema,
+  PlaybookReadSchema,
+  PlaybookWriteSchema,
+  PlaybookDiffSchema,
+  PlaybookCheckSchema,
+  PlaybookFinishSchema,
+  PLAYBOOK_TOOL_NAMES,
   // Descriptions
   TOOL_DESCRIPTIONS,
   // Registry

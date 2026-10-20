@@ -59,6 +59,14 @@ import { handleArchiveSession } from './handlers/archive-session.ts';
 import { handleSendAgentMessage } from './handlers/send-agent-message.ts';
 import { handleListMessagingChannels, handleUnbindMessagingChannel } from './handlers/messaging.ts';
 import { handleDecide } from './handlers/decide.ts';
+import {
+  handlePlaybookVocabulary,
+  handlePlaybookRead,
+  handlePlaybookWrite,
+  handlePlaybookDiff,
+  handlePlaybookCheck,
+  handlePlaybookFinish,
+} from './handlers/playbooks.ts';
 
 // ============================================================
 // Canonical Zod Schemas
@@ -178,6 +186,38 @@ export const DecideSchema = z.object({
     .describe('Question key → question (max 20 per call). Keys are echoed in the answers.'),
   deadlineMs: z.number().int().min(250).max(60000).optional()
     .describe('Time budget per call in ms (default 10000).'),
+});
+
+// MemWise playbooks (chats anchored to a conversation step; docs/memwise/20-phase-3-interfaces.md §4)
+export const PlaybookVocabularySchema = z.object({});
+
+export const PlaybookReadSchema = z.object({
+  path: z.string().optional().describe('Project-relative file to read, e.g. "workflows/client-intake/steps/check.md" or "domain/roles.yaml". Omit to list the files.'),
+  live: z.boolean().optional().describe('Read the live project instead of the draft (default: the draft once there is one).'),
+  playbook: z.string().optional().describe('Another live playbook to read, e.g. "client-intake" as a model to follow.'),
+});
+
+export const PlaybookWriteSchema = z.object({
+  files: z.array(z.object({
+    path: z.string().describe('Project-relative path: "workflows/<playbook>/..." or "domain/...".'),
+    content: z.string().nullable().describe('The whole file as text; null deletes it.'),
+  })).min(1).describe('Whole files to write into the draft.'),
+  summary: z.string().describe('One line, plain words: what this edit does (the person keeps or discards it by this line).'),
+  playbook: z.string().optional().describe('New playbooks: its id (kebab-case, e.g. "engagement-letter"), needed on the first write.'),
+  title: z.string().optional().describe('New playbooks: its title, e.g. "Engagement letter".'),
+});
+
+export const PlaybookDiffSchema = z.object({});
+
+export const PlaybookCheckSchema = z.object({
+  pastCases: z.number().int().min(0).max(20).optional().describe('How many recent finished cases to replay on the draft (default 5; 0 = none).'),
+});
+
+export const PlaybookFinishSchema = z.object({
+  summary: z.string().describe('What the change does, in a few plain sentences; it goes on the case and the review card.'),
+  title: z.string().optional().describe('Title for the playbook or the change, when it should differ from the draft\'s.'),
+  outcome: z.string().optional().describe('The step outcome; default "drafted".'),
+  rationale: z.string().optional().describe('Why it is ready (recorded on the step).'),
 });
 
 export const UpdatePreferencesSchema = z.object({
@@ -589,6 +629,24 @@ Put text/content directly in the 'prompt' parameter. Do NOT pass inline text via
 Only use 'attachments' for existing file paths on disk - the tool loads file content automatically.
 For large files (>2000 lines), use {path, startLine, endLine} to select a portion.`,
 
+  playbook_vocabulary: `List what a playbook may use in this domain: the tools bound here (with their effect class: read, draft, write, outbound, irreversible), entity types and their fields, roles, model roles, value types, and the existing playbooks.
+
+Call this before writing steps, and use only what it lists. A tool that is not listed cannot be used.`,
+
+  playbook_read: `Read playbook files. Without \`path\`, lists the files; with it, returns the file. Reads the chat's draft once there is one, else the live project; \`live: true\` reads the live project, \`playbook\` another live playbook (a good model to follow, e.g. client-intake).`,
+
+  playbook_write: `Write whole files into this chat's draft of the playbook. Nothing live changes: the draft is reviewed and approved before it is published as a new version, and the person keeps or discards each edit.
+
+- Paths are project-relative: \`workflows/<playbook>/workflow.yaml\`, \`workflows/<playbook>/case.yaml\`, \`workflows/<playbook>/steps/<step>.md\`, \`workflows/<playbook>/examples/<name>.yaml\`, or \`domain/...\` (roles, entities, policy). \`content: null\` deletes a file.
+- A new playbook's first write needs \`playbook\` (its id) and \`title\`; it creates the draft.
+- Returns the draft id, the edit id and the checks after the edit (structure and policy). Fix errors before finishing.`,
+
+  playbook_diff: `What the draft changes so far, compared with the live playbook: in plain words (states, steps and the parts of them, case fields, tools, roles, example cases, version) and as file diffs.`,
+
+  playbook_check: `Check the draft fully: structure and policy checks, its example cases (run in a throwaway database), recent past cases replayed on it, and the impact of publishing it (open cases, new tools and how policy treats them). Takes a while; run it when the draft looks complete.`,
+
+  playbook_finish: `Finish building: ends this chat's step and sends the draft on to be checked and then reviewed by an approver. Only when the checks have no errors and the person agrees it is ready. Refused while the draft has errors.`,
+
   decide: `Ask the decision model (Jev, TypeSafe System One) typed questions about text or JSON. It answers with probabilities, never prose: 'choice' picks one of your named options, 'score' places the state on an ordered rubric, 'noul' gives a yes/no probability. Fast (~0.1–0.5 s per call) and cheap; batch mode judges up to 200 items in one call.
 
 Use it to classify, route, tag, rank or triage many items (emails, tickets, rows, search hits), for yes/no checks over a list, or to score against a rubric. Do NOT use it for anything that needs generated text, value extraction or reasoning — use call_llm for those.
@@ -775,6 +833,15 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'call_llm', description: TOOL_DESCRIPTIONS.call_llm, inputSchema: CallLlmSchema, executionMode: 'backend', safeMode: 'allow', readOnly: true, handler: null },
   // Decision model (registry — uses ctx.decide from SessionManager; hidden unless the user enabled the decision layer)
   { name: 'decide', description: TOOL_DESCRIPTIONS.decide, inputSchema: DecideSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleDecide },
+  // MemWise playbooks (registry — grouped ctx.memwise callbacks; advertised only in chats anchored to a conversation step).
+  // Reads and draft writes are allowed in every mode (a draft never changes anything live; effect class `draft`);
+  // finishing moves the case on, so Explore blocks it and Ask asks once.
+  { name: 'playbook_vocabulary', description: TOOL_DESCRIPTIONS.playbook_vocabulary, inputSchema: PlaybookVocabularySchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handlePlaybookVocabulary },
+  { name: 'playbook_read', description: TOOL_DESCRIPTIONS.playbook_read, inputSchema: PlaybookReadSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handlePlaybookRead },
+  { name: 'playbook_write', description: TOOL_DESCRIPTIONS.playbook_write, inputSchema: PlaybookWriteSchema, executionMode: 'registry', safeMode: 'allow', handler: handlePlaybookWrite },
+  { name: 'playbook_diff', description: TOOL_DESCRIPTIONS.playbook_diff, inputSchema: PlaybookDiffSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handlePlaybookDiff },
+  { name: 'playbook_check', description: TOOL_DESCRIPTIONS.playbook_check, inputSchema: PlaybookCheckSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handlePlaybookCheck },
+  { name: 'playbook_finish', description: TOOL_DESCRIPTIONS.playbook_finish, inputSchema: PlaybookFinishSchema, executionMode: 'registry', safeMode: 'block', handler: handlePlaybookFinish },
   { name: 'spawn_session', description: TOOL_DESCRIPTIONS.spawn_session, inputSchema: SpawnSessionSchema, executionMode: 'backend', safeMode: 'block', handler: null },
   // Browser tool (backend-specific — requires BrowserPaneManager in Electron)
   // Single CLI-like tool that handles all browser actions via command string.
@@ -811,7 +878,17 @@ export interface SessionToolFilterOptions {
    * forgets the option hides it instead of advertising a tool that cannot run.
    */
   includeDecide?: boolean;
+  /**
+   * Include the MemWise `playbook_*` tools. Defaults to FALSE: they are advertised
+   * only in chats anchored to a conversation step (building or changing a playbook).
+   */
+  includePlaybookTools?: boolean;
 }
+
+/** The MemWise playbook tools (hidden unless `includePlaybookTools`). */
+export const PLAYBOOK_TOOL_NAMES = new Set([
+  'playbook_vocabulary', 'playbook_read', 'playbook_write', 'playbook_diff', 'playbook_check', 'playbook_finish',
+]);
 
 /**
  * Return session tools with optional feature filtering.
@@ -822,8 +899,12 @@ export interface SessionToolFilterOptions {
 export function getSessionToolDefs(options?: SessionToolFilterOptions): SessionToolDef[] {
   const includeDeveloperFeedback = options?.includeDeveloperFeedback ?? true;
   const includeDecide = options?.includeDecide ?? false;
+  const includePlaybookTools = options?.includePlaybookTools ?? false;
 
   return SESSION_TOOL_DEFS.filter(def => {
+    if (!includePlaybookTools && PLAYBOOK_TOOL_NAMES.has(def.name)) {
+      return false;
+    }
     if (!includeDeveloperFeedback && def.name === 'send_developer_feedback') {
       return false;
     }
@@ -943,9 +1024,14 @@ export function getToolDefsAsJsonSchema(opts?: {
   prefix?: string;
   includeDeveloperFeedback?: boolean;
   includeDecide?: boolean;
+  includePlaybookTools?: boolean;
 }): JsonSchemaToolDef[] {
   const prefix = opts?.prefix || '';
-  const defs = getSessionToolDefs({ includeDeveloperFeedback: opts?.includeDeveloperFeedback, includeDecide: opts?.includeDecide });
+  const defs = getSessionToolDefs({
+    includeDeveloperFeedback: opts?.includeDeveloperFeedback,
+    includeDecide: opts?.includeDecide,
+    includePlaybookTools: opts?.includePlaybookTools,
+  });
 
   return defs.map(def => {
     // Explicit `as any` avoids TS2589 ("type instantiation is excessively deep")

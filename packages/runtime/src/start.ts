@@ -34,10 +34,14 @@ export function startFields(workflow: WorkflowDef): string[] {
  * Problems with a case's starting values, field -> problems; empty when they are fine. Every
  * value must be a case field of its type. Started at the workflow's `start`, only `startFields`;
  * a later `startAt` (example cases, tests) may set any field, as earlier steps would have.
+ * `anyField`: the kernel itself starting a case (a change run with its draft, Phase 3) may set
+ * any field too; what people enter is never widened by it.
  */
-export function startValueErrors(workflow: WorkflowDef, values: Record<string, unknown>, records: RecordTypes, startAt?: string): Record<string, string[]> {
+export function startValueErrors(
+  workflow: WorkflowDef, values: Record<string, unknown>, records: RecordTypes, startAt?: string, opts: { anyField?: boolean } = {},
+): Record<string, string[]> {
   const fields = workflow.caseType.fields;
-  const atStart = (startAt ?? workflow.start) === workflow.start;
+  const atStart = (startAt ?? workflow.start) === workflow.start && !opts.anyField;
   const allowed = new Set(atStart ? startFields(workflow) : Object.keys(fields));
   const errors: Record<string, string[]> = {};
   for (const [name, value] of Object.entries(values)) {

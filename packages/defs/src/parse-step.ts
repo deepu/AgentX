@@ -4,11 +4,12 @@ import { stepFormat } from './formats.ts';
 import { toPolicyDoc } from './parse-policy.ts';
 import { typeAt } from './parse-types.ts';
 import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, sha256, type ParseResult } from './source.ts';
-import type { ArgSource, Performer, StepDef, Strictness, WriteDef, WriteSource } from './types.ts';
+import type { ArgSource, Performer, StepDef, StepEngine, Strictness, WriteDef, WriteSource } from './types.ts';
 import { parseCount, parseDuration } from './value-types.ts';
 
 const PERFORMERS: Performer[] = ['agent', 'person', 'external', 'system'];
 const STRICTNESS: Strictness[] = ['strict', 'guided', 'open'];
+const ENGINES: StepEngine[] = ['step', 'open'];
 
 /** Splits `---\n<yaml>\n---\n<body>`. Returns undefined when the file has no front matter. */
 export function splitFrontMatter(text: string): { yaml: string; body: string } | undefined {
@@ -100,6 +101,10 @@ export function parseStepFile(text: string, file: string): ParseResult<StepDef> 
     policy: isRecord(data.policy) ? toPolicyDoc(data.policy, file) : undefined,
     assignee: asString(data.assignee),
     map,
+    engine: ENGINES.includes(data.engine as StepEngine) ? data.engine as StepEngine : undefined,
+    outcomeFrom: isRecord(data.outcomeFrom) && typeof data.outcomeFrom.tool === 'string' && typeof data.outcomeFrom.field === 'string'
+      ? { tool: data.outcomeFrom.tool, field: data.outcomeFrom.field }
+      : undefined,
     instructions: parts.body.trim(),
     file,
     hash: sha256(text),

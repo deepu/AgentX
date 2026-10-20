@@ -17,8 +17,12 @@ export type SessionToolProxyDef = JsonSchemaToolDef;
 
 export { SESSION_TOOL_NAMES };
 
-export function getSessionToolProxyDefs(): SessionToolProxyDef[] {
+export function getSessionToolProxyDefs(opts?: {
+  /** Per session: the MemWise playbook_* tools, for chats anchored to a conversation step. */
+  includePlaybookTools?: boolean;
+}): SessionToolProxyDef[] {
   return getToolDefsAsJsonSchema({
+    includePlaybookTools: opts?.includePlaybookTools ?? false,
     prefix: 'mcp__session__',
     includeDeveloperFeedback: FEATURE_FLAGS.developerFeedback,
     // Same gate as the Claude path (session-scoped-tools.ts): advertise `decide`

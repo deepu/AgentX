@@ -1,0 +1,10 @@
+case: engagement_letter
+fields:
+  client_name:      { type: PersonName, description: The onboarded customer the letter is for }
+  client_email:     Email
+  scope:            { type: Text, description: "The work we will do, in the staff member's words" }
+  fee:              Money
+  start_date:       { type: Date, description: When the engagement starts }
+  engagement_title: { type: Text, description: A short name for the engagement }
+  letter:           { type: Text, description: The letter as drafted }
+  engagement:       Ref<Engagement>

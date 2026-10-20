@@ -1,0 +1,28 @@
+name: stale-draft-checked-again
+description: >
+  Sent for review from the editor (the run starts at the check). The draft was edited after the
+  check, so publishing finds it stale and checks it again; approved again, it is published.
+startAt: check
+case:
+  playbook: client-intake
+  title: Clearer verify instructions
+  draft: client-intake-draft
+  summary: The verify step's instructions say what to look for in the flags.
+submit:
+  review:
+    - { outcome: approved }
+    - { outcome: approved }
+tools:
+  playbooks.check_draft:
+    results:
+      - { outcome: passed, hash: e5f6, errors: 0, warnings: 0, examples_failed: 0, summary: Checks pass. }
+      - { outcome: passed, hash: f7a8, errors: 0, warnings: 0, examples_failed: 0, summary: Checks pass. }
+  playbooks.publish_draft:
+    results:
+      - { outcome: stale, message: the draft changed after it was checked; check it again }
+      - { outcome: published, version: 2, workflow: client-intake }
+expect:
+  outcome: passed
+  state: end
+  writes: { checked_hash: f7a8, version: 2 }
+  effects: { playbooks.publish_draft: 2 }

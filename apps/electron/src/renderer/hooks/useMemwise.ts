@@ -11,17 +11,23 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAtomValue, useSetAtom, useStore } from 'jotai'
 import i18n from 'i18next'
 import type {
+  MwBuildPlaybookInput,
+  MwBuildPlaybookResult,
   MwCase,
   MwChange,
+  MwDraft,
+  MwDraftSummary,
   MwLiveCounts,
   MwPlaybook,
   MwStatus,
   MwStepRecord,
+  MwVersion,
 } from '@memwise/shared/protocol'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import {
   memwiseAvailableAtom,
   memwiseCasesAtom,
+  memwiseDraftsAtom,
   memwiseInboxAtom,
   memwiseLastChangeAtom,
   memwisePeopleAtom,
@@ -43,16 +49,24 @@ export function getMemwiseApi(): MemwiseApi | null {
   return api as MemwiseApi
 }
 
+export interface AffectedLists { status: boolean; inbox: boolean; cases: boolean; playbooks: boolean; drafts: boolean }
+
 /** Which lists a pushed change affects. */
-export function affectedByChange(change: MwChange): { status: boolean; inbox: boolean; cases: boolean; playbooks: boolean } {
+export function affectedByChange(change: MwChange): AffectedLists {
   switch (change.kind) {
-    case 'status': return { status: true, inbox: true, cases: true, playbooks: true }
-    case 'definitions': return { status: true, inbox: false, cases: false, playbooks: true }
-    case 'inbox': return { status: false, inbox: true, cases: false, playbooks: true }
+    case 'status': return { status: true, inbox: true, cases: true, playbooks: true, drafts: true }
+    // Publishing a draft changes the definitions; the draft's stage changes with it.
+    case 'definitions': return { status: true, inbox: false, cases: false, playbooks: true, drafts: true }
+    case 'inbox': return { status: false, inbox: true, cases: false, playbooks: true, drafts: false }
     case 'run':
-    case 'case': return { status: false, inbox: true, cases: true, playbooks: true }
+    case 'case': return { status: false, inbox: true, cases: true, playbooks: true, drafts: false }
+    // A conversation item carries its draft, so the inbox follows the drafts too.
+    case 'drafts': return { status: false, inbox: true, cases: false, playbooks: false, drafts: true }
+    default: return { status: false, inbox: false, cases: false, playbooks: false, drafts: false }
   }
 }
+
+const NO_LISTS: AffectedLists = { status: false, inbox: false, cases: false, playbooks: false, drafts: false }
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -75,6 +89,7 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
   const setInbox = useSetAtom(memwiseInboxAtom)
   const setCases = useSetAtom(memwiseCasesAtom)
   const setPlaybooks = useSetAtom(memwisePlaybooksAtom)
+  const setDrafts = useSetAtom(memwiseDraftsAtom)
   const setLastChange = useSetAtom(memwiseLastChangeAtom)
 
   const loadStatus = useCallback(async (ws: string, api: MemwiseApi) => {
@@ -115,12 +130,22 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
     }
   }, [setPlaybooks])
 
+  const loadDrafts = useCallback(async (ws: string, api: MemwiseApi) => {
+    // An older server has no drafts: leave the list empty.
+    if (typeof api.memwiseListDrafts !== 'function') { setDrafts([]); return }
+    try { setDrafts(await api.memwiseListDrafts(ws, {})) } catch (err) {
+      console.warn('[memwise] drafts:', errorMessage(err))
+      setDrafts(prev => prev ?? [])
+    }
+  }, [setDrafts])
+
   // Initial load per workspace
   useEffect(() => {
     setWorkspaceId(workspaceId ?? null)
     setInbox(null)
     setCases(null)
     setPlaybooks(null)
+    setDrafts(null)
     setStatus(null)
     if (!workspaceId) return
     const api = getMemwiseApi()
@@ -129,16 +154,17 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
       setInbox([])
       setCases([])
       setPlaybooks([])
+      setDrafts([])
       return
     }
     let stale = false
     void (async () => {
       await loadStatus(workspaceId, api)
       if (stale) return
-      await Promise.all([loadInbox(workspaceId, api), loadCases(workspaceId, api), loadPlaybooks(workspaceId, api)])
+      await Promise.all([loadInbox(workspaceId, api), loadCases(workspaceId, api), loadPlaybooks(workspaceId, api), loadDrafts(workspaceId, api)])
     })()
     return () => { stale = true }
-  }, [workspaceId, setWorkspaceId, setAvailable, setStatus, setInbox, setCases, setPlaybooks, loadStatus, loadInbox, loadCases, loadPlaybooks])
+  }, [workspaceId, setWorkspaceId, setAvailable, setStatus, setInbox, setCases, setPlaybooks, setDrafts, loadStatus, loadInbox, loadCases, loadPlaybooks, loadDrafts])
 
   // While the kernel starts, poll the status until it's ready (pushes may not flow yet).
   const status = useAtomValue(memwiseStatusAtom)
@@ -149,14 +175,14 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
     const timer = setTimeout(async () => {
       const next = await loadStatus(workspaceId, api)
       if (next?.ready) {
-        await Promise.all([loadInbox(workspaceId, api), loadCases(workspaceId, api), loadPlaybooks(workspaceId, api)])
+        await Promise.all([loadInbox(workspaceId, api), loadCases(workspaceId, api), loadPlaybooks(workspaceId, api), loadDrafts(workspaceId, api)])
       }
     }, 3000)
     return () => clearTimeout(timer)
-  }, [workspaceId, status, loadStatus, loadInbox, loadCases, loadPlaybooks])
+  }, [workspaceId, status, loadStatus, loadInbox, loadCases, loadPlaybooks, loadDrafts])
 
   // Live updates: one subscription; bursts of pushes are coalesced into one refetch per list.
-  const pending = useRef({ status: false, inbox: false, cases: false, playbooks: false })
+  const pending = useRef<AffectedLists>({ ...NO_LISTS })
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const seq = useRef(0)
   useEffect(() => {
@@ -166,18 +192,25 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
     const flush = () => {
       timer.current = null
       const p = pending.current
-      pending.current = { status: false, inbox: false, cases: false, playbooks: false }
+      pending.current = { ...NO_LISTS }
       if (store.get(memwiseWorkspaceIdAtom) !== workspaceId) return
       if (p.status) void loadStatus(workspaceId, api)
       if (p.inbox) void loadInbox(workspaceId, api)
       if (p.cases) void loadCases(workspaceId, api)
       if (p.playbooks) void loadPlaybooks(workspaceId, api)
+      if (p.drafts) void loadDrafts(workspaceId, api)
     }
     const off = api.onMemwiseChanged((change: MwChange) => {
       setLastChange({ seq: ++seq.current, change })
       const a = affectedByChange(change)
       const p = pending.current
-      pending.current = { status: p.status || a.status, inbox: p.inbox || a.inbox, cases: p.cases || a.cases, playbooks: p.playbooks || a.playbooks }
+      pending.current = {
+        status: p.status || a.status,
+        inbox: p.inbox || a.inbox,
+        cases: p.cases || a.cases,
+        playbooks: p.playbooks || a.playbooks,
+        drafts: p.drafts || a.drafts,
+      }
       if (!timer.current) timer.current = setTimeout(flush, 150)
     })
     return () => {
@@ -185,7 +218,7 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
       if (timer.current) clearTimeout(timer.current)
       timer.current = null
     }
-  }, [workspaceId, store, setLastChange, loadStatus, loadInbox, loadCases, loadPlaybooks])
+  }, [workspaceId, store, setLastChange, loadStatus, loadInbox, loadCases, loadPlaybooks, loadDrafts])
 }
 
 /** Reload the inbox and cases now (after the person acted), without waiting for a push. */
@@ -194,19 +227,22 @@ export function useMemwiseRefresh(): () => Promise<void> {
   const setInbox = useSetAtom(memwiseInboxAtom)
   const setCases = useSetAtom(memwiseCasesAtom)
   const setPlaybooks = useSetAtom(memwisePlaybooksAtom)
+  const setDrafts = useSetAtom(memwiseDraftsAtom)
   return useCallback(async () => {
     const ws = store.get(memwiseWorkspaceIdAtom)
     const api = getMemwiseApi()
     if (!ws || !api) return
-    const [inbox, cases, playbooks] = await Promise.allSettled([
+    const [inbox, cases, playbooks, drafts] = await Promise.allSettled([
       api.memwiseListInbox(ws),
       api.memwiseListCases(ws, {}),
       api.memwiseListPlaybooks(ws),
+      typeof api.memwiseListDrafts === 'function' ? api.memwiseListDrafts(ws, {}) : Promise.resolve([]),
     ])
     if (inbox.status === 'fulfilled') setInbox(inbox.value)
     if (cases.status === 'fulfilled') setCases(cases.value)
     if (playbooks.status === 'fulfilled') setPlaybooks(playbooks.value)
-  }, [store, setInbox, setCases, setPlaybooks])
+    if (drafts.status === 'fulfilled') setDrafts(drafts.value)
+  }, [store, setInbox, setCases, setPlaybooks, setDrafts])
 }
 
 /** Switch who the desktop acts as, then reload what depends on it. */
@@ -324,6 +360,41 @@ export function useMemwiseLiveCounts(playbookId: string | null): MemwiseQuery<Mw
   )
 }
 
+// ---------------------------------------------------------------- drafts and versions (Phase 3)
+
+/** Whether a push concerns a draft (or every draft when `draftId` is absent). */
+export function draftChangeMatches(c: MwChange, draftId?: string | null): boolean {
+  if (c.kind === 'status' || c.kind === 'definitions') return true
+  if (c.kind !== 'drafts') return false
+  return !draftId || !c.id || c.id === draftId
+}
+
+export function useMemwiseDraft(draftId: string | null): MemwiseQuery<MwDraft> {
+  return useMemwiseQuery<MwDraft>(
+    draftId ? `draft:${draftId}` : null,
+    (api, ws) => api.memwiseGetDraft(ws, draftId!),
+    // The change run moving on (review, publish) changes the draft's stage too.
+    (c, cur) => draftChangeMatches(c, draftId) || (!!cur?.runId && (c.kind === 'run' || c.kind === 'case') && (c.id === cur.runId || c.caseId === cur.caseId)),
+  )
+}
+
+/** Drafts, of one playbook or all. */
+export function useMemwiseDrafts(workflowId?: string | null): MemwiseQuery<MwDraftSummary[]> {
+  return useMemwiseQuery<MwDraftSummary[]>(
+    workflowId === null ? null : `drafts:${workflowId ?? '*'}`,
+    async (api, ws) => (typeof api.memwiseListDrafts === 'function' ? api.memwiseListDrafts(ws, workflowId ? { workflowId } : {}) : []),
+    c => draftChangeMatches(c) || c.kind === 'run',
+  )
+}
+
+export function useMemwiseVersions(workflowId: string | null): MemwiseQuery<MwVersion[]> {
+  return useMemwiseQuery<MwVersion[]>(
+    workflowId ? `versions:${workflowId}` : null,
+    async (api, ws) => (typeof api.memwiseListVersions === 'function' ? api.memwiseListVersions(ws, workflowId!) : []),
+    c => c.kind === 'definitions' || c.kind === 'status' || ((c.kind === 'run' || c.kind === 'case') && (!c.workflowId || c.workflowId === workflowId)),
+  )
+}
+
 export function useMemwiseStepRecord(stepRunId: string | null): MemwiseQuery<MwStepRecord> {
   return useMemwiseQuery<MwStepRecord>(
     stepRunId ? `step:${stepRunId}` : null,
@@ -359,6 +430,30 @@ export function useMemwiseUpload(): (file: File) => Promise<import('@memwise/sha
 
 // ---------------------------------------------------------------- chat
 
+/** Wait briefly for a session the server just created to reach the session list. */
+async function waitForSession(store: ReturnType<typeof useStore>, sessionId: string): Promise<void> {
+  const deadline = Date.now() + 3000
+  while (!store.get(sessionMetaMapAtom).has(sessionId) && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+}
+
+/**
+ * Build a new playbook (no workflowId) or change one by chat: starts the meta playbook and opens
+ * its chat. Resolves once the chat's session is in the session list.
+ */
+export function useMemwiseBuildPlaybook(): (input: MwBuildPlaybookInput) => Promise<MwBuildPlaybookResult | null> {
+  const store = useStore()
+  return useCallback(async (input) => {
+    const ws = store.get(memwiseWorkspaceIdAtom)
+    const api = getMemwiseApi()
+    if (!ws || !api || typeof api.memwiseBuildPlaybook !== 'function') throw new Error(i18n.t('memwise.notAvailable'))
+    const result = await api.memwiseBuildPlaybook(ws, input)
+    await waitForSession(store, result.sessionId)
+    return result
+  }, [store])
+}
+
 /**
  * Open the regular chat anchored to a case, step or playbook (09 §1). The server creates the
  * session; wait briefly for it to reach the session list so navigation doesn't drop the detail.
@@ -370,10 +465,7 @@ export function useMemwiseOpenChat(): (anchor: import('@memwise/shared/protocol'
     const api = getMemwiseApi()
     if (!ws || !api) return null
     const { sessionId } = await api.memwiseOpenChat(ws, { anchor })
-    const deadline = Date.now() + 3000
-    while (!store.get(sessionMetaMapAtom).has(sessionId) && Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
+    await waitForSession(store, sessionId)
     return sessionId
   }, [store])
 }

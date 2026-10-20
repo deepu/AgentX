@@ -62,6 +62,7 @@ import {
   SAFE_MODE_CONFIG,
 } from './mode-manager.ts';
 import { getSessionDataPath, getSessionPlansPath, getSessionPath } from '../sessions/storage.ts';
+import { readSessionMemwiseContext } from '../sessions/memwise-context.ts';
 import { getLastApiError } from '../interceptor-common.ts';
 import { extractWorkspaceSlug } from '../utils/workspace.ts';
 import {
@@ -536,6 +537,8 @@ export class ClaudeAgent extends BaseAgent {
   private pinnedPreferencesPrompt: string | null = null;
   private pinnedIncludeCoAuthoredBy: boolean | null = null;
   private pinnedProjectContext: import('../projects/types.ts').ProjectPromptContext | null = null;
+  /** MemWise anchored-chat block (sessions/{id}/memwise-context.json), pinned with the rest on the first turn. */
+  private pinnedMemwiseContext: import('../sessions/memwise-context.ts').SessionMemwiseContext | null = null;
   // Track if preference drift notification has been shown this session
   private preferencesDriftNotified: boolean = false;
   // Captured stderr from SDK subprocess (for error diagnostics when process exits with code 1)
@@ -1127,6 +1130,9 @@ export class ClaudeAgent extends BaseAgent {
         this.pinnedPreferencesPrompt = currentPreferencesPrompt;
         this.pinnedIncludeCoAuthoredBy = currentCoAuthorPref;
         this.pinnedProjectContext = this.resolveProjectContext();
+        this.pinnedMemwiseContext = this.config.session?.id
+          ? readSessionMemwiseContext(this.workspaceRootPath, this.config.session.id)
+          : null;
         debug('[chat] Pinned system prompt components for session consistency');
       } else {
         // Detect drift: warn user if context has changed since session started
@@ -1341,6 +1347,7 @@ export class ClaudeAgent extends BaseAgent {
                 undefined, // backendName
                 this.pinnedIncludeCoAuthoredBy ?? undefined,
                 this.pinnedProjectContext ?? undefined,
+                this.pinnedMemwiseContext,
               ),
             },
         // Use sdkCwd for SDK session storage - this is set once at session creation and never changes.

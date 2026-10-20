@@ -19,6 +19,11 @@ Left open by the spikes, for Phase 1:
 - Real prompt-cache hits and providers other than Anthropic were not measured (no key in the spike).
 - The macOS 26 compiled icon (`apps/electron/resources/Assets.car`) still shows the old mark and must be rebuilt on a Mac.
 
+Left open by Phase 3:
+
+- Replaying past cases on a draft compares where they started and ended; a step-by-step comparison, and re-running agent steps on a live model, are later.
+- A publish that changes the domain re-applies row rules, which can briefly conflict with a read made at the same moment (the reader retries).
+
 ## Domain and data
 
 6. **Link versus materialise.** How much plugin data the domain caches or copies by default, especially for analytics.

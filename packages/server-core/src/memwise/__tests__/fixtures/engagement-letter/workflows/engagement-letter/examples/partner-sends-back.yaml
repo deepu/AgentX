@@ -1,0 +1,29 @@
+name: partner-sends-back
+description: The partner sends the first draft back with a comment; the agent drafts it again and it waits for the partner.
+startAt: draft_letter
+case:
+  client_name: Asha Rao
+  client_email: asha@acme-traders.example
+  scope: Statutory audit of the accounts for FY 2026-27
+  fee: { amount: 250000, currency: INR }
+  start_date: 2026-11-01
+submit:
+  partner_review:
+    - { outcome: sent_back, comment: Say that the fee excludes taxes. }
+model:
+  drafter:
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: drafted
+            writes:
+              engagement_title: Statutory audit FY 2026-27
+              letter: >-
+                Dear Asha Rao, we will audit the accounts of Acme Traders for FY 2026-27 from
+                1 November 2026, for a fee of INR 2,50,000 (plus taxes) billed on completion.
+            rationale: The letter states the scope, the fee and the start date.
+expect:
+  outcome: drafted
+  state: partner_review
+  writes: { engagement_title: Statutory audit FY 2026-27 }
+  effects: { domain.engagement.create: 0 }

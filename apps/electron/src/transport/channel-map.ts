@@ -457,6 +457,19 @@ export const CHANNEL_MAP = {
   memwiseListEntityTypes: invoke(RPC_CHANNELS.memwise.ENTITIES_TYPES),
   memwiseUploadFile: invoke(RPC_CHANNELS.memwise.FILES_UPLOAD),
   memwiseOpenChat: invoke(RPC_CHANNELS.memwise.CHAT_OPEN),
+  // Phase 3: drafts, versions, building by chat (docs/memwise/20-phase-3-interfaces.md §6)
+  memwiseListVersions: invoke(RPC_CHANNELS.memwise.PLAYBOOKS_VERSIONS),
+  memwiseBuildPlaybook: invoke(RPC_CHANNELS.memwise.PLAYBOOKS_BUILD),
+  memwiseListDrafts: invoke(RPC_CHANNELS.memwise.DRAFTS_LIST),
+  memwiseGetDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_GET),
+  memwiseCreateDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_CREATE),
+  memwiseWriteDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_WRITE),
+  memwiseKeepDraftEdit: invoke(RPC_CHANNELS.memwise.DRAFTS_KEEP),
+  memwiseDiscardDraftEdit: invoke(RPC_CHANNELS.memwise.DRAFTS_DISCARD_EDIT),
+  memwiseDiscardDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_DISCARD),
+  memwiseCheckDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_CHECK),
+  memwiseSubmitDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_SUBMIT),
+  memwiseExampleFromCase: invoke(RPC_CHANNELS.memwise.EXAMPLES_FROM_CASE),
   onMemwiseChanged: listener(RPC_CHANNELS.memwise.CHANGED),
 
   // Automations

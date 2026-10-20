@@ -6,8 +6,8 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { AlertTriangle, Bell, BookOpen, Briefcase, CheckCircle2, ClipboardCheck, ClipboardList, Play, ShieldCheck } from 'lucide-react'
-import type { MwCaseSummary, MwInboxItem, MwPlaybookSummary, MwRole, MwRunStatus } from '@memwise/shared/protocol'
+import { AlertTriangle, Bell, BookOpen, Briefcase, CheckCircle2, ClipboardCheck, ClipboardList, FilePen, MessagesSquare, Play, ShieldCheck, Sparkles, Wrench } from 'lucide-react'
+import type { MwCaseSummary, MwDraftSummary, MwInboxItem, MwPlaybookSummary, MwRole, MwRunStatus } from '@memwise/shared/protocol'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { EntityRow } from '@/components/ui/entity-row'
 import { EntityListEmptyScreen } from '@/components/ui/entity-list-empty'
@@ -19,12 +19,14 @@ import { cn } from '@/lib/utils'
 import {
   memwiseCaseFilterAtom,
   memwiseCasesAtom,
+  memwiseDraftsAtom,
   memwiseInboxAtom,
   memwisePlaybooksAtom,
   memwiseRolesAtom,
   memwiseStartCaseDialogAtom,
 } from '@/atoms/memwise'
 import { MemwiseStatusBanner } from './MemwiseStatus'
+import { isMetaPlaybook, isOpenDraft, sortDrafts, stageLabel, stageTone } from './draft/draft-model'
 import {
   absoluteTime,
   caseStatusLabel,
@@ -43,6 +45,7 @@ const KIND_ICON: Record<MwInboxItem['kind'], React.ComponentType<{ className?: s
   approval: ShieldCheck,
   attention: AlertTriangle,
   reminder: Bell,
+  conversation: MessagesSquare,
 }
 
 function ListSkeleton() {
@@ -245,15 +248,36 @@ export function CasesListPanel({ selectedId, onSelect }: { selectedId?: string |
 
 // ---------------------------------------------------------------- playbooks
 
-export function PlaybooksList({ playbooks, selectedId, onSelect, className }: {
+const STAGE_BADGE: Record<ReturnType<typeof stageTone>, string> = {
+  default: 'bg-fill-hover text-secondary',
+  success: 'bg-success-tint text-success',
+  warning: 'bg-info-tint text-info',
+  destructive: 'bg-destructive-tint text-destructive',
+  muted: 'bg-fill-hover text-tertiary',
+}
+
+function GroupHeader({ children }: { children: React.ReactNode }) {
+  return <div className="px-4 pt-3 pb-1 text-label-sm font-semibold text-tertiary">{children}</div>
+}
+
+/**
+ * Playbooks, with the drafts in progress above them and the playbooks that build and change
+ * playbooks (create-playbook, change-playbook) in their own quieter group below.
+ */
+export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, onSelect, onSelectDraft, now, className }: {
   playbooks: MwPlaybookSummary[] | null
+  drafts?: MwDraftSummary[] | null
   selectedId?: string | null
+  selectedDraftId?: string | null
   onSelect: (id: string) => void
+  onSelectDraft?: (draftId: string) => void
+  now?: number
   className?: string
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   if (playbooks === null) return <ListSkeleton />
-  if (playbooks.length === 0) {
+  const openDrafts = onSelectDraft ? sortDrafts((drafts ?? []).filter(isOpenDraft)) : []
+  if (playbooks.length === 0 && openDrafts.length === 0) {
     return (
       <EntityListEmptyScreen
         icon={<BookOpen />}
@@ -263,38 +287,93 @@ export function PlaybooksList({ playbooks, selectedId, onSelect, className }: {
       />
     )
   }
+  const regular = playbooks.filter(p => !isMetaPlaybook(p.id))
+  const meta = playbooks.filter(p => isMetaPlaybook(p.id))
+  const row = (p: MwPlaybookSummary, quiet: boolean) => (
+    <EntityRow
+      key={p.id}
+      isSelected={selectedId === p.id}
+      onClick={() => onSelect(p.id)}
+      icon={quiet ? <Wrench className="h-3.5 w-3.5 text-foreground/40" /> : <BookOpen className="h-3.5 w-3.5 text-foreground/60" />}
+      title={p.title}
+      subtitle={[
+        t('memwise.playbooks.steps', { count: p.stepCount }),
+        t('memwise.playbooks.openCases', { count: p.open }),
+      ].join(' · ')}
+      subtitleTrailing={p.waitingOnMe > 0 ? (
+        <EntityListBadge colorClass="bg-info-tint text-info" tooltip={t('memwise.playbooks.waitingOnMeTooltip')}>
+          {t('memwise.playbooks.waitingOnMe', { count: p.waitingOnMe })}
+        </EntityListBadge>
+      ) : undefined}
+      dataAttributes={{ 'data-playbook': p.id, ...(quiet ? { 'data-meta-playbook': 'true' } : {}) }}
+    />
+  )
   return (
     <ScrollArea className={cn('flex-1', className)}>
       <div className="pt-1 pb-2" data-list-role="memwise-playbooks">
-        {playbooks.map(p => (
-          <EntityRow
-            key={p.id}
-            isSelected={selectedId === p.id}
-            onClick={() => onSelect(p.id)}
-            icon={<BookOpen className="h-3.5 w-3.5 text-foreground/60" />}
-            title={p.title}
-            subtitle={[
-              t('memwise.playbooks.steps', { count: p.stepCount }),
-              t('memwise.playbooks.openCases', { count: p.open }),
-            ].join(' · ')}
-            subtitleTrailing={p.waitingOnMe > 0 ? (
-              <EntityListBadge colorClass="bg-info-tint text-info" tooltip={t('memwise.playbooks.waitingOnMeTooltip')}>
-                {t('memwise.playbooks.waitingOnMe', { count: p.waitingOnMe })}
-              </EntityListBadge>
-            ) : undefined}
-          />
-        ))}
+        {openDrafts.length > 0 && (
+          <div data-list-group="drafts">
+            <GroupHeader>{t('memwise.playbooks.draftsGroup')}</GroupHeader>
+            {openDrafts.map(d => (
+              <EntityRow
+                key={d.id}
+                isSelected={selectedDraftId === d.id}
+                onClick={() => onSelectDraft!(d.id)}
+                icon={<FilePen className="h-3.5 w-3.5 text-foreground/60" />}
+                title={d.title}
+                titleTrailing={
+                  <span className="text-label-sm text-tertiary tabular-nums" title={absoluteTime(d.updatedAt, i18n.language)}>
+                    {relativeTime(d.updatedAt, now, i18n.language)}
+                  </span>
+                }
+                subtitle={d.kind === 'create' ? t('memwise.draft.newPlaybook') : d.playbookTitle}
+                subtitleTrailing={
+                  <span className="flex items-center gap-1">
+                    {d.pendingEdits > 0 && <Sparkles className="h-3 w-3 text-accent" aria-label={t('memwise.draft.pendingCount', { count: d.pendingEdits })} />}
+                    <EntityListBadge colorClass={STAGE_BADGE[stageTone(d.stage)]}>{stageLabel(d.stage, t)}</EntityListBadge>
+                  </span>
+                }
+                dataAttributes={{ 'data-draft': d.id, 'data-draft-stage': d.stage }}
+              />
+            ))}
+          </div>
+        )}
+        {regular.length > 0 && (
+          <div data-list-group="playbooks">
+            {(openDrafts.length > 0 || meta.length > 0) && <GroupHeader>{t('memwise.nav.playbooks')}</GroupHeader>}
+            {regular.map(p => row(p, false))}
+          </div>
+        )}
+        {meta.length > 0 && (
+          <div data-list-group="building" className="opacity-80">
+            <GroupHeader>{t('memwise.playbooks.buildingGroup')}</GroupHeader>
+            {meta.map(p => row(p, true))}
+          </div>
+        )}
       </div>
     </ScrollArea>
   )
 }
 
-export function PlaybooksListPanel({ selectedId, onSelect }: { selectedId?: string | null; onSelect: (id: string) => void }) {
+export function PlaybooksListPanel({ selectedId, selectedDraftId, onSelect, onSelectDraft }: {
+  selectedId?: string | null
+  selectedDraftId?: string | null
+  onSelect: (id: string) => void
+  onSelectDraft?: (draftId: string) => void
+}) {
   const playbooks = useAtomValue(memwisePlaybooksAtom)
+  const drafts = useAtomValue(memwiseDraftsAtom)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <MemwiseStatusBanner className="mx-3 mt-1 mb-2" />
-      <PlaybooksList playbooks={playbooks} selectedId={selectedId} onSelect={onSelect} />
+      <PlaybooksList
+        playbooks={playbooks}
+        drafts={drafts}
+        selectedId={selectedId}
+        selectedDraftId={selectedDraftId}
+        onSelect={onSelect}
+        onSelectDraft={onSelectDraft}
+      />
     </div>
   )
 }

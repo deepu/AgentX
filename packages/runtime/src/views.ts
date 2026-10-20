@@ -145,17 +145,27 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
   const items: InboxItem[] = [];
   const roles = actor.roles;
 
-  // Person and external steps assigned to one of the person's roles (or to nobody in particular).
+  // Person, external and conversation steps assigned to one of the person's roles (or to nobody
+  // in particular). An agent step also waits while an effect approval is pending: that is not
+  // a conversation, so agent rows count only when their step runs on the open engine.
   const waiting = await pool.query(
     `select s.id, s.run_id, s.case_id, s.workflow_id, s.workflow_hash, s.step_id, s.assignee, s.started_at, s.performer,
             (select min(t.fire_at) from mw.timers t where t.run_id = s.run_id and t.status = 'pending' and t.timer_id not like 'remind.%') as due_at
        from mw.step_runs s join mw.runs r on r.id = s.run_id
-      where s.status = 'waiting' and s.performer in ('person', 'external') and r.status = 'active'
+      where s.status = 'waiting' and s.performer in ('person', 'external', 'agent') and r.status = 'active'
         and (s.assignee is null or s.assignee = any($1::text[]))
       order by s.started_at, s.id`, [roles]);
   for (const s of waiting.rows) {
     const wf = await defs.workflow(s.workflow_id, s.workflow_hash);
     const step = wf.steps[s.step_id];
+    if (s.performer === 'agent') {
+      if (step?.engine !== 'open') continue;
+      items.push({
+        kind: 'conversation', id: `step:${s.id}`, stepRunId: s.id, runId: s.run_id, caseId: s.case_id, workflowId: s.workflow_id,
+        stepId: s.step_id, ...(s.assignee ? { assignee: s.assignee } : {}), since: iso(s.started_at),
+      });
+      continue;
+    }
     items.push({
       kind: step && Object.keys(step.writes).length ? 'input' : 'decision',
       id: `step:${s.id}`, stepRunId: s.id, runId: s.run_id, caseId: s.case_id, workflowId: s.workflow_id, stepId: s.step_id,

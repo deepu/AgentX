@@ -75,6 +75,7 @@ const OUTCOME_KEYS: Record<string, string> = {
   reject: 'memwise.form.outcome.reject',
   resolved: 'memwise.form.outcome.resolved',
   done: 'memwise.form.outcome.done',
+  changes_requested: 'memwise.form.outcome.askForChanges',
 }
 
 export function outcomeLabel(outcome: string, t: TFunction): string {
@@ -275,7 +276,16 @@ export function stateLabel(stateId: string, t?: TFunction, title?: string): stri
 
 /** The step (or state) an inbox item is about, for its row. */
 export function inboxItemStepTitle(item: MwInboxItem, t?: TFunction): string {
-  return item.kind === 'attention' ? stateLabel(item.state, t) : item.stepTitle
+  if (item.kind === 'attention') return stateLabel(item.state, t)
+  if (item.kind === 'conversation' && t) return conversationTitle(item, t)
+  return item.stepTitle
+}
+
+/** A conversation item reads as what the chat is for: building or changing a playbook. */
+export function conversationTitle(item: Pick<Extract<MwInboxItem, { kind: 'conversation' }>, 'workflowId' | 'stepTitle'>, t: TFunction): string {
+  if (item.workflowId === 'create-playbook') return t('memwise.inbox.conversation.build')
+  if (item.workflowId === 'change-playbook') return t('memwise.inbox.conversation.change')
+  return item.stepTitle
 }
 
 export function inboxKindLabel(kind: MwInboxItem['kind'], t: TFunction): string {
@@ -285,6 +295,7 @@ export function inboxKindLabel(kind: MwInboxItem['kind'], t: TFunction): string 
     case 'approval': return t('memwise.inbox.kind.approval')
     case 'attention': return t('memwise.inbox.kind.attention')
     case 'reminder': return t('memwise.inbox.kind.reminder')
+    case 'conversation': return t('memwise.inbox.kind.conversation')
   }
 }
 

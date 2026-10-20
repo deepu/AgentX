@@ -2067,6 +2067,8 @@ export function shouldAllowToolInMode(
         // Classification, not visibility: `decide` is read-only and Explore-safe
         // whenever the backend advertised it.
         includeDecide: true,
+        // Same for the MemWise playbook tools (advertised only in conversation-step chats).
+        includePlaybookTools: true,
       });
 
       if (safeAllowedSessionTools.has(toolName)) {

@@ -1,5 +1,6 @@
-// A person answering a waiting person or external step (19 §4). Checked here; applied by the
-// driver's commit, so the values are written only if the outcome is accepted by the run.
+// A person answering a waiting person or external step (19 §4), or a conversation step's chat
+// answering for its person (Phase 3, `via`). Checked here; applied by the driver's commit, so
+// the values are written only if the outcome is accepted by the run.
 import type { DBOSClient } from '@dbos-inc/dbos-sdk';
 import { PgCaseStore } from '@memwise/db';
 import { validateValue, type RecordTypes, type WorkflowDef } from '@memwise/defs';
@@ -27,8 +28,19 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput): Prom
     }
     const workflow = await deps.workflow(s.workflow_id, s.workflow_hash);
     const step = workflow.steps[s.step_id];
-    if (!step || (step.performer !== 'person' && step.performer !== 'external')) {
+    const conversation = step?.performer === 'agent' && step.engine === 'open';
+    if (!step || (step.performer !== 'person' && step.performer !== 'external' && !conversation)) {
       return { applied: false, status: 'stale', message: 'this step is not answered by a person' };
+    }
+    // A conversation is ended by its chat, never by a form; a form step never by a chat.
+    if (conversation && !input.via) {
+      return { applied: false, status: 'forbidden', message: 'this step is a conversation: it is answered from its chat' };
+    }
+    if (!conversation && input.via) {
+      return { applied: false, status: 'forbidden', message: 'this step is answered by a person, not from a chat' };
+    }
+    if (input.via && !input.via.chatId?.trim()) {
+      return { applied: false, status: 'invalid', errors: { via: ['the chat id is missing'] }, message: 'some values need fixing' };
     }
     const role = step.assignee ?? s.assignee ?? undefined;
     if (role && !input.by.roles.includes(role)) {
@@ -62,6 +74,7 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput): Prom
     const submission: Submission = {
       stepRunId: input.stepRunId, by: input.by.personId, at: new Date().toISOString(), values: clean,
       ...(input.comment?.trim() ? { comment: input.comment.trim() } : {}),
+      ...(input.via ? { via: { chatId: input.via.chatId, ...(input.via.rationale?.trim() ? { rationale: input.via.rationale.trim() } : {}) } } : {}),
     };
     const event: SubmissionMessage = { type: input.outcome, for: s.entered_seq, by: input.by.personId, submission };
     const idemKey = `submit:${input.stepRunId}`;

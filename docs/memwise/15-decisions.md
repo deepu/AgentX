@@ -105,6 +105,21 @@ Choices made while building client intake for internal users ([19](19-phase-2-in
 | D51 | **One domain per install for now**: the desktop keeps its project folder at `~/.memwise/project`, seeded from the intake example, and one kernel per process. The owner can act as another person on desktop, so one machine can play staff and manager; a server signs people in with email and password or a personal token. | Multi-domain workspaces are deliberately later (17). *Replaced by D70 in Phase 6.* | [19 §9](19-phase-2-interfaces.md) |
 | D52 | **"Why was this flagged?" is answered from the step record only**, through a typed `explain.answer` call that must cite journal entries or outputs; citations that aren't in the record are dropped and an answer left without any is "not recorded". | Explanations must be grounded, not plausible (05 §11) | [19 §6](19-phase-2-interfaces.md) |
 
+## Settled in Phase 3
+
+Choices made while building playbooks by chat ([20](20-phase-3-interfaces.md)).
+
+| # | Decision | Why | Docs |
+|---|---|---|---|
+| D53 | **The project folder is the live definition; a draft is a folder beside it.** `drafts/<id>/` holds a full copy of the domain and the target playbook, so a draft is itself a valid project; edits are recorded with before and after. Publishing copies the changed files over the live ones and refuses when a live file changed since the draft was made. | Every edit is a draft and live never changes in place (D33), with plain files that git and the CLI understand | [20 §1](20-phase-3-interfaces.md) |
+| D54 | **A change draft bumps the playbook's version when it is made; a version index records every published version** (`mw.workflow_versions`, from the app, the CLI or files found on disk). Runs keep the version they started on, by hash. | People see "Version 2 · published by Ravi"; running cases are never moved (D36) | [20 §2](20-phase-3-interfaces.md) |
+| D55 | **Change control is two meta playbooks**, create-playbook and change-playbook, that run on the kernel like any other: a conversation, an automatic check, a manager's review, then publish. | Who may change a playbook and who approves it is policy and roles, not special code (11 §3) | [20 §3](20-phase-3-interfaces.md) |
+| D56 | **Conversation steps** (`engine: open`) are agent steps that wait like person steps and are answered only from the chat anchored to them; the answer carries the chat as its provenance. System steps may take their outcome from a tool's result (`outcomeFrom`). | The interview is open work (D3) but still a step on the case's record | [20 §3](20-phase-3-interfaces.md) |
+| D57 | **Chat edits playbooks only through `playbook_*` tools that write to drafts**, offered only in chats anchored to a conversation step. Chat edits stay pending until kept or discarded. A chat's MemWise context is a system-prompt block, never a visible message. | The model can't touch live definitions, and the person sees and controls every change | [20 §4](20-phase-3-interfaces.md) |
+| D58 | **A draft's example cases run out of process** through `memwise test` against throwaway databases on the same Postgres; past cases are replayed on the draft for information and don't block. | DBOS is process-wide, so the app can't host a second kernel | [20 §5](20-phase-3-interfaces.md) |
+| D59 | **Corrections become example cases** in a change draft of the playbook ("Save as example", optionally with what a step should have done). | The playbook learns from mistakes through the same review as any change | [20 §5](20-phase-3-interfaces.md) |
+| D60 | **`memwise push` publishes directly from a folder the person controls**, after its checks and example cases pass; the app publishes only through the review step. | Teams that review in git shouldn't review twice | [20 §7](20-phase-3-interfaces.md) |
+
 ## Agreed for Phase 6
 
 Agreed on 20 October 2026 from the eTMF trial of the model, and built in Phase 6 ([21](21-domains-and-records.md)). Numbers D53–D69 are left for decisions settled in Phases 3–5.

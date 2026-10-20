@@ -25,12 +25,7 @@ export async function prepareAgentStep(db: Queryable, run: RunRow, workflow: Wor
       where run_id = $1 and step_id = $2 and id <> $3 order by started_at, id`, [run.id, run.state, stepRunId]);
   // A person who sent the case back said why (submitStep's comment): the next attempt of this
   // step is told, as repair context, about every comment made since its last attempt began.
-  const last = prev.rows.at(-1)?.started_at ?? new Date(0);
-  const comments = await db.query(
-    `select s.step_id, s.outcome, s.comment, s.decided_by, coalesce(p.name, s.decided_by) as who from mw.step_runs s
-       left join mw.people p on p.id = s.decided_by
-      where s.run_id = $1 and s.comment is not null and s.id <> $2 and s.step_id <> $3 and s.started_at >= $4
-      order by s.started_at, s.id`, [run.id, stepRunId, run.state, last]);
+  const comments = await commentsSince(db, run.id, run.state, stepRunId, prev.rows.at(-1)?.started_at ?? new Date(0));
   // What earlier step runs of this run used, so run budgets cover the whole run (StepRunInput.runSpent).
   const spent = await db.query(
     `select coalesce(sum((usage->>'tokens')::float8), 0) as tokens, coalesce(sum((usage->>'modelCalls')::float8), 0) as model_calls,
@@ -54,9 +49,9 @@ export async function prepareAgentStep(db: Queryable, run: RunRow, workflow: Wor
         ...prev.rows.map((p, i) => ({
           attempt: p.attempt ?? i + 1, ...(p.outcome ? { outcome: p.outcome } : {}), reason: p.rationale ?? `ended ${p.status}`,
         })),
-        ...comments.rows.map((c) => ({
-          attempt: prev.rows.length, outcome: `${c.step_id}: ${c.outcome ?? 'answered'}`,
-          reason: `${workflow.steps[c.step_id]?.title ?? c.step_id} — ${c.who} wrote: ${c.comment}`,
+        ...comments.map((c) => ({
+          attempt: prev.rows.length, outcome: `${c.stepId}: ${c.outcome ?? 'answered'}`,
+          reason: `${workflow.steps[c.stepId]?.title ?? c.stepId} — ${c.who} wrote: ${c.comment}`,
         })),
       ],
       startedAt: now,
@@ -67,6 +62,37 @@ export async function prepareAgentStep(db: Queryable, run: RunRow, workflow: Wor
       },
     },
   };
+}
+
+interface ReturnedComment { stepId: string; outcome?: string; comment: string; by?: string; who: string; at: string }
+
+/** Comments people made on other steps of the run since `since` (a send-back's reason). */
+async function commentsSince(db: Queryable, runId: string, stepId: string, stepRunId: string, since: Date | string): Promise<ReturnedComment[]> {
+  const { rows } = await db.query(
+    `select s.step_id, s.outcome, s.comment, s.decided_by, coalesce(p.name, s.decided_by) as who, coalesce(s.finished_at, s.started_at) as at
+       from mw.step_runs s left join mw.people p on p.id = s.decided_by
+      where s.run_id = $1 and s.comment is not null and s.id <> $2 and s.step_id <> $3 and s.started_at >= $4
+      order by s.started_at, s.id`, [runId, stepRunId, stepId, since]);
+  return rows.map((c) => ({
+    stepId: c.step_id, ...(c.outcome ? { outcome: c.outcome } : {}), comment: c.comment, ...(c.decided_by ? { by: c.decided_by } : {}),
+    who: c.who, at: c.at instanceof Date ? c.at.toISOString() : String(c.at),
+  }));
+}
+
+/**
+ * What the case came back with to this step run (Phase 3): the comments people made on other
+ * steps since the previous attempt of this step began (all of them for a first attempt), e.g. a
+ * reviewer's "changes requested".
+ * An agent step gets them as prior attempts; a conversation step's chat shows them in its context.
+ */
+export async function returnedComments(db: Queryable, stepRunId: string): Promise<ReturnedComment[]> {
+  const { rows } = await db.query(`select run_id, step_id, started_at from mw.step_runs where id = $1`, [stepRunId]);
+  const s = rows[0];
+  if (!s) return [];
+  const prev = await db.query(
+    `select max(started_at) as last from mw.step_runs where run_id = $1 and step_id = $2 and id <> $3 and started_at < $4`,
+    [s.run_id, s.step_id, stepRunId, s.started_at]);
+  return commentsSince(db, s.run_id, s.step_id, stepRunId, prev.rows[0]?.last ?? new Date(0));
 }
 
 /** The case fields a step reads: its `reads` and, for a system step, what its `map` passes to tools. */

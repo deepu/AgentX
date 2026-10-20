@@ -109,6 +109,12 @@ export interface SessionScopedToolCallbacks {
    * feature toggle, key) happens inside the callback at call time.
    */
   decide?: import('@memwise/session-tools-core').DecisionToolCallbacks;
+  /**
+   * MemWise playbook tools (playbook_vocabulary/read/write/diff/check/finish).
+   * Wired by SessionManager only for chats anchored to a conversation step; the
+   * anchor (step run, case, draft, person) is resolved at call time.
+   */
+  memwise?: import('@memwise/session-tools-core').MemwiseToolCallbacks;
 }
 
 // Registry of callbacks keyed by sessionId

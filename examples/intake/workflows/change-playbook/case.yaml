@@ -1,0 +1,12 @@
+case: playbook_change
+fields:
+  playbook:        { type: Text, description: "The playbook's id: its folder under workflows/" }
+  title:           { type: Text, description: "What the change is, in the words of whoever asked" }
+  request:         { type: Text, description: What was asked for }
+  draft:           { type: Text, description: The draft holding the change (drafts/<id>/) }
+  summary:         { type: Text, description: "The change in a few plain sentences, for the reviewer" }
+  checked_hash:    { type: Text, description: "The draft's content as checked; publishing refuses anything else" }
+  report:          { type: Text, description: What the last check found }
+  errors:          Number
+  examples_failed: Number
+  version:         { type: Number, description: The version published }

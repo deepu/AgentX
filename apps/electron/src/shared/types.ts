@@ -768,6 +768,19 @@ export interface ElectronAPI {
   memwiseListEntityTypes(workspaceId: string): Promise<import('@memwise/shared/protocol').MwEntityType[]>
   memwiseUploadFile(workspaceId: string, input: import('@memwise/shared/protocol').MwUploadInput): Promise<import('@memwise/shared/protocol').MwDocument>
   memwiseOpenChat(workspaceId: string, input: import('@memwise/shared/protocol').MwOpenChatInput): Promise<{ sessionId: string }>
+  // Phase 3: drafts, versions, building by chat (docs/memwise/20-phase-3-interfaces.md §6)
+  memwiseListVersions(workspaceId: string, workflowId: string): Promise<import('@memwise/shared/protocol').MwVersion[]>
+  memwiseBuildPlaybook(workspaceId: string, input: import('@memwise/shared/protocol').MwBuildPlaybookInput): Promise<import('@memwise/shared/protocol').MwBuildPlaybookResult>
+  memwiseListDrafts(workspaceId: string, filter?: { workflowId?: string }): Promise<import('@memwise/shared/protocol').MwDraftSummary[]>
+  memwiseGetDraft(workspaceId: string, draftId: string): Promise<import('@memwise/shared/protocol').MwDraft>
+  memwiseCreateDraft(workspaceId: string, input: import('@memwise/shared/protocol').MwCreateDraftInput): Promise<import('@memwise/shared/protocol').MwDraftSummary>
+  memwiseWriteDraft(workspaceId: string, input: import('@memwise/shared/protocol').MwWriteDraftInput): Promise<import('@memwise/shared/protocol').MwWriteDraftResult>
+  memwiseKeepDraftEdit(workspaceId: string, input: import('@memwise/shared/protocol').MwDraftEditInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
+  memwiseDiscardDraftEdit(workspaceId: string, input: import('@memwise/shared/protocol').MwDraftEditInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
+  memwiseDiscardDraft(workspaceId: string, draftId: string): Promise<import('@memwise/shared/protocol').MwSubmitResult>
+  memwiseCheckDraft(workspaceId: string, input: import('@memwise/shared/protocol').MwCheckDraftInput): Promise<import('@memwise/shared/protocol').MwDraftReport>
+  memwiseSubmitDraft(workspaceId: string, draftId: string): Promise<import('@memwise/shared/protocol').MwSubmitDraftResult>
+  memwiseExampleFromCase(workspaceId: string, input: import('@memwise/shared/protocol').MwExampleFromCaseInput): Promise<import('@memwise/shared/protocol').MwExampleFromCaseResult>
   onMemwiseChanged(callback: (change: import('@memwise/shared/protocol').MwChange) => void): () => void
 
   // Automations
@@ -1033,7 +1046,8 @@ export interface CasesNavigationState {
 
 export interface PlaybooksNavigationState {
   navigator: 'playbooks'
-  details: { type: 'playbook'; playbookId: string } | null
+  /** A playbook, or a draft of one (Phase 3: a change being made, checked and reviewed). */
+  details: { type: 'playbook'; playbookId: string } | { type: 'draft'; draftId: string } | null
   rightSidebar?: RightSidebarPanel
 }
 
@@ -1136,6 +1150,7 @@ export const getNavigationStateKey = (state: NavigationState): string => {
     return state.details ? `cases/case/${state.details.caseId}` : 'cases'
   }
   if (state.navigator === 'playbooks') {
+    if (state.details?.type === 'draft') return `playbooks/draft/${state.details.draftId}`
     return state.details ? `playbooks/playbook/${state.details.playbookId}` : 'playbooks'
   }
   if (state.navigator === 'settings') {
@@ -1221,6 +1236,10 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
   if (key.startsWith('playbooks/playbook/')) {
     const playbookId = key.slice(19)
     return { navigator: 'playbooks', details: playbookId ? { type: 'playbook', playbookId } : null }
+  }
+  if (key.startsWith('playbooks/draft/')) {
+    const draftId = key.slice(16)
+    return { navigator: 'playbooks', details: draftId ? { type: 'draft', draftId } : null }
   }
 
   // Handle settings

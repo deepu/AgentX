@@ -392,6 +392,33 @@
         },
         "additionalProperties": {}
       }
+    },
+    "engine": {
+      "description": "Agent steps: `open` runs the step as a conversation in chat (needs strictness: open); default `step`.",
+      "type": "string",
+      "enum": [
+        "step",
+        "open"
+      ]
+    },
+    "outcomeFrom": {
+      "description": "System steps: the outcome is this field of this tool's last result (one of `outcomes`).",
+      "type": "object",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "description": "A tool in tools.required."
+        },
+        "field": {
+          "type": "string",
+          "description": "Dotted path inside its last result."
+        }
+      },
+      "required": [
+        "tool",
+        "field"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [

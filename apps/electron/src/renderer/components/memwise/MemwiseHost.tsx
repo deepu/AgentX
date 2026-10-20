@@ -5,8 +5,14 @@
 
 import { useMemwiseData } from '@/hooks/useMemwise'
 import { StartCaseDialog } from './StartCaseDialog'
+import { NewPlaybookDialog } from './BuildDialogs'
 
 export function MemwiseHost({ workspaceId }: { workspaceId: string | null | undefined }) {
   useMemwiseData(workspaceId)
-  return <StartCaseDialog />
+  return (
+    <>
+      <StartCaseDialog />
+      <NewPlaybookDialog />
+    </>
+  )
 }

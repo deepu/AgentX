@@ -78,6 +78,9 @@ const MEMWISE_NAVIGATORS = {
 } as const
 type MemwiseNavigator = keyof typeof MEMWISE_NAVIGATORS
 
+/** Playbooks also open drafts (Phase 3): `playbooks/draft/{draftId}`. */
+const MEMWISE_DRAFT_DETAIL = 'draft'
+
 function isMemwiseNavigator(value: string): value is MemwiseNavigator {
   return Object.prototype.hasOwnProperty.call(MEMWISE_NAVIGATORS, value)
 }
@@ -236,10 +239,11 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
       return { navigator: first, details: null }
     }
     const detailType = MEMWISE_NAVIGATORS[first]
-    if (segments[1] === detailType && segments[2] && segments.length === 3) {
+    const isDraft = first === 'playbooks' && segments[1] === MEMWISE_DRAFT_DETAIL
+    if ((segments[1] === detailType || isDraft) && segments[2] && segments.length === 3) {
       const id = safeDecode(segments[2])
       if (!id) return null
-      return { navigator: first, details: { type: detailType, id } }
+      return { navigator: first, details: { type: isDraft ? MEMWISE_DRAFT_DETAIL : detailType, id } }
     }
     return null
   }
@@ -384,7 +388,10 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
 
   if (isMemwiseNavigator(parsed.navigator)) {
     if (!parsed.details) return parsed.navigator
-    return `${parsed.navigator}/${MEMWISE_NAVIGATORS[parsed.navigator]}/${encodeURIComponent(parsed.details.id)}`
+    const detailType = parsed.navigator === 'playbooks' && parsed.details.type === MEMWISE_DRAFT_DETAIL
+      ? MEMWISE_DRAFT_DETAIL
+      : MEMWISE_NAVIGATORS[parsed.navigator]
+    return `${parsed.navigator}/${detailType}/${encodeURIComponent(parsed.details.id)}`
   }
 
   // Sessions navigator
@@ -533,6 +540,9 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
   if (isMemwiseNavigator(compound.navigator)) {
     if (!compound.details) {
       return { type: 'view', name: compound.navigator, params: {} }
+    }
+    if (compound.navigator === 'playbooks' && compound.details.type === MEMWISE_DRAFT_DETAIL) {
+      return { type: 'view', name: 'draft-info', id: compound.details.id, params: {} }
     }
     return { type: 'view', name: `${compound.navigator}-info`, id: compound.details.id, params: {} }
   }
@@ -696,6 +706,9 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
 
   // MemWise sections
   if (isMemwiseNavigator(compound.navigator)) {
+    if (compound.navigator === 'playbooks' && compound.details?.type === MEMWISE_DRAFT_DETAIL) {
+      return { navigator: 'playbooks', details: { type: 'draft', draftId: compound.details.id } }
+    }
     return memwiseNavigationState(compound.navigator, compound.details?.id)
   }
 
@@ -805,6 +818,10 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
     case 'cases-info':
     case 'playbooks-info':
       return memwiseNavigationState(parsed.name.slice(0, -5) as MemwiseNavigator, parsed.id)
+    case 'draft-info':
+      return parsed.id
+        ? { navigator: 'playbooks', details: { type: 'draft', draftId: parsed.id } }
+        : { navigator: 'playbooks', details: null }
     case 'session':
       if (parsed.id) {
         // Reconstruct filter from params
@@ -946,6 +963,9 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
     return { navigator: 'cases', details: state.details ? { type: 'case', id: state.details.caseId } : null }
   }
   if (state.navigator === 'playbooks') {
+    if (state.details?.type === 'draft') {
+      return { navigator: 'playbooks', details: { type: MEMWISE_DRAFT_DETAIL, id: state.details.draftId } }
+    }
     return { navigator: 'playbooks', details: state.details ? { type: 'playbook', id: state.details.playbookId } : null }
   }
 

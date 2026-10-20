@@ -1,0 +1,31 @@
+name: changes-requested-then-published
+description: >
+  A change to client intake is drafted in chat; the manager asks for a clearer summary, the chat
+  revises it, the check passes again, the manager approves, and version 2 is published.
+case:
+  request: The check step must always screen the client against the sanctions list.
+submit:
+  edit:
+    - outcome: drafted
+      values:
+        playbook: client-intake
+        title: Add a sanctions check
+        draft: client-intake-draft
+        summary: The check step now calls the sanctions screen.
+    - outcome: drafted
+      values:
+        summary: The check step must now screen every client against the sanctions list before it can finish; a match sends the case to a person. Cases already running stay on version 1.
+  review:
+    - { outcome: changes_requested, comment: Say what happens on a match and to running cases. }
+    - { outcome: approved }
+tools:
+  playbooks.check_draft:
+    results:
+      - { outcome: passed, hash: a1b2, errors: 0, warnings: 0, examples_failed: 0, summary: Checks pass; 4 of 4 example cases pass. }
+      - { outcome: passed, hash: c3d4, errors: 0, warnings: 0, examples_failed: 0, summary: Checks pass; 5 of 5 example cases pass. }
+  playbooks.publish_draft: { outcome: published, version: 2, workflow: client-intake }
+expect:
+  outcome: drafted
+  state: end
+  writes: { checked_hash: c3d4, version: 2, title: Add a sanctions check }
+  effects: { playbooks.publish_draft: 1 }

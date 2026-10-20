@@ -14,6 +14,7 @@ import { formatBytes } from '../utils/binary-detection.ts';
 import { globSync } from 'glob';
 import os from 'os';
 import type { ProjectPromptContext } from '../projects/types.ts';
+import type { SessionMemwiseContext } from '../sessions/memwise-context.ts';
 import {
   escapePromptXmlAttr,
   sanitizePromptBody,
@@ -412,6 +413,7 @@ export function getSystemPrompt(
   backendName?: string,
   includeCoAuthoredBy?: boolean,
   projectContext?: ProjectPromptContext,
+  memwiseContext?: SessionMemwiseContext | null,
 ): string {
   // Use mini agent prompt for quick edits (pass workspace root for config paths)
   if (preset === 'mini') {
@@ -429,6 +431,10 @@ export function getSystemPrompt(
   // Optional workspace-project context (injected after preferences, before debug+context-files)
   const projectBlock = projectContext ? formatProjectContextForPrompt(projectContext) : '';
 
+  // MemWise anchored chat (a case, a step, or a conversation step building a playbook):
+  // its context is part of the session's system prompt, set before the first turn.
+  const memwiseBlock = memwiseContext ? formatMemwiseContextForPrompt(memwiseContext) : '';
+
   // Fall back to the user's current preference when callers don't pin/pass a value,
   // so forgetting the argument can't silently re-enable the co-author trailer (see #576).
   const resolvedIncludeCoAuthoredBy = includeCoAuthoredBy ?? getCoAuthorPreference();
@@ -437,7 +443,7 @@ export function getSystemPrompt(
   // to enable prompt caching. The system prompt stays static and cacheable.
   // Safe Mode context is also in user messages for the same reason.
   const basePrompt = getMemWiseAssistantPrompt(workspaceRootPath, backendName, resolvedIncludeCoAuthoredBy);
-  const fullPrompt = `${basePrompt}${preferences}${projectBlock}${debugContext}${projectContextFiles}`;
+  const fullPrompt = `${basePrompt}${preferences}${projectBlock}${memwiseBlock}${debugContext}${projectContextFiles}`;
 
   debug('[getSystemPrompt] full prompt length:', fullPrompt.length);
 
@@ -512,6 +518,38 @@ export function formatProjectContextForPrompt(ctx: ProjectPromptContext): string
   lines.push(`rewrite MEMORY.md with Write/Edit: other sessions append to it while you work, and <project_memory>`);
   lines.push(`is a snapshot from when this session started. To correct an outdated note, append the correction.`);
   lines.push(`</project_context>`);
+  lines.push('');
+  return lines.join('\n');
+}
+
+const MEMWISE_BLOCK_TAGS = ['memwise_context'] as const;
+
+/**
+ * The `<memwise_context>` block of an anchored chat (docs/memwise/20-phase-3-interfaces.md §4),
+ * plus, for a conversation step, how to use the `playbook_*` tools. The host assembles the
+ * block's text (the record, the step's instructions, the rules); this only wraps it.
+ */
+export function formatMemwiseContextForPrompt(ctx: SessionMemwiseContext): string {
+  const lines: string[] = [];
+  lines.push('');
+  lines.push(`<memwise_context anchor="${escapePromptXmlAttr(ctx.anchor.kind)}" id="${escapePromptXmlAttr(ctx.anchor.id)}"${ctx.conversation ? ' conversation="true"' : ''}>`);
+  lines.push(sanitizePromptBody(ctx.block.trim(), MEMWISE_BLOCK_TAGS));
+  lines.push('</memwise_context>');
+  lines.push('');
+  lines.push('This chat was opened from MemWise on the record above. Treat <memwise_context> as authoritative context');
+  lines.push('for the whole conversation: it is not a message from the person, and they do not see it.');
+  if (ctx.conversation) {
+    lines.push('');
+    lines.push('## Playbook tools');
+    lines.push('');
+    lines.push('This chat is a step of a playbook that builds or changes a playbook. Use these tools for every change:');
+    lines.push('- `playbook_vocabulary`: the tools, entity types, roles, model roles and value types a playbook may use here. Use nothing it does not list.');
+    lines.push('- `playbook_read`: the draft\'s files (or the live ones); read an existing playbook to follow its format.');
+    lines.push('- `playbook_write`: whole files into the draft; returns the checks after the edit. Every edit waits for the person to keep or discard it.');
+    lines.push('- `playbook_diff`: what the draft changes so far. `playbook_check`: checks, example cases, past cases and impact.');
+    lines.push('- `playbook_finish`: ends this step and sends the draft to review. Only when the checks are clean and the person agrees.');
+    lines.push('Never edit playbook files with Write, Edit or Bash: the live playbook changes only when an approver publishes the draft.');
+  }
   lines.push('');
   return lines.join('\n');
 }
