@@ -239,7 +239,11 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     expect(back.timeline.find((t) => t.stepId === 'verify')).toMatchObject({ outcome: 'sent_back', comment })
     const form = (await api.call<MwInboxItem[]>(staff, ch.INBOX_LIST)).find((i) => i.kind === 'input' && i.caseId === second.caseId)
     expect(form?.kind).toBe('input')
-    if (form?.kind === 'input') expect(form.prefill.client_name?.value).toBe('Asha Rao')
+    if (form?.kind === 'input') {
+      expect(form.prefill.client_name?.value).toBe('Asha Rao')
+      // The form says who sent it back and why.
+      expect(form.returned).toMatchObject({ stepTitle: 'Manager approves onboarding', outcome: 'sent_back', text: comment })
+    }
 
     const summaries = await api.call(staff, ch.CASES_LIST, { workflowId: 'client-intake' })
     expect(summaries).toHaveLength(2)

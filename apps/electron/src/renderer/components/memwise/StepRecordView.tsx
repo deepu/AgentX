@@ -23,6 +23,8 @@ import {
   formatDuration,
   humanize,
   outcomeLabel,
+  recordedOutcomeLabel,
+  checkLabel,
   personName,
   stepStatusLabel,
   toolLabel,
@@ -52,7 +54,7 @@ export function StepRecordView({ record, people = {}, explanations = [], onAsk, 
     <div className="space-y-5" data-step-record={record.stepRunId}>
       <div className="flex flex-wrap items-center gap-2 text-label-sm text-secondary">
         <Info_Badge color={record.status === 'completed' ? 'success' : record.status === 'failed' || record.status === 'needs_person' ? 'destructive' : 'default'} dot>
-          {record.outcome ? outcomeLabel(record.outcome, t) : stepStatusLabel(record.status, t)}
+          {record.outcome ? recordedOutcomeLabel(record.outcome) : stepStatusLabel(record.status, t)}
         </Info_Badge>
         {record.attempt > 1 && <span>{t('memwise.step.attempt', { attempt: record.attempt })}</span>}
         {by && <span>{t('memwise.step.decidedBy', { name: by })}</span>}
@@ -83,7 +85,7 @@ export function StepRecordView({ record, people = {}, explanations = [], onAsk, 
               <li key={i} className="flex items-start gap-2.5 px-3.5 py-2.5 text-label">
                 {c.passed ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" /> : <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />}
                 <span className="min-w-0 flex-1">
-                  <span className="block text-foreground">{c.rule}</span>
+                  <span className="block text-foreground">{c.kind === 'structural' ? checkLabel(c.rule, t) : c.rule}</span>
                   {c.reason && <span className="block text-label-sm text-secondary">{c.reason}</span>}
                 </span>
               </li>

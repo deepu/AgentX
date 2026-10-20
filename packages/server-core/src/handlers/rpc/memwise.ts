@@ -6,7 +6,7 @@
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import type {
   MwCase, MwCaseSummary, MwDecideApprovalInput, MwDocument, MwEntityRow, MwEntityType, MwExplainInput, MwExplanation,
-  MwInboxItem, MwLiveCounts, MwOpenChatInput, MwPerson, MwPlaybook, MwPlaybookSummary, MwRole, MwRunStatus,
+  MwInboxItem, MwReturnedNote, MwLiveCounts, MwOpenChatInput, MwPerson, MwPlaybook, MwPlaybookSummary, MwRole, MwRunStatus,
   MwSendEventInput, MwStartCaseInput, MwStatus, MwStepRecord, MwSubmitResult, MwSubmitStepInput,
 } from '@memwise/shared/protocol'
 import type { ApprovalDecision } from '@memwise/defs'
@@ -100,6 +100,20 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     try { return await svc.kernel.effectivePolicy(workflowId, stepId) } catch { return undefined }
   }
 
+  /** The case is back at a step it already did: the step run just before says why. */
+  function returnedNote(v: CaseView | undefined, stepRunId: string, stepId: string, title: (stepId: string) => string): MwReturnedNote | undefined {
+    const runs = v?.stepRuns ?? []
+    const i = runs.findIndex((r) => r.stepRunId === stepRunId)
+    if (i <= 0 || !runs.slice(0, i).some((r) => r.stepId === stepId)) return undefined
+    const prev = runs[i - 1]!
+    const text = prev.comment?.trim() || prev.rationale?.trim()
+    if (!text || !prev.outcome) return undefined
+    return {
+      stepTitle: title(prev.stepId), outcome: prev.outcome, text,
+      ...(prev.decidedBy ? { by: prev.decidedBy } : {}), ...(prev.finishedAt ? { at: prev.finishedAt } : {}),
+    }
+  }
+
   async function enrichInbox(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, items: InboxItem[]): Promise<MwInboxItem[]> {
     const views = new Map<string, Promise<CaseView | undefined>>()
     const view = (caseId: string) => {
@@ -130,7 +144,11 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           }
           if (item.kind === 'input' && wf && step) {
             const fields = d.stepWriteFields(c, wf, step)
-            out.push({ kind: 'input', ...common, fields, prefill: d.toCaseValues(values, fields.map((f) => f.name).filter((f) => f in values)) })
+            const returned = returnedNote(v, item.stepRunId, item.stepId, (id) => d.stateTitle(wf, id))
+            out.push({
+              kind: 'input', ...common, fields, prefill: d.toCaseValues(values, fields.map((f) => f.name).filter((f) => f in values)),
+              ...(returned ? { returned } : {}),
+            })
           } else {
             out.push({ kind: 'decision', ...common, instructions: step?.instructions ?? '' })
           }

@@ -22,7 +22,7 @@ import { sampleCaseSummaries, sampleInbox, samplePeople, sampleRoles, sampleValu
 // A private instance: the shared i18next singleton is set up once per process, possibly by
 // another test file with other options, when the whole suite runs together.
 const i18n = i18next.createInstance()
-void i18n.init({ resources: { en: { translation: en } }, lng: 'en', fallbackLng: 'en', initImmediate: false, interpolation: { escapeValue: false } })
+void i18n.init({ resources: { en: { translation: en } }, lng: 'en', fallbackLng: 'en', initAsync: false, interpolation: { escapeValue: false } })
 const t = i18n.t.bind(i18n) as unknown as TFunction
 
 describe('words', () => {

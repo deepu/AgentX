@@ -241,6 +241,17 @@ export interface MwCase extends MwCaseSummary {
   path: string[]
 }
 
+/** Why a case is back at a step it already did: the step that sent it back, its outcome and words. */
+export interface MwReturnedNote {
+  stepTitle: string
+  outcome: string
+  /** A person's comment, or the agent's rationale. */
+  text: string
+  /** Person id when a person decided. */
+  by?: string
+  at?: string
+}
+
 export interface MwJournalEntry {
   key: string
   kind: 'context' | 'model' | 'policy' | 'tool' | 'approval' | 'checkpoint'
@@ -296,6 +307,8 @@ export type MwInboxItem =
       context: Record<string, MwCaseValue>
       since: string
       dueAt?: string
+      /** The case came back to this step: what sent it back and why (a comment, else the step's rationale). */
+      returned?: MwReturnedNote
     }
   /** A person step that only decides (approval card: approve / send back with a comment). */
   | {

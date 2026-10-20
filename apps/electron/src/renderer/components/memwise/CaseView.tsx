@@ -20,6 +20,7 @@ import {
   absoluteTime,
   caseStatusLabel,
   outcomeLabel,
+  recordedOutcomeLabel,
   personName,
   relativeTime,
   stepStatusLabel,
@@ -178,7 +179,7 @@ function TimelineRow({ step, people, onOpen, now, locale }: {
           </span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-label-sm text-secondary">
             <Performer className="size-3.5" />
-            <span>{step.outcome ? outcomeLabel(step.outcome, t) : stepStatusLabel(step.status, t)}</span>
+            <span>{step.outcome ? recordedOutcomeLabel(step.outcome) : stepStatusLabel(step.status, t)}</span>
             {by && <span>{t('memwise.step.decidedBy', { name: by })}</span>}
             <span className="text-tertiary" title={absoluteTime(step.startedAt, locale)}>{relativeTime(step.finishedAt ?? step.startedAt, now, locale)}</span>
           </span>

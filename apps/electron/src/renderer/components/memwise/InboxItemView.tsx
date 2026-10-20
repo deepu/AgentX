@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Bell, CheckCircle2, ClipboardList, Mail, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCircle2, ClipboardList, Mail, ShieldCheck, Undo2 } from 'lucide-react'
 import type {
   MwDecideApprovalInput,
   MwInboxItem,
@@ -36,6 +36,7 @@ import {
   isNegativeOutcome,
   outcomeLabel,
   outcomeNeedsComment,
+  personName,
   relativeTime,
   roleTitle,
   toolLabel,
@@ -178,8 +179,20 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
     void run(outcome, () => actions.submitStep({ stepRunId: item.stepRunId, outcome, values: s.values }))
   }
 
+  const returnedBy = personName(item.returned?.by, people)
+
   return (
     <>
+      {item.returned && (
+        <Info_Alert variant="warning" icon={<Undo2 />}>
+          <Info_Alert.Title>
+            {returnedBy
+              ? t('memwise.inbox.returnedBy', { name: returnedBy, step: item.returned.stepTitle })
+              : t('memwise.inbox.returnedFrom', { step: item.returned.stepTitle })}
+          </Info_Alert.Title>
+          <Info_Alert.Description>{item.returned.text}</Info_Alert.Description>
+        </Info_Alert>
+      )}
       {hasContext && (
         <Info_Section title={t('memwise.inbox.context')}>
           <CaseFieldList values={item.context} people={people} />

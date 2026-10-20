@@ -36,7 +36,28 @@ export function humanize(name: string): string {
 export function toolLabel(tool: string): string {
   const parts = tool.split('.')
   const last = parts[parts.length - 1] ?? tool
+  // Record tools name the record too: `domain.customer.create` → "Create customer".
+  if (parts.length === 3 && parts[0] === 'domain') return humanize(`${last} ${parts[1]}`)
   return humanize(last)
+}
+
+/**
+ * A step's automatic check in plain words. The engine names them for developers
+ * (`writes.gstin_ok: from tool gst.validate_gstin (valid)`); rules a playbook author wrote
+ * are shown as written.
+ */
+export function checkLabel(rule: string, t: TFunction): string {
+  if (rule === 'outcome is declared') return t('memwise.step.check.outcome')
+  if (rule === 'required tools called') return t('memwise.step.check.requiredTools')
+  const m = /^writes\.([\w-]+): (.+)$/.exec(rule)
+  if (!m) return rule
+  const field = humanize(m[1]!)
+  const rest = m[2]!
+  if (rest === 'declared') return t('memwise.step.check.writeDeclared', { field })
+  if (rest === 'required') return t('memwise.step.check.writeRequired', { field })
+  const tool = /^from tool (\S+)/.exec(rest)
+  if (tool) return t('memwise.step.check.writeFromTool', { field, tool: toolLabel(tool[1]!) })
+  return t('memwise.step.check.writeType', { field })
 }
 
 /** Outcomes with a fixed wording; others are humanized. */
@@ -56,6 +77,11 @@ const OUTCOME_KEYS: Record<string, string> = {
 export function outcomeLabel(outcome: string, t: TFunction): string {
   const key = OUTCOME_KEYS[outcome]
   return key ? t(key) : humanize(outcome)
+}
+
+/** An outcome that already happened, for records: "Submitted", "Sent back" (not the button's "Submit"). */
+export function recordedOutcomeLabel(outcome: string): string {
+  return humanize(outcome)
 }
 
 /** Outcomes that return work to someone need a comment saying what to change. */
