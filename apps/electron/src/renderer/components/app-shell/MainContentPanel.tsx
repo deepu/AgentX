@@ -34,6 +34,9 @@ import {
   isAutomationsNavigation,
   isProjectsNavigation,
   isPagesNavigation,
+  isInboxNavigation,
+  isCasesNavigation,
+  isPlaybooksNavigation,
 } from '@/contexts/NavigationContext'
 import { useSessionSelection, useIsMultiSelectActive, useSelectedIds, useSelectionCount } from '@/hooks/useSession'
 import { sourceSelection, skillSelection, automationSelection } from '@/hooks/useEntitySelection'
@@ -47,6 +50,7 @@ import ProjectInfoPage from '@/pages/ProjectInfoPage'
 import { KanbanBoardContainer } from './kanban/KanbanBoardContainer'
 import { PagesHome } from '../pages/PagesHome'
 import { PageView } from '../pages/PageView'
+import { InboxDetailPage, CasePage, PlaybookPage } from '../memwise'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -353,6 +357,29 @@ export function MainContentPanel({
       <Panel variant="grow" className={className}>
         {/* "None configured" next to a list of automations contradicted the list */}
         <DetailEmptyState message={automations.length > 0 ? t("automations.selectAutomation") : t("automations.noAutomationsConfigured")} />
+      </Panel>
+    )
+  }
+
+  // MemWise sections: an inbox item, a case, a playbook (or what to pick)
+  if (isInboxNavigation(navState)) {
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        <InboxDetailPage itemId={navState.details?.itemId ?? null} />
+      </Panel>
+    )
+  }
+  if (isCasesNavigation(navState)) {
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        <CasePage caseId={navState.details?.caseId ?? null} />
+      </Panel>
+    )
+  }
+  if (isPlaybooksNavigation(navState)) {
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        <PlaybookPage playbookId={navState.details?.playbookId ?? null} />
       </Panel>
     )
   }

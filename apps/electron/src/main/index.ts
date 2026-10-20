@@ -725,6 +725,12 @@ app.whenReady().then(async () => {
         onClientConnected: ({ clientId, webContentsId }) => {
           if (webContentsId != null) clientMap.set(webContentsId, clientId)
         },
+        // MemWise people may sign in to an embedded server with their own token
+        authenticatePersonToken: async (token) => {
+          const { getMemwiseService } = await import('@memwise/server-core/memwise')
+          const person = await getMemwiseService()?.kernel.people.verifyToken(token)
+          return person?.id ?? null
+        },
         cleanupClientResources: (clientId) => {
           for (const [wcId, cId] of clientMap) {
             if (cId === clientId) { clientMap.delete(wcId); break }
@@ -1064,6 +1070,13 @@ app.whenReady().then(async () => {
       await createInitialWindows()
     }
 
+    // MemWise kernel (playbooks, cases, inbox): after the window is up, never blocking startup.
+    // A thin client's workspaces live on their server, which hosts its own kernel.
+    if (!isClientOnly) {
+      const { startMemwiseKernel } = await import('./memwise-kernel')
+      startMemwiseKernel(mainLog)
+    }
+
     // Run credential health check at startup to detect issues early
     // (corruption, machine migration, missing credentials for default connection)
     // Skip in thin-client mode — credentials are managed by the remote server.
@@ -1251,6 +1264,14 @@ async function performQuitCleanup(): Promise<void> {
 
   // Stop all model refresh timers
   getModelRefreshService().stopAll()
+
+  // Stop the MemWise kernel and its bundled database
+  try {
+    const { stopMemwiseKernel } = await import('./memwise-kernel')
+    await stopMemwiseKernel(mainLog)
+  } catch (err) {
+    mainLog.error('[memwise] stop failed:', err)
+  }
 
   // Stop messaging gateways so the WhatsApp worker subprocess exits cleanly.
   if (messagingHandle) {

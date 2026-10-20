@@ -50,6 +50,10 @@ export interface ServerBootstrapOptions<TSessionManager, THandlerDeps> {
   tls?: WsRpcTlsOptions
   /** Cookie-based session validator for web UI auth on WebSocket upgrade. */
   validateSessionCookie?: (cookieHeader: string | null) => Promise<boolean>
+  /** A MemWise person's personal token, accepted besides the shared server token (resolves to the person id). */
+  authenticatePersonToken?: (token: string) => Promise<string | null>
+  /** The MemWise person a web session cookie belongs to. */
+  sessionCookiePerson?: (cookieHeader: string | null) => Promise<string | null>
   /**
    * Optional HTTP request handler for non-WebSocket requests on the RPC port.
    * When provided, the WsRpcServer serves HTTP (e.g. WebUI) on the same port.
@@ -374,6 +378,8 @@ export async function bootstrapServer<TSessionManager, THandlerDeps>(
     requireAuth: true,
     validateToken: async (t) => t === serverToken,
     validateSessionCookie: options.validateSessionCookie,
+    authenticatePersonToken: options.authenticatePersonToken,
+    sessionCookiePerson: options.sessionCookiePerson,
     serverId: options.serverId ?? 'headless',
     serverVersion: options.serverVersion,
     tls: options.tls,

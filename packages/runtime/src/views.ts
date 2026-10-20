@@ -1,6 +1,6 @@
 // What people see (19 §4, §8): the inbox, the case list, a case with its values (hidden fields
 // nulled for roles that lack access), timeline and path, and live counts for the map.
-import { PgCaseStore, PgNotificationStore } from '@memwise/db';
+import { PgNotificationStore } from '@memwise/db';
 import { END_STATE, type ApprovalRequest, type CaseValue, type FieldDef, type PolicyDoc, type WorkflowDef } from '@memwise/defs';
 import { compilePolicy, layersFor, type CompiledPolicy } from '@memwise/policy';
 import type pg from 'pg';
@@ -198,7 +198,7 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
   // Unread reminders for the person or their roles.
   const notes = await new PgNotificationStore().unread(pool, { personId: actor.personId, roles });
   if (notes.length) {
-    const steps = await pool.query(`select id, run_id, case_id, workflow_id, state from mw.runs where id = any($1::text[])`, [notes.map((n) => n.runId)]);
+    const steps = await pool.query(`select id, case_id, workflow_id, state from mw.runs where id = any($1::text[])`, [notes.map((n) => n.runId)]);
     const byRun = new Map(steps.rows.map((r) => [r.id as string, r]));
     for (const n of notes) {
       const r = byRun.get(n.runId);
@@ -218,4 +218,3 @@ export function visibleValues(values: Record<string, CaseValue>, fields: Record<
   return Object.fromEntries(Object.entries(values).filter(([k]) => maySee(actor, fields[k])));
 }
 
-export { PgCaseStore };

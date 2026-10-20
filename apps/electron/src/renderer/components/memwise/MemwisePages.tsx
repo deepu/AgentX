@@ -7,8 +7,8 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
-import { BookOpen, Briefcase, ClipboardCheck, MessageSquare, Play } from 'lucide-react'
-import { Info_Page } from '@/components/info'
+import { BookOpen, MessageSquare, Play } from 'lucide-react'
+import { Info_Page } from '@/components/info/Info_Page'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DetailEmptyState } from '@/components/app-shell/DetailEmptyState'
@@ -88,7 +88,7 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
     return (
       <div className="flex h-full flex-col">
         <MemwiseStatusBanner className="m-4 mb-0" />
-        <DetailEmptyState message={inbox && inbox.length === 0 ? t('memwise.inbox.allDone') : t('memwise.inbox.selectItem')} />
+        <div className="min-h-0 flex-1"><DetailEmptyState message={inbox && inbox.length === 0 ? t('memwise.inbox.allDone') : t('memwise.inbox.selectItem')} /></div>
       </div>
     )
   }
@@ -118,7 +118,7 @@ export function CasePage({ caseId }: { caseId: string | null }) {
     return (
       <div className="flex h-full flex-col">
         <MemwiseStatusBanner className="m-4 mb-0" />
-        <DetailEmptyState message={t('memwise.cases.selectCase')} />
+        <div className="min-h-0 flex-1"><DetailEmptyState message={t('memwise.cases.selectCase')} /></div>
       </div>
     )
   }
@@ -171,7 +171,7 @@ export function PlaybookPage({ playbookId }: { playbookId: string | null }) {
     return (
       <div className="flex h-full flex-col">
         <MemwiseStatusBanner className="m-4 mb-0" />
-        <DetailEmptyState message={summaries && summaries.length === 0 ? t('memwise.playbooks.none') : t('memwise.playbooks.selectPlaybook')} />
+        <div className="min-h-0 flex-1"><DetailEmptyState message={summaries && summaries.length === 0 ? t('memwise.playbooks.none') : t('memwise.playbooks.selectPlaybook')} /></div>
       </div>
     )
   }
@@ -230,10 +230,4 @@ export function PlaybookPage({ playbookId }: { playbookId: string | null }) {
       )}
     </Info_Page>
   )
-}
-
-/** Shown in place of a section's page when the host has no MemWise API. */
-export function MemwiseSectionIcon({ section }: { section: 'inbox' | 'cases' | 'playbooks' }) {
-  const Icon = section === 'inbox' ? ClipboardCheck : section === 'cases' ? Briefcase : BookOpen
-  return <Icon className="h-3.5 w-3.5" />
 }

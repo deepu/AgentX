@@ -147,6 +147,11 @@ export interface WebuiHandlerOptions {
    * and 'direct' is used as the rate-limit key.
    */
   trustedProxies?: string[]
+  /**
+   * MemWise people sign-in: when the login carries an email, check the person's password and
+   * resolve to their id (the session then acts as that person). Absent: only the shared password.
+   */
+  verifyPersonLogin?: (email: string, password: string) => Promise<string | null>
 }
 
 // ---------------------------------------------------------------------------
@@ -249,9 +254,9 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
         )
       }
 
-      let body: { password?: string }
+      let body: { password?: string; email?: string }
       try {
-        body = await req.json() as { password?: string }
+        body = await req.json() as { password?: string; email?: string }
       } catch {
         return Response.json({ error: 'Invalid request body' }, { status: 400 })
       }
@@ -260,12 +265,19 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
         return Response.json({ error: 'Password is required' }, { status: 400 })
       }
 
-      if (!await verifyPassword(body.password)) {
+      let personId: string | undefined
+      if (typeof body.email === 'string' && body.email.trim() && options.verifyPersonLogin) {
+        personId = (await options.verifyPersonLogin(body.email.trim(), body.password).catch(() => null)) ?? undefined
+        if (!personId) {
+          logger.warn(`[webui] Failed person sign-in from ${ip}`)
+          return Response.json({ error: 'Invalid email or password' }, { status: 401 })
+        }
+      } else if (!await verifyPassword(body.password)) {
         logger.warn(`[webui] Failed auth attempt from ${ip}`)
         return Response.json({ error: 'Invalid credentials' }, { status: 401 })
       }
 
-      const jwt = await createSessionToken(secret)
+      const jwt = await createSessionToken(secret, personId)
       logger.info(`[webui] Successful auth from ${ip}`)
 
       return Response.json({ ok: true }, {

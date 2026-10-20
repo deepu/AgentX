@@ -197,7 +197,7 @@ function MapNodeCard({
       title={unreachable ? t('memwise.map.unreachable') : undefined}
       aria-current={current ? 'step' : undefined}
       className={cn(
-        'absolute flex flex-col items-start justify-between gap-1 overflow-visible rounded-lg border bg-raised px-2.5 py-2 text-left shadow-sm transition-colors',
+        'absolute flex flex-col items-start justify-start gap-1.5 overflow-visible rounded-lg border bg-raised px-2.5 py-2 text-left shadow-sm transition-colors',
         waiting || unreachable ? 'border-dashed border-strong' : 'border-border',
         onSelect && 'cursor-pointer hover:border-strong hover:bg-floating focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
         visited && 'border-accent/60',

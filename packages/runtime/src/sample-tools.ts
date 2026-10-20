@@ -57,6 +57,11 @@ export interface SampleToolsOptions {
   gstRegistry?: Record<string, string>;
   /** Overrides what the extractor returns per document name. */
   extracted?: Record<string, { name: string; value: string }[]>;
+  /**
+   * Include the stand-in `intake.extract_fields` (default true). With false, the kernel binds the
+   * real one, which reads uploaded documents through the quarantined extractor role.
+   */
+  stubExtractor?: boolean;
 }
 
 export function sampleTools(opts: SampleToolsOptions = {}): ToolDefinition[] {
@@ -146,5 +151,5 @@ export function sampleTools(opts: SampleToolsOptions = {}): ToolDefinition[] {
     },
   };
 
-  return [validateGstin, extractFields, emailSend, createCustomer];
+  return opts.stubExtractor === false ? [validateGstin, emailSend, createCustomer] : [validateGstin, extractFields, emailSend, createCustomer];
 }

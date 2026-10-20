@@ -4,19 +4,34 @@
 import { DBOS, DBOSClient } from '@dbos-inc/dbos-sdk';
 import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
 import {
-  createPool, migrate, PgApprovalStore, PgCaseStore, PgDefinitionStore, PgEffectLedger, PgStepRecorder,
-  PgStepRecordReader, withTransaction,
+  actorLabel, applyDomainSchema, createPool, domainCreators, entityTableName, migrate, PgApprovalStore, PgCaseStore,
+  PgDefinitionStore, PgEffectLedger, PgEntityStore, PgExplanationStore, PgFileStore, PgPeopleStore, PgRateCounter,
+  PgStepRecorder, PgStepRecordReader, withActor, withTransaction,
 } from '@memwise/db';
-import { indexProject, loadProject, type ApprovalRequest, type CaseValue } from '@memwise/defs';
-import { createModelGateway, createToolGateway, type ToolDefinition } from '@memwise/gateway';
-import { AGENT_STEP_WORKFLOW, agentStepWorkflow, approvalTopic, configureStepEngine, recallTools } from '@memwise/step-engine';
+import {
+  indexProject, loadProject, type ApprovalRequest, type CaseValue, type Diagnostic, type EntityTypeDef, type ProjectDefs,
+} from '@memwise/defs';
+import {
+  createModelGateway, createToolGateway, quarantinedRead, type ToolDefinition, type ToolGateway,
+} from '@memwise/gateway';
+import {
+  AGENT_STEP_WORKFLOW, agentStepWorkflow, approvalTopic, configureStepEngine, recallTools, SYSTEM_STEP_WORKFLOW, systemStepWorkflow,
+} from '@memwise/step-engine';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { initialTransition } from 'xstate';
+import { ChangeFeed } from './changes.ts';
+import { domainTools } from './domain-tools.ts';
 import { applyTimerActions, registerRunDriver } from './driver.ts';
+import { EXPLAINER_ROLE, explainStep } from './explain.ts';
+import { EXTRACTOR_ROLE, quarantinedExtractTool } from './extract.ts';
 import { driverIdOf, newCaseId, newRunId } from './ids.ts';
 import { compileMachine, type RunEvent } from './machine.ts';
 import { getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef } from './runs.ts';
 import { ensureSandbox, SAMPLE_PLUGIN } from './sample-tools.ts';
-import type { Kernel, KernelOptions, RunRecord } from './types.ts';
+import { submitStep } from './submit.ts';
+import type { Actor, EntityRow, Explanation, Kernel, KernelOptions, RunRecord } from './types.ts';
+import { approverRoles, DefinitionCache, getCaseView, inbox, listCases, liveCounts, mayApprove } from './views.ts';
 
 export const DEFAULT_ENGINE_VERSION = 'memwise-kernel-1';
 /** Schema of the DBOS data source's commit records (spike S5). */
@@ -37,6 +52,18 @@ function uniqueTools(tools: ToolDefinition[]): ToolDefinition[] {
   return [...seen.values()];
 }
 
+/** The default object store for uploads (19 §5). */
+export function defaultFilesDir(): string {
+  return process.env.MEMWISE_FILES_DIR ?? join(homedir(), '.memwise', 'files');
+}
+
+/** Entity types as last indexed, for a kernel started without a project folder. */
+async function indexedEntities(pool: import('pg').Pool): Promise<Record<string, EntityTypeDef>> {
+  const { rows } = await pool.query(
+    `select distinct on (id) id, body from mw.definitions where kind = 'entity_type' order by id, indexed_at desc`);
+  return Object.fromEntries(rows.map((r) => [r.id, r.body]));
+}
+
 export async function createKernel(options: KernelOptions): Promise<Kernel> {
   if (DBOS.isInitialized()) throw new Error('a kernel is already running in this process (DBOS is process-wide)');
   const url = options.databaseUrl;
@@ -46,12 +73,45 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const reader = new PgStepRecordReader(pool);
   const approvals = new PgApprovalStore(pool);
   const cases = new PgCaseStore();
-  const tools = createToolGateway({
-    tools: uniqueTools([...options.tools, ...recallTools(reader)]),
+  const people = new PgPeopleStore(pool);
+  const files = new PgFileStore(options.filesDir ?? defaultFilesDir());
+  const entityStore = new PgEntityStore();
+  const explanations = new PgExplanationStore();
+  const defs = new DefinitionCache(pool);
+  const feed = new ChangeFeed(url);
+  const models = createModelGateway({ roles: options.modelRoles, providers: options.providers });
+
+  // The project as last indexed (or loaded at start), for the domain tools and the app.
+  let indexed: { project: ProjectDefs; diagnostics: Diagnostic[] } | undefined;
+  if (options.projectDir) indexed = await loadProject(options.projectDir);
+  let entities = indexed ? indexed.project.entities : await indexedEntities(pool);
+
+  // The real extractor, unless the caller binds its own `intake.extract_fields` (e.g. the stub).
+  const extractor = quarantinedExtractTool({
+    role: options.extractorRole ?? EXTRACTOR_ROLE,
+    readFile: (id) => files.read(pool, id),
+    getCase: (caseId) => cases.get(pool, caseId),
+    async read({ role, file, fields, sessionId }) {
+      const schema = Object.fromEntries(Object.entries(fields).map(([k, description]) => [k, { type: 'string', description }]));
+      const r = await quarantinedRead({ models, role, text: file.text, fields: schema, sessionId, label: file.name });
+      return r.values;
+    },
+  });
+
+  // Rebuilt when indexing adds entity types; the step engine always calls the current one.
+  const buildTools = () => createToolGateway({
+    tools: uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), extractor]),
     ledger: new PgEffectLedger(pool),
     secrets: options.secrets,
+    rates: new PgRateCounter(pool),
   });
-  const models = createModelGateway({ roles: options.modelRoles, providers: options.providers });
+  let gateway = buildTools();
+  const tools: ToolGateway = {
+    bound: () => gateway.bound(),
+    get: (name) => gateway.get(name),
+    check: (req, policy, state) => gateway.check(req, policy, state),
+    execute: (req, decision) => gateway.execute(req, decision),
+  };
   configureStepEngine({ tools, models, recorder: new PgStepRecorder(pool), records: reader });
 
   DBOS.setConfig({
@@ -64,7 +124,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   });
   const dataSource = new NodePostgresDataSource('memwise', { connectionString: url, max: 5 }, TX_SCHEMA);
   const stepWorkflow = DBOS.registerWorkflow(options.stepExecutor ?? agentStepWorkflow, { name: AGENT_STEP_WORKFLOW });
-  const { driver } = registerRunDriver({ pool, dataSource, stepWorkflow });
+  const systemWorkflow = DBOS.registerWorkflow(systemStepWorkflow, { name: SYSTEM_STEP_WORKFLOW });
+  const { driver } = registerRunDriver({ pool, dataSource, stepWorkflow, systemWorkflow });
   await DBOS.launch(); // also recovers this executor's pending drivers and steps
   // startRun commits the run before it starts the driver; a crash in between leaves an active run
   // with no driver. Start one for every active run: the id is fixed, so an existing driver
@@ -74,14 +135,26 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const client = await DBOSClient.create({ systemDatabaseUrl: url });
 
   const getRun = (runId: string) => getRunRecord(pool, runId);
+  const entityDef = (name: string): EntityTypeDef | undefined =>
+    entities[name] ?? Object.values(entities).find((e) => entityTableName(e.entity) === name || e.entity.toLowerCase() === name.toLowerCase());
 
   const kernel: Kernel = {
     pool,
+    people,
 
     async index() {
       if (!options.projectDir) throw new Error('createKernel({ projectDir }) is needed to index');
-      const { project, diagnostics } = await loadProject(options.projectDir);
+      const loaded = await loadProject(options.projectDir);
+      const { project } = loaded;
       await indexProject(project, new PgDefinitionStore(pool));
+      await people.syncRoles(project.roles);
+      const notes = await applyDomainSchema(pool, project.entities, { creators: domainCreators(project.entities, project.workflows) });
+      const diagnostics = [...loaded.diagnostics, ...notes.map((message): Diagnostic => ({ severity: 'warning', code: 'domain-column-type', message }))];
+      indexed = { project, diagnostics };
+      const added = Object.keys(project.entities).some((e) => !entities[e]);
+      entities = project.entities;
+      if (added) gateway = buildTools();
+      feed.emit({ kind: 'definitions' });
       return diagnostics;
     },
 
@@ -134,7 +207,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       });
     },
 
-    async decideApproval(decision) {
+    async decideApproval(decision, by?: Actor) {
       return withTransaction(pool, async (db) => {
         const store = new PgApprovalStore(db);
         const current = await store.get(decision.id);
@@ -142,8 +215,15 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         if (current.status !== 'pending') return { applied: false, status: current.status };
         // Only a step still waiting can take the answer; one that timed out or stopped has moved
         // on (the driver marks its approvals expired when it commits the step's result).
-        const step = await db.query('select status from mw.step_runs where id = $1 for update', [current.stepRunId]);
+        const step = await db.query('select status, workflow_id, workflow_hash, step_id from mw.step_runs where id = $1 for update', [current.stepRunId]);
         if (step.rows[0]?.status !== 'waiting') return { applied: false, status: 'expired' as const };
+        if (by) {
+          const s = step.rows[0];
+          const wf = await defs.workflow(s.workflow_id, s.workflow_hash);
+          if (!mayApprove(by, approverRoles(await defs.policy(wf, s.step_id), wf, s.step_id))) {
+            return { applied: false, status: 'forbidden' as const };
+          }
+        }
         if (!(await store.decide(db, decision))) return { applied: false, status: current.status };
         await client.sendInTransaction(db, current.stepRunId, decision, approvalTopic(decision.id), `approval:${decision.id}`);
         return { applied: true, status: decision.status };
@@ -176,7 +256,66 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       return pending.filter((a) => waiting.has(a.stepRunId)).map(({ status, decidedBy, comment, decidedAt, ...request }) => request);
     },
 
+    // ---------------------------------------------------------------- Phase 2
+
+    submitStep: (input) => submitStep({
+      withTransaction: (fn) => withTransaction(pool, fn),
+      workflow: (id, hash) => defs.workflow(id, hash),
+      entities: () => entities,
+      client,
+    }, input),
+
+    inbox: (actor) => inbox(pool, defs, actor),
+    listCases: (filter, actor) => listCases(pool, defs, filter, actor),
+    getCaseView: (caseId, actor) => getCaseView(pool, defs, caseId, actor),
+    liveCounts: (workflowId) => liveCounts(pool, workflowId),
+
+    async explain({ stepRunId, question, by }): Promise<Explanation> {
+      const record = await reader.get(stepRunId);
+      if (!record) throw new Error(`no step record ${stepRunId}`);
+      const extra = await pool.query('select decided_by, comment from mw.step_runs where id = $1', [stepRunId]);
+      const workflow = await defs.workflow(record.workflowId, record.workflowHash).catch(() => undefined);
+      const roles = Object.keys(options.modelRoles);
+      const stepRole = workflow?.steps[record.stepId]?.model;
+      const role = roles.includes(EXPLAINER_ROLE) ? EXPLAINER_ROLE : stepRole && roles.includes(stepRole) ? stepRole : roles[0];
+      if (!role) throw new Error('no model role is configured to explain a step (add an `explainer` role)');
+      const r = await explainStep(models, role, {
+        ...record, ...(extra.rows[0]?.decided_by ? { decidedBy: extra.rows[0].decided_by } : {}),
+        ...(extra.rows[0]?.comment ? { comment: extra.rows[0].comment } : {}),
+      }, workflow, question, by);
+      const saved = await explanations.save(pool, { ...r, by: actorLabel(by) });
+      return { id: saved.id, stepRunId: saved.stepRunId, question: saved.question, answer: saved.answer, cites: saved.cites, grounded: saved.grounded, at: saved.at };
+    },
+
+    async listEntities(entity, actor): Promise<EntityRow[]> {
+      const def = entityDef(entity);
+      if (!def) throw new Error(`no entity type ${entity}`);
+      const rows = await withActor(pool, actor, (db) => entityStore.list(db, def));
+      return rows.map((r) => ({ id: r.id, values: r.values, hidden: r.hidden, createdAt: r.createdAt }));
+    },
+
+    saveFile: (input, actor) => withActor(pool, actor, (db) => files.save(db, input, actorLabel(actor))),
+    readFile: (id, actor) => withActor(pool, actor, (db) => files.read(db, id)),
+
+    async project() {
+      if (!indexed) {
+        if (!options.projectDir) throw new Error('createKernel({ projectDir }) is needed for the project');
+        indexed = await loadProject(options.projectDir);
+      }
+      return indexed;
+    },
+
+    async effectivePolicy(workflowId, stepId) {
+      const wf = await defs.latest(workflowId);
+      if (!wf) throw new Error(`workflow ${workflowId} is not indexed`);
+      if (!wf.steps[stepId]) throw new Error(`workflow ${workflowId} has no step ${stepId}`);
+      return defs.policy(wf, stepId);
+    },
+
+    onChange: (listener) => feed.subscribe(listener),
+
     async shutdown() {
+      await feed.close();
       await DBOS.shutdown({ deregister: true });
       await client.destroy();
       await pool.end();

@@ -9,7 +9,8 @@ import { useTranslation } from 'react-i18next'
 import { Cog, FileText, FileWarning, Lock, PenLine, Sparkles, User, Wrench } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@memwise/ui'
 import type { MwCaseValue, MwField } from '@memwise/shared/protocol'
-import { Info_Badge, type BadgeColor } from '@/components/info'
+import { Info_Badge } from '@/components/info/Info_Badge'
+import type { BadgeColor } from '@/components/info/Info_Badge'
 import { cn } from '@/lib/utils'
 import {
   formatBytes,

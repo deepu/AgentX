@@ -15,10 +15,14 @@ import type {
   MwSubmitResult,
   MwSubmitStepInput,
 } from '@memwise/shared/protocol'
-import { Info_Alert, Info_Badge, Info_Page, Info_Section, Info_Table } from '@/components/info'
+import { Info_Alert } from '@/components/info/Info_Alert'
+import { Info_Badge } from '@/components/info/Info_Badge'
+import { Info_Page } from '@/components/info/Info_Page'
+import { Info_Section } from '@/components/info/Info_Section'
+import { Info_Table } from '@/components/info/Info_Table'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Markdown } from '@/components/markdown'
+import { Markdown } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 import { CaseFieldList } from './CaseValues'
 import { GeneratedForm, type UploadFile } from './GeneratedForm'

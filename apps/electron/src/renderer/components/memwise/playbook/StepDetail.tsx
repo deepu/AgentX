@@ -102,8 +102,8 @@ export function StepCheckpoint({ step }: { step: MwStep }) {
 
 /** "What happens next": each outcome and wait in words. */
 export function StepNext({ playbook, state }: { playbook: MwPlaybook; state: MwState }) {
-  const { t } = useTranslation()
-  const lines = nextLines(playbook, state, t)
+  const { t, i18n } = useTranslation()
+  const lines = nextLines(playbook, state, t, i18n.resolvedLanguage)
   if (!lines.length) return null
   return (
     <Section title={t('memwise.playbook.next.title')}>
@@ -148,10 +148,10 @@ export function StepDetail({ step, playbook, roles, embedded = false, className 
               <PerformerTag performer={performer} />
               {performer.note && <span className="text-label-sm text-tertiary">{performer.note}</span>}
             </div>
-            <h3 className="text-label-lg font-semibold text-foreground">{step.title}</h3>
+            <h3 className="text-copy-lg font-semibold text-foreground">{step.title}</h3>
           </header>
           {step.instructions.trim() && (
-            <div className="text-copy text-secondary">
+            <div className="text-label-lg text-secondary">
               <Markdown mode="minimal">{step.instructions}</Markdown>
             </div>
           )}

@@ -29,6 +29,8 @@ import { kanbanComponents } from './kanban'
 import { taskEditorComponents } from './task-editor'
 import { primitivesComponents } from './primitives'
 import { chatStartersComponents } from './chat-starters'
+import { memwisePlaybookComponents } from './memwise-playbook'
+import { memwiseScreensComponents } from './memwise-screens'
 
 export * from './types'
 
@@ -64,10 +66,12 @@ export const componentRegistry: ComponentEntry[] = [
   ...containerTransitionsComponents,
   ...messagingComponents,
   ...imageSupportComponents,
+  ...memwisePlaybookComponents,
+  ...memwiseScreensComponents,
 ]
 
 export function getCategories(): CategoryGroup[] {
-  const categoryOrder: Category[] = ['Primitives', 'Mobile WebUI', 'Automations', 'Onboarding', 'Agent Setup', 'Settings', 'Chat', 'Island', 'Browser', 'Planner', 'Custom Shadows', 'Session List', 'Kanban', 'Entity Lists', 'Edit Popover', 'Turn Cards', 'TurnCard Modes', 'Fullscreen', 'Chat Messages', 'Chat Inputs', 'Toast Messages', 'Markdown', 'Icons', 'OAuth', 'Messaging']
+  const categoryOrder: Category[] = ['MemWise', 'Primitives', 'Mobile WebUI', 'Automations', 'Onboarding', 'Agent Setup', 'Settings', 'Chat', 'Island', 'Browser', 'Planner', 'Custom Shadows', 'Session List', 'Kanban', 'Entity Lists', 'Edit Popover', 'Turn Cards', 'TurnCard Modes', 'Fullscreen', 'Chat Messages', 'Chat Inputs', 'Toast Messages', 'Markdown', 'Icons', 'OAuth', 'Messaging']
   const categoryMap = new Map<Category, ComponentEntry[]>()
 
   for (const entry of componentRegistry) {

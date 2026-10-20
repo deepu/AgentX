@@ -172,21 +172,24 @@ export interface NextLine {
   back?: boolean
 }
 
-/** "What happens next" for a state, in plain words. */
-export function nextLines(playbook: MwPlaybook, state: MwState, t: TFunction): NextLine[] {
+/** "What happens next" for a state, in plain words. Outcomes that go to the same place share a line. */
+export function nextLines(playbook: MwPlaybook, state: MwState, t: TFunction, lang?: string): NextLine[] {
   const order = playbook.states.map((s) => s.id)
   const here = order.indexOf(state.id)
   const lines: NextLine[] = []
-  for (const [outcome, target] of Object.entries(state.on)) {
+  const byTarget = new Map<string, string[]>()
+  for (const [outcome, target] of Object.entries(state.on)) byTarget.set(target, [...(byTarget.get(target) ?? []), humanize(outcome)])
+  for (const [target, outcomes] of byTarget) {
+    const outcome = joinOr(outcomes, lang)
     const title = stateTitle(playbook, target, t)
     const there = order.indexOf(target)
     const back = target !== END_STATE && there !== -1 && there <= here
     const text =
       target === END_STATE
-        ? t('memwise.playbook.next.ifEnd', { outcome: humanize(outcome) })
+        ? t('memwise.playbook.next.ifEnd', { outcome })
         : back
-          ? t('memwise.playbook.next.ifBack', { outcome: humanize(outcome), target: title })
-          : t('memwise.playbook.next.if', { outcome: humanize(outcome), target: title })
+          ? t('memwise.playbook.next.ifBack', { outcome, target: title })
+          : t('memwise.playbook.next.if', { outcome, target: title })
     lines.push({ kind: 'outcome', text, target, back })
   }
   const wait = state.wait
@@ -213,6 +216,15 @@ export function nextLines(playbook: MwPlaybook, state: MwState, t: TFunction): N
     })
   }
   return lines
+}
+
+function joinOr(items: string[], lang?: string): string {
+  if (items.length < 2) return items[0] ?? ''
+  try {
+    return new Intl.ListFormat(lang, { type: 'disjunction' }).format(items)
+  } catch {
+    return items.join(', ')
+  }
 }
 
 /** Case field type for a read like `case.pan`, when the playbook knows it. */

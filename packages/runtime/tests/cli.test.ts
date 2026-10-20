@@ -41,12 +41,14 @@ describe.skipIf(!pgAvailable)('memwise CLI', () => {
 
   test('memwise test runs every example case', async () => {
     const admin = process.env.MEMWISE_TEST_DATABASE_URL;
-    const r = await runChild(CLI, ['test', INTAKE_DIR, ...(admin ? ['--database-url', admin] : [])], {}, 180_000);
+    const r = await runChild(CLI, ['test', INTAKE_DIR, ...(admin ? ['--database-url', admin] : [])], {}, 300_000);
     expect(r.code, r.output).toBe(0);
     expect(r.output).toContain('PASS client-intake/clean-application');
     expect(r.output).toContain('PASS client-intake/pan-mismatch');
-    expect(r.output).toContain('2 passed, 0 failed, 0 skipped');
-  }, 180_000);
+    expect(r.output).toContain('PASS client-intake/onboard-creates-customer');
+    expect(r.output).toContain('PASS client-intake/full-intake');
+    expect(r.output).toContain('4 passed, 0 failed, 0 skipped');
+  }, 300_000);
 
   test('memwise record prints the record, its context and journal', async () => {
     const { project } = await loadProject(INTAKE_DIR);

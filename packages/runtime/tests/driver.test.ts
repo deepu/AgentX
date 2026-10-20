@@ -140,11 +140,12 @@ describe.skipIf(!pgAvailable)('run driver', () => {
       expect(elapsed).toBeGreaterThanOrEqual(1900);
     }, 30_000);
 
-    test('a system step stops the run (mechanical steps come in Phase 2)', async () => {
+    test('a system step runs without a model and finishes with its one outcome', async () => {
       const { runId } = await kernel.startRun({ workflowId: 'client-intake', startAt: 'onboard', case: {} });
       const run = await kernel.waitForRun(runId, { until: (r) => r.status !== 'active', timeoutMs: 15_000 });
-      expect(run.status).toBe('stopped');
-      expect(run.stopReason).toBe('mechanical steps run from Phase 2');
+      expect(run.status).toBe('done');
+      const record = await kernel.getStepRecord(`${runId}/0/onboard`);
+      expect(record).toMatchObject({ performer: 'system', status: 'completed', outcome: 'done' });
     }, 30_000);
 
     test('needs_person without a transition of that name stops the run', async () => {

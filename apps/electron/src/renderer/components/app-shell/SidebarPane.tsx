@@ -26,6 +26,8 @@ interface SidebarPaneProps {
   links: SidebarItem[]
   /** Pinned below the scrolling navigation */
   footerLinks: SidebarItem[]
+  /** Extra pinned content above the footer links (e.g. the MemWise "Acting as" switcher) */
+  footerExtra?: React.ReactNode
   getItemProps?: React.ComponentProps<typeof LeftSidebar>["getItemProps"]
   focusedItemId?: string | null
   /** `openInNewWindow` is true for ⌘/Ctrl-click (same as before: Gmail-style compose) */
@@ -41,6 +43,7 @@ export function SidebarPane({
   onKeyDown,
   links,
   footerLinks,
+  footerExtra,
   getItemProps,
   focusedItemId,
   onNewSession,
@@ -94,9 +97,10 @@ export function SidebarPane({
           />
         </div>
 
-        {footerLinks.length > 0 && (
+        {(footerLinks.length > 0 || footerExtra) && (
           <div className="shrink-0 pb-1.5">
             <div className="mx-4 h-px bg-separator" aria-hidden="true" />
+            {footerExtra && <div className="pt-1.5">{footerExtra}</div>}
             <LeftSidebar
               isCollapsed={false}
               getItemProps={getItemProps}

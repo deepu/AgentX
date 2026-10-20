@@ -12,6 +12,20 @@ const VALUE_CLASSES = {
   deny: 'text-destructive',
 } as const
 
+/** Lets a long path wrap after its slashes rather than mid-word. */
+function breakAtSlashes(path: string) {
+  return path.split('/').map((part, i, all) => (
+    <span key={i}>
+      {part}
+      {i < all.length - 1 && (
+        <>
+          /<wbr />
+        </>
+      )}
+    </span>
+  ))
+}
+
 export interface EffectivePolicyViewProps {
   rules: MwPolicyRule[]
   className?: string
@@ -51,7 +65,7 @@ export function EffectivePolicyView({ rules, className }: EffectivePolicyViewPro
                 </TableCell>
                 <TableCell className="px-3 py-2 align-top">
                   <div>{layerLabel(rule, t)}</div>
-                  {rule.source && <div className="break-all font-mono text-[11px] leading-4 text-tertiary">{rule.source}</div>}
+                  {rule.source && <div className="font-mono text-[11px] leading-4 text-tertiary">{breakAtSlashes(rule.source)}</div>}
                 </TableCell>
               </TableRow>
             )

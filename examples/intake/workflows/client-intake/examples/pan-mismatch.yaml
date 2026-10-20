@@ -44,6 +44,15 @@ model:
     - toolCalls:
         - name: checkpoint.verdict
           args: { results: [ { rule: 1, passed: true, reason: The only flag cites pan-card.pdf. } ] }
+  explainer:
+    - toolCalls:
+        - name: explain.answer
+          args:
+            answer: The PAN typed in the form (AAACM9999Z) differs from the PAN read from the PAN card (AAACM1234M), so the PAN was flagged and the client was emailed.
+            cites:
+              - { kind: journal, ref: "tool:intake.extract_fields:call_checker_0_1", label: Fields read from the documents }
+              - { kind: output, ref: flags, label: The PAN flag }
+            grounded: true
 expect:
   outcome: needs_info
   state: fill

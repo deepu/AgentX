@@ -3,9 +3,12 @@
 //   bun kernel-worker.ts fake <databaseUrl> <runId>   fake step; starts the intake run at `check`
 //   bun kernel-worker.ts exit <databaseUrl> <runId> <counterFile>
 //                                                    the real step engine on examples/intake (exit test)
+//   bun kernel-worker.ts onboard <databaseUrl> <runId> <filesDir>
+//                                                    examples/intake indexed, the run starts at the
+//                                                    system step `onboard` (domain.customer.create)
 //
-// Either way it starts the run (a no-op when it already exists; DBOS.launch recovers it), answers
-// pending approvals as the example says, and exits 0 once the run has left `check`.
+// Each starts the run (a no-op when it already exists; DBOS.launch recovers it), answers
+// pending approvals as the example says, and exits 0 once the run has left its first state.
 import { createKernel } from '../../src/kernel.ts';
 import type { Kernel, KernelOptions } from '../../src/types.ts';
 import { fakeStep } from './fake-step.ts';
@@ -17,7 +20,13 @@ let kernel: Kernel;
 let approvals: Record<string, 'approve' | 'reject'> = {};
 let start: { workflowId: string; case: Record<string, unknown>; startAt: string };
 
-if (mode === 'fake') {
+if (mode === 'onboard') {
+  const { INTAKE_DIR } = await import('./exit-setup.ts');
+  const { sampleTools } = await import('../../src/sample-tools.ts');
+  kernel = await createKernel({ databaseUrl, projectDir: INTAKE_DIR, tools: sampleTools({ databaseUrl }), modelRoles: {}, providers: [], filesDir: counterFile });
+  await kernel.index();
+  start = { workflowId: 'client-intake', startAt: 'onboard', case: { client_name: 'Asha Rao', client_email: 'asha@acme-traders.example', pan: 'AAACA1234A', gstin: '29AAACA1234A1Z5' } };
+} else if (mode === 'fake') {
   kernel = await createKernel({ databaseUrl, tools: [], modelRoles: {}, providers: [], stepExecutor: fakeStep(databaseUrl) });
   start = { workflowId: 'client-intake', startAt: 'check', case: { pan: 'AAACM9999Z' } };
 } else {
@@ -37,7 +46,7 @@ for (;;) {
     }
   }
   const run = await kernel.getRun(runId);
-  if (run && (run.state !== 'check' || run.status !== 'active')) {
+  if (run && (run.state !== start.startAt || run.status !== 'active')) {
     process.stdout.write(`RESULT ${JSON.stringify({ state: run.state, status: run.status, seq: run.seq })}\n`);
     break;
   }

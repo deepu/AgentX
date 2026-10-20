@@ -54,7 +54,8 @@ export interface MapLayout {
 }
 
 export const NODE_W = 184
-export const NODE_H = 68
+export const NODE_H = 78
+const END_W = 120
 const COL_GAP = 84
 const PAD = 24
 const ROW_GAP = 96
@@ -120,7 +121,7 @@ export function happyPath(playbook: MwPlaybook): string[] {
     const state = playbook.states.find((s) => s.id === current)
     if (!state) break
     const targets = Object.entries(state.on)
-    const pick =
+    const pick: [string, string] | undefined =
       targets.find(([e, to]) => !isFailureEvent(e) && !seen.has(to) && (known.has(to) || to === END_ID)) ??
       targets.find(([, to]) => !seen.has(to) && (known.has(to) || to === END_ID))
     current = pick?.[1]
@@ -270,7 +271,9 @@ export function layoutWorkflow(playbook: MwPlaybook): MapLayout {
   for (const id of nodeIds) {
     const p = placed.get(id)
     if (!p) continue
-    nodes.push({ id, row: p.row, col: p.col, x: PAD + p.col * (NODE_W + COL_GAP), y: rowY.get(p.row)!, w: NODE_W, h: NODE_H })
+    // `end` is a small marker, not a step card.
+    const w = id === END_ID ? END_W : NODE_W
+    nodes.push({ id, row: p.row, col: p.col, x: PAD + p.col * (NODE_W + COL_GAP), y: rowY.get(p.row)!, w, h: NODE_H })
   }
   const maxRight = Math.max(...nodes.map((n) => n.x + n.w))
   const width = maxRight + PAD
@@ -285,9 +288,12 @@ export function layoutWorkflow(playbook: MwPlaybook): MapLayout {
       return false
     })
     // Order by where the other end sits so lines don't cross needlessly.
+    // Ties (two edges between the same pair of nodes) break the same way at both ends, downward
+    // edges first, so the pair runs side by side instead of crossing.
     users.sort((p, q) => {
       const other = (e: RawEdge) => byId.get(e.from === node.id ? e.to : e.from)!
-      return other(p).x - other(q).x || (p.from === node.id ? 1 : 0) - (q.from === node.id ? 1 : 0)
+      const goesDown = (e: RawEdge) => (byId.get(e.to)!.y > byId.get(e.from)!.y ? 0 : 1)
+      return other(p).x - other(q).x || goesDown(p) - goesDown(q)
     })
     const i = users.indexOf(edge)
     const n = users.length
@@ -321,8 +327,10 @@ export function layoutWorkflow(playbook: MwPlaybook): MapLayout {
       const rise = ARC_BASE + arc.level * ARC_STEP
       // Leave and enter off-centre: forward arcs on the right half, backward ones on the left.
       const backwards = b.col < a.col
-      const sx = a.x + a.w * (backwards ? 0.35 : 0.65)
-      const tx = b.x + b.w * (backwards ? 0.65 : 0.35)
+      // Outer arcs land further out, so nested arcs don't share an arrowhead.
+      const spread = Math.min(0.2, arc.level * 0.1)
+      const sx = a.x + a.w * (backwards ? 0.35 - spread : 0.65 + spread)
+      const tx = b.x + b.w * (backwards ? 0.65 + spread : 0.35 - spread)
       // Control points at 4/3 of the rise put the curve's peak exactly at `rise`.
       const cy = edgeY + dir * rise * (4 / 3)
       out.push({ ...base, points: [{ x: sx, y: edgeY }, { x: sx, y: cy }, { x: tx, y: cy }, { x: tx, y: edgeY }], labelAt: { x: (sx + tx) / 2, y: edgeY + dir * rise } })

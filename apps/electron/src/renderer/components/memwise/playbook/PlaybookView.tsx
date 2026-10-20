@@ -108,15 +108,15 @@ function StepEntry({
             {performer.note && <span className="text-label-sm text-tertiary">{performer.note}</span>}
           </div>
           {onSelect ? (
-            <button type="button" onClick={onSelect} className="self-start text-left text-label-lg font-semibold text-foreground hover:underline focus-visible:underline focus-visible:outline-none">
+            <button type="button" onClick={onSelect} className="self-start text-left text-copy-lg font-semibold text-foreground hover:underline focus-visible:underline focus-visible:outline-none">
               {step.title}
             </button>
           ) : (
-            <h3 className="text-label-lg font-semibold text-foreground">{step.title}</h3>
+            <h3 className="text-copy-lg font-semibold text-foreground">{step.title}</h3>
           )}
         </div>
         {step.instructions.trim() && (
-          <div className="text-copy text-secondary">
+          <div className="text-label-lg text-secondary">
             <Markdown mode="minimal">{step.instructions}</Markdown>
           </div>
         )}

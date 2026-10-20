@@ -34,6 +34,9 @@ import {
   MailOpen,
   FolderKanban,
   PanelsTopLeft,
+  ClipboardCheck,
+  Briefcase,
+  BookOpen,
 } from "lucide-react"
 // SessionStatusIcons no longer used - icons come from dynamic sessionStatuses
 import { SourceAvatar } from "@/components/ui/source-avatar"
@@ -119,8 +122,20 @@ import {
   isAutomationsNavigation,
   isProjectsNavigation,
   isPagesNavigation,
+  isInboxNavigation,
+  isCasesNavigation,
+  isPlaybooksNavigation,
   type NavigationState,
 } from "@/contexts/NavigationContext"
+import {
+  MemwiseHost,
+  InboxListPanel,
+  CasesListPanel,
+  PlaybooksListPanel,
+  ActingAsSwitcher,
+  SidebarStatusNotice,
+} from "@/components/memwise"
+import { memwiseInboxCountAtom, memwiseCasesAtom, memwisePlaybooksAtom, memwiseStartCaseDialogAtom, memwiseCaseFilterAtom } from "@/atoms/memwise"
 import type { SettingsSubpage } from "../../../shared/types"
 import { SourcesListPanel } from "./SourcesListPanel"
 import { SkillsListPanel } from "./SkillsListPanel"
@@ -1570,6 +1585,22 @@ function AppShellContent({
     navigate(routes.view.pages())
   }, [])
 
+  // MemWise sections (inbox, cases, playbooks)
+  const handleInboxClick = useCallback(() => {
+    navigate(routes.view.inbox())
+  }, [])
+  const handleCasesClick = useCallback(() => {
+    navigate(routes.view.cases())
+  }, [])
+  const handlePlaybooksClick = useCallback(() => {
+    navigate(routes.view.playbooks())
+  }, [])
+  const memwiseInboxCount = useAtomValue(memwiseInboxCountAtom)
+  const memwiseCases = useAtomValue(memwiseCasesAtom)
+  const memwisePlaybooks = useAtomValue(memwisePlaybooksAtom)
+  const memwiseCaseFilter = useAtomValue(memwiseCaseFilterAtom)
+  const setMemwiseStartCase = useSetAtom(memwiseStartCaseDialogAtom)
+
   const handleAutomationsScheduledClick = useCallback(() => {
     navigate(routes.view.automationsScheduled())
   }, [])
@@ -1836,6 +1867,11 @@ function AppShellContent({
   const unifiedSidebarItems = React.useMemo((): SidebarItem[] => {
     const result: SidebarItem[] = []
 
+    // 0. MemWise sections: Inbox, Cases, Playbooks
+    result.push({ id: 'nav:inbox', type: 'nav', action: handleInboxClick })
+    result.push({ id: 'nav:cases', type: 'nav', action: handleCasesClick })
+    result.push({ id: 'nav:playbooks', type: 'nav', action: handlePlaybooksClick })
+
     // 1. Sessions section: All Sessions (expandable) with status items, Flagged, Archived as children
     result.push({ id: 'nav:allSessions', type: 'nav', action: handleAllSessionsClick })
     for (const state of effectiveSessionStatuses) {
@@ -1867,7 +1903,7 @@ function AppShellContent({
     result.push({ id: 'nav:whats-new', type: 'nav', action: handleWhatsNewClick })
 
     return result
-  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleProjectsClick, handlePagesClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
+  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleProjectsClick, handlePagesClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick, handleInboxClick, handleCasesClick, handlePlaybooksClick])
 
   // Toggle folder expanded state
   const handleToggleFolder = React.useCallback((path: string) => {
@@ -1976,6 +2012,11 @@ function AppShellContent({
 
   // Get title based on navigation state
   const listTitle = React.useMemo(() => {
+    // MemWise sections
+    if (isInboxNavigation(navState)) return t("memwise.nav.inbox")
+    if (isCasesNavigation(navState)) return t("memwise.nav.cases")
+    if (isPlaybooksNavigation(navState)) return t("memwise.nav.playbooks")
+
     // Sources navigator
     if (isSourcesNavigation(navState)) {
       return t("sidebar.sources")
@@ -2088,6 +2129,32 @@ function AppShellContent({
 
   // Sidebar navigation (scrolls) and the pinned footer (Settings, What's New — always visible).
   const sidebarLinks: SidebarNavItem[] = [
+    // --- MemWise: what's waiting on me, the cases, the playbooks ---
+    {
+      id: "nav:inbox",
+      title: t("memwise.nav.inbox"),
+      label: memwiseInboxCount > 0 ? String(memwiseInboxCount) : undefined,
+      icon: ClipboardCheck,
+      variant: isInboxNavigation(navState) ? "default" : "ghost",
+      onClick: handleInboxClick,
+    },
+    {
+      id: "nav:cases",
+      title: t("memwise.nav.cases"),
+      label: memwiseCases && memwiseCases.length > 0 ? String(memwiseCases.filter(c => c.status === 'active').length) : undefined,
+      icon: Briefcase,
+      variant: isCasesNavigation(navState) ? "default" : "ghost",
+      onClick: handleCasesClick,
+    },
+    {
+      id: "nav:playbooks",
+      title: t("memwise.nav.playbooks"),
+      label: memwisePlaybooks && memwisePlaybooks.length > 0 ? String(memwisePlaybooks.length) : undefined,
+      icon: BookOpen,
+      variant: isPlaybooksNavigation(navState) ? "default" : "ghost",
+      onClick: handlePlaybooksClick,
+    },
+    { id: "section:chats", type: "section", title: t("memwise.nav.chatsSection") },
     // --- Sessions Section ---
     // All Sessions: expandable with status children (sortable) + Flagged & Archived as trailing items
     {
@@ -2411,6 +2478,12 @@ function AppShellContent({
               onKeyDown={handleSidebarKeyDown}
               links={sidebarLinks}
               footerLinks={sidebarFooterLinks}
+              footerExtra={
+                <>
+                  <SidebarStatusNotice />
+                  <ActingAsSwitcher />
+                </>
+              }
               getItemProps={getSidebarItemProps}
               focusedItemId={focusedSidebarItemId}
               onNewSession={(openInNewWindow) => handleNewChat(openInNewWindow)}
@@ -2532,6 +2605,14 @@ function AppShellContent({
                       {...getEditConfig('automation-config', activeWorkspace.rootPath)}
                     />
                   )}
+                  {/* Start a case (cases mode) */}
+                  {isCasesNavigation(navState) && (
+                    <HeaderIconButton
+                      icon={<Plus className="h-4 w-4" />}
+                      tooltip={t("memwise.cases.startCase")}
+                      onClick={() => setMemwiseStartCase({ open: true, workflowId: memwiseCaseFilter.workflowId })}
+                    />
+                  )}
                   {/* Add Project button (only for projects mode) */}
                   {isProjectsNavigation(navState) && activeWorkspace && (
                     <HeaderIconButton
@@ -2543,6 +2624,25 @@ function AppShellContent({
                 </>
               }
             />
+            {/* MemWise lists */}
+            {isInboxNavigation(navState) && (
+              <InboxListPanel
+                selectedId={navState.details?.itemId ?? null}
+                onSelect={(id) => navigate(routes.view.inbox(id))}
+              />
+            )}
+            {isCasesNavigation(navState) && (
+              <CasesListPanel
+                selectedId={navState.details?.caseId ?? null}
+                onSelect={(id) => navigate(routes.view.cases(id))}
+              />
+            )}
+            {isPlaybooksNavigation(navState) && (
+              <PlaybooksListPanel
+                selectedId={navState.details?.playbookId ?? null}
+                onSelect={(id) => navigate(routes.view.playbooks(id))}
+              />
+            )}
             {/* Content: SessionList, SourcesListPanel, or SettingsNavigator based on navigation state */}
             {isSourcesNavigation(navState) && (
               /* Sources List - filtered by type if sourceFilter is active */
@@ -2927,6 +3027,9 @@ function AppShellContent({
       {/* Messaging dialogs (pairing-code + WA connect) — driven by messagingDialogAtom.
           Mounted here so they survive context-menu / dropdown close. */}
       <MessagingDialogHost />
+
+      {/* MemWise: keeps the inbox, cases and playbooks in sync; hosts "Start a case" */}
+      <MemwiseHost workspaceId={activeWorkspaceId} />
 
       {/* Asks to update rtk when Token Optimization is on but the installed rtk corrupts output */}
       <RtkUpdatePrompt workspaceId={activeWorkspaceId} />

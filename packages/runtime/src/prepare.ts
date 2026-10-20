@@ -24,8 +24,8 @@ export async function prepareAgentStep(db: Queryable, run: RunRow, workflow: Wor
       where run_id = $1 and step_id = $2 and id <> $3 order by started_at, id`, [run.id, run.state, stepRunId]);
   // A person who sent the case back said why (submitStep's comment): the next attempt of this
   // step is told, as repair context, about every comment made since its last attempt began.
-  const last = prev.rows.at(-1)?.started_at ?? null;
-  const comments = last === null ? { rows: [] as any[] } : await db.query(
+  const last = prev.rows.at(-1)?.started_at ?? new Date(0);
+  const comments = await db.query(
     `select s.step_id, s.outcome, s.comment, s.decided_by, coalesce(p.name, s.decided_by) as who from mw.step_runs s
        left join mw.people p on p.id = s.decided_by
       where s.run_id = $1 and s.comment is not null and s.id <> $2 and s.step_id <> $3 and s.started_at >= $4

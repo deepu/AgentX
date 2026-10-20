@@ -23,6 +23,10 @@
  *   MEMWISE_WEBUI_WS_URL         — optional browser-facing ws:// or wss:// URL returned by /api/config
  *   MEMWISE_MESSAGING_WA_WORKER  — absolute path to worker.cjs (default: packages/messaging-whatsapp-worker/dist/worker.cjs)
  *   MEMWISE_MESSAGING_NODE_BIN   — Node binary used to spawn the WhatsApp worker (default: node)
+ *   MEMWISE_DATABASE_URL         — Postgres for the MemWise kernel (playbooks); setting it starts the kernel
+ *   MEMWISE_KERNEL               — '1' starts the kernel on the bundled Postgres under the config dir
+ *   MEMWISE_PROJECT_DIR          — playbooks folder (default: <config dir>/project, seeded from examples/intake)
+ *   MEMWISE_SCRIPTED_MODELS      — '1' runs the example cases' scripted model turns (demos)
  */
 
 import { join } from 'node:path'
@@ -30,7 +34,8 @@ import { readFileSync, existsSync } from 'node:fs'
 import { version as packageVersion } from '../package.json'
 import { enableDebug } from '@memwise/shared/utils/debug'
 import { bootstrapServer, startHealthHttpServer, generateServerToken } from '@memwise/server-core/bootstrap'
-import { validateSession, createWebuiHandler, nodeHttpAdapter } from '@memwise/server-core/webui'
+import { validateSession, sessionPersonId, createWebuiHandler, nodeHttpAdapter } from '@memwise/server-core/webui'
+import { getMemwiseService, memwiseKernelRequested, startMemwiseService, stopMemwiseService } from '@memwise/server-core/memwise'
 import type { WebuiHandler } from '@memwise/server-core/webui'
 import { getCredentialManager } from '@memwise/shared/credentials'
 import { getWorkspaces } from '@memwise/shared/config'
@@ -146,6 +151,11 @@ if (webuiEnabled && serverToken) {
     wsPort: rpcPort,
     getHealthCheck: () => healthCheckFn?.() ?? { status: 'starting' },
     logger: { info: console.log, warn: console.warn, error: console.error } as any,
+    // MemWise people sign in with email and password (the shared password still works)
+    verifyPersonLogin: async (email, password) => {
+      const person = await getMemwiseService()?.kernel.people.verifyPassword(email, password)
+      return person?.id ?? null
+    },
   })
 
   webuiNodeHandler = nodeHttpAdapter(webuiHandler.fetch)
@@ -175,6 +185,14 @@ const instance = await (async () => {
             const session = await validateSession(cookieHeader, serverToken)
             return session !== null
           }
+        : undefined,
+      // MemWise people: a personal token, or the person behind a web session
+      authenticatePersonToken: async (token) => {
+        const person = await getMemwiseService()?.kernel.people.verifyToken(token)
+        return person?.id ?? null
+      },
+      sessionCookiePerson: webuiEnabled && serverToken
+        ? (cookieHeader) => sessionPersonId(cookieHeader, serverToken)
         : undefined,
       // Embed the WebUI HTTP handler on the WS server's port
       httpHandler: webuiNodeHandler,
@@ -277,6 +295,18 @@ if (messagingHandle !== null && !messagingDisabled) {
   console.log('[messaging] Disabled via MEMWISE_DISABLE_MESSAGING — skipping workspace messaging init')
 }
 
+// ---------------------------------------------------------------------------
+// MemWise kernel (playbooks): only when asked, and never blocking the server.
+// ---------------------------------------------------------------------------
+if (memwiseKernelRequested()) {
+  void startMemwiseService({
+    configDir: CONFIG_DIR,
+    mode: 'server',
+    logger: { info: console.log, warn: console.warn, error: console.error },
+    exampleRoots: [bundledAssetsRoot, process.env.MEMWISE_APP_ROOT, process.env.MEMWISE_RESOURCES_PATH].filter((r): r is string => !!r),
+  })
+}
+
 // Wire up the lazy health check now that the session manager is ready
 if (webuiHandler) {
   const { getHealthCheck } = await import('@memwise/server-core/handlers/rpc/server')
@@ -342,6 +372,11 @@ if (!isLocalBind && instance.protocol === 'ws') {
 
 const shutdown = async () => {
   webuiHandler?.dispose()
+  try {
+    await stopMemwiseService()
+  } catch (error) {
+    console.error('[memwise] stop failed:', error)
+  }
   healthServer?.stop()
   if (messagingHandle) {
     try {

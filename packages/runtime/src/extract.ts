@@ -34,9 +34,10 @@ export interface ExtractToolDeps {
 }
 
 /** Plain text of a document: text, Markdown and CSV as they are; PDF text runs, best effort. */
-export function documentText(mime: string, name: string, data: Uint8Array): { text: string; note?: string } {
-  const lower = name.toLowerCase();
-  if (mime === 'application/pdf' || lower.endsWith('.pdf')) {
+export function documentText(mime: string, _name: string, data: Uint8Array): { text: string; note?: string } {
+  // The bytes decide, not the name: a PDF starts with `%PDF`.
+  const isPdf = data.length >= 4 && data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46;
+  if (isPdf || (mime === 'application/pdf' && !data.length)) {
     const text = pdfText(data);
     return text.trim()
       ? { text, note: 'PDF text extracted without layout (best effort)' }

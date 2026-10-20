@@ -117,6 +117,11 @@ mac:
     # WhatsApp worker subprocess (self-contained; Baileys bundled in).
     - from: ../../packages/messaging-whatsapp-worker/dist/worker.cjs
       to: messaging-whatsapp-worker/worker.cjs
+    # MemWise kernel: its SQL migrations and the example playbooks the project folder is seeded from.
+    - from: ../../packages/db/migrations
+      to: memwise/migrations
+    - from: ../../examples/intake
+      to: examples/intake
   # Exclude binaries for other platforms
   files:
     - "!**/resources/bin/win32-*/**"
@@ -182,6 +187,11 @@ win:
     # WhatsApp worker subprocess (self-contained; Baileys bundled in).
     - from: ../../packages/messaging-whatsapp-worker/dist/worker.cjs
       to: messaging-whatsapp-worker/worker.cjs
+    # MemWise kernel: its SQL migrations and the example playbooks the project folder is seeded from.
+    - from: ../../packages/db/migrations
+      to: memwise/migrations
+    - from: ../../examples/intake
+      to: examples/intake
 
 nsis:
   oneClick: true
@@ -209,6 +219,11 @@ linux:
     # WhatsApp worker subprocess (self-contained; Baileys bundled in).
     - from: ../../packages/messaging-whatsapp-worker/dist/worker.cjs
       to: messaging-whatsapp-worker/worker.cjs
+    # MemWise kernel: its SQL migrations and the example playbooks the project folder is seeded from.
+    - from: ../../packages/db/migrations
+      to: memwise/migrations
+    - from: ../../examples/intake
+      to: examples/intake
   # Exclude binaries for other platforms
   files:
     - "!**/resources/bin/darwin-*/**"
