@@ -333,6 +333,8 @@ export interface MemwiseQuery<T> {
   data: T | null
   error: string | null
   loading: boolean
+  /** A fetch for the current key has finished (so a null `data` means "nothing there"). */
+  loaded?: boolean
   reload: () => void
 }
 
@@ -350,6 +352,7 @@ export function useMemwiseQuery<T>(
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
   const [nonce, setNonce] = useState(0)
   const fetcherRef = useRef(fetcher)
   fetcherRef.current = fetcher
@@ -362,6 +365,7 @@ export function useMemwiseQuery<T>(
   useEffect(() => {
     setData(null)
     setError(null)
+    setLoaded(false)
   }, [key, workspaceId])
 
   useEffect(() => {
@@ -373,7 +377,7 @@ export function useMemwiseQuery<T>(
     fetcherRef.current(api, workspaceId)
       .then(result => { if (!stale) { setData(result); setError(null) } })
       .catch(err => { if (!stale) setError(errorMessage(err)) })
-      .finally(() => { if (!stale) setLoading(false) })
+      .finally(() => { if (!stale) { setLoading(false); setLoaded(true) } })
     return () => { stale = true }
   }, [key, workspaceId, nonce])
 
@@ -384,7 +388,7 @@ export function useMemwiseQuery<T>(
   }, [lastChange, key])
 
   const reload = useCallback(() => setNonce(n => n + 1), [])
-  return { data, error, loading, reload }
+  return { data, error, loading, loaded, reload }
 }
 
 /** Whether a push concerns this case. Matched on the case id, so it works before the first fetch lands. */

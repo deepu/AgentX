@@ -161,6 +161,7 @@ export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, on
         </div>
       )}
 
+      <h3 className="text-label-lg font-semibold text-foreground" data-review-title>{review.title}</h3>
       {review.instructions?.trim() && (
         <div className="text-label text-secondary"><Markdown mode="minimal">{review.instructions}</Markdown></div>
       )}

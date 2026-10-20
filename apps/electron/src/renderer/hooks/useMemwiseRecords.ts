@@ -107,7 +107,8 @@ export function useMemwiseViews(domain: string | null, entity?: string | null): 
   return useMemwiseQuery<MwView[]>(
     domain ? `views:${domain}:${entity ?? ''}` : null,
     async (api, ws) => (typeof api.memwiseListViews === 'function' ? api.memwiseListViews(ws, { domain: domain!, ...(entity ? { entity } : {}) }) : []),
-    c => c.kind === 'definitions' || c.kind === 'status',
+    // A saved view is pushed as a records change without a record id.
+    c => c.kind === 'definitions' || c.kind === 'status' || (c.kind === 'records' && !c.id),
   )
 }
 
