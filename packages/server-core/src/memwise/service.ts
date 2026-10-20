@@ -19,6 +19,9 @@ import { defaultModelResolver, projectModelRoles, type ModelResolver } from './m
 import { addMissingMetaPlaybooks, affectsIndex, findExampleProject, findExamplePlugins, META_PLAYBOOK_DIRS, seedProject } from './seed'
 import { createConnectorBridge, type SourcePluginFolder } from './connectors'
 import { toDiagnostic } from './dto'
+import { createPublicHandler, findFormAppDir, type PublicHandler } from './public'
+import { createPublicAddress, type PublicAddress, type PublicAddressOptions } from './relay'
+import { channelTools, pgSentStore } from './channels'
 
 export interface MemwiseLogger {
   info(...args: unknown[]): void
@@ -68,6 +71,10 @@ export interface MemwiseServiceOptions {
   testDatabaseUrl?: string
   /** Tests: run draft example cases in process instead of spawning the CLI. */
   testRunner?: KernelOptions['testRunner']
+  /** The built form app (`apps/external-form/dist`); default found under `exampleRoots` or `MEMWISE_FORM_APP_DIR`. */
+  formAppDir?: string
+  /** The relay tunnel's client name (`memwise-desktop/0.16.0`); tests also swap the tunnel, identity, listener and environment. */
+  publicAddress?: Pick<PublicAddressOptions, 'startTunnel' | 'loadIdentity' | 'listen' | 'env' | 'client'>
 }
 
 export interface MemwiseService {
@@ -89,6 +96,10 @@ export interface MemwiseService {
   status(): MemwiseHostStatus
   /** The indexed definitions with what the DTO mappers need. */
   context(): Promise<DtoContext>
+  /** Phase 5: the relay tunnel and a server's own public base (Settings → Public address). */
+  readonly publicAddress: PublicAddress
+  /** Phase 5: answers the public routes (forms, inbox links, webhooks); the tunnel and the direct listener call it. */
+  readonly publicHandler: PublicHandler
   /** The person this client acts as (the signed-in person, else who the owner switched to, else the owner). */
   personFor(client: ClientIdentity): Promise<Person>
   actorFor(client: ClientIdentity): Promise<PersonActor>
@@ -135,6 +146,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
   const mode = opts.mode ?? 'desktop'
   let cluster: import('@memwise/db').Cluster | undefined
   let kernel: Kernel | undefined
+  let address: PublicAddress | undefined
   setMemwiseHostStatus({ phase: 'starting', message: 'Starting the database…', diagnostics: [] })
   try {
     const db = await import('@memwise/db')
@@ -186,9 +198,13 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     // Phase 4 (22 §3): the same sample implementations back plugin tools on `run: { builtin }`
     // routes. A project that binds plugins (it has domain/bindings/) gets them only that way, so
     // nothing is bound until a binding freezes; earlier projects keep them always bound.
-    const builtins = runtime.sampleTools(sampleOpts)
+    const samples = runtime.sampleTools(sampleOpts)
+    // Phase 5 (23 §6): the real channel plugins' builtins (email over SMTP, WhatsApp). Only plugin
+    // routes reach them: the channel tools are bound by their fixed names (`email.send`) through a
+    // binding, never under the builtins' own names.
+    const builtins = [...samples, ...channelTools({ sent: pgSentStore(() => kernel!.pool) })]
     const usesBindings = existsSync(join(projectDir, 'domain', 'bindings'))
-    const tools: ToolDefinition[] = [...(opts.tools ?? []), ...(usesBindings ? [] : builtins)]
+    const tools: ToolDefinition[] = [...(opts.tools ?? []), ...(usesBindings ? [] : samples)]
     const connectors = createConnectorBridge({
       configDir: opts.configDir,
       ...(opts.workspaceRoot ? { workspaceRoot: opts.workspaceRoot } : {}),
@@ -205,6 +221,24 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
         ...(t.source?.plugin ? { plugin: t.source.plugin } : {}),
       })
     }
+
+    // ---- public address (Phase 5): the handler answers 503 until the kernel is up
+    const publicHandler = createPublicHandler({
+      kernel: () => kernel ?? null,
+      formAppDir: opts.formAppDir ?? findFormAppDir(opts.exampleRoots),
+      log,
+    })
+    const publicAddress = createPublicAddress({
+      configDir: opts.configDir,
+      handler: publicHandler,
+      mode,
+      log,
+      onChange: () => emitMemwiseChange({ kind: 'relay' }),
+      ...opts.publicAddress,
+    })
+    address = publicAddress
+    let ownerName: string | undefined
+    const businessName = () => process.env.MEMWISE_BUSINESS_NAME?.trim() || ownerName
 
     // ---- kernel
     setMemwiseHostStatus({ message: 'Starting the playbook engine…' })
@@ -224,6 +258,8 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       logLevel: process.env.DBOS_LOG ?? 'error',
       ...(testDatabaseUrl ? { testDatabaseUrl } : {}),
       ...(opts.testRunner ? { testRunner: opts.testRunner } : {}),
+      publicUrl: () => publicAddress.publicUrl(),
+      businessName,
     }
     const k = (await runtime.createKernel(kernelOptions)) as Kernel
     kernel = k
@@ -242,6 +278,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       ?? (await k.people.byEmail(ownerInfo.email))
       ?? (await k.people.create({ name: ownerInfo.name, email: ownerInfo.email, roles: knownRoles(['staff', 'manager']) }))
     if (state.ownerId !== owner.id) writeState(stateFile, { ...state, ownerId: owner.id })
+    ownerName = owner.name
     if (seeded && mode === 'desktop') {
       for (const p of DEMO_PEOPLE) {
         if (!(await k.people.byEmail(p.email))) await k.people.create({ name: p.name, email: p.email, roles: knownRoles(p.roles) })
@@ -311,6 +348,8 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       ...(examplePluginsDir ? { examplePluginsDir } : {}),
       sourcePlugins: () => connectors.sourcePluginFolders(),
       status: getMemwiseHostStatus,
+      publicAddress,
+      publicHandler,
       async context() {
         const { valueTypeToJsonSchema } = await import('@memwise/defs')
         // Always the kernel's current index: a publish re-indexes inside the kernel.
@@ -339,6 +378,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
         if (timer) clearTimeout(timer)
         watcher?.close()
         setMemwiseService(null)
+        await publicAddress.stop()
         try { await k.shutdown() } catch (e) { log.warn(`[memwise] engine shutdown: ${errorMessage(e)}`) }
         if (cluster) {
           try { await cluster.stop() } catch (e) { log.warn(`[memwise] database stop: ${errorMessage(e)}`) }
@@ -356,10 +396,13 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       diagnostics: diagnosticsOf(),
     })
     log.info(`[memwise] ready: ${Object.keys(indexed.project.workflows).length} playbook(s) from ${projectDir}`)
+    // The relay connects in the background; its state shows in Settings → Public address.
+    void publicAddress.start()
     return service
   } catch (e) {
     const message = errorMessage(e)
     log.error(`[memwise] could not start: ${message}`)
+    try { await address?.stop() } catch { /* never started */ }
     try { await kernel?.shutdown() } catch { /* already broken */ }
     try { await cluster?.stop() } catch { /* already broken */ }
     setMemwiseService(null)
