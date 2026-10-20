@@ -15,33 +15,19 @@ import {
   type GatewayDecision, type ModelCallResult, type ModelGateway, type ModelRequest, type ToolDefinition, type ToolGateway,
 } from '@memwise/gateway';
 import { compilePolicy, decide, layersFor, type EffectivePolicy } from '@memwise/policy';
-import pg from 'pg';
+import { createTestDatabase } from '@memwise/db';
 import { join } from 'node:path';
 import type { StepRunInput } from '../src/index.ts';
 
-export const ADMIN_URL = process.env.MEMWISE_TEST_ADMIN_URL ?? 'postgresql://postgres@127.0.0.1:54329/postgres';
 export const APP_VERSION = 'memwise-step-engine-test-1';
 export const PROJECT_ROOT = join(import.meta.dir, '../../../examples/intake');
 
 // ---------------------------------------------------------------- databases and DBOS
 
+/** A fresh database for DBOS's system tables: on MEMWISE_TEST_DATABASE_URL when set, else a throwaway cluster. */
 export async function createDatabase(label: string): Promise<{ url: string; drop(): Promise<void> }> {
-  const name = `mw_se_${label}_${process.pid}_${Date.now().toString(36)}`.toLowerCase().replace(/[^a-z0-9_]/g, '_');
-  const admin = new pg.Client({ connectionString: ADMIN_URL });
-  await admin.connect();
-  await admin.query(`CREATE DATABASE "${name}"`);
-  await admin.end();
-  const url = new URL(ADMIN_URL);
-  url.pathname = `/${name}`;
-  return {
-    url: url.toString(),
-    async drop() {
-      const c = new pg.Client({ connectionString: ADMIN_URL });
-      await c.connect();
-      await c.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
-      await c.end();
-    },
-  };
+  const db = await createTestDatabase(`mw_se_${label}`, { migrate: false });
+  return { url: db.url, drop: () => db.drop() };
 }
 
 export async function launchDbos(systemDatabaseUrl: string) {

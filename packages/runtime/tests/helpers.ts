@@ -1,10 +1,11 @@
-import { createTestDatabase, PgDefinitionStore, type TestDatabase } from '@memwise/db';
+import { createTestDatabase, PgDefinitionStore, postgresAvailable, type TestDatabase } from '@memwise/db';
 import type { PolicyDoc, WorkflowDef } from '@memwise/defs';
 import { spawn } from 'node:child_process';
 import { migrateAll } from '../src/kernel.ts';
 
-// The shared test server; a fresh database per test file.
-process.env.MEMWISE_TEST_DATABASE_URL ||= 'postgresql://postgres@127.0.0.1:54329/postgres';
+// A fresh database per test file: on MEMWISE_TEST_DATABASE_URL when set, else on a throwaway
+// cluster (@memwise/db createTestDatabase). Suites skip where neither is possible.
+export const pgAvailable = postgresAvailable();
 
 export async function kernelDatabase(prefix: string): Promise<TestDatabase> {
   const db = await createTestDatabase(prefix);

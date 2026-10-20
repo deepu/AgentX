@@ -464,6 +464,7 @@
         "@memwise/policy": "workspace:*",
       },
       "devDependencies": {
+        "@memwise/db": "workspace:*",
         "@types/bun": "^1.4.2",
         "@types/pg": "^8.15.0",
         "pg": "8.16.3",
