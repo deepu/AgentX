@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
-    "types": [],
+    "types": [
+      "bun"
+    ],
     "lib": [
       "ESNext"
     ],
@@ -31,14 +33,12 @@
       "@memwise/defs/*": [
         "./src/*"
       ]
-    },
-    "rootDir": "src",
-    "outDir": "dist",
-    "declaration": true,
-    "declarationMap": true
+    }
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "tests/**/*",
+    "scripts/**/*"
   ],
   "exclude": [
     "node_modules",

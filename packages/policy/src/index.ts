@@ -1,9 +1,12 @@
 /**
- * @memwise/policy: policy layers, the compiler and effective policy.
+ * @memwise/policy: policy layers, the compiler and effective policy (docs/memwise/08-policy-and-control.md §2).
  *
- * Empty skeleton from Phase 0 of the build plan (docs/memwise/17-build-plan.md);
- * filled in from Phase 1, extended in Phase 2. See README.md for what this package owns and which
- * packages it may depend on.
+ * Pure functions, no I/O. See README.md for what this package owns and which packages it may
+ * depend on.
  */
 
-export {};
+export * from './types.ts';
+export { BUILTIN_TOOLS, PLATFORM_DEFAULTS, VERIFIER_ROLE, layersFor, mergeStricter, stepLayer, type LayersForInput } from './layers.ts';
+export { compilePolicy } from './compile.ts';
+export { decide } from './decide.ts';
+export { describePolicy, violationsToDiagnostics } from './describe.ts';

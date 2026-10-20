@@ -1,9 +1,22 @@
 /**
  * @memwise/defs: file formats, JSON Schemas, checks and the definitions indexer.
  *
- * Empty skeleton from Phase 0 of the build plan (docs/memwise/17-build-plan.md);
- * filled in from Phase 1. See README.md for what this package owns and which
- * packages it may depend on.
+ * See README.md for what this package owns and docs/memwise/18-kernel-interfaces.md for
+ * how the other kernel packages use it.
  */
 
-export {};
+export * from './types.ts';
+export * from './contracts.ts';
+export { crashPoint } from './testing.ts';
+
+export { parseValueType, formatValueType, sameValueType, parseDuration, parseCount, parseRate } from './value-types.ts';
+export { parseWorkflowFile, parseExampleFile, type WorkflowShape } from './parse-workflow.ts';
+export { parseStepFile, splitFrontMatter } from './parse-step.ts';
+export { parseCaseFile, parseEntityFile } from './parse-types.ts';
+export { parsePolicyFile } from './parse-policy.ts';
+export { sha256, type ParseResult } from './source.ts';
+export { loadProject, loadWorkflow } from './load.ts';
+export { checkWorkflow, checkProject, BUILTIN_OUTCOMES, ENGINE_TOOLS, type CheckOptions } from './check.ts';
+export { validateValue, valueTypeToJsonSchema, IDENTIFIER_PATTERNS, type RecordTypes } from './values.ts';
+export { jsonSchemas, formats, type FormatName } from './formats.ts';
+export { indexProject, DOMAIN_POLICY_ID } from './index-project.ts';

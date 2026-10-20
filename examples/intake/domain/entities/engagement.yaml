@@ -1,0 +1,7 @@
+entity: Engagement
+fields:
+  title:    Text
+  started:  Date
+relationships:
+  customer: one Customer
+lifecycle: [proposed, active, closed]
