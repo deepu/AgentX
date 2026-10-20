@@ -803,6 +803,23 @@ export interface ElectronAPI {
   memwiseChannelsAvailable(workspaceId: string): Promise<import('@memwise/shared/protocol').MwChannelsAvailable>
   memwiseGetNotifySettings(workspaceId: string): Promise<import('@memwise/shared/protocol').MwNotifySettings>
   memwiseSetNotifySettings(workspaceId: string, settings: import('@memwise/shared/protocol').MwNotifySettings): Promise<import('@memwise/shared/protocol').MwNotifySettings>
+  // Phase 6: domains, records, pages, views, automations, audit (docs/memwise/24-phase-6-interfaces.md §13)
+  memwiseListDomains(workspaceId: string): Promise<import('@memwise/shared/protocol').MwDomain[]>
+  memwiseGetRecordPage(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordPageInput): Promise<import('@memwise/shared/protocol').MwRecordPage | null>
+  memwiseCreateRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordCreateInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
+  memwiseUpdateRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordUpdateInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
+  memwiseTransitionRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordTransitionInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
+  memwiseQueryRecords(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordQueryInput): Promise<import('@memwise/shared/protocol').MwRecordQueryResult>
+  memwiseRecordTree(workspaceId: string, input: import('@memwise/shared/protocol').MwTreeInput): Promise<import('@memwise/shared/protocol').MwTreeNode[]>
+  memwiseSaveNote(workspaceId: string, input: import('@memwise/shared/protocol').MwSaveNoteInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
+  memwiseGetDashboard(workspaceId: string, input: import('@memwise/shared/protocol').MwDashboardInput): Promise<import('@memwise/shared/protocol').MwDashboard>
+  memwiseListViews(workspaceId: string, input: { domain: string; entity?: string }): Promise<import('@memwise/shared/protocol').MwView[]>
+  memwiseSaveView(workspaceId: string, input: import('@memwise/shared/protocol').MwSaveViewInput): Promise<import('@memwise/shared/protocol').MwView>
+  memwiseListTriggers(workspaceId: string): Promise<import('@memwise/shared/protocol').MwTrigger[]>
+  memwiseReleaseTrigger(workspaceId: string, input: import('@memwise/shared/protocol').MwReleaseTriggerInput): Promise<import('@memwise/shared/protocol').MwSubmitResult & { started?: number }>
+  memwiseGetAuditTrail(workspaceId: string, input: { entity: string; id: string }): Promise<import('@memwise/shared/protocol').MwAuditTrail | null>
+  memwiseExportAuditTrail(workspaceId: string, input: import('@memwise/shared/protocol').MwAuditExportInput): Promise<import('@memwise/shared/protocol').MwAuditExport>
+  memwiseReadFile(workspaceId: string, fileId: string): Promise<import('@memwise/shared/protocol').MwFileData>
   onMemwiseChanged(callback: (change: import('@memwise/shared/protocol').MwChange) => void): () => void
 
   // Automations

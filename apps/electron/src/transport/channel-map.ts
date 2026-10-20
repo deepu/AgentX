@@ -492,6 +492,23 @@ export const CHANNEL_MAP = {
   memwiseChannelsAvailable: invoke(RPC_CHANNELS.memwise.CHANNELS_AVAILABLE),
   memwiseGetNotifySettings: invoke(RPC_CHANNELS.memwise.NOTIFY_GET),
   memwiseSetNotifySettings: invoke(RPC_CHANNELS.memwise.NOTIFY_SET),
+  // Phase 6: domains, records, pages, views, automations, audit (docs/memwise/24-phase-6-interfaces.md §13)
+  memwiseListDomains: invoke(RPC_CHANNELS.memwise.DOMAINS_LIST),
+  memwiseGetRecordPage: invoke(RPC_CHANNELS.memwise.RECORDS_PAGE),
+  memwiseCreateRecord: invoke(RPC_CHANNELS.memwise.RECORDS_CREATE),
+  memwiseUpdateRecord: invoke(RPC_CHANNELS.memwise.RECORDS_UPDATE),
+  memwiseTransitionRecord: invoke(RPC_CHANNELS.memwise.RECORDS_TRANSITION),
+  memwiseQueryRecords: invoke(RPC_CHANNELS.memwise.RECORDS_QUERY),
+  memwiseRecordTree: invoke(RPC_CHANNELS.memwise.RECORDS_TREE),
+  memwiseSaveNote: invoke(RPC_CHANNELS.memwise.RECORDS_NOTES_SAVE),
+  memwiseGetDashboard: invoke(RPC_CHANNELS.memwise.PAGES_DASHBOARD),
+  memwiseListViews: invoke(RPC_CHANNELS.memwise.VIEWS_LIST),
+  memwiseSaveView: invoke(RPC_CHANNELS.memwise.VIEWS_SAVE),
+  memwiseListTriggers: invoke(RPC_CHANNELS.memwise.TRIGGERS_LIST),
+  memwiseReleaseTrigger: invoke(RPC_CHANNELS.memwise.TRIGGERS_RELEASE),
+  memwiseGetAuditTrail: invoke(RPC_CHANNELS.memwise.AUDIT_GET),
+  memwiseExportAuditTrail: invoke(RPC_CHANNELS.memwise.AUDIT_EXPORT),
+  memwiseReadFile: invoke(RPC_CHANNELS.memwise.FILES_READ),
   onMemwiseChanged: listener(RPC_CHANNELS.memwise.CHANGED),
 
   // Automations
