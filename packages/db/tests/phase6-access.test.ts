@@ -11,7 +11,7 @@ describe.skipIf(!postgresAvailable())('grants and record scope (24 §2)', () => 
   let e: Record<string, EntityTypeDef>;
   const store = new PgEntityStore();
   let people: PgPeopleStore;
-  const ids: Record<string, string> = {};
+  const ids = {} as Record<'aster' | 'borealis' | 'siteA' | 'siteB' | 'docA' | 'docB' | 'edc', string>;
 
   beforeAll(async () => {
     db = await createTestDatabase('mw_p6_access');
