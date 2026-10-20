@@ -3,6 +3,7 @@ import { caseFormat, entityFormat, rolesFormat } from './formats.ts';
 import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, sha256, type ParseResult, type PathKey } from './source.ts';
 import { SCALAR_TYPES, type CaseTypeDef, type EntityTypeDef, type FieldDef, type RecordTypeDef, type RoleDef } from './types.ts';
 import { parseValueType } from './value-types.ts';
+import { parseCalculated, parseLifecycle, parseLinks, parsePageLayout, parseRelationships } from './parse-records.ts';
 
 /** Parses a type expression, reporting `invalid-type` at the path when it can't be read. */
 export function typeAt(src: unknown, report: Reporter, path: PathKey[]) {
@@ -12,7 +13,7 @@ export function typeAt(src: unknown, report: Reporter, path: PathKey[]) {
   return type;
 }
 
-/** A `fields:` map. A field may be a type expression or `{ type, required, description, access }`. */
+/** A `fields:` map. A field may be a type expression or `{ type, required, description, access, controlled }`. */
 export function parseFields(raw: unknown, report: Reporter, path: PathKey[]): Record<string, FieldDef> {
   const out: Record<string, FieldDef> = {};
   for (const [name, spec] of Object.entries(asRecord(raw))) {
@@ -26,6 +27,7 @@ export function parseFields(raw: unknown, report: Reporter, path: PathKey[]): Re
       required: obj && typeof obj.required === 'boolean' ? obj.required : undefined,
       description: obj ? asString(obj.description) : undefined,
       access: obj && Array.isArray(obj.access) ? asStrings(obj.access) : undefined,
+      controlled: obj && typeof obj.controlled === 'boolean' ? obj.controlled : undefined,
     });
   }
   return out;
@@ -70,21 +72,25 @@ export function parseEntityFile(text: string, file: string): ParseResult<EntityT
   }
   report.validate(entityFormat, src.data);
   const data = src.data;
-  const relationships: EntityTypeDef['relationships'] = {};
-  for (const [name, spec] of Object.entries(asRecord(data.relationships))) {
-    const m = typeof spec === 'string' ? /^\s*(one|many)\s+([A-Za-z_]\w*)\s*$/.exec(spec) : null;
-    if (m) relationships[name] = { cardinality: m[1] as 'one' | 'many', target: m[2]! };
-  }
+  // Phase 6 (24 §4, §6): object-form relationships, calculated fields, links, the statechart, the page.
+  const lifecycle = parseLifecycle(data.lifecycle, report);
   const value: EntityTypeDef = compact({
     entity: asString(data.entity) ?? '',
     fields: parseFields(data.fields, report, ['fields']),
-    relationships,
-    lifecycle: Array.isArray(data.lifecycle) ? asStrings(data.lifecycle) : undefined,
+    relationships: parseRelationships(data.relationships, report),
+    lifecycle: lifecycle.states,
     ownership: isRecord(data.ownership)
       ? Object.fromEntries(Object.entries(data.ownership).filter(([, v]) => typeof v === 'string')) as Record<string, string>
       : undefined,
     file,
     hash: sha256(text),
+    title: asString(data.title),
+    parent: asString(data.parent),
+    calculated: parseCalculated(data.calculated),
+    links: parseLinks(data.links),
+    lifecycleChart: lifecycle.chart,
+    invariants: Array.isArray(data.invariants) ? asStrings(data.invariants) : undefined,
+    page: parsePageLayout(data.page, report),
   });
   rememberLocator(value, src.locate);
   return { value, diagnostics: report.diagnostics };

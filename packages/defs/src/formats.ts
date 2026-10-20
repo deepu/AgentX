@@ -31,10 +31,104 @@ const field = z.union([
     required: z.boolean().optional(),
     description: z.string().optional(),
     access: names.optional().meta({ description: 'Roles allowed to see the field.' }),
+    controlled: z.boolean().optional().meta({ description: 'Phase 6: false exempts the field from the regulated reason rule (default true in a regulated domain).' }),
   }),
-], { error: 'expected a type expression or { type, required, description, access }' });
+], { error: 'expected a type expression or { type, required, description, access, controlled }' });
 
 const fields = z.record(z.string(), field);
+
+// ---------------------------------------------------------------- Phase 6 building blocks (24 §4-§8)
+
+/** An entity name as a file names it: bare in its own domain, or a key (`edc.Site`). */
+const ENTITY_NAME = '[A-Za-z_]\\w*(\\.[A-Za-z_]\\w*)?';
+
+/** A condition in the condition language (24 §5). */
+const condition = z.string().meta({ description: "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d." });
+
+const relationship = z.union([
+  z.string().regex(new RegExp(`^\\s*(one|many)\\s+${ENTITY_NAME}\\s*$`), { error: 'expected one <Entity> or many <Entity>' }),
+  z.strictObject({
+    one: z.string().optional(),
+    many: z.string().optional(),
+    via: z.string().optional().meta({ description: "many: the target's field pointing back (needed when it isn't unique)." }),
+  }),
+], { error: 'expected one <Entity>, many <Entity>, or { many: <Entity>, via: <field> }' });
+
+const calculated = z.union([
+  z.strictObject({ count: z.string(), where: condition.optional(), description: z.string().optional() }),
+  z.strictObject({ sum: z.string(), field: z.string(), where: condition.optional(), description: z.string().optional() }),
+  z.strictObject({ min: z.string(), field: z.string(), where: condition.optional(), description: z.string().optional() }),
+  z.strictObject({ max: z.string(), field: z.string(), where: condition.optional(), description: z.string().optional() }),
+  z.strictObject({ percent: z.string(), where: condition, description: z.string().optional() }),
+  z.strictObject({ formula: z.string(), description: z.string().optional() }),
+], { error: 'expected { count | sum | min | max | percent: <many relationship>, field, where } or { formula }' });
+
+const entityLink = z.strictObject({
+  match: z.union([names, z.record(z.string(), z.string())]).meta({ description: "Fields compared, in this entity's names; { site_number: number } renames." }),
+  follow: names.optional().meta({ description: "The other side's fields shown here, read-only." }),
+});
+
+const lifecycleChart = z.strictObject({
+  initial: z.string(),
+  states: z.record(z.string(), z.union([
+    z.null(),
+    z.strictObject({
+      on: z.record(z.string(), z.string()).optional().meta({ description: 'Transition name → target state.' }),
+      after: z.record(z.string(), z.strictObject({ remind: z.string().optional(), transition: z.string().optional() }))
+        .optional().meta({ description: 'Timers from entering the state: { 60d: { remind: <role> } } or { 30d: { transition: <name> } }.' }),
+      description: z.string().optional(),
+    }),
+  ])),
+  transitions: z.record(z.string(), z.union([
+    z.null(),
+    z.strictObject({
+      by: z.union([z.string(), names]).optional().meta({ description: 'step, role:<id>, source:<plugin | domain:<id>>, system.' }),
+      guard: condition.optional(),
+      signed: z.boolean().optional().meta({ description: 'Regulated domains: needs a matching signature on the record.' }),
+      description: z.string().optional(),
+    }),
+  ])).optional(),
+});
+
+/** A record page block, as written: `details`, or `{ fields: [...] }`, `{ viewer: file }`, ... (the parser checks which). */
+const pageBlock = z.union([z.string(), z.record(z.string(), z.unknown())])
+  .meta({ description: 'fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history.' });
+const pageArea = z.array(pageBlock);
+
+export const pageLayoutFormat = z.strictObject({
+  layout: z.enum(['single', 'split', 'sidebar']).optional().meta({ description: 'Default single.' }),
+  header: names.optional().meta({ description: 'Fields shown beside the title.' }),
+  main: pageArea.optional(),
+  left: pageArea.optional(),
+  right: pageArea.optional(),
+  side: pageArea.optional(),
+  below: pageArea.optional(),
+});
+
+const handoffTarget = z.strictObject({
+  workflow: z.string(),
+  with: z.record(z.string(), z.unknown()).optional()
+    .meta({ description: 'Start fields of the other workflow ← case.<path>, item, item.<path>, record, or a literal.' }),
+  returns: z.record(z.string(), z.string()).optional().meta({ description: "call: this case's field ← the child case's field, when the child ends." }),
+});
+
+const entityField = z.string().regex(new RegExp(`^${ENTITY_NAME}\\.[A-Za-z_]\\w*$`), { error: 'expected <Entity>.<field>, e.g. Person.cv_expires' });
+
+export const triggerFormat = z.strictObject({
+  entered: z.string().regex(new RegExp(`^${ENTITY_NAME}\\.[A-Za-z_]\\w*$`), { error: 'expected <Entity>.<state>, e.g. Site.activating' }).optional()
+    .meta({ description: 'A record enters a lifecycle state.' }),
+  created: z.string().optional().meta({ description: 'A record of this entity is created.' }),
+  changed: z.union([z.string(), z.strictObject({ entity: z.string(), fields: names.optional() })]).optional()
+    .meta({ description: 'A record changes (optionally only these fields).' }),
+  before: z.strictObject({ field: entityField, by: duration }).optional().meta({ description: 'A date on a record, this long before it.' }),
+  after: z.strictObject({ field: entityField, by: duration }).optional().meta({ description: 'A date on a record, this long after it.' }),
+  every: duration.optional().meta({ description: 'A schedule: 2w, 1d.' }),
+  at: z.string().regex(/^\d{1,2}:\d{2}$/, { error: 'expected a time like 06:00' }).optional(),
+  on: z.union([z.string(), z.number().int()]).optional().meta({ description: 'every: a weekday (monday) or a day of the month (1).' }),
+  message: z.strictObject({ address: z.string() }).optional().meta({ description: "An incoming message to the domain's intake address." }),
+  with: z.record(z.string(), z.unknown()).optional().meta({ description: 'Case field ← record, message.<field>, or a literal.' }),
+  as: z.string().optional().meta({ description: "Role the case runs as (default the workflow's owner)." }),
+}).meta({ description: 'What starts the workflow: entered, created, changed, before, after, every or message.' });
 
 const treatment = z.enum(TREATMENTS);
 const money = z.strictObject({ amount: z.number(), currency: z.string().regex(/^[A-Z]{3}$/, { error: 'expected a 3-letter ISO currency code' }) });
@@ -78,7 +172,21 @@ export const workflowFormat = z.strictObject({
       timeout: z.string().regex(new RegExp(TIMEOUT_PATTERN), { error: 'expected a timeout like 7d → needs_person' }).optional(),
     }).optional(),
     assignee: z.string().optional().meta({ description: 'Role whose attention this state needs (for states without a step file).' }),
+    start: handoffTarget.optional().meta({ description: 'Phase 6: start a case of another workflow and move on (event started).' }),
+    call: handoffTarget.optional().meta({ description: "Phase 6: run another workflow and wait; its outcome is this state's event." }),
+    for_each: z.strictObject({
+      items: z.string().regex(/^case\.[A-Za-z_][\w.]*$/, { error: 'expected a List case field like case.documents' }),
+      as: z.string().optional(),
+      start: handoffTarget.optional(),
+      call: handoffTarget.optional(),
+      join: z.union([z.enum(['all', 'any']), z.number().int().positive()]).optional().meta({ description: 'call: all (default), any, or a number.' }),
+    }).optional().meta({ description: 'Phase 6: start or call once per item of a List case field (events done, failed, started).' }),
+    wait_until: z.strictObject({
+      record: z.string().regex(/^case\.[A-Za-z_]\w*$/, { error: 'expected a Ref case field like case.site' }),
+      condition,
+    }).optional().meta({ description: 'Phase 6: wait until a condition on a record holds (event met).' }),
   })).meta({ description: 'The states, by name. A state with a steps/<name>.md file runs that step.' }),
+  starts_on: z.array(triggerFormat).optional().meta({ description: 'Phase 6: what starts the workflow.' }),
 }).meta({ title: 'MemWise workflow', description: 'workflows/<id>/workflow.yaml: the shape.' });
 
 const writeSource = z.union([
@@ -122,6 +230,16 @@ export const stepFormat = z.strictObject({
       .meta({ description: 'Writes it may fill; `{ legal_name: client_name }` takes a result named legal_name into client_name.' }),
     min_confidence: z.number().min(0).max(1).optional().meta({ description: 'Suggestions at or above this (and found in the document) are pre-filled. Default 0.8.' }),
   }).optional().meta({ description: 'External and person steps: what the form may read from the uploaded documents while the step waits (Phase 5).' }),
+  sign: z.string().optional().meta({ description: 'Phase 6: person steps need an e-signature with this meaning, e.g. "Reviewed and approved for filing".' }),
+  review: z.union([
+    z.enum(['document', 'table', 'diff', 'form']),
+    z.strictObject({
+      kind: z.enum(['document', 'table', 'diff', 'form']),
+      record: z.string().regex(/^case\.[A-Za-z_]\w*$/, { error: 'expected a Ref case field like case.document' }).optional(),
+      items: z.string().regex(/^case\.[A-Za-z_]\w*$/, { error: 'expected a List case field like case.items' }).optional(),
+    }),
+  ], { error: 'expected document, table, diff, form, or { kind, record | items }' }).optional()
+    .meta({ description: 'Phase 6: how the person reviews it; default chosen from what the step reads and writes.' }),
 }).meta({ title: 'MemWise step', description: 'The front matter of workflows/<id>/steps/<state>.md.' });
 
 export const caseFormat = z.strictObject({
@@ -132,11 +250,17 @@ export const caseFormat = z.strictObject({
 
 export const entityFormat = z.strictObject({
   entity: z.string(),
+  title: z.string().optional().meta({ description: 'How a record is named: "{site_number} · {name}". Default the first Text field.' }),
+  parent: z.string().optional().meta({ description: 'A one relationship or Ref field: the page-tree parent.' }),
   fields,
-  relationships: z.record(z.string(), z.string().regex(/^\s*(one|many)\s+[A-Za-z_]\w*\s*$/, { error: 'expected one <Entity> or many <Entity>' })).optional(),
-  lifecycle: names.optional(),
+  relationships: z.record(z.string(), relationship).optional(),
+  calculated: z.record(z.string(), calculated).optional().meta({ description: 'Rollups over many relationships and row formulas, computed in SQL.' }),
+  links: z.record(z.string(), entityLink).optional().meta({ description: 'The same thing in another domain, by its key (edc.Site).' }),
+  lifecycle: z.union([names, lifecycleChart], { error: 'expected a list of states, or { initial, states, transitions }' }).optional(),
+  invariants: z.array(condition).optional().meta({ description: 'Conditions that should hold; a broken one raises a flag, never blocks a write.' }),
   ownership: z.record(z.string(), z.string()).optional().meta({ description: 'field → owner (a plugin id or domain).' }),
-}).meta({ title: 'MemWise entity type', description: 'domain/entities/<name>.yaml.' });
+  page: pageLayoutFormat.optional().meta({ description: 'The record page layout.' }),
+}).meta({ title: 'MemWise entity type', description: 'domain/entities/<name>.yaml or domains/<id>/entities/<name>.yaml.' });
 
 const scriptedTurn = z.strictObject({
   text: z.string().optional(),
@@ -157,6 +281,8 @@ export const exampleFormat = z.strictObject({
   tools: z.record(z.string(), z.unknown()).optional(),
   model: z.record(z.string(), z.array(scriptedTurn)).optional(),
   approvals: z.record(z.string(), z.enum(['approve', 'reject'])).optional(),
+  records: z.record(z.string(), z.array(z.record(z.string(), z.unknown()))).optional()
+    .meta({ description: 'Phase 6: records to create before the run, by entity (bare in this domain, or a key); each may give `id` and `status`.' }),
   submit: z.record(z.string(), z.union([submission, z.array(submission)])).optional()
     .meta({ description: 'Answers to person and external steps, by state: one for every visit, or a list used in order.' }),
   expect: z.strictObject({
@@ -175,6 +301,85 @@ export const rolesFormat = z.strictObject({
     z.strictObject({ title: z.string(), description: z.string().optional() }),
   ], { error: 'expected a title, or { title, description }' })),
 }).meta({ title: 'MemWise roles', description: 'domain/roles.yaml: the roles people can have.' });
+
+// ---------------------------------------------------------------- workspace, domains, pages, views (Phase 6)
+
+export const workspaceFormat = z.strictObject({
+  workspace: z.string().optional().meta({ description: "The organisation's name; default the project folder's." }),
+  roles: rolesFormat.shape.roles.optional().meta({ description: 'The roles people can have, in every domain.' }),
+  policy: policyFormat.optional().meta({ description: "Workspace house rules: the layer above every domain's." }),
+  storm_limit: z.number().int().positive().optional().meta({ description: 'Firings from one trigger within a minute above this are held for a person. Default 25.' }),
+}).meta({ title: 'MemWise workspace', description: 'workspace.yaml: the organisation, its roles and house rules.' });
+
+export const domainFormat = z.strictObject({
+  domain: z.string().optional().meta({ description: 'The domain id, the folder name.' }),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  owner: z.string().optional().meta({ description: 'Role that gets flags and held triggers, and owns triggered cases by default.' }),
+  regulated: z.boolean().optional().meta({ description: 'Regulated mode: e-signatures, required reasons, audit export.' }),
+  retention: duration.optional().meta({ description: 'How long records are kept, e.g. 25y.' }),
+  accepts_from: names.optional().meta({ description: "Domains whose workflows may start or call this domain's workflows." }),
+  intake: z.strictObject({ address: z.string() }).optional().meta({ description: "Incoming messages to this address start the domain's message triggers." }),
+}).meta({ title: 'MemWise domain', description: 'domains/<id>/domain.yaml (or domain/domain.yaml for the default domain).' });
+
+const viewSort = z.array(z.union([
+  z.string().meta({ description: 'A field; `-field` sorts descending.' }),
+  z.strictObject({ field: z.string(), desc: z.boolean().optional() }),
+])).meta({ description: 'Sort order: [-received_at] or [{ field: received_at, desc: true }].' });
+
+const inlineView = z.strictObject({
+  entity: z.string(),
+  filter: condition.optional(),
+  sort: viewSort.optional(),
+  group: z.string().optional(),
+  columns: names.optional(),
+  layout: z.enum(['table', 'board']).optional(),
+});
+
+export const viewFormat = z.strictObject({
+  view: z.string().optional().meta({ description: 'The view id; default the file name.' }),
+  title: z.string().optional(),
+  entity: z.string().meta({ description: 'The entity type, bare in this domain or by key.' }),
+  filter: condition.optional(),
+  sort: viewSort.optional(),
+  group: z.string().optional().meta({ description: 'A field to group by (a board groups by status by default).' }),
+  columns: names.optional(),
+  layout: z.enum(['table', 'board']).optional().meta({ description: 'Default table.' }),
+}).meta({ title: 'MemWise view', description: 'domains/<id>/views/<id>.yaml: a shared, saved query on one entity type.' });
+
+const dashboardValue = z.union([
+  z.strictObject({ count: z.string(), where: condition.optional() }),
+  z.strictObject({ percent: z.string(), where: condition, of: condition.optional().meta({ description: 'Which rows make 100% (default all of them).' }) }),
+  z.strictObject({ sum: z.string(), field: z.string(), where: condition.optional() }),
+  z.strictObject({ avg: z.string(), field: z.string(), where: condition.optional() }),
+], { error: 'expected { count | percent | sum | avg: <Entity>, where, field }' });
+
+/** A dashboard block, as written: `{ kpi }`, `{ table }`, `{ list }`, `{ heatmap }` or `{ text }` (the parser checks which). */
+const dashboardBlock = z.record(z.string(), z.unknown())
+  .meta({ description: 'kpi: { label, value: { count | percent | sum | avg: <Entity>, where, field, of }, target }, table: { title, view }, list: { title, view }, heatmap: { rows, columns }, text: markdown.' });
+
+export const pageFormat = z.strictObject({
+  page: z.string().optional().meta({ description: 'The page id; default the file name.' }),
+  title: z.string(),
+  description: z.string().optional(),
+  under: z.union([z.string(), z.strictObject({ entity: z.string() })]).optional()
+    .meta({ description: 'Hang the page under each record of this entity type in the page tree.' }),
+  params: z.record(z.string(), typeExpr).optional().meta({ description: 'Parameters, e.g. study: Ref<Study>, bound from the record it hangs under.' }),
+  blocks: z.array(dashboardBlock),
+}).meta({ title: 'MemWise page', description: 'domains/<id>/pages/<id>.yaml: a dashboard.' });
+
+/** The parts of a dashboard block, checked one by one by the page parser. */
+export const dashboardBlockFormats = {
+  kpi: z.strictObject({ label: z.string(), value: dashboardValue, target: z.number().optional(), format: z.enum(['number', 'percent']).optional() }),
+  table: z.strictObject({ title: z.string().optional(), view: z.union([z.string(), inlineView]) }),
+  list: z.strictObject({ title: z.string().optional(), view: z.union([z.string(), inlineView]) }),
+  heatmap: z.strictObject({
+    title: z.string().optional(),
+    rows: z.strictObject({ entity: z.string(), where: condition.optional(), label: z.string().optional() }),
+    columns: z.array(z.strictObject({ label: z.string(), value: z.string() })),
+  }),
+  text: z.string(),
+} as const;
 
 // ---------------------------------------------------------------- plugins and bindings (Phase 4)
 
@@ -299,6 +504,10 @@ export const formats = {
   roles: rolesFormat,
   plugin: pluginFormat,
   binding: bindingFormat,
+  workspace: workspaceFormat,
+  domain: domainFormat,
+  page: pageFormat,
+  view: viewFormat,
 } as const;
 export type FormatName = keyof typeof formats;
 

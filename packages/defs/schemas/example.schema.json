@@ -80,6 +80,23 @@
         ]
       }
     },
+    "records": {
+      "description": "Phase 6: records to create before the run, by entity (bare in this domain, or a key); each may give `id` and `status`.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      }
+    },
     "submit": {
       "description": "Answers to person and external steps, by state: one for every visit, or a list used in order.",
       "type": "object",

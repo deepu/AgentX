@@ -15,7 +15,7 @@ type Tok =
 
 const KEYWORDS = new Set(['and', 'or', 'not', 'implies', 'is', 'set', 'in', 'true', 'false', 'null', 'today', 'now']);
 export const CONDITION_FUNCTIONS = ['days_since', 'days_until', 'coalesce', 'lower', 'length'] as const;
-const UNIT_MS: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 };
+const UNIT_MS: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000, y: 31_536_000_000 };
 
 class ConditionError extends Error { constructor(message: string, readonly pos: number) { super(message); } }
 
@@ -27,7 +27,7 @@ function tokenize(src: string): Tok[] {
     if (/\s/.test(c)) { i++; continue; }
     const start = i;
     if (/[0-9]/.test(c)) {
-      const m = /^(\d+(?:\.\d+)?)(ms|[smhdw](?![A-Za-z0-9_]))?(%)?/.exec(src.slice(i))!;
+      const m = /^(\d+(?:\.\d+)?)(ms|[smhdwy](?![A-Za-z0-9_]))?(%)?/.exec(src.slice(i))!;
       i += m[0].length;
       if (m[2]) out.push({ t: 'dur', ms: Math.round(Number(m[1]) * UNIT_MS[m[2]]!), src: m[0], pos: start });
       else out.push({ t: 'num', v: Number(m[1]), pct: !!m[3], pos: start });
