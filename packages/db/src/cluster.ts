@@ -128,8 +128,9 @@ function handle(c: { bins: PgBinaries; dataDir: string; port: number; socketDir?
     async stop() {
       if (stopped) return;
       const r = await c.exec(c.bins.pg_ctl, stopArgs);
-      // Exit code 1 with no pid file: it was not running (already stopped or killed).
-      if (r.code !== 0 && fs.existsSync(path.join(c.dataDir, 'postmaster.pid'))) throw new Error(`pg_ctl stop failed: ${r.stderr || r.stdout}`);
+      // A failure is fine when nothing is running any more (already stopped, or killed).
+      const live = readPid(c.dataDir);
+      if (r.code !== 0 && live && isPostmaster(live.pid)) throw new Error(`pg_ctl stop failed: ${r.stderr || r.stdout}`);
       stopped = true;
       cleanup();
     },
