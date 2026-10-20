@@ -45,6 +45,8 @@ interface ClientConnection {
   ws: WebSocket
   workspaceId: string | null
   webContentsId: number | null
+  /** MemWise person signed in on this connection (personal token or web login); null for the shared token. */
+  personId: string | null
   capabilities: Set<string>
   missedPongs: number
   alive: boolean
@@ -93,6 +95,14 @@ export interface WsRpcServerOptions {
    * If provided, a valid session cookie is accepted as an alternative to a bearer token.
    */
   validateSessionCookie?: (cookieHeader: string | null) => Promise<boolean>
+  /**
+   * A person's personal sign-in token, tried when the shared token does not match. Resolves to
+   * the person id (put on RequestContext.personId), or null. The shared token stays the
+   * machine/admin credential.
+   */
+  authenticatePersonToken?: (token: string) => Promise<string | null>
+  /** The person a valid session cookie belongs to (web login with email and password), or null. */
+  sessionCookiePerson?: (cookieHeader: string | null) => Promise<string | null>
   /** Server identity stamp on outgoing events. Default: 'local' */
   serverId?: string
   /** TLS configuration. When provided, the server listens on wss:// instead of ws://. */
@@ -140,6 +150,8 @@ export class WsRpcServer implements RpcServer {
   private readonly requireAuth: boolean
   private readonly validateToken: ((token: string) => Promise<boolean>) | null
   private readonly validateSessionCookie: ((cookieHeader: string | null) => Promise<boolean>) | null
+  private readonly authenticatePersonToken: WsRpcServerOptions['authenticatePersonToken']
+  private readonly sessionCookiePerson: WsRpcServerOptions['sessionCookiePerson']
   private readonly serverId: string
   private readonly tlsOptions: WsRpcTlsOptions | null
   private readonly serverVersion: string
@@ -156,6 +168,8 @@ export class WsRpcServer implements RpcServer {
     this.requireAuth = opts?.requireAuth ?? false
     this.validateToken = opts?.validateToken ?? null
     this.validateSessionCookie = opts?.validateSessionCookie ?? null
+    this.authenticatePersonToken = opts?.authenticatePersonToken
+    this.sessionCookiePerson = opts?.sessionCookiePerson
     this.serverId = opts?.serverId ?? 'local'
     this.serverVersion = opts?.serverVersion ?? ''
     this.tlsOptions = opts?.tls ?? null
@@ -432,6 +446,7 @@ export class WsRpcServer implements RpcServer {
         }
 
         // Auth check — bearer token OR session cookie (web UI)
+        let personId: string | null = null
         if (this.requireAuth) {
           let authenticated = false
 
@@ -440,9 +455,18 @@ export class WsRpcServer implements RpcServer {
             authenticated = await this.validateToken(envelope.token)
           }
 
+          // 1b. A person's own token (MemWise people sign-in)
+          if (!authenticated && envelope.token && this.authenticatePersonToken) {
+            personId = await this.authenticatePersonToken(envelope.token).catch(() => null)
+            authenticated = !!personId
+          }
+
           // 2. Fallback: try session cookie from HTTP upgrade request (web UI path)
           if (!authenticated && this.validateSessionCookie && upgradeRequestCookie) {
             authenticated = await this.validateSessionCookie(upgradeRequestCookie)
+            if (authenticated && this.sessionCookiePerson) {
+              personId = await this.sessionCookiePerson(upgradeRequestCookie).catch(() => null)
+            }
           }
 
           if (!authenticated) {
@@ -462,7 +486,8 @@ export class WsRpcServer implements RpcServer {
             // Identity must match (workspace + webContentsId)
             const identityMatch =
               prevClient.workspaceId === (envelope.workspaceId ?? null) &&
-              prevClient.webContentsId === (envelope.webContentsId ?? null)
+              prevClient.webContentsId === (envelope.webContentsId ?? null) &&
+              prevClient.personId === personId
 
             if (identityMatch) {
               // Valid reconnect — prepare client state but do NOT add to
@@ -568,6 +593,7 @@ export class WsRpcServer implements RpcServer {
           ws,
           workspaceId: envelope.workspaceId ?? null,
           webContentsId: envelope.webContentsId ?? null,
+          personId,
           capabilities: new Set(envelope.clientCapabilities ?? []),
           missedPongs: 0,
           alive: true,
@@ -665,6 +691,7 @@ export class WsRpcServer implements RpcServer {
       clientId: client.id,
       workspaceId: client.workspaceId,
       webContentsId: client.webContentsId,
+      ...(client.personId ? { personId: client.personId } : {}),
     }
 
     try {

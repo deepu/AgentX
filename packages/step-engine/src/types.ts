@@ -6,7 +6,7 @@
  * `StepResult`. Change only additively.
  */
 import type {
-  CaseSnapshot, CaseValue, CheckResult, RecordTypeDef, StepDef, StepRecorder, StepRecordReader, StepToken,
+  CaseSnapshot, CaseValue, CheckResult, Money, RecordTypeDef, StepDef, StepRecorder, StepRecordReader, StepToken,
 } from '@memwise/defs';
 import type { ModelGateway, ToolGateway } from '@memwise/gateway';
 import type { EffectivePolicy } from '@memwise/policy';
@@ -32,7 +32,7 @@ export interface StepRunInput {
    * (platform, plugin, domain, workflow) are run budgets: they apply to this plus `runSpent`.
    * Budgets set by the step layer apply to this step run alone.
    */
-  runSpent?: { tokens: number; modelCalls: number; elapsedMs: number };
+  runSpent?: { tokens: number; modelCalls: number; elapsedMs: number; /** Money spent, when every earlier call was priced in one currency. */ money?: Money };
 }
 
 export type StepResultStatus = 'completed' | 'needs_person' | 'failed';
@@ -50,7 +50,7 @@ export interface StepResult {
   writes: Record<string, CaseValue>;
   rationale?: string;
   checkpoint: CheckResult[];
-  usage: { tokens: number; modelCalls: number; toolCalls: number; durationMs: number };
+  usage: { tokens: number; modelCalls: number; toolCalls: number; durationMs: number; /** What the model calls cost (Phase 2). */ cost?: Money };
   tainted: boolean;
   /** Why the step stopped short, for `needs_person` and `failed`. */
   reason?: string;

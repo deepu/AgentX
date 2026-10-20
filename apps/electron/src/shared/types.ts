@@ -744,6 +744,30 @@ export interface ElectronAPI {
   regeneratePageThumbnail(workspaceId: string, pageSlug: string): Promise<boolean>
   onPagesChanged(callback: (workspaceId: string, pages: import('@memwise/shared/pages/types').LoadedPage[]) => void): () => void
 
+  // MemWise app API: playbooks, cases, inbox (docs/memwise/19-phase-2-interfaces.md §9)
+  memwiseStatus(workspaceId: string): Promise<import('@memwise/shared/protocol').MwStatus>
+  memwiseListPeople(workspaceId: string): Promise<import('@memwise/shared/protocol').MwPerson[]>
+  memwiseActAs(workspaceId: string, personId: string): Promise<import('@memwise/shared/protocol').MwStatus>
+  memwiseCreatePerson(workspaceId: string, input: { name: string; email: string; roles: string[] }): Promise<import('@memwise/shared/protocol').MwPerson>
+  memwiseListRoles(workspaceId: string): Promise<import('@memwise/shared/protocol').MwRole[]>
+  memwiseListPlaybooks(workspaceId: string): Promise<import('@memwise/shared/protocol').MwPlaybookSummary[]>
+  memwiseGetPlaybook(workspaceId: string, id: string): Promise<import('@memwise/shared/protocol').MwPlaybook>
+  memwiseGetLiveCounts(workspaceId: string, id: string): Promise<import('@memwise/shared/protocol').MwLiveCounts>
+  memwiseListCases(workspaceId: string, filter?: { workflowId?: string; status?: import('@memwise/shared/protocol').MwRunStatus }): Promise<import('@memwise/shared/protocol').MwCaseSummary[]>
+  memwiseGetCase(workspaceId: string, caseId: string): Promise<import('@memwise/shared/protocol').MwCase>
+  memwiseStartCase(workspaceId: string, input: import('@memwise/shared/protocol').MwStartCaseInput): Promise<import('@memwise/shared/protocol').MwCaseSummary>
+  memwiseGetStepRecord(workspaceId: string, stepRunId: string): Promise<import('@memwise/shared/protocol').MwStepRecord>
+  memwiseExplainStep(workspaceId: string, input: import('@memwise/shared/protocol').MwExplainInput): Promise<import('@memwise/shared/protocol').MwExplanation>
+  memwiseListInbox(workspaceId: string): Promise<import('@memwise/shared/protocol').MwInboxItem[]>
+  memwiseSubmitStep(workspaceId: string, input: import('@memwise/shared/protocol').MwSubmitStepInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
+  memwiseDecideApproval(workspaceId: string, input: import('@memwise/shared/protocol').MwDecideApprovalInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
+  memwiseSendEvent(workspaceId: string, input: import('@memwise/shared/protocol').MwSendEventInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
+  memwiseListEntities(workspaceId: string, entity: string): Promise<import('@memwise/shared/protocol').MwEntityRow[]>
+  memwiseListEntityTypes(workspaceId: string): Promise<import('@memwise/shared/protocol').MwEntityType[]>
+  memwiseUploadFile(workspaceId: string, input: import('@memwise/shared/protocol').MwUploadInput): Promise<import('@memwise/shared/protocol').MwDocument>
+  memwiseOpenChat(workspaceId: string, input: import('@memwise/shared/protocol').MwOpenChatInput): Promise<{ sessionId: string }>
+  onMemwiseChanged(callback: (change: import('@memwise/shared/protocol').MwChange) => void): () => void
+
   // Automations
   getAutomations(workspaceId: string): Promise<unknown>
 
@@ -990,6 +1014,28 @@ export interface PagesNavigationState {
 }
 
 /**
+ * MemWise navigation states (docs/memwise/19-phase-2-interfaces.md §10).
+ * Inbox, Cases and Playbooks each have a list in the navigator and a detail view.
+ */
+export interface InboxNavigationState {
+  navigator: 'inbox'
+  details: { type: 'inboxItem'; itemId: string } | null
+  rightSidebar?: RightSidebarPanel
+}
+
+export interface CasesNavigationState {
+  navigator: 'cases'
+  details: { type: 'case'; caseId: string } | null
+  rightSidebar?: RightSidebarPanel
+}
+
+export interface PlaybooksNavigationState {
+  navigator: 'playbooks'
+  details: { type: 'playbook'; playbookId: string } | null
+  rightSidebar?: RightSidebarPanel
+}
+
+/**
  * Unified navigation state
  */
 export type NavigationState =
@@ -1000,6 +1046,9 @@ export type NavigationState =
   | AutomationsNavigationState
   | ProjectsNavigationState
   | PagesNavigationState
+  | InboxNavigationState
+  | CasesNavigationState
+  | PlaybooksNavigationState
 
 export const isSessionsNavigation = (
   state: NavigationState
@@ -1028,6 +1077,18 @@ export const isProjectsNavigation = (
 export const isPagesNavigation = (
   state: NavigationState
 ): state is PagesNavigationState => state.navigator === 'pages'
+
+export const isInboxNavigation = (
+  state: NavigationState
+): state is InboxNavigationState => state.navigator === 'inbox'
+
+export const isCasesNavigation = (
+  state: NavigationState
+): state is CasesNavigationState => state.navigator === 'cases'
+
+export const isPlaybooksNavigation = (
+  state: NavigationState
+): state is PlaybooksNavigationState => state.navigator === 'playbooks'
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
@@ -1065,6 +1126,15 @@ export const getNavigationStateKey = (state: NavigationState): string => {
       return `pages/page/${state.details.pageSlug}`
     }
     return 'pages'
+  }
+  if (state.navigator === 'inbox') {
+    return state.details ? `inbox/item/${state.details.itemId}` : 'inbox'
+  }
+  if (state.navigator === 'cases') {
+    return state.details ? `cases/case/${state.details.caseId}` : 'cases'
+  }
+  if (state.navigator === 'playbooks') {
+    return state.details ? `playbooks/playbook/${state.details.playbookId}` : 'playbooks'
   }
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
@@ -1132,6 +1202,23 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
       return { navigator: 'pages', details: { type: 'page', pageSlug } }
     }
     return { navigator: 'pages', details: null }
+  }
+
+  // Handle MemWise sections
+  if (key === 'inbox') return { navigator: 'inbox', details: null }
+  if (key.startsWith('inbox/item/')) {
+    const itemId = key.slice(11)
+    return { navigator: 'inbox', details: itemId ? { type: 'inboxItem', itemId } : null }
+  }
+  if (key === 'cases') return { navigator: 'cases', details: null }
+  if (key.startsWith('cases/case/')) {
+    const caseId = key.slice(11)
+    return { navigator: 'cases', details: caseId ? { type: 'case', caseId } : null }
+  }
+  if (key === 'playbooks') return { navigator: 'playbooks', details: null }
+  if (key.startsWith('playbooks/playbook/')) {
+    const playbookId = key.slice(19)
+    return { navigator: 'playbooks', details: playbookId ? { type: 'playbook', playbookId } : null }
   }
 
   // Handle settings

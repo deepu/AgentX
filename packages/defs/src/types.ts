@@ -245,6 +245,11 @@ export interface ExampleCase {
   model?: Record<string, ScriptedTurn[]>;
   /** Answers to approval requests, by tool name. */
   approvals?: Record<string, 'approve' | 'reject'>;
+  /**
+   * Answers to person and external steps, by state (Phase 2): one answer for every visit, or a
+   * list consumed in order. A run waiting in a state without an answer left is where it stops.
+   */
+  submit?: Record<string, ExampleSubmission | ExampleSubmission[]>;
   expect: {
     /** Outcome of the first step run (the step at `startAt`). */
     outcome?: string;
@@ -254,8 +259,20 @@ export interface ExampleCase {
     writes?: Record<string, unknown>;
     /** Number of times each tool's effect actually happened. */
     effects?: Record<string, number>;
+    /**
+     * Rows in the domain tables after the run, by entity type (Phase 2): a count, or the rows
+     * expected (each matched on the listed fields only; the count must match too).
+     */
+    entities?: Record<string, number | Record<string, unknown>[]>;
   };
   file: string;
+}
+
+/** A scripted answer to a person or external step in an example case. */
+export interface ExampleSubmission {
+  outcome: string;
+  values?: Record<string, unknown>;
+  comment?: string;
 }
 
 // ---------------------------------------------------------------- project

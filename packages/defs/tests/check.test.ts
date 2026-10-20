@@ -17,11 +17,9 @@ const work = (front: string) => `---\n${front}\n---\nDo it.\n`;
 const BASE_WORK = BASE[WORK]!.split('---')[1]!.trim();
 
 describe('checks', () => {
-  test('the sample project passes with only the system-step warning', async () => {
+  test('the sample project passes', async () => {
     const { project } = await loadProject(SAMPLE);
-    expect(brief(checkProject(project, SAMPLE_ENV))).toEqual([
-      'warning system-step-phase-2 workflows/client-intake/steps/onboard.md:3 performer',
-    ]);
+    expect(brief(checkProject(project, SAMPLE_ENV))).toEqual([]);
   });
 
   test('the base fixture is clean', async () => {
@@ -122,9 +120,68 @@ describe('checks', () => {
     expect(await check({ 'workflows/demo/case.yaml': BASE['workflows/demo/case.yaml']!.replace('  owner: Ref<Customer>', '  owner: Ref<Customer>\n  snapshot: Customer') })).toEqual([]);
   });
 
-  test('system steps get a warning', async () => {
-    expect(await check({ [WORK]: work(BASE_WORK.replace('performer: agent', 'performer: system')) }))
-      .toEqual([`warning system-step-phase-2 ${WORK}:3 performer`]);
+  test('system steps: writes come from tools, every required argument is mapped from a field the step reads', async () => {
+    const env = { tools: { ...ENV.tools, 'lookup.customer': { effect: 'read' as const, inputSchema: {
+      type: 'object', properties: { name: { type: 'string' }, region: { type: 'string' } }, required: ['name', 'region'], additionalProperties: false,
+    } } } };
+    const system = (extra: string) => work([
+      'title: Look up', 'performer: system', 'reads: [case.name]', 'tools: { allowed: [lookup.customer], required: [lookup.customer] }',
+      'outcomes: [done]', extra,
+    ].join('\n'));
+    expect(await check({ [WORK]: system('map:\n  lookup.customer: { name: case.name, region: south }\nwrites:\n  owner: { type: Ref<Customer>, from: { tool: lookup.customer, field: id } }') }, env))
+      .toEqual([]);
+    const out = await check({ [WORK]: system([
+      'map:', '  lookup.customer: { name: case.flags, colour: blue }', '  mail.send: { to: x }',
+      'writes:', '  owner: Ref<Customer>',
+    ].join('\n')) }, env);
+    expect(out).toEqual([
+      `error map-unknown-tool ${WORK}:9 map.mail.send`,
+      `error unmapped-argument ${WORK}:8 map.lookup.customer`,
+      `error map-unread-field ${WORK}:8 map.lookup.customer.name`,
+      `error unknown-argument ${WORK}:8 map.lookup.customer.colour`,
+      `error system-write-not-from-tool ${WORK}:11 writes.owner`,
+    ]);
+    // Without a step outcome a system step finishes with `done`.
+    expect(await check({ [WORK]: work('title: x\nperformer: system\nreads: [case.name]\ntools: { allowed: [lookup.customer], required: [lookup.customer] }\nmap: { lookup.customer: { name: case.name, region: r } }') }, env))
+      .toEqual([]);
+    expect(await check({ [WORK]: system('map: { lookup.customer: { name: case.name, region: r } }').replace('outcomes: [done]', 'outcomes: [done, other]') }, env))
+      .toContain(`error system-step-outcomes ${WORK}:6 outcomes`);
+  });
+
+  test('roles: person steps name an existing assignee; owners, state assignees and approvers exist', async () => {
+    const roles = 'roles:\n  staff: Staff\n  manager: { title: Manager }\n';
+    expect(await check({ 'domain/roles.yaml': roles, 'workflows/demo/steps/review.md': BASE['workflows/demo/steps/review.md']!.replace('performer: person', 'performer: person\nassignee: manager') })).toEqual([]);
+    // Phase 1 behaviour without roles.yaml: nothing about roles is checked.
+    expect(await check()).toEqual([]);
+    const out = await check({
+      'domain/roles.yaml': roles,
+      'domain/policy.yaml': 'effects: { outbound: approve }\napprovals: { by: [boss] }\n',
+      [WF]: shape('  work: { on: { done: review } }\n  review:\n    on: { approved: end }\n    wait: { timeout: 2d -> end }\n    assignee: nobody\n').replace('start: work', 'owner: chief\nstart: work'),
+    });
+    expect(out).toEqual([
+      'error unknown-role domain/policy.yaml:? approvals.by.0',
+      `error unknown-role ${WF}:3 owner`,
+      `error unknown-role ${WF}:10 steps.review.assignee`,
+      'error missing-assignee workflows/demo/steps/review.md:2',
+    ]);
+    expect(await check({ 'domain/roles.yaml': roles, 'workflows/demo/steps/review.md': BASE['workflows/demo/steps/review.md']!.replace('performer: person', 'performer: person\nassignee: boss') }))
+      .toEqual(['error unknown-role workflows/demo/steps/review.md:4 assignee']);
+  });
+
+  test('example cases: submit answers and expected entities', async () => {
+    const out = await check({
+      'workflows/demo/examples/run.yaml': [
+        'case: { name: Asha }',
+        'submit:',
+        '  review: { outcome: approved }',
+        '  work: { outcome: done }',
+        'expect: { entities: { Customer: 1, Supplier: 0 } }',
+      ].join('\n'),
+    });
+    expect(out).toEqual([
+      'error example-unknown-state workflows/demo/examples/run.yaml:4 submit.work',
+      'error unknown-entity workflows/demo/examples/run.yaml:5 expect.entities.Supplier',
+    ]);
   });
 
   test('example cases: states, outcomes, fields, values and tools', async () => {

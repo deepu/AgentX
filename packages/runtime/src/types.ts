@@ -25,6 +25,10 @@ export interface KernelOptions {
   stepExecutor?: StepExecutor;
   /** DBOS log level. Default `warn`. */
   logLevel?: string;
+  /** Where uploaded files are kept (content-addressed). Default `MEMWISE_FILES_DIR`, else `~/.memwise/files`. */
+  filesDir?: string;
+  /** Model role for quarantined reading (`intake.extract_fields`). Default `extractor`. */
+  extractorRole?: string;
 }
 
 export type RunStatus = 'active' | 'done' | 'stopped';
@@ -75,7 +79,7 @@ export interface StartRunInput {
   by?: string;
 }
 
-export interface Kernel {
+export interface Kernel extends KernelPhase2 {
   /** Load the project folder and index it; returns the loader's diagnostics. */
   index(): Promise<Diagnostic[]>;
   startRun(input: StartRunInput): Promise<{ runId: string; caseId: string }>;
@@ -86,9 +90,10 @@ export interface Kernel {
   sendEvent(runId: string, event: string | RunEvent, opts: { idemKey: string; forSeq?: number }): Promise<{ sent: boolean }>;
   /**
    * Decide a pending approval and wake the waiting step. Deciding twice changes nothing; an
-   * approval whose step run is no longer waiting is refused with status `expired`.
+   * approval whose step run is no longer waiting is refused with status `expired`. With `by`, a
+   * person without an approver role for the step is refused with status `forbidden` (Phase 2).
    */
-  decideApproval(decision: ApprovalDecision): Promise<{ applied: boolean; status: ApprovalStatus | 'expired' | 'missing' }>;
+  decideApproval(decision: ApprovalDecision, by?: Actor): Promise<{ applied: boolean; status: ApprovalStatus | 'expired' | 'missing' | 'forbidden' }>;
   waitForRun(runId: string, opts: { until: (run: RunRecord) => boolean; timeoutMs: number }): Promise<RunRecord>;
   getRun(runId: string): Promise<RunRecord | undefined>;
   getTransitions(runId: string): Promise<TransitionRecord[]>;

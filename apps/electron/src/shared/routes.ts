@@ -196,6 +196,24 @@ export const routes = {
         ? `pages/page/${pageSlug}` as const
         : 'pages' as const,
 
+    /** MemWise inbox: everything waiting on the acting person, or one item */
+    inbox: (itemId?: string) =>
+      itemId
+        ? `inbox/item/${encodeURIComponent(itemId)}` as const
+        : 'inbox' as const,
+
+    /** MemWise cases list, or one case */
+    cases: (caseId?: string) =>
+      caseId
+        ? `cases/case/${encodeURIComponent(caseId)}` as const
+        : 'cases' as const,
+
+    /** MemWise playbooks list, or one playbook */
+    playbooks: (playbookId?: string) =>
+      playbookId
+        ? `playbooks/playbook/${encodeURIComponent(playbookId)}` as const
+        : 'playbooks' as const,
+
     /** Kanban board view (sessions navigator, board view mode, all sessions) */
     board: () => 'board' as const,
   },

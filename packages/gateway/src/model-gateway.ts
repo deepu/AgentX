@@ -5,6 +5,7 @@
  */
 import type { AssistantMessage, Usage } from '@earendil-works/pi-ai';
 import type { TokenUsage } from '@memwise/defs';
+import { spendOf } from './money.ts';
 import {
   BudgetExceededError,
   type Budget, type ModelCallResult, type ModelGateway, type ModelGatewayOptions, type ModelProvider, type Spent,
@@ -42,7 +43,7 @@ export function createModelGateway({ roles, providers, sink }: ModelGatewayOptio
       if (limit) throw new BudgetExceededError(limit, budget!, spent ?? { tokens: 0, modelCalls: 0, elapsedMs: 0 });
 
       const failures: string[] = [];
-      for (const { provider: providerId, model } of [{ provider: config.provider, model: config.model }, ...(config.fallbacks ?? [])]) {
+      for (const { provider: providerId, model, price } of [{ provider: config.provider, model: config.model, price: config.price }, ...(config.fallbacks ?? [])]) {
         const startedAt = new Date().toISOString();
         const t0 = performance.now();
         let message: AssistantMessage | undefined;
@@ -58,11 +59,13 @@ export function createModelGateway({ roles, providers, sink }: ModelGatewayOptio
         }
         const durationMs = Math.round(performance.now() - t0);
         const usage = message ? toTokenUsage(message.usage) : undefined;
+        const cost = usage && spendOf(usage, price);
+        if (usage && cost?.currency === 'USD') usage.costUsd = cost.amount;
         await record({
           name: role, sessionId, startedAt, durationMs, error,
           model: { provider: providerId, model, usage: usage ?? toTokenUsage(ZERO_USAGE), stopReason: message?.stopReason ?? 'error' },
         });
-        if (!error && message && usage) return { message, provider: providerId, model, usage, durationMs };
+        if (!error && message && usage) return { message, provider: providerId, model, usage, durationMs, ...(cost ? { cost } : {}) };
         failures.push(`${providerId}/${model}: ${error}`);
         if (signal?.aborted) break; // cancelled: a fallback would be cancelled too
       }

@@ -54,6 +54,9 @@ export const policyFormat = z.strictObject({
   budgets: z.strictObject({ tokens: count.optional(), time: duration.optional(), modelCalls: count.optional(), money: money.optional() }).optional(),
   modelRoles: names.optional(),
   taint: z.strictObject({ enabled: z.boolean().optional(), outboundWhenTainted: treatment.optional() }).optional(),
+  approvals: z.strictObject({
+    by: names.optional().meta({ description: 'Roles that may decide effect approvals.' }),
+  }).optional(),
 }).meta({ title: 'MemWise policy layer', description: 'domain/policy.yaml, workflows/<id>/policy.yaml, or the policy block of a step.' });
 
 export const TIMEOUT_PATTERN = '^\\s*(\\S+)\\s*(→|->)\\s*(\\S+)\\s*$';
@@ -62,6 +65,7 @@ export const workflowFormat = z.strictObject({
   workflow: z.string().meta({ description: 'The workflow id, usually the folder name.' }),
   version: z.number().int().positive(),
   title: z.string().optional(),
+  owner: z.string().optional().meta({ description: 'Role that gets attention items: stopped runs, cases needing a person.' }),
   case: z.string().optional().meta({ description: 'Path to the case type, relative to this file. Default ./case.yaml.' }),
   policy: z.string().optional().meta({ description: 'Path to the workflow policy layer. Default ./policy.yaml when it exists.' }),
   start: z.string(),
@@ -71,6 +75,7 @@ export const workflowFormat = z.strictObject({
       remind: duration.optional(),
       timeout: z.string().regex(new RegExp(TIMEOUT_PATTERN), { error: 'expected a timeout like 7d → needs_person' }).optional(),
     }).optional(),
+    assignee: z.string().optional().meta({ description: 'Role whose attention this state needs (for states without a step file).' }),
   })).meta({ description: 'The states, by name. A state with a steps/<name>.md file runs that step.' }),
 }).meta({ title: 'MemWise workflow', description: 'workflows/<id>/workflow.yaml: the shape.' });
 
@@ -94,6 +99,10 @@ export const stepFormat = z.strictObject({
   checkpoint: z.array(z.string()).optional(),
   outcomes: names.optional(),
   policy: policyFormat.optional(),
+  assignee: z.string().optional().meta({ description: 'Role that does (or decides) a person or external step.' }),
+  map: z.record(z.string(), z.record(z.string(), z.unknown())).optional().meta({
+    description: 'System steps: arguments for each tool, in call order. `case.<field>` reads the case; anything else is a literal (or write { value: ... }).',
+  }),
 }).meta({ title: 'MemWise step', description: 'The front matter of workflows/<id>/steps/<state>.md.' });
 
 export const caseFormat = z.strictObject({
@@ -115,6 +124,12 @@ const scriptedTurn = z.strictObject({
   toolCalls: z.array(z.strictObject({ name: z.string(), args: z.record(z.string(), z.unknown()) })).optional(),
 });
 
+const submission = z.strictObject({
+  outcome: z.string(),
+  values: z.record(z.string(), z.unknown()).optional(),
+  comment: z.string().optional(),
+});
+
 export const exampleFormat = z.strictObject({
   name: z.string().optional().meta({ description: 'Default: the file name.' }),
   description: z.string().optional(),
@@ -123,13 +138,24 @@ export const exampleFormat = z.strictObject({
   tools: z.record(z.string(), z.unknown()).optional(),
   model: z.record(z.string(), z.array(scriptedTurn)).optional(),
   approvals: z.record(z.string(), z.enum(['approve', 'reject'])).optional(),
+  submit: z.record(z.string(), z.union([submission, z.array(submission)])).optional()
+    .meta({ description: 'Answers to person and external steps, by state: one for every visit, or a list used in order.' }),
   expect: z.strictObject({
     outcome: z.string().optional(),
     state: z.string().optional(),
     writes: z.record(z.string(), z.unknown()).optional(),
     effects: z.record(z.string(), z.number().int().nonnegative()).optional(),
+    entities: z.record(z.string(), z.union([z.number().int().nonnegative(), z.array(z.record(z.string(), z.unknown()))])).optional()
+      .meta({ description: 'Rows in the domain tables after the run, by entity type: a count, or the rows (matched on the listed fields).' }),
   }),
 }).meta({ title: 'MemWise example case', description: 'workflows/<id>/examples/*.yaml.' });
+
+export const rolesFormat = z.strictObject({
+  roles: z.record(z.string().regex(/^[a-z][a-z0-9_-]*$/, { error: 'a role id is lower-case letters, digits, - and _' }), z.union([
+    z.string(),
+    z.strictObject({ title: z.string(), description: z.string().optional() }),
+  ], { error: 'expected a title, or { title, description }' })),
+}).meta({ title: 'MemWise roles', description: 'domain/roles.yaml: the roles people can have.' });
 
 export const formats = {
   workflow: workflowFormat,
@@ -138,6 +164,7 @@ export const formats = {
   entity: entityFormat,
   policy: policyFormat,
   example: exampleFormat,
+  roles: rolesFormat,
 } as const;
 export type FormatName = keyof typeof formats;
 

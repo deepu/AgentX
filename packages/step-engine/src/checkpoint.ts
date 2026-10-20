@@ -10,7 +10,11 @@ import { agentWrites } from './context.ts';
 import type { StepRunInput } from './types.ts';
 
 /** A successful tool call in this step run: the evidence writes and verdicts are judged against. */
-export interface Evidence { tool: string; callId: string; args: unknown; result: unknown }
+export interface Evidence {
+  tool: string; callId: string; args: unknown; result: unknown;
+  /** The tool reads untrusted content (quarantined): values taken from it are tainted. */
+  tainted?: boolean;
+}
 
 export interface FinishArgs { outcome: string; writes: Record<string, unknown>; rationale?: string }
 
@@ -104,6 +108,8 @@ export function structuralChecks(
   }
 
   const declared = new Map(agentWrites(step));
+  // Judgement after reading untrusted content may carry it (07 §6): mark it like the content.
+  const sessionTainted = evidence.some((e) => e.tainted);
   for (const field of Object.keys(args.writes).sort()) {
     if (!declared.has(field)) {
       const why = step.writes[field] ? 'is entered by a person, not by this step' : `is not one of the step's writes (${[...declared.keys()].join(', ') || 'none'})`;
@@ -132,9 +138,9 @@ export function structuralChecks(
         continue;
       }
       checks.push(pass(rule));
-      writes[field] = { value, provenance: { kind: 'tool', at, stepRunId: input.stepRunId, tool: hit.tool, callId: hit.callId } };
+      writes[field] = { value, provenance: { kind: 'tool', at, stepRunId: input.stepRunId, tool: hit.tool, callId: hit.callId, ...(hit.tainted ? { tainted: true } : {}) } };
     } else {
-      writes[field] = { value, provenance: { kind: 'judgement', at, stepRunId: input.stepRunId, rationale: args.rationale } };
+      writes[field] = { value, provenance: { kind: 'judgement', at, stepRunId: input.stepRunId, rationale: args.rationale, ...(sessionTainted ? { tainted: true } : {}) } };
     }
   }
 

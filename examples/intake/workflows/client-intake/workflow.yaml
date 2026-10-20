@@ -1,6 +1,7 @@
 workflow: client-intake
 version: 1
 title: Client intake
+owner: manager                 # stopped cases and cases that need a person go to a manager
 case: ./case.yaml
 policy: ./policy.yaml
 start: fill
@@ -20,4 +21,5 @@ steps:
   onboard: { on: { done: end } }
   needs_person:
     on: { resolved: check }
+    assignee: manager
     wait: { timeout: 7d → end }

@@ -6,7 +6,7 @@
  */
 import type { AssistantMessage, Message } from '@earendil-works/pi-ai';
 import type {
-  EffectClass, EffectLedger, EffectPreview, JournalEntry, ScriptedTurn, StepToken, TokenUsage,
+  EffectClass, EffectLedger, EffectPreview, JournalEntry, Money, ScriptedTurn, StepToken, TokenUsage,
 } from '@memwise/defs';
 import type { PolicyDecision } from '@memwise/policy';
 
@@ -74,6 +74,11 @@ export interface GatewayDecision {
   decision: PolicyDecision;
   /** Present for verdicts `preview` and `approve`. */
   preview?: EffectPreview;
+  /**
+   * The tool's rate limit under the policy, copied at check time so it is journaled with the
+   * decision; `execute` counts the call against it (19 §7).
+   */
+  rateLimit?: { count: number; perMs: number };
 }
 
 export type GatewayCallResult =
@@ -96,8 +101,13 @@ export interface ModelRoleConfig {
   maxTokens?: number;
   temperature?: number;
   /** Tried in order when the primary provider fails. */
-  fallbacks?: { provider: string; model: string }[];
+  fallbacks?: { provider: string; model: string; price?: ModelPrice }[];
+  /** What the model costs, so money budgets can be enforced (19 §7). Absent: pi-ai's USD cost, if any. */
+  price?: ModelPrice;
 }
+
+/** Price per million tokens. */
+export interface ModelPrice { inputPerMTok: number; outputPerMTok: number; currency: string }
 
 export interface ModelRequest {
   systemPrompt: string;
@@ -118,6 +128,8 @@ export interface ModelProvider {
   complete(model: string, request: ModelRequest, options: ModelCallOptions & { maxTokens?: number; temperature?: number }): Promise<AssistantMessage>;
 }
 
+// Money is not a key here (step engines iterate `keyof Budget` over numeric limits): price calls
+// with `spendOf` and compare with `exceedsMoney` (money.ts).
 export interface Budget { tokens?: number; modelCalls?: number; timeMs?: number }
 export interface Spent { tokens: number; modelCalls: number; elapsedMs: number }
 
@@ -127,6 +139,8 @@ export interface ModelCallResult {
   model: string;
   usage: TokenUsage;
   durationMs: number;
+  /** What this call cost (`spendOf(usage, price)`); absent when nothing prices it. */
+  cost?: Money;
 }
 
 /** Thrown before a call that would exceed the budget; the step takes its designed outcome. */
@@ -162,6 +176,19 @@ export interface ToolGatewayOptions {
   tools: ToolDefinition[];
   ledger: EffectLedger;
   secrets?: SecretProvider;
+  /** Counts calls of rate-limited tools (19 §7); without it rate limits are not enforced. `PgRateCounter` in @memwise/db. */
+  rates?: RateCounter;
+  /** What calls are counted per (the domain). Default `domain`. */
+  rateScope?: string;
+}
+
+/** Counts tool calls for rate limits. */
+export interface RateCounter {
+  /**
+   * Counts one call of `tool` in `scope` if fewer than `limit.count` were counted in the last
+   * `limit.perMs`, atomically; otherwise counts nothing and refuses.
+   */
+  take(tool: string, scope: string, limit: { count: number; perMs: number }): Promise<{ allowed: boolean; used: number }>;
 }
 
 export interface ModelGateway {

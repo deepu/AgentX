@@ -13,12 +13,18 @@ import { validateValue, type RecordTypes } from './values.ts';
 /** Outcomes every step may take without declaring them; the run stops for a person when the shape has no transition. */
 export const BUILTIN_OUTCOMES = ['needs_person', 'failed'] as const;
 /** Tools the step engine provides itself; example cases script calls to them. */
-export const ENGINE_TOOLS = ['step.finish', 'checkpoint.verdict'] as const;
+export const ENGINE_TOOLS = ['step.finish', 'checkpoint.verdict', 'explain.answer'] as const;
 
 export interface CheckOptions {
   /** Entity types of the project. Without them, `Ref<>` targets and entity-named types aren't checked. */
   entities?: Record<string, EntityTypeDef>;
 }
+
+/** The outcome a system step finishes with: its only declared one, `done` when it declares none. */
+export const systemOutcome = (step: StepDef): string => step.outcomes[0] ?? 'done';
+
+/** Effective outcomes of a step, for the transition checks. */
+const outcomesOf = (step: StepDef) => (step.performer === 'system' && !step.outcomes.length ? ['done'] : step.outcomes);
 
 class Diagnostics {
   readonly list: Diagnostic[] = [];
@@ -55,9 +61,20 @@ export function checkWorkflow(workflow: WorkflowDef, env: CheckEnvironment, opts
   const { states, caseType } = workflow;
   const entities = opts.entities;
   const exists = (target: string) => target === END_STATE || target in states;
+  const roles = env.roles ? new Set(env.roles) : undefined;
+  const roleList = () => [...(roles ?? [])].join(', ') || 'none';
 
   // ---- the shape: start, targets, reachability, exits, waits
   if (!states[workflow.start]) shape('error', 'unknown-start', `the start state \`${workflow.start}\` is not one of the steps`, ['start']);
+  if (roles && workflow.owner !== undefined && !roles.has(workflow.owner)) {
+    shape('error', 'unknown-role', `the owner \`${workflow.owner}\` is not a role in domain/roles.yaml (roles: ${roleList()})`, ['owner']);
+  }
+  if (roles && workflow.policy?.approvals?.by) {
+    const policy = workflow.policy;
+    policy.approvals!.by!.forEach((role, i) => {
+      if (!roles.has(role)) d.add('error', 'unknown-role', `approvals.by: \`${role}\` is not a role in domain/roles.yaml (roles: ${roleList()})`, policy.file ?? shapeFile, policy, ['approvals', 'by', i]);
+    });
+  }
 
   for (const [name, state] of Object.entries(states)) {
     for (const [event, target] of Object.entries(state.on)) {
@@ -66,6 +83,9 @@ export function checkWorkflow(workflow: WorkflowDef, env: CheckEnvironment, opts
     const timeout = state.wait?.timeout;
     if (timeout && !exists(timeout.target)) shape('error', 'unknown-target', `\`${name}\` times out to \`${timeout.target}\`, but there is no such state`, ['steps', name, 'wait', 'timeout']);
     if (!Object.keys(state.on).length && !timeout) shape('error', 'no-exit', `\`${name}\` has no way out: add transitions under \`on\` or a timeout`, ['steps', name]);
+    if (roles && state.assignee !== undefined && !roles.has(state.assignee)) {
+      shape('error', 'unknown-role', `\`${name}\`: assignee \`${state.assignee}\` is not a role in domain/roles.yaml (roles: ${roleList()})`, ['steps', name, 'assignee']);
+    }
 
     const step = state.step ? workflow.steps[state.step] : undefined;
     const waits = !step || step.performer === 'person' || step.performer === 'external';
@@ -140,15 +160,29 @@ function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, ste
     if (!step.model) at('error', 'missing-model-role', 'an agent step names a model role, e.g. `model: checker`', []);
     if (!step.outcomes.length) at('error', 'no-outcomes', 'an agent step declares at least one outcome, e.g. `outcomes: [done]`', []);
   }
-  if (step.performer === 'system') {
-    at('warning', 'system-step-phase-2', 'system (mechanical) steps run from Phase 2; until then a run stops here', ['performer']);
+  if (step.performer === 'person' || step.performer === 'external') {
+    const roles = env.roles;
+    if (roles && step.assignee === undefined) {
+      at('error', 'missing-assignee', `a ${step.performer} step names the role that does it, e.g. \`assignee: ${roles[0] ?? 'staff'}\``, []);
+    } else if (roles && step.assignee !== undefined && !roles.includes(step.assignee)) {
+      at('error', 'unknown-role', `assignee \`${step.assignee}\` is not a role in domain/roles.yaml (roles: ${roles.join(', ') || 'none'})`, ['assignee']);
+    }
+  } else if (step.assignee !== undefined && env.roles && !env.roles.includes(step.assignee)) {
+    at('error', 'unknown-role', `assignee \`${step.assignee}\` is not a role in domain/roles.yaml (roles: ${env.roles.join(', ') || 'none'})`, ['assignee']);
   }
+  if (env.roles && step.policy?.approvals?.by) {
+    step.policy.approvals.by.forEach((role, i) => {
+      if (!env.roles!.includes(role)) at('error', 'unknown-role', `policy.approvals.by: \`${role}\` is not a role in domain/roles.yaml`, ['policy', 'approvals', 'by', i]);
+    });
+  }
+  if (step.performer === 'system') checkSystemStep(d, workflow, step, env, entities);
+  else if (step.map) at('warning', 'map-ignored', `only system steps use \`map\`; a ${step.performer} step chooses its own arguments`, ['map']);
 
-  for (const outcome of step.outcomes) {
+  for (const outcome of outcomesOf(step)) {
     if (!(outcome in state.on)) shape('error', 'outcome-without-transition', `step \`${stateName}\` can finish with \`${outcome}\`, but the shape has no transition for it`, ['steps', stateName, 'on']);
   }
   for (const event of Object.keys(state.on)) {
-    if (!step.outcomes.includes(event) && !(BUILTIN_OUTCOMES as readonly string[]).includes(event)) {
+    if (!outcomesOf(step).includes(event) && !(BUILTIN_OUTCOMES as readonly string[]).includes(event)) {
       shape('warning', 'unknown-outcome', `\`${event}\` is not an outcome of step \`${stateName}\` (it declares ${step.outcomes.join(', ') || 'none'})`, ['steps', stateName, 'on', event]);
     }
   }
@@ -179,6 +213,46 @@ function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, ste
   }));
 }
 
+/**
+ * A system step runs without a model: its required tools in order, each with the arguments its
+ * `map` gives, and its writes taken from their results. So every required argument must be
+ * mapped, every `case.` source must be a field the step reads, and every write must name a tool.
+ */
+function checkSystemStep(d: Diagnostics, workflow: WorkflowDef, step: StepDef, env: CheckEnvironment, entities?: Record<string, EntityTypeDef>): void {
+  const at = (severity: Severity, code: string, message: string, path: PathKey[]) => d.add(severity, code, message, step.file, step, path);
+  if (step.outcomes.length > 1) at('error', 'system-step-outcomes', `a system step finishes with one outcome; this one declares ${step.outcomes.join(', ')}`, ['outcomes']);
+  if (!step.tools.required.length) at('warning', 'system-step-no-tools', 'a system step calls its `tools.required` in order; this one has none, so it does nothing', ['tools']);
+  const calls = new Set(step.tools.required);
+  const map = step.map ?? {};
+  for (const tool of Object.keys(map)) {
+    if (!calls.has(tool)) at('error', 'map-unknown-tool', `\`map\` gives arguments for ${tool}, which is not in tools.required (the tools this step calls)`, ['map', tool]);
+  }
+  const reads = step.reads.map((r) => r.slice('case.'.length));
+  const isRead = (path: string) => reads.some((r) => path === r || path.startsWith(`${r}.`));
+  for (const tool of step.tools.required) {
+    const args = map[tool] ?? {};
+    const schema = env.tools[tool]?.inputSchema;
+    const required = Array.isArray(schema?.required) ? (schema.required as unknown[]).filter((a): a is string => typeof a === 'string') : [];
+    for (const arg of required) {
+      if (!(arg in args)) at('error', 'unmapped-argument', `${tool} needs the argument \`${arg}\`: add it under \`map: { ${tool}: { ${arg}: case.<field> } }\``, step.map?.[tool] ? ['map', tool] : ['tools', 'required']);
+    }
+    const props = schema?.properties && typeof schema.properties === 'object' ? schema.properties as Record<string, unknown> : undefined;
+    for (const [arg, src] of Object.entries(args)) {
+      if (props && schema?.additionalProperties === false && !(arg in props)) {
+        at('error', 'unknown-argument', `${tool} has no argument \`${arg}\` (it takes ${Object.keys(props).join(', ') || 'none'})`, ['map', tool, arg]);
+      }
+      if (!('case' in src)) continue;
+      const missing = unknownReadSegment(`case.${src.case}`, workflow, entities);
+      if (missing) at('error', 'unknown-case-field', `\`case.${src.case}\`: \`${missing}\` is not a field of the case`, ['map', tool, arg]);
+      else if (!isRead(src.case)) at('error', 'map-unread-field', `\`case.${src.case}\` is not in the step's \`reads\`; add it there so the record shows what the step used`, ['map', tool, arg]);
+    }
+  }
+  for (const [field, write] of Object.entries(step.writes)) {
+    if (write.from.kind !== 'tool') at('error', 'system-write-not-from-tool', `a system step has no judgement: \`${field}\` must come \`from: { tool, field }\``, ['writes', field]);
+    else if (!calls.has(write.from.tool)) at('error', 'system-write-tool-not-called', `\`${field}\` comes from ${write.from.tool}, which this step does not call (it is not in tools.required)`, ['writes', field, 'from']);
+  }
+}
+
 function checkExamples(d: Diagnostics, workflow: WorkflowDef, env: CheckEnvironment, entities?: Record<string, EntityTypeDef>): void {
   const records: RecordTypes = { ...entities, ...workflow.caseType.types };
   const fields = workflow.caseType.fields;
@@ -195,7 +269,7 @@ function checkExamples(d: Diagnostics, workflow: WorkflowDef, env: CheckEnvironm
     const startState = workflow.states[ex.startAt ?? workflow.start];
     const step = startState?.step ? workflow.steps[startState.step] : undefined;
     const outcome = ex.expect.outcome;
-    if (outcome !== undefined && step && !step.outcomes.includes(outcome) && !(BUILTIN_OUTCOMES as readonly string[]).includes(outcome)) {
+    if (outcome !== undefined && step && !outcomesOf(step).includes(outcome) && !(BUILTIN_OUTCOMES as readonly string[]).includes(outcome)) {
       at('example-unknown-outcome', `expect.outcome \`${outcome}\` is not an outcome of step \`${step.id}\``, ['expect', 'outcome']);
     }
 
@@ -209,6 +283,26 @@ function checkExamples(d: Diagnostics, workflow: WorkflowDef, env: CheckEnvironm
     };
     values('case', ex.case);
     values('writes', ex.expect.writes);
+
+    for (const [state, answers] of Object.entries(ex.submit ?? {})) {
+      const target = workflow.states[state];
+      const s = target?.step ? workflow.steps[target.step] : undefined;
+      if (!s || (s.performer !== 'person' && s.performer !== 'external')) {
+        at('example-unknown-state', `submit.${state}: \`${state}\` is not a person or external step`, ['submit', state]);
+        continue;
+      }
+      (Array.isArray(answers) ? answers : [answers]).forEach((a) => {
+        if (!s.outcomes.includes(a.outcome)) at('example-unknown-outcome', `submit.${state}: \`${a.outcome}\` is not an outcome of step \`${state}\``, ['submit', state]);
+        for (const [name, value] of Object.entries(a.values ?? {})) {
+          const w = s.writes[name];
+          if (!w) { at('example-unknown-field', `submit.${state}: step \`${state}\` does not write \`${name}\``, ['submit', state]); continue; }
+          for (const err of validateValue(w.type, value, records)) at('example-invalid-value', `submit.${state}.${name}: ${err}`, ['submit', state]);
+        }
+      });
+    }
+    for (const entity of Object.keys(ex.expect.entities ?? {})) {
+      if (entities && !entities[entity]) at('unknown-entity', `expect.entities: there is no entity type ${entity}`, ['expect', 'entities', entity]);
+    }
 
     const tools: [string, PathKey[]][] = [
       ...Object.keys(ex.tools ?? {}).map((t): [string, PathKey[]] => [t, ['tools', t]]),
@@ -226,10 +320,18 @@ function checkExamples(d: Diagnostics, workflow: WorkflowDef, env: CheckEnvironm
   }
 }
 
-/** Entity types, then every workflow with the project's entities. */
+/** Entity types, then every workflow with the project's entities (and its roles, unless `env` names them). */
 export function checkProject(project: ProjectDefs, env: CheckEnvironment): Diagnostic[] {
   const d = new Diagnostics();
   const entities = project.entities;
+  const declared = Object.keys(project.roles ?? {});
+  if (!env.roles && declared.length) env = { ...env, roles: declared };
+  const by = project.domainPolicy?.approvals?.by;
+  if (env.roles && by && project.domainPolicy) {
+    by.forEach((role, i) => {
+      if (!env.roles!.includes(role)) d.add('error', 'unknown-role', `approvals.by: \`${role}\` is not a role in domain/roles.yaml`, project.domainPolicy!.file ?? 'domain/policy.yaml', project.domainPolicy!, ['approvals', 'by', i]);
+    });
+  }
   for (const entity of Object.values(entities)) {
     for (const [name, field] of Object.entries(entity.fields)) {
       checkTypeRefs(field.type, {}, entities, (code, message) => d.add('error', code, `${name}: ${message}`, entity.file, entity, ['fields', name]));

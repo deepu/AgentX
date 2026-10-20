@@ -356,11 +356,42 @@
             }
           },
           "additionalProperties": false
+        },
+        "approvals": {
+          "type": "object",
+          "properties": {
+            "by": {
+              "description": "Roles that may decide effect approvals.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false,
       "title": "MemWise policy layer",
       "description": "domain/policy.yaml, workflows/<id>/policy.yaml, or the policy block of a step."
+    },
+    "assignee": {
+      "description": "Role that does (or decides) a person or external step.",
+      "type": "string"
+    },
+    "map": {
+      "description": "System steps: arguments for each tool, in call order. `case.<field>` reads the case; anything else is a literal (or write { value: ... }).",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      }
     }
   },
   "required": [

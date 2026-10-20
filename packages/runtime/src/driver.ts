@@ -4,20 +4,21 @@
 //     loadRun, loadDefinition                          journaled: the run is pinned to its snapshot (D36)
 //     loop while the run is active:
 //       agent step     prepareStep (journaled) → step workflow "<run>/<entered_seq>/<state>" → StepResult
-//       person/external/wait   DBOS.recv('events', deadline = earliest pending timer)
-//       system step    stop: mechanical steps run from Phase 2
+//       system step    prepareStep (journaled) → system step workflow "<run>/<entered_seq>/<state>" (no model)
+//       person/external/wait   DBOS.recv('events', deadline = earliest pending timer); a person's
+//                      submission (submitStep) carries its values beside the event, never in it
 //       commit         ONE transaction through the DBOS data source: XState transition(), CAS on
 //                      runs.seq, a transitions row, the step's case writes, timers armed/cancelled
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
-import { crashPoint, type CaseValue, type WorkflowDef } from '@memwise/defs';
+import { crashPoint, END_STATE, type CaseValue, type WorkflowDef } from '@memwise/defs';
 import type { StepResult, StepRunInput } from '@memwise/step-engine';
 import type pg from 'pg';
 import { transition, type AnyStateMachine } from 'xstate';
 import { stepRunIdOf } from './ids.ts';
 import { compileMachine, REMIND_EVENT, stateKind, type RunEvent } from './machine.ts';
 import { openWaitingStep, prepareAgentStep, type PreparedStep } from './prepare.ts';
-import { PgCaseStore } from '@memwise/db';
+import { PgCaseStore, PgNotificationStore } from '@memwise/db';
 import { loadRunRow, loadWorkflowDef, type Queryable, type RunRow } from './runs.ts';
 
 export interface Commit {
@@ -38,19 +39,36 @@ export interface Commit {
   stopIfUnhandled?: string;
   /** The step workflow threw: its step run is marked `failed` with this as the rationale. */
   stepError?: string;
+  /** A person's answer to the waiting step (submitStep); its values are written only when the event is accepted. */
+  submission?: Submission;
 }
+
+/** What `submitStep` sends beside the outcome event. */
+export interface Submission {
+  stepRunId: string;
+  by: string;
+  at: string;
+  values: Record<string, unknown>;
+  comment?: string;
+}
+
+/** The DBOS message `submitStep` sends: the event plus the submission, split apart by the driver. */
+export interface SubmissionMessage extends RunEvent { submission: Submission }
 
 const STOP_EVENT: RunEvent = { type: 'stop' };
 const cases = new PgCaseStore();
+const notifications = new PgNotificationStore();
 
 export interface DriverDeps {
   pool: pg.Pool;
   dataSource: NodePostgresDataSource;
   stepWorkflow: (input: StepRunInput) => Promise<StepResult>;
+  /** The system (mechanical) step workflow. */
+  systemWorkflow: (input: StepRunInput) => Promise<StepResult>;
 }
 
 /** Register the driver and its commit with DBOS. Call before DBOS.launch(), once per launch. */
-export function registerRunDriver({ pool, dataSource, stepWorkflow }: DriverDeps) {
+export function registerRunDriver({ pool, dataSource, stepWorkflow, systemWorkflow }: DriverDeps) {
   // Definitions are immutable per hash, so compiled machines can be cached across runs.
   const machines = new Map<string, { workflow: WorkflowDef; machine: AnyStateMachine }>();
   const machineFor = async (db: Queryable, id: string, hash: string) => {
@@ -81,9 +99,9 @@ export function registerRunDriver({ pool, dataSource, stepWorkflow }: DriverDeps
       let next: Omit<Commit, 'runId' | 'expectedSeq' | 'workflowId' | 'workflowHash'> | null;
 
       if (kind === 'agent-step') {
-        next = await runAgentStep(run, workflow, stepRunId);
+        next = await runStep(run, workflow, stepRunId, stepWorkflow);
       } else if (kind === 'system-step') {
-        next = { event: STOP_EVENT, source: 'step', stop: 'mechanical steps run from Phase 2' };
+        next = await runStep(run, workflow, stepRunId, systemWorkflow);
       } else if (kind === 'final') {
         break; // unreachable: entering `end` sets status done
       } else {
@@ -98,11 +116,11 @@ export function registerRunDriver({ pool, dataSource, stepWorkflow }: DriverDeps
     return { state: run.state, status: run.status };
   }, { name: 'memwise.run' });
 
-  async function runAgentStep(run: RunRow, workflow: WorkflowDef, stepRunId: string) {
+  async function runStep(run: RunRow, workflow: WorkflowDef, stepRunId: string, body: DriverDeps['stepWorkflow']) {
     const prepared = await DBOS.runStep(() => prepareAgentStep(pool, run, workflow, stepRunId), { name: 'prepareStep' }) as PreparedStep;
     if ('stop' in prepared) return { event: STOP_EVENT, source: 'step' as const, stop: prepared.stop, stepRunId };
     // Deterministic id: after a crash we get the same child back, finished or recovered, never a new one.
-    const handle = await DBOS.startWorkflow(stepWorkflow, { workflowID: stepRunId })(prepared.input);
+    const handle = await DBOS.startWorkflow(body, { workflowID: stepRunId })(prepared.input);
     let result: StepResult;
     try {
       result = await handle.getResult();
@@ -130,6 +148,12 @@ export function registerRunDriver({ pool, dataSource, stepWorkflow }: DriverDeps
     const timer = run.timers[0]; // earliest pending deadline
     // recv journals its deadline; we pass the absolute fire_at, so a restart never recomputes it.
     const msg = await DBOS.recv<RunEvent>('events', timer ? { deadlineEpochMS: timer.fireAtMs } : { timeoutSeconds: 24 * 3600 });
+    if (msg && 'submission' in msg) {
+      // The values ride beside the event, so the transition row (and the replay guard that
+      // compares it) holds only the outcome, who answered and the entry it answers.
+      const { submission, ...event } = msg as SubmissionMessage;
+      return { event, source: 'external' as const, submission };
+    }
     if (msg) return { event: msg, source: 'external' as const };
     if (timer) return { event: timer.event, source: 'timer' as const, firedTimer: { timerId: timer.timerId, armedSeq: timer.armedSeq } };
     return null;
@@ -157,8 +181,9 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
   let next = snap;
   let actions: any[] = [];
   if (!stop && c.source === 'timer' && c.event.type === REMIND_EVENT) {
-    // Phase 1 records the reminder; Phase 2 delivers it. It never moves the run.
-    note = 'reminder (delivery comes in Phase 2)';
+    // A reminder for whoever the state waits on, shown in their inbox. It never moves the run.
+    note = 'reminder';
+    if (workflow) await remind(db, workflow, run, c);
   } else if (!stop) {
     const forSeq = (c.event as { for?: unknown }).for;
     if (forSeq !== undefined && forSeq !== run.enteredSeq) note = `stale: for entry ${forSeq}, current entry ${run.enteredSeq}`;
@@ -186,12 +211,27 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
       [c.runId, c.firedTimer.timerId, c.firedTimer.armedSeq]);
   }
   if (moved) {
-    if (c.writes) await cases.applyWrites(db, run.caseId, c.writes, c.stepRunId);
+    const waitingId = stepRunIdOf(c.runId, run.enteredSeq, run.state);
+    let writes = c.writes;
+    const sub = c.submission && c.submission.stepRunId === waitingId ? c.submission : undefined;
+    if (sub) {
+      writes = {};
+      for (const [field, value] of Object.entries(sub.values)) {
+        writes[field] = { value, provenance: { kind: 'person', at: sub.at, by: sub.by, stepRunId: sub.stepRunId } };
+      }
+    }
+    if (writes && Object.keys(writes).length) {
+      await cases.applyWrites(db, run.caseId, writes, c.stepRunId ?? sub?.stepRunId);
+      await markTainted(db, run.caseId, writes);
+    }
     // A person or external step left by an outside event is done; its answer is the event.
     await db.query(
-      `update mw.step_runs set status = 'completed', outcome = $3, finished_at = now()
+      `update mw.step_runs set status = 'completed', outcome = $3, finished_at = now(),
+              decided_by = coalesce($4, decided_by), comment = coalesce($5, comment),
+              outputs = case when $6::jsonb is null then outputs else $6::jsonb end
         where id = $1 and status = 'waiting' and run_id = $2`,
-      [stepRunIdOf(c.runId, run.enteredSeq, run.state), c.runId, c.event.type]);
+      [waitingId, c.runId, c.event.type, sub?.by ?? null, sub?.comment ?? null, sub ? JSON.stringify(writes ?? {}) : null]);
+    await notifications.markReadForStep(db, waitingId);
   }
   if (c.stepError && c.stepRunId) {
     // The step never reported back, so its record would stay `running`: close it here.
@@ -220,6 +260,41 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
     }
   }
   return after;
+}
+
+/** Keeps mw.cases.tainted_fields in step with the provenance of the fields just written. */
+async function markTainted(db: Queryable, caseId: string, writes: Record<string, CaseValue>) {
+  const fields = Object.keys(writes);
+  const tainted = fields.filter((f) => (writes[f]!.provenance as { tainted?: boolean }).tainted);
+  await db.query(
+    `update mw.cases set tainted_fields =
+        array(select f from unnest(tainted_fields) f where not (f = any($2::text[])) union select unnest($3::text[]) order by 1)
+      where id = $1`, [caseId, fields, tainted]);
+}
+
+/** Who a state waits on: its step's assignee, the state's, else the workflow owner. */
+export function assigneeOf(workflow: WorkflowDef, state: string): string | undefined {
+  if (state === END_STATE) return undefined;
+  const def = workflow.states[state];
+  const step = def ? workflow.steps[def.step ?? state] : undefined;
+  return step?.assignee ?? def?.assignee ?? workflow.owner;
+}
+
+/** A fired `remind` timer: a reminder in the inbox of the role the state waits on (idempotent per timer). */
+async function remind(db: Queryable, workflow: WorkflowDef, run: RunRow, c: Commit) {
+  const def = workflow.states[run.state];
+  const step = def ? workflow.steps[def.step ?? run.state] : undefined;
+  const hasStep = !!step && (step.performer === 'person' || step.performer === 'external');
+  const role = assigneeOf(workflow, run.state);
+  const what = step?.title ? `"${step.title}"` : `the ${run.state} step`;
+  await notifications.add(db, {
+    id: `remind:${c.runId}:${c.firedTimer?.armedSeq ?? run.enteredSeq}:${c.firedTimer?.timerId ?? run.state}`,
+    runId: c.runId,
+    ...(hasStep ? { stepRunId: stepRunIdOf(c.runId, run.enteredSeq, run.state) } : {}),
+    ...(role ? { role } : {}),
+    kind: 'reminder',
+    text: `Reminder: ${what} in ${workflow.title ?? workflow.id} is still waiting.`,
+  });
 }
 
 /** XState returns delayed events as data: arm on a delayed `xstate.raise`, disarm on `xstate.cancel`. */

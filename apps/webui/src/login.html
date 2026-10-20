@@ -27,17 +27,25 @@
   </div>
   <div class="card">
     <h1>MemWise</h1>
-    <p class="subtitle">Enter your server token to continue</p>
+    <p class="subtitle">Sign in with your email and password, or the server token</p>
 
     <form id="login-form">
-      <label for="password">Server Token</label>
+      <label for="email">Email</label>
+      <input
+        id="email"
+        name="email"
+        type="email"
+        placeholder="Leave empty to use the server token"
+        autocomplete="username"
+        autofocus
+      >
+      <label for="password">Password or server token</label>
       <input
         id="password"
         name="password"
         type="password"
-        placeholder="Enter MEMWISE_SERVER_TOKEN"
+        placeholder="Your password, or MEMWISE_SERVER_TOKEN"
         autocomplete="current-password"
-        autofocus
         required
       >
       <button type="submit" id="submit-btn">Sign In</button>
@@ -59,10 +67,11 @@
 
       try {
         const password = document.getElementById('password').value;
+        const email = document.getElementById('email').value.trim();
         const res = await fetch('/api/auth', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password }),
+          body: JSON.stringify(email ? { email, password } : { password }),
         });
 
         if (res.ok) {

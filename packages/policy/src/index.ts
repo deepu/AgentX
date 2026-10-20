@@ -10,3 +10,5 @@ export { BUILTIN_TOOLS, PLATFORM_DEFAULTS, VERIFIER_ROLE, layersFor, mergeStrict
 export { compilePolicy } from './compile.ts';
 export { decide } from './decide.ts';
 export { describePolicy, violationsToDiagnostics } from './describe.ts';
+export { checkRateLimit, moneyExceeded, rateLimitOf, rateLimitRefusal } from './limits.ts';
+export type { RateLimit } from './order.ts';

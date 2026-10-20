@@ -315,7 +315,9 @@ test('describePolicy shows open lists, rate limits and money with their layers',
   expect(text).toContain('allowed: any tool bound in the domain');
   expect(text).toContain('roles: any');
   expect(text).toContain('gst.validate_gstin: preview  (domain, domain/policy.yaml)');
-  expect(text).toContain('gst.validate_gstin rate limit: 10 per 1m  (domain, domain/policy.yaml)  (not enforced until Phase 2)');
-  expect(text).toContain('money: 50 INR  (workflow wf, workflows/wf/policy.yaml)  (not enforced until Phase 2)');
+  expect(text).toContain('gst.validate_gstin rate limit: 10 per 1m  (domain, domain/policy.yaml)');
+  expect(text).toContain('money: 50 INR  (workflow wf, workflows/wf/policy.yaml)');
   expect(text).toContain('time: 1h30m  (workflow wf');
+  expect(text).not.toContain('not enforced');
+  expect(text).toContain("decided by: the step's assignee, else the workflow owner, else anyone signed in");
 });

@@ -23,6 +23,7 @@ export function compilePolicy(layers: PolicyLayer[]): CompiledPolicy {
   const budgets: PolicyBudgets = {};
   const runBudgets: PolicyBudgets = {};
   let modelRoles: Sourced<string[]> | null = null;
+  let approvers: Sourced<string[]> | undefined;
   let taintEnabled: Sourced<boolean> | undefined;
   let taintOutbound: Sourced<Treatment> | undefined;
   // Origins in layer order, to tell which of two rules sits lower.
@@ -112,6 +113,17 @@ export function compilePolicy(layers: PolicyLayer[]): CompiledPolicy {
       }
       if (!modelRoles || kept.length < modelRoles.value.length) modelRoles = { value: kept, origin };
     }
+
+    // Approver roles narrow like model roles: a lower layer may only take roles away.
+    if (doc.approvals?.by) {
+      const kept: string[] = [];
+      for (const role of new Set(doc.approvals.by)) {
+        if (approvers && !approvers.value.includes(role)) {
+          violate('approvals.by', `lets ${role} decide approvals, which ${originLabel(approvers.origin)} does not`, approvers.origin);
+        } else kept.push(role);
+      }
+      if (!approvers || kept.length < approvers.value.length) approvers = { value: kept, origin };
+    }
   }
 
   // A tool denied anywhere is not allowed, whatever an upper allow list said.
@@ -150,6 +162,7 @@ export function compilePolicy(layers: PolicyLayer[]): CompiledPolicy {
       budgets,
       runBudgets,
       modelRoles,
+      ...(approvers ? { approvers } : {}),
       taint: {
         enabled: taintEnabled ?? { value: defaults.taint!.enabled!, origin: platform },
         outboundWhenTainted: taintOutbound ?? { value: defaults.taint!.outboundWhenTainted!, origin: platform },

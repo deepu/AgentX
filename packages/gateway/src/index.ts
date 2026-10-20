@@ -11,5 +11,9 @@ export { stubTools, type StubbedTools, type ToolStub } from './stub-tools.ts';
 export { validateArgs } from './validate.ts';
 export { redactSecrets, REDACTED } from './redact.ts';
 export { createModelGateway, exceededLimit, toTokenUsage } from './model-gateway.ts';
+export { addMoney, exceedsMoney, spendOf } from './money.ts';
+export {
+  matchesSchema, parseObject, quarantinedRead, type JSONSchema, type QuarantinedReadInput, type QuarantinedReadResult,
+} from './quarantine.ts';
 export { piAiProvider, type PiAiProviderOptions } from './providers/pi-ai.ts';
 export { scriptedProvider, SCRIPTED_TOKENS_PER_CALL, type ScriptedProviderOptions } from './providers/scripted.ts';

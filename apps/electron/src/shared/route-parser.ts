@@ -35,7 +35,7 @@ export interface ParsedRoute {
 // Compound Route Types (new format)
 // =============================================================================
 
-export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'pages' | 'settings'
+export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'pages' | 'settings' | 'inbox' | 'cases' | 'playbooks'
 
 export interface ParsedCompoundRoute {
   /** The navigator type */
@@ -63,8 +63,32 @@ export interface ParsedCompoundRoute {
  * Known prefixes that indicate a compound route
  */
 const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'sources', 'skills', 'automations', 'projects', 'pages', 'settings'
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'sources', 'skills', 'automations', 'projects', 'pages', 'settings',
+  'inbox', 'cases', 'playbooks',
 ]
+
+/**
+ * MemWise sections share one shape: `{navigator}` or `{navigator}/{detailType}/{id}`.
+ * Ids are URI-encoded in routes (inbox item ids may carry colons).
+ */
+const MEMWISE_NAVIGATORS = {
+  inbox: 'item',
+  cases: 'case',
+  playbooks: 'playbook',
+} as const
+type MemwiseNavigator = keyof typeof MEMWISE_NAVIGATORS
+
+function isMemwiseNavigator(value: string): value is MemwiseNavigator {
+  return Object.prototype.hasOwnProperty.call(MEMWISE_NAVIGATORS, value)
+}
+
+function safeDecode(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return null
+  }
+}
 
 /**
  * Check if a route is a compound route (new format)
@@ -202,6 +226,20 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
         navigator: 'pages',
         details: { type: 'page', id: segments[2] },
       }
+    }
+    return null
+  }
+
+  // MemWise sections: inbox, cases, playbooks
+  if (isMemwiseNavigator(first)) {
+    if (segments.length === 1) {
+      return { navigator: first, details: null }
+    }
+    const detailType = MEMWISE_NAVIGATORS[first]
+    if (segments[1] === detailType && segments[2] && segments.length === 3) {
+      const id = safeDecode(segments[2])
+      if (!id) return null
+      return { navigator: first, details: { type: detailType, id } }
     }
     return null
   }
@@ -344,6 +382,11 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
     return `pages/page/${parsed.details.id}`
   }
 
+  if (isMemwiseNavigator(parsed.navigator)) {
+    if (!parsed.details) return parsed.navigator
+    return `${parsed.navigator}/${MEMWISE_NAVIGATORS[parsed.navigator]}/${encodeURIComponent(parsed.details.id)}`
+  }
+
   // Sessions navigator
   // Board is a standalone view of all sessions; emit its own prefix.
   if (parsed.viewMode === 'board') return 'board'
@@ -484,6 +527,14 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
       return { type: 'view', name: 'pages', params: {} }
     }
     return { type: 'view', name: 'page-info', id: compound.details.id, params: {} }
+  }
+
+  // MemWise sections
+  if (isMemwiseNavigator(compound.navigator)) {
+    if (!compound.details) {
+      return { type: 'view', name: compound.navigator, params: {} }
+    }
+    return { type: 'view', name: `${compound.navigator}-info`, id: compound.details.id, params: {} }
   }
 
   // Sessions
@@ -643,6 +694,11 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
     }
   }
 
+  // MemWise sections
+  if (isMemwiseNavigator(compound.navigator)) {
+    return memwiseNavigationState(compound.navigator, compound.details?.id)
+  }
+
   // Sessions
   const filter = compound.sessionFilter || { kind: 'allSessions' as const }
   if (compound.details) {
@@ -741,6 +797,14 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
         }
       }
       return { navigator: 'pages', details: null }
+    case 'inbox':
+    case 'cases':
+    case 'playbooks':
+      return memwiseNavigationState(parsed.name)
+    case 'inbox-info':
+    case 'cases-info':
+    case 'playbooks-info':
+      return memwiseNavigationState(parsed.name.slice(0, -5) as MemwiseNavigator, parsed.id)
     case 'session':
       if (parsed.id) {
         // Reconstruct filter from params
@@ -812,6 +876,18 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
   }
 }
 
+/** NavigationState for a MemWise section, with its detail when an id is given. */
+function memwiseNavigationState(navigator: MemwiseNavigator, id?: string): NavigationState {
+  switch (navigator) {
+    case 'inbox':
+      return { navigator: 'inbox', details: id ? { type: 'inboxItem', itemId: id } : null }
+    case 'cases':
+      return { navigator: 'cases', details: id ? { type: 'case', caseId: id } : null }
+    case 'playbooks':
+      return { navigator: 'playbooks', details: id ? { type: 'playbook', playbookId: id } : null }
+  }
+}
+
 /**
  * Convert NavigationState to ParsedCompoundRoute
  */
@@ -861,6 +937,16 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
       navigator: 'pages',
       details: state.details ? { type: 'page', id: state.details.pageSlug } : null,
     }
+  }
+
+  if (state.navigator === 'inbox') {
+    return { navigator: 'inbox', details: state.details ? { type: 'item', id: state.details.itemId } : null }
+  }
+  if (state.navigator === 'cases') {
+    return { navigator: 'cases', details: state.details ? { type: 'case', id: state.details.caseId } : null }
+  }
+  if (state.navigator === 'playbooks') {
+    return { navigator: 'playbooks', details: state.details ? { type: 'playbook', id: state.details.playbookId } : null }
   }
 
   // Sessions

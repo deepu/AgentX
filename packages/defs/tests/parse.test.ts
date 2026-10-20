@@ -11,7 +11,9 @@ describe('the sample project (examples/intake)', () => {
     const { project, diagnostics } = await loadProject(SAMPLE);
     expect(diagnostics).toEqual([]);
     expect(Object.keys(project.entities).sort()).toEqual(['Customer', 'Engagement']);
-    expect(project.domainPolicy?.modelRoles).toEqual(['checker', 'verifier', 'extractor']);
+    expect(project.domainPolicy?.modelRoles).toEqual(['checker', 'verifier', 'extractor', 'explainer']);
+    expect(Object.keys(project.roles).sort()).toEqual(['finance', 'manager', 'staff']);
+    expect(project.roles.manager).toEqual({ id: 'manager', title: 'Manager', description: 'Approves onboarding' });
 
     const wf = project.workflows['client-intake']!;
     expect(wf).toMatchObject({ id: 'client-intake', version: 1, title: 'Client intake', start: 'fill', dir: 'workflows/client-intake' });
@@ -19,6 +21,13 @@ describe('the sample project (examples/intake)', () => {
     expect(Object.keys(wf.steps).sort()).toEqual(['check', 'fill', 'onboard', 'verify']);
     expect(wf.states.needs_person!.step).toBeUndefined();
     expect(wf.states.check!.step).toBe('check');
+    expect(wf.owner).toBe('manager');
+    expect(wf.states.needs_person!.assignee).toBe('manager');
+    expect(wf.steps.verify!.assignee).toBe('manager');
+    expect(wf.steps.onboard!.map).toEqual({
+      'domain.customer.create': { name: { case: 'client_name' }, email: { case: 'client_email' }, gstin: { case: 'gstin' }, pan: { case: 'pan' } },
+    });
+    expect(wf.steps.onboard!.writes.customer!.from).toEqual({ kind: 'tool', tool: 'domain.customer.create', field: 'id' });
     expect(wf.states.fill!.wait).toEqual({ remindMs: 3 * 86_400_000, timeout: { afterMs: 7 * 86_400_000, target: 'needs_person' } });
     expect(wf.caseType.id).toBe('client_intake');
     expect(wf.caseType.types.Flag!.fields.document!.typeSource).toBe('Text');
