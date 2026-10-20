@@ -104,7 +104,7 @@ export const sampleDomains: MwDomain[] = [
 /** A project that never split into domains: everything lives in the default one. */
 export const sampleDefaultDomains: MwDomain[] = [
   {
-    id: 'main',
+    id: 'domain',
     name: 'Main',
     regulated: false,
     entities: [{ key: 'customer', entity: 'Customer', title: 'Customers', count: 18 }],

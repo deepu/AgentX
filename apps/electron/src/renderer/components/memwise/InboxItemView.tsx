@@ -39,6 +39,10 @@ import { MessagePreview, messageShape } from './MessagePreview'
 import { BindingReview } from './plugins/BindingReview'
 import { identityRows, matchMethodLabel, scorePercent } from './plugins/plugin-model'
 import { useNow } from './use-now'
+import { DiffReview, diffSides } from './records/DiffReview'
+import { FlagBody, TriggerHoldBody } from './records/InboxRecordBodies'
+import { useSignGate, type Signer } from './records/SignGate'
+import { TableReview } from './records/TableReview'
 import { buildSubmission, initialFormValue, initialFormValues, toFormField, type FormError, type FormValues } from './form-model'
 import { activeSource, applySuggestions, documentIds, mergeSuggestions, offersFor, submitSources } from './extract-model'
 import {
@@ -82,6 +86,12 @@ export interface InboxActions {
   extract?: (input: MwExtractInput) => Promise<MwExtractResult>
   /** Save edits into a draft (the binding review's edits; `memwise:drafts:write`). */
   writeDraft?: (draftId: string, input: { path: string; content: string; summary: string }) => Promise<MwWriteDraftResult>
+  /** Phase 6: open a record's page (a flag, a review's record). */
+  openRecord?: (entity: string, recordId: string) => void
+  /** Phase 6: start or discard a trigger's held firings (`memwise:triggers:release`). */
+  releaseTrigger?: (triggerId: string, decision: 'start' | 'discard') => Promise<MwSubmitResult & { started?: number }>
+  /** Phase 6: open the automations page. */
+  openAutomations?: () => void
 }
 
 export interface InboxItemViewProps {
@@ -98,6 +108,8 @@ export interface InboxItemViewProps {
   /** Playbook titles by id: a change's review names its playbook by title, not id. */
   playbookTitles?: Record<string, string>
   now?: number
+  /** Phase 6: who signs a step with `sign:` (the signing dialog names them). */
+  signer?: Signer
 }
 
 const KIND_ICON: Record<MwInboxItem['kind'], React.ReactNode> = {
@@ -182,11 +194,16 @@ function CommentBox({ value, onChange, error, placeholder, disabled }: {
   )
 }
 
-export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId, bindingView, bindingError, playbookTitles, now: fixedNow }: InboxItemViewProps) {
+export function InboxItemView({ item, actions: given, people = {}, roles, reviewDraftId, bindingView, bindingError, playbookTitles, now: fixedNow, signer }: InboxItemViewProps) {
   const { t, i18n } = useTranslation()
   const now = useNow(fixedNow)
   const since = relativeTime(item.since, now, i18n.language)
   const dueAt = 'dueAt' in item ? item.dueAt : undefined
+  // Phase 6: a step with `sign:` asks for the password before an approving answer goes out.
+  const step = item.kind === 'input' || item.kind === 'decision' ? item : undefined
+  const gate = useSignGate({ sign: step?.sign, signer, submit: given.submitStep })
+  const actions = React.useMemo(() => ({ ...given, submitStep: gate.submit }), [given, gate.submit])
+  const special = !!step && !step.binding && (step.review?.kind === 'table' || step.review?.kind === 'diff')
 
   return (
     <Info_Page.Content>
@@ -200,6 +217,12 @@ export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId
               actions.openPlugin
                 ? <button type="button" className="font-medium text-foreground hover:underline" onClick={() => actions.openPlugin!(item.plugin)}>{item.caseTitle}</button>
                 : <span className="font-medium text-foreground">{item.caseTitle}</span>
+            ) : item.kind === 'flag' ? (
+              actions.openRecord
+                ? <button type="button" className="font-medium text-foreground hover:underline" onClick={() => actions.openRecord!(item.flag.entity, item.flag.recordId)}>{item.caseTitle}</button>
+                : <span className="font-medium text-foreground">{item.caseTitle}</span>
+            ) : item.kind === 'trigger-hold' ? (
+              <span className="font-medium text-foreground">{item.caseTitle}</span>
             ) : (
               <button type="button" className="font-medium text-foreground hover:underline" onClick={() => item.caseId && actions.openCase(item.caseId)}>
                 {item.caseTitle}
@@ -213,13 +236,25 @@ export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId
       {(item.kind === 'input' || item.kind === 'decision') && item.binding && (
         <BindingBody item={item} binding={item.binding} actions={actions} people={people} roles={roles} view={bindingView} error={bindingError} now={now} />
       )}
-      {item.kind === 'input' && !item.binding && <InputBody item={item} actions={actions} people={people} />}
-      {item.kind === 'decision' && !item.binding && <DecisionBody item={item} actions={actions} people={people} roles={roles} draftId={reviewDraftOf(item) ?? reviewDraftId} playbookTitles={playbookTitles} />}
+      {special && step?.review?.kind === 'table' && <TableReview item={step} submit={actions.submitStep} onDone={actions.onDone} />}
+      {special && step?.review?.kind === 'diff' && <DiffReview item={step} {...diffSides(step)} submit={actions.submitStep} onDone={actions.onDone} />}
+      {item.kind === 'input' && !item.binding && !special && <InputBody item={item} actions={actions} people={people} />}
+      {item.kind === 'decision' && !item.binding && !special && <DecisionBody item={item} actions={actions} people={people} roles={roles} draftId={reviewDraftOf(item) ?? reviewDraftId} playbookTitles={playbookTitles} />}
       {item.kind === 'conversation' && <ConversationBody item={item} actions={actions} roles={roles} />}
       {item.kind === 'approval' && <ApprovalBody item={item} actions={actions} />}
       {item.kind === 'attention' && <AttentionBody item={item} actions={actions} />}
       {item.kind === 'reminder' && <ReminderBody item={item} actions={actions} />}
       {item.kind === 'identity' && <IdentityBody item={item} actions={actions} />}
+      {item.kind === 'flag' && <FlagBody item={item} openRecord={actions.openRecord} />}
+      {item.kind === 'trigger-hold' && (
+        <TriggerHoldBody
+          item={item}
+          release={actions.releaseTrigger ? d => actions.releaseTrigger!(item.triggerId, d) : undefined}
+          openAutomations={actions.openAutomations}
+          now={now}
+        />
+      )}
+      {gate.dialog}
     </Info_Page.Content>
   )
 }

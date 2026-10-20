@@ -99,9 +99,10 @@ export function DocumentReviewPage({ item, onDone, queue }: {
 
   const done = React.useCallback((r: MwSubmitResult) => {
     toast.success(r.message ?? t('memwise.inbox.doneWith', { title: item.caseTitle }))
-    if (queue) onDone?.(r)
-    else { setSubmitted(true); onDone?.(r) }
-  }, [queue, onDone, item.caseTitle, t])
+    // The page returns to normal mode; in a queue the inbox then moves on to the next item.
+    setSubmitted(true)
+    onDone?.(r)
+  }, [onDone, item.caseTitle, t])
 
   // Inside the inbox's own page: no second page frame, only its content.
   if (!review?.recordId) return <Message text={t('memwise.review.noRecord')} />
