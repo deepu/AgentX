@@ -1,0 +1,9 @@
+{
+  "name": "memwise-spike-s1-s2-dbos",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway spikes S1 (DBOS under Bun) and S2 (DBOS versioning)",
+  "dependencies": {
+    "@dbos-inc/dbos-sdk": "5.3.0"
+  }
+}

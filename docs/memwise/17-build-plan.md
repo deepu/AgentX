@@ -52,6 +52,8 @@ Phases are milestones in order; work inside a phase runs in parallel, and some l
 | S4 · Step loop on `pi-ai` | A loop with tool use, every model and tool call journaled; killing it mid-step resumes without repeating calls; prompt caching still works | Wrap the Pi backend and journal at the pool only, with strict steps restricted until fixed |
 | S5 · XState with DBOS | A three-step statechart with a loop and a 3-day timer runs with state in our tables and survives restarts | A small custom statechart runner behind the same format |
 
+**Status (October 2026).** The rename, the skeleton packages and all five spikes are done; results are D35–D40 in the [decision log](15-decisions.md) and the evidence is in [spikes/](../../spikes/README.md). S1, S2, S4 and S5 passed; S3 passed on Linux, with macOS and Windows measured by the spike's CI workflow. The server starts and answers the CLI, and the desktop app starts on Linux (checked on a virtual display) under the new name. Still to do by hand: rebuild the macOS 26 icon on a Mac, and walk through the desktop app with a real account on macOS.
+
 ## Phase 1 · The kernel: one durable step
 
 The smallest kernel that runs one trustworthy agent step ([07 §10](07-agent-runtime.md)). Headless: driven from the CLI and tests, no new UI yet.

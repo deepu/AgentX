@@ -1,0 +1,12 @@
+{
+  "name": "memwise-spike-s5-xstate-dbos",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway spike S5: XState v5 statechart with state in our tables, each step a DBOS workflow",
+  "dependencies": {
+    "@dbos-inc/dbos-sdk": "5.3.0",
+    "@dbos-inc/node-pg-datasource": "5.3.0",
+    "pg": "8.16.3",
+    "xstate": "5.33.3"
+  }
+}

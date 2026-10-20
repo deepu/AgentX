@@ -2,13 +2,22 @@
 
 Not yet decided. The first group is settled by spikes at the start of the build plan rather than by discussion.
 
-## To settle by spike
+## Settled by spike
 
-1. **DBOS under Bun.** Does DBOS's TypeScript library run under Bun, which the server uses today, or does the worker need Node?
-2. **DBOS versioning.** How a session resumes on the code version it started with, and how that lines up with definition versions.
-3. **Bundled Postgres on desktop.** Size, start-up time, upgrades and data location on macOS, Windows and Linux.
-4. **The step engine on `pi-ai`.** A minimal loop with every model and tool call as a DBOS step, provider caching, and the PreToolUse and pool chokepoints in front of it.
-5. **XState with DBOS.** Statechart state in our tables, one DBOS workflow per step, timers as durable sleeps: does it hold together under restarts?
+Items 1–5 were answered in Phase 0; the answers are D35–D39 in the [decision log](15-decisions.md) and the evidence is in [spikes/](../../spikes/README.md).
+
+1. **DBOS under Bun:** yes (D35).
+2. **DBOS versioning:** runs stay on the version they started on; definition versions travel as inputs (D36).
+3. **Bundled Postgres on desktop:** yes on Linux; macOS and Windows numbers come from the spike's CI run (D37).
+4. **The step engine on `pi-ai`:** yes (D38).
+5. **XState with DBOS:** yes (D39).
+
+Left open by the spikes, for Phase 1:
+
+- Step timeouts: the run driver must race a running step against its timer and cancel it; not built yet.
+- Nested and parallel states, history, `invoke` and `spawn` in XState were not exercised.
+- Real prompt-cache hits and providers other than Anthropic were not measured (no key in the spike).
+- The macOS 26 compiled icon (`apps/electron/resources/Assets.car`) still shows the old mark and must be rebuilt on a Mac.
 
 ## Domain and data
 
