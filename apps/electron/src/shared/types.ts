@@ -970,6 +970,8 @@ export type SessionFilter =
  */
 export type { SettingsSubpage } from './settings-registry'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
+import { domainsRoute, unpackDomainsDetail } from './domains-route'
+export type { DomainsDetails } from './domains-route'
 
 /**
  * Sessions navigation state
@@ -1101,6 +1103,17 @@ export interface PluginsNavigationState {
 }
 
 /**
+ * MemWise domains (Phase 6, docs/memwise/24-phase-6-interfaces.md §14): a record page, a
+ * domain's entities, a dashboard, the automations or a domain page. No middle list (like
+ * `pages`): the sidebar's Domains section is the navigator. Bare `domains` is the Pages overview.
+ */
+export interface DomainsNavigationState {
+  navigator: 'domains'
+  details: import('./domains-route').DomainsDetails | null
+  rightSidebar?: RightSidebarPanel
+}
+
+/**
  * Unified navigation state
  */
 export type NavigationState =
@@ -1115,6 +1128,7 @@ export type NavigationState =
   | CasesNavigationState
   | PlaybooksNavigationState
   | PluginsNavigationState
+  | DomainsNavigationState
 
 export const isSessionsNavigation = (
   state: NavigationState
@@ -1159,6 +1173,10 @@ export const isPlaybooksNavigation = (
 export const isPluginsNavigation = (
   state: NavigationState
 ): state is PluginsNavigationState => state.navigator === 'plugins'
+
+export const isDomainsNavigation = (
+  state: NavigationState
+): state is DomainsNavigationState => state.navigator === 'domains'
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
@@ -1211,6 +1229,7 @@ export const getNavigationStateKey = (state: NavigationState): string => {
     if (state.details?.type === 'records') return `plugins/records/${state.details.entity}`
     return state.details ? `plugins/plugin/${state.details.pluginId}` : 'plugins'
   }
+  if (state.navigator === 'domains') return domainsRoute(state.details)
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
     return `settings:${state.subpage}`
@@ -1307,6 +1326,15 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
   if (key.startsWith('plugins/records/')) {
     const entity = key.slice(16)
     return { navigator: 'plugins', details: entity ? { type: 'records', entity } : null }
+  }
+
+  // Handle MemWise domains (Phase 6)
+  if (key === 'domains') return { navigator: 'domains', details: null }
+  if (key.startsWith('domains/')) {
+    const [, type, packed] = key.split('/')
+    let id: string | null = null
+    try { id = packed ? decodeURIComponent(packed) : null } catch { id = null }
+    return { navigator: 'domains', details: type && id ? unpackDomainsDetail(type, id) : null }
   }
 
   // Handle settings
