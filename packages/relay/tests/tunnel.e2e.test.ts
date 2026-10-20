@@ -48,7 +48,8 @@ describe('forwarding through the tunnel', () => {
     expect(seen.headers.cookie).toBeUndefined();
     expect(seen.headers['cf-connecting-ip']).toBeUndefined();
     expect(seen.headers['x-forwarded-for']).toBeUndefined();
-    expect(seen.headers['x-memwise-client-ip']).toBe('127.0.0.1');
+    // The socket's own address: 127.0.0.1 or ::1, whichever localhost resolved to.
+    expect(['127.0.0.1', '::1', '::ffff:127.0.0.1']).toContain(seen.headers['x-memwise-client-ip']!);
     expect(seen.headers['x-forwarded-host']).toBe(new URL(base).host);
     expect(seen.headers['x-forwarded-proto']).toBe('http');
 

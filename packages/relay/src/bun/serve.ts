@@ -153,10 +153,14 @@ export function startBunRelay(opts: BunRelayOptions = {}): BunRelay {
     port,
     hub: (installId) => hubs.get(installId),
     async stop() {
-      await server.stop(true);
+      // Bun 1.3 can leave stop(true) pending forever once the relay itself has closed a tunnel
+      // (a refused or replaced hello); the server is stopped all the same, so don't wait on it.
+      await Promise.race([server.stop(true), Bun.sleep(STOP_WAIT_MS)]);
     },
   };
 }
+
+const STOP_WAIT_MS = 1_000;
 
 export { MemoryPageStore };
 
