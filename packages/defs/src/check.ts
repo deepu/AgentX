@@ -141,7 +141,7 @@ function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, ste
     if (!step.outcomes.length) at('error', 'no-outcomes', 'an agent step declares at least one outcome, e.g. `outcomes: [done]`', []);
   }
   if (step.performer === 'system') {
-    at('warning', 'system-step-phase-2', 'system (mechanical) steps run from Phase 2; until then a run waits here', ['performer']);
+    at('warning', 'system-step-phase-2', 'system (mechanical) steps run from Phase 2; until then a run stops here', ['performer']);
   }
 
   for (const outcome of step.outcomes) {
