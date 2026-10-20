@@ -128,7 +128,8 @@ export function StartCaseDialog() {
               <SelectTrigger aria-label={t('memwise.cases.playbook')}>
                 <SelectValue placeholder={t('memwise.cases.choosePlaybook')} />
               </SelectTrigger>
-              <SelectContent>
+              {/* Above the dialog (z-modal): the select's own z-dropdown would open behind it. */}
+              <SelectContent style={{ zIndex: 'var(--z-floating-menu)' }}>
                 {(playbooks ?? []).map(p => <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>)}
               </SelectContent>
             </Select>

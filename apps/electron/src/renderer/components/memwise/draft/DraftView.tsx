@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { absoluteTime, relativeTime } from '../format'
 import { WorkflowMap } from '../map'
+import { useNow } from '../use-now'
 import { ChangesView } from './ChangesView'
 import { CheckProgress, ChecksView } from './ChecksView'
 import { EditHistory, PendingEdits } from './EditHistory'
@@ -57,8 +58,9 @@ export interface DraftViewProps {
 
 const TONE_TO_BADGE = { default: 'default', success: 'success', warning: 'warning', destructive: 'destructive', muted: 'muted' } as const
 
-export function DraftView({ draft, live, roles, actions, checking, busy, tab: controlledTab, onTabChange, editingStepId, now }: DraftViewProps) {
+export function DraftView({ draft, live, roles, actions, checking, busy, tab: controlledTab, onTabChange, editingStepId, now: fixedNow }: DraftViewProps) {
   const { t, i18n } = useTranslation()
+  const now = useNow(fixedNow)
   const [ownTab, setOwnTab] = React.useState<DraftTab>(controlledTab ?? 'changes')
   const tab = controlledTab ?? ownTab
   const setTab = (next: DraftTab) => { setOwnTab(next); onTabChange?.(next) }
@@ -71,6 +73,8 @@ export function DraftView({ draft, live, roles, actions, checking, busy, tab: co
   const checked = draft.stage === 'checked' && !draft.reportStale
   const errors = draft.diagnostics.filter(d => d.severity === 'error').length + (draft.report && !draft.reportStale ? draft.report.errors : 0)
   const editActions = editable ? { keep: actions.keepEdit, discard: actions.discardEdit } : {}
+  // Built or changed in a chat that hasn't finished: the chat sends it for review, not this screen.
+  const inChat = !!draft.inChat
 
   const openStep = (stepId: string) => {
     setFocusStep(stepId)
@@ -114,7 +118,7 @@ export function DraftView({ draft, live, roles, actions, checking, busy, tab: co
       {open && (
         <div className="flex flex-wrap items-center gap-2" data-draft-actions>
           {actions.openChat && (
-            <Button variant="secondary" size="sm" onClick={actions.openChat} data-action="open-chat">
+            <Button variant={inChat && editable && actions.submit ? 'primary' : 'secondary'} size="sm" onClick={actions.openChat} data-action="open-chat">
               <MessageSquare />
               {t('memwise.draft.openChat')}
             </Button>
@@ -127,16 +131,19 @@ export function DraftView({ draft, live, roles, actions, checking, busy, tab: co
           )}
           {editable && actions.submit && (
             <Button
-              variant="primary"
+              variant={inChat ? 'secondary' : 'primary'}
               size="sm"
               onClick={actions.submit}
-              disabled={!checked || pending.length > 0 || !!checking || busy === 'submit'}
-              title={!checked ? t('memwise.draft.submitNeedsCheck') : pending.length > 0 ? t('memwise.draft.submitNeedsKeep') : undefined}
+              disabled={inChat || !checked || pending.length > 0 || !!checking || busy === 'submit'}
+              title={inChat ? t('memwise.draft.submitInChat') : !checked ? t('memwise.draft.submitNeedsCheck') : pending.length > 0 ? t('memwise.draft.submitNeedsKeep') : undefined}
               data-action="submit"
             >
               <Send />
               {busy === 'submit' ? t('memwise.inbox.sending') : t('memwise.draft.submit')}
             </Button>
+          )}
+          {editable && actions.submit && inChat && (
+            <span className="text-label-sm text-tertiary" data-in-chat>{t('memwise.draft.finishInChat')}</span>
           )}
           <span className="flex-1" />
           {editable && actions.discard && (
@@ -162,7 +169,7 @@ export function DraftView({ draft, live, roles, actions, checking, busy, tab: co
           <Info_Alert.Title>{t('memwise.draft.publishedTitle', { version: draft.publishedVersion ?? '' })}</Info_Alert.Title>
         </Info_Alert>
       )}
-      {checking && tab !== 'checks' && <CheckProgress startedAt={checking.startedAt} now={now} />}
+      {checking && tab !== 'checks' && <CheckProgress startedAt={checking.startedAt} now={fixedNow} />}
       {editable && <PendingEdits draft={draft} live={live} actions={editActions} now={now} />}
 
       <Tabs value={tab} onValueChange={v => setTab(v as DraftTab)}>
@@ -206,7 +213,7 @@ export function DraftView({ draft, live, roles, actions, checking, busy, tab: co
           )}
         </TabsContent>
         <TabsContent value="checks" className="mt-4">
-          <ChecksView draft={draft} live={live} checking={checking} onCheck={editable ? actions.check : undefined} onOpenCase={actions.openCase} now={now} />
+          <ChecksView draft={draft} live={live} checking={checking} onCheck={editable ? actions.check : undefined} onOpenCase={actions.openCase} now={fixedNow} />
         </TabsContent>
         <TabsContent value="history" className="mt-4">
           <Info_Section title={t('memwise.draft.tab.history')} count={draft.edits.length}>

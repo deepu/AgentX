@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Hand, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { PermissionRisk } from '@memwise/core/types'
+import { getPlainToolLabel } from '@memwise/shared/utils/toolNames'
 import type { PermissionRequest as PermissionRequestType } from '../../../../../shared/types'
 import type { PermissionResponse } from './types'
 import {
@@ -47,6 +48,11 @@ export function PermissionRequest({ request, onResponse, unstyled = false }: Per
   // Risks a newer server may send that this client has no label for are left out.
   const risks = (request.risks ?? []).filter((risk) => Object.hasOwn(riskLabels, risk))
   const canRemember = request.canRemember !== false
+  // Session tools with a plain label (the playbook tools) show it instead of the raw tool name,
+  // and skip a description or command that only repeats it.
+  const plainLabel = getPlainToolLabel(request.toolName)
+  const showDescription = !plainLabel || request.description !== plainLabel
+  const showCommand = !!request.command && (!plainLabel || request.command !== request.toolName)
   const tone: DecisionTone = risks.length > 0 ? 'danger' : 'info'
 
   const handleAllow = () => {
@@ -73,9 +79,15 @@ export function PermissionRequest({ request, onResponse, unstyled = false }: Per
         <DecisionDetails>
           <p className="text-label text-secondary">
             <span className="font-medium text-foreground">{t('chat.permissionTool')}</span>{' '}
-            <span className="font-mono text-mono-ui text-foreground">{request.toolName}</span>
-            <br />
-            {request.description}
+            {plainLabel
+              ? <span className="text-foreground">{plainLabel}</span>
+              : <span className="font-mono text-mono-ui text-foreground">{request.toolName}</span>}
+            {showDescription && (
+              <>
+                <br />
+                {request.description}
+              </>
+            )}
           </p>
           {risks.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1" title={t('chat.permissionRiskHint')}>
@@ -88,7 +100,7 @@ export function PermissionRequest({ request, onResponse, unstyled = false }: Per
           )}
 
           {/* Command preview */}
-          {request.command && (
+          {showCommand && (
             <DecisionPreview>{request.command}</DecisionPreview>
           )}
         </DecisionDetails>

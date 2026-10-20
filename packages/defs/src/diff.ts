@@ -247,31 +247,38 @@ export function structuralDiff(before: WorkflowDef | undefined, after: WorkflowD
   };
 }
 
-/** The structural diff in plain sentences, for `memwise diff` and review cards. */
-export function describeStructuralDiff(s: StructuralDiff): string[] {
+/** What `describeStructuralDiff` names: the playbook, a state or step, a case field, a tool, a role, an example case. */
+export type DiffNameKind = 'playbook' | 'state' | 'field' | 'tool' | 'role' | 'example';
+
+/**
+ * The structural diff in plain sentences, for `memwise diff` and review cards. Names are ids in
+ * code formatting unless `name` says them otherwise (in words, for people reading a review).
+ */
+export function describeStructuralDiff(s: StructuralDiff, opts: { name?: (kind: DiffNameKind, id: string) => string } = {}): string[] {
   const out: string[] = [];
-  const list = (xs: string[]) => xs.map((x) => `\`${x}\``).join(', ');
+  const n = opts.name ?? ((_kind: DiffNameKind, id: string) => `\`${id}\``);
+  const list = (kind: DiffNameKind, xs: string[]) => xs.map((x) => n(kind, x)).join(', ');
   if (s.version.from !== undefined && s.version.from !== s.version.to) out.push(`Version ${s.version.from} → ${s.version.to}.`);
-  else if (s.version.from === undefined) out.push(`New playbook \`${s.workflowId}\`, version ${s.version.to ?? 1}.`);
+  else if (s.version.from === undefined) out.push(`New playbook ${n('playbook', s.workflowId)}, version ${s.version.to ?? 1}.`);
   if (s.playbook.length) out.push(`Playbook ${s.playbook.join(', ')} changed.`);
   for (const change of ['added', 'removed'] as const) {
-    const names = Object.entries(s.states).filter(([, c]) => c === change).map(([n]) => n);
-    if (names.length) out.push(`${change === 'added' ? 'Added' : 'Removed'} state${names.length > 1 ? 's' : ''} ${list(names)}.`);
+    const names = Object.entries(s.states).filter(([, c]) => c === change).map(([x]) => x);
+    if (names.length) out.push(`${change === 'added' ? 'Added' : 'Removed'} state${names.length > 1 ? 's' : ''} ${list('state', names)}.`);
   }
   for (const [name, step] of Object.entries(s.steps)) {
-    if (step.change === 'changed') out.push(`Step \`${name}\`: ${step.parts.join(', ')} changed.`);
+    if (step.change === 'changed') out.push(`Step ${n('state', name)}: ${step.parts.join(', ')} changed.`);
   }
-  for (const t of s.transitions) out.push(`${t.change === 'added' ? 'New' : 'Removed'} transition: \`${t.from}\` on ${t.event} → \`${t.to}\`.`);
-  if (s.caseFields.added.length) out.push(`New case fields ${list(s.caseFields.added)}.`);
-  if (s.caseFields.removed.length) out.push(`Removed case fields ${list(s.caseFields.removed)}.`);
-  if (s.caseFields.changed.length) out.push(`Changed case fields ${list(s.caseFields.changed)}.`);
-  if (s.tools.added.length) out.push(`Uses new tools ${list(s.tools.added)}.`);
-  if (s.tools.removed.length) out.push(`No longer uses ${list(s.tools.removed)}.`);
-  for (const r of s.requiredTools) out.push(`Step \`${r.step}\` ${r.change === 'added' ? 'must now call' : 'no longer must call'} \`${r.tool}\`.`);
-  if (s.roles.added.length) out.push(`New roles ${list(s.roles.added)}.`);
-  if (s.roles.removed.length) out.push(`Removed roles ${list(s.roles.removed)}.`);
-  if (s.examples.added.length) out.push(`New example cases ${list(s.examples.added)}.`);
-  if (s.examples.removed.length) out.push(`Removed example cases ${list(s.examples.removed)}.`);
-  if (s.examples.changed.length) out.push(`Changed example cases ${list(s.examples.changed)}.`);
+  for (const t of s.transitions) out.push(`${t.change === 'added' ? 'New' : 'Removed'} transition: ${n('state', t.from)} on ${t.event} → ${n('state', t.to)}.`);
+  if (s.caseFields.added.length) out.push(`New case fields ${list('field', s.caseFields.added)}.`);
+  if (s.caseFields.removed.length) out.push(`Removed case fields ${list('field', s.caseFields.removed)}.`);
+  if (s.caseFields.changed.length) out.push(`Changed case fields ${list('field', s.caseFields.changed)}.`);
+  if (s.tools.added.length) out.push(`Uses new tools ${list('tool', s.tools.added)}.`);
+  if (s.tools.removed.length) out.push(`No longer uses ${list('tool', s.tools.removed)}.`);
+  for (const r of s.requiredTools) out.push(`Step ${n('state', r.step)} ${r.change === 'added' ? 'must now call' : 'no longer must call'} ${n('tool', r.tool)}.`);
+  if (s.roles.added.length) out.push(`New roles ${list('role', s.roles.added)}.`);
+  if (s.roles.removed.length) out.push(`Removed roles ${list('role', s.roles.removed)}.`);
+  if (s.examples.added.length) out.push(`New example cases ${list('example', s.examples.added)}.`);
+  if (s.examples.removed.length) out.push(`Removed example cases ${list('example', s.examples.removed)}.`);
+  if (s.examples.changed.length) out.push(`Changed example cases ${list('example', s.examples.changed)}.`);
   return out;
 }

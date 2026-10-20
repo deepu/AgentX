@@ -38,4 +38,19 @@ describe('session tool safe-mode classification', () => {
       }
     }
   });
+
+  // A build/change chat in Explore: the refusal must tell the person how to finish, not
+  // talk about sources and agents.
+  it('allows drafting playbook tools in safe mode and explains how to send the draft', () => {
+    for (const toolName of ['mcp__session__playbook_read', 'mcp__session__playbook_write', 'mcp__session__playbook_check']) {
+      expect(shouldAllowToolInMode(toolName, {}, 'safe').allowed).toBe(true);
+    }
+    const result = shouldAllowToolInMode('mcp__session__playbook_finish', {}, 'safe');
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toContain('switch to Ask mode');
+      expect(result.reason).toContain('send the draft for review');
+      expect(result.reason).not.toContain('sources and agents');
+    }
+  });
 });

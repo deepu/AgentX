@@ -139,7 +139,10 @@ export interface CaseFieldListProps {
   className?: string
 }
 
-/** Rows of label · value · provenance badge, inside an Info_Section card. */
+/**
+ * Rows of label · value · provenance badge, inside an Info_Section card. In a narrow card (a
+ * third panel) the badge goes under the value, so the value keeps the width it needs.
+ */
 export function CaseFieldList({ values, fields, people, only, className }: CaseFieldListProps) {
   const { t } = useTranslation()
   const order = only ?? [
@@ -152,18 +155,22 @@ export function CaseFieldList({ values, fields, people, only, className }: CaseF
     return <p className="px-3.5 py-3 text-label text-tertiary">{t('memwise.case.noFields')}</p>
   }
   return (
-    <dl className={cn('divide-y divide-separator', className)}>
+    <dl className={cn('@container/fields divide-y divide-separator', className)}>
       {rows.map(name => {
         const cv = values[name]!
         const def = fields?.find(f => f.name === name)
         return (
-          <div key={name} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-3.5 py-2.5 text-label" data-field={name}>
-            <dt className="w-[140px] shrink-0 text-secondary" title={def?.description}>{humanize(name)}</dt>
-            <dd className="min-w-0 flex-1 text-foreground">
+          <div
+            key={name}
+            className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)] items-start gap-x-3 gap-y-1 px-3.5 py-2.5 text-label @lg/fields:grid-cols-[140px_minmax(0,1fr)_auto]"
+            data-field={name}
+          >
+            <dt className="text-secondary" title={def?.description}>{humanize(name)}</dt>
+            <dd className="min-w-0 text-foreground">
               {cv.hidden ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span> : <CaseValueView value={cv.value} fieldNames={fieldNames} />}
             </dd>
             {/* Nothing there: no "who set it" badge for an empty value */}
-            {(cv.hidden || !isEmptyValue(cv.value)) && <div className="shrink-0"><ProvenanceBadge value={cv} people={people} /></div>}
+            {(cv.hidden || !isEmptyValue(cv.value)) && <div className="col-start-2 justify-self-start @lg/fields:col-start-3"><ProvenanceBadge value={cv} people={people} /></div>}
           </div>
         )
       })}

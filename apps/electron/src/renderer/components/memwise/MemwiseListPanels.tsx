@@ -26,6 +26,7 @@ import {
   memwiseStartCaseDialogAtom,
 } from '@/atoms/memwise'
 import { MemwiseStatusBanner } from './MemwiseStatus'
+import { useNow } from './use-now'
 import { isMetaPlaybook, isOpenDraft, sortDrafts, stageLabel, stageTone } from './draft/draft-model'
 import {
   absoluteTime,
@@ -61,6 +62,19 @@ function ListSkeleton() {
   )
 }
 
+/**
+ * A subtitle with its chips right after the text: the text takes what the chips leave (EntityRow's
+ * own `subtitleTrailing` reserves half the line for label chips, which cut short subtitles).
+ */
+function SubtitleWithChips({ text, children }: { text: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="min-w-0 truncate">{text}</span>
+      <span className="ml-auto flex shrink-0 items-center gap-1">{children}</span>
+    </span>
+  )
+}
+
 // ---------------------------------------------------------------- inbox
 
 export interface InboxListProps {
@@ -71,8 +85,9 @@ export interface InboxListProps {
   className?: string
 }
 
-export function InboxList({ items, selectedId, onSelect, now, className }: InboxListProps) {
+export function InboxList({ items, selectedId, onSelect, now: fixedNow, className }: InboxListProps) {
   const { t, i18n } = useTranslation()
+  const now = useNow(fixedNow)
   if (items === null) return <ListSkeleton />
   if (items.length === 0) {
     return (
@@ -101,8 +116,11 @@ export function InboxList({ items, selectedId, onSelect, now, className }: Inbox
                   {relativeTime(item.since, now, i18n.language)}
                 </span>
               }
-              subtitle={inboxItemStepTitle(item, t)}
-              subtitleTrailing={<EntityListBadge colorClass="bg-fill-hover text-secondary">{inboxKindLabel(item.kind, t)}</EntityListBadge>}
+              subtitle={
+                <SubtitleWithChips text={inboxItemStepTitle(item, t)}>
+                  <EntityListBadge colorClass="bg-fill-hover text-secondary">{inboxKindLabel(item.kind, t)}</EntityListBadge>
+                </SubtitleWithChips>
+              }
               dataAttributes={{ 'data-inbox-kind': item.kind }}
             />
           )
@@ -141,8 +159,9 @@ const STATUS_BADGE: Record<MwRunStatus, string> = {
   stopped: 'bg-destructive-tint text-destructive',
 }
 
-export function CasesList({ cases, playbooks, roles, selectedId, onSelect, onStartCase, now, className }: CasesListProps) {
+export function CasesList({ cases, playbooks, roles, selectedId, onSelect, onStartCase, now: fixedNow, className }: CasesListProps) {
   const { t, i18n } = useTranslation()
+  const now = useNow(fixedNow)
   if (cases === null) return <ListSkeleton />
   if (cases.length === 0) {
     return (
@@ -264,7 +283,7 @@ function GroupHeader({ children }: { children: React.ReactNode }) {
  * Playbooks, with the drafts in progress above them and the playbooks that build and change
  * playbooks (create-playbook, change-playbook) in their own quieter group below.
  */
-export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, onSelect, onSelectDraft, now, className }: {
+export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, onSelect, onSelectDraft, now: fixedNow, className }: {
   playbooks: MwPlaybookSummary[] | null
   drafts?: MwDraftSummary[] | null
   selectedId?: string | null
@@ -275,6 +294,7 @@ export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, 
   className?: string
 }) {
   const { t, i18n } = useTranslation()
+  const now = useNow(fixedNow)
   if (playbooks === null) return <ListSkeleton />
   const openDrafts = onSelectDraft ? sortDrafts((drafts ?? []).filter(isOpenDraft)) : []
   if (playbooks.length === 0 && openDrafts.length === 0) {
@@ -300,7 +320,7 @@ export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, 
         t('memwise.playbooks.steps', { count: p.stepCount }),
         t('memwise.playbooks.openCases', { count: p.open }),
       ].join(' · ')}
-      subtitleTrailing={p.waitingOnMe > 0 ? (
+      titleTrailing={p.waitingOnMe > 0 ? (
         <EntityListBadge colorClass="bg-info-tint text-info" tooltip={t('memwise.playbooks.waitingOnMeTooltip')}>
           {t('memwise.playbooks.waitingOnMe', { count: p.waitingOnMe })}
         </EntityListBadge>
@@ -326,12 +346,11 @@ export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, 
                     {relativeTime(d.updatedAt, now, i18n.language)}
                   </span>
                 }
-                subtitle={d.kind === 'create' ? t('memwise.draft.newPlaybook') : d.playbookTitle}
-                subtitleTrailing={
-                  <span className="flex items-center gap-1">
+                subtitle={
+                  <SubtitleWithChips text={d.kind === 'create' ? t('memwise.draft.newPlaybook') : d.playbookTitle}>
                     {d.pendingEdits > 0 && <Sparkles className="h-3 w-3 text-accent" aria-label={t('memwise.draft.pendingCount', { count: d.pendingEdits })} />}
                     <EntityListBadge colorClass={STAGE_BADGE[stageTone(d.stage)]}>{stageLabel(d.stage, t)}</EntityListBadge>
-                  </span>
+                  </SubtitleWithChips>
                 }
                 dataAttributes={{ 'data-draft': d.id, 'data-draft-stage': d.stage }}
               />

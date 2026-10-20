@@ -37,7 +37,6 @@ import {
 import type {
   AgentSession,
   AgentSessionEvent,
-  AgentToolResult,
   CreateAgentSessionOptions,
   ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
@@ -108,6 +107,7 @@ import { readContextUsage, deferContextUsage } from './context-usage.ts';
 import { waitForCompaction, MANUAL_COMPACT_WAIT_MS, PROMPT_COMPACT_WAIT_MS } from './compaction-wait.ts';
 import type { PiCompactResult, PiContextUsagePayload, PiLargeResultGateRequest, PiLargeResultGateResponse } from '../../shared/src/agent/backend/pi/protocol.ts';
 import { createLargeResultGateClient } from './large-result-gate.ts';
+import { buildProxyToolDefinitions, type ProxyToolDef } from './proxy-tools.ts';
 import { adaptCredentialForPiSdk, type PiCredential } from './adapt-credential.ts';
 import { resolveMemWiseAgentDir } from './agent-dir.ts';
 import { toPiProviderId } from '../../shared/src/config/pi-provider-ids.ts';
@@ -177,13 +177,6 @@ type InboundMessage =
   | { type: 'steer'; message: string }
   | { type: 'token_update'; piAuth: { provider: string; credential: PiCredential } }
   | { type: 'shutdown' };
-
-/** Proxy tool definition from main process */
-interface ProxyToolDef {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-}
 
 /** Canonical tool metadata propagated on Pi tool start events */
 interface ToolExecutionMetadata {
@@ -854,7 +847,8 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
       inputObj = { ...inputObj, file_path: inputObj.path };
     }
 
-    // Send to main process for permission checking + transforms
+    // Send to main process for permission checking + transforms. This is the only
+    // approval for every tool, proxy tools included (see proxy-tools.ts).
     inputObj = await requestPreToolUseApproval(sdkToolName, inputObj, toolCallId);
 
     // Metadata is for MemWise UI only. Keep a final defensive strip here so the
@@ -924,75 +918,29 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
 // Proxy Tools (tools executed in main process)
 // ============================================================
 
-/**
- * A main-process tool result as a Pi tool result. Failures are flagged with
- * `isError` (Pi >=0.99) so the model gets an error tool result and
- * `tool_execution_end.isError` marks the call failed in MemWise, as a thrown error
- * would; before, they reached both as successes.
- */
-function proxyToolResult(result: { content: string; isError: boolean }): AgentToolResult<undefined> {
-  return {
-    content: [{ type: 'text', text: result.content }],
-    details: undefined,
-    ...(result.isError ? { isError: true } : {}),
-  };
-}
-
 function buildProxyTools(): ToolDefinition<any, any>[] {
-  debugLog(`Building proxy tools from ${proxyToolDefs.length} definitions: ${proxyToolDefs.map(t => t.name).join(', ')}`);
-
-  return proxyToolDefs.map<ToolDefinition<any, any>>(def => ({
-    name: def.name,
-    label: def.name
-      .replace(/^mcp__.*?__/, '')
-      .replace(/_/g, ' ')
-      .replace(/([a-z])([A-Z])/g, '$1 $2'),
-    description: def.description,
-    // Pi SDK omits tools without promptSnippet from the system prompt's
-    // "Available tools" section, making them invisible to the LLM.
-    // Derive a snippet from the description so proxy tools are listed.
-    promptSnippet: def.description.length > 200
-      ? def.description.slice(0, 197) + '...'
-      : def.description,
-    parameters: def.inputSchema,
-    execute: async (
-      toolCallId: string,
-      params: any,
-    ): Promise<AgentToolResult<any>> => {
-      // Check speculative prefetch cache first (parallel call_llm optimization).
-      // If this tool was prefetched on message_end, the request is already in-flight —
-      // just await the result instead of sending a duplicate request.
+  return buildProxyToolDefinitions(proxyToolDefs, {
+    debugLog,
+    takePrefetched: (toolCallId) => {
       const prefetched = prefetchCache.get(toolCallId);
-      if (prefetched) {
-        prefetchCache.delete(toolCallId);
-        debugLog(`Prefetch cache hit for ${def.name} (toolCallId: ${toolCallId})`);
-        const result = await prefetched;
-        return proxyToolResult(result);
-      }
-
-      const inputObj = params as Record<string, unknown>;
-
-      // Permission checking via main process
-      const approvedInput = await requestPreToolUseApproval(def.name, inputObj, toolCallId);
-
-      // Execute via main process
+      if (prefetched) prefetchCache.delete(toolCallId);
+      return prefetched;
+    },
+    executeInMainProcess: (toolName, toolCallId, args) => {
       const requestId = `proxy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
+      const result = new Promise<{ content: string; isError: boolean }>((resolve) => {
+        pendingToolExecutions.set(requestId, { resolve });
+      });
       send({
         type: 'tool_execute_request',
         requestId,
-        toolName: def.name,
+        toolName,
         toolCallId,
-        args: approvedInput,
+        args,
       });
-
-      const result = await new Promise<{ content: string; isError: boolean }>((resolve) => {
-        pendingToolExecutions.set(requestId, { resolve });
-      });
-
-      return proxyToolResult(result);
+      return result;
     },
-  }));
+  });
 }
 
 // ============================================================
