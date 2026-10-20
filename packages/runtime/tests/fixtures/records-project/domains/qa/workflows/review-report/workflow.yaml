@@ -2,8 +2,9 @@ workflow: review-report
 version: 1
 title: Review a test report
 owner: qa_lead
-start: review
+start: prepare
 steps:
+  prepare: { on: { done: review } }
   review:
     on: { approved: release, rejected: end }
     wait: { timeout: 14d → end }

@@ -88,6 +88,12 @@ describe.skipIf(!pgAvailable)('Phase 6 records', () => {
     expect(qa.views).toEqual([{ id: 'open-reports', title: 'Open reports', entity: 'Report' }]);
     expect(qa.retentionMs).toBe(10 * 365 * 86_400_000);
     await expect(kernel.people.create({ name: 'Short', email: 'short@example.com', password: 'short' })).rejects.toThrow(/at least 12 characters/);
+
+    // The policy layers of a qa playbook: the workspace house rules, then the qa domain's policy.
+    const { effective } = await kernel.effectivePolicy('review-report', 'review');
+    expect(effective.effects.irreversible).toMatchObject({ value: 'deny', origin: { layer: 'workspace' } });
+    expect(effective.effects.outbound).toMatchObject({ value: 'approve', origin: { layer: 'domain', name: 'qa-domain' } });
+    expect(effective.budgets.modelCalls).toMatchObject({ value: 20 });
   });
 
   test('roles count per domain: a grant in qa lets a person write qa records, not lab ones', async () => {
@@ -208,6 +214,11 @@ describe.skipIf(!pgAvailable)('Phase 6 records', () => {
     const { runId, caseId } = await kernel.startRun({ workflowId: 'review-report', case: { report } });
     const review = await stepRun(runId, 'review');
 
+    // `prepare` changed the report through the entity tool, as the step, with the step's reason.
+    const prepared = (await kernel.records.page('qa.Report', report, lead))!;
+    expect(prepared.fields.find((f) => f.name === 'remarks')).toMatchObject({ value: 'Ready for review', source: { kind: 'step', stepRunId: `${runId}/0/prepare` } });
+    expect(prepared.history[0]).toMatchObject({ reason: `Review a test report: Mark it ready for review, case ${caseId}`, via: `${runId}/0/prepare`, changed: ['remarks'] });
+
     const items = (await kernel.inbox(lead)).filter((i) => i.kind === 'input' && i.stepRunId === review);
     expect(items[0]).toMatchObject({ domain: 'qa', review: { kind: 'document', entity: 'qa.Report', recordId: report }, sign: { meaning: 'Reviewed and approved for release' } });
     expect((await kernel.getCaseView(caseId, lead))!.domain).toBe('qa');
@@ -305,15 +316,15 @@ describe.skipIf(!pgAvailable)('Phase 6 records', () => {
   test('the audit trail: versions with hashes, the chain, signatures, cases and step runs; JSON and PDF', async () => {
     const trail = (await kernel.audit.trail('qa.Report', report, lead))!;
     expect(trail).toMatchObject({ entity: 'qa.Report', id: report, domain: 'qa', regulated: true, chain: { ok: true }, retentionMs: 10 * 365 * 86_400_000 });
-    expect(trail.versions.map((v) => v.version)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(trail.versions.map((v) => v.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(trail.versions[1]!.prevHash).toBe(trail.versions[0]!.hash);
     expect(trail.signatures.length).toBe(1);
     expect(trail.cases.length).toBe(1);
-    expect(trail.cases[0]!.stepRuns.map((s) => [s.stepId, s.outcome])).toEqual([['review', 'approved'], ['release', 'done']]);
+    expect(trail.cases[0]!.stepRuns.map((s) => [s.stepId, s.outcome])).toEqual([['prepare', 'done'], ['review', 'approved'], ['release', 'done']]);
 
     const json = (await kernel.audit.export('qa.Report', report, 'json', lead))!;
     expect(json).toMatchObject({ mime: 'application/json', name: expect.stringMatching(/\.json$/) });
-    expect(JSON.parse(new TextDecoder().decode(json.data)).versions.length).toBe(7);
+    expect(JSON.parse(new TextDecoder().decode(json.data)).versions.length).toBe(8);
     const pdf = (await kernel.audit.export('qa.Report', report, 'pdf', lead))!;
     expect(pdf.mime).toBe('application/pdf');
     expect(new TextDecoder().decode(pdf.data.slice(0, 8))).toStartWith('%PDF-1.');

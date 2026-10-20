@@ -14,7 +14,7 @@ submit:
 expect:
   state: end
   writes: { review_note: Looks right. }
-  effects: { qa.report.transition: 1 }
+  effects: { qa.report.update: 1, qa.report.transition: 1 }
   entities:
     Report:
       - { title: Sterility }
