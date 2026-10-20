@@ -15,7 +15,7 @@ import type {
   MwStructuralDiff,
 } from '@memwise/shared/protocol'
 import { humanize, stateTitle } from '../playbook/labels'
-import { humanize as words } from '../format'
+import { humanize as words, toolLabel } from '../format'
 
 /** The playbooks that build and change playbooks (20 §3). */
 export const META_PLAYBOOKS = ['create-playbook', 'change-playbook'] as const
@@ -173,7 +173,8 @@ const PLAYBOOK_PART_KEYS: Record<string, string> = {
   start: 'memwise.draft.playbookPart.start',
 }
 
-function joinList(items: string[], lang?: string): string {
+/** "a, b and c" in the reader's language. */
+export function joinList(items: string[], lang?: string): string {
   if (items.length < 2) return items[0] ?? ''
   try {
     return new Intl.ListFormat(lang, { type: 'conjunction' }).format(items)
@@ -232,11 +233,12 @@ export function changeLines(
     out.push({
       kind: r.change,
       step: r.step,
-      text: t(r.change === 'added' ? 'memwise.draft.changes.requiredAdded' : 'memwise.draft.changes.requiredRemoved', { step: name(r.step), tool: r.tool }),
+      text: t(r.change === 'added' ? 'memwise.draft.changes.requiredAdded' : 'memwise.draft.changes.requiredRemoved', { step: name(r.step), tool: toolLabel(r.tool) }),
     })
   }
-  if (structure.tools.added.length) out.push({ kind: 'added', text: t('memwise.draft.changes.toolsAdded', { tools: joinList(structure.tools.added, lang) }) })
-  if (structure.tools.removed.length) out.push({ kind: 'removed', text: t('memwise.draft.changes.toolsRemoved', { tools: joinList(structure.tools.removed, lang) }) })
+  // Tools by what they do ("Create engagement"), not their ids
+  if (structure.tools.added.length) out.push({ kind: 'added', text: t('memwise.draft.changes.toolsAdded', { tools: joinList(structure.tools.added.map(toolLabel), lang) }) })
+  if (structure.tools.removed.length) out.push({ kind: 'removed', text: t('memwise.draft.changes.toolsRemoved', { tools: joinList(structure.tools.removed.map(toolLabel), lang) }) })
 
   for (const tr of structure.transitions) {
     const outcome = tr.event === 'timeout' ? t('memwise.draft.changes.timeoutEvent') : humanize(tr.event)

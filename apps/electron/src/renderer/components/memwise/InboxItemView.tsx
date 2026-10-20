@@ -34,6 +34,7 @@ import { isMetaPlaybook } from './draft/draft-model'
 import { GeneratedForm, type UploadFile } from './GeneratedForm'
 import { BindingReview } from './plugins/BindingReview'
 import { identityRows, matchMethodLabel, scorePercent } from './plugins/plugin-model'
+import { useNow } from './use-now'
 import { buildSubmission, initialFormValues, type FormError, type FormValues } from './form-model'
 import {
   absoluteTime,
@@ -87,6 +88,8 @@ export interface InboxItemViewProps {
   bindingView?: MwBindingView | null
   /** The binding could not be loaded. */
   bindingError?: string | null
+  /** Playbook titles by id: a change's review names its playbook by title, not id. */
+  playbookTitles?: Record<string, string>
   now?: number
 }
 
@@ -170,8 +173,9 @@ function CommentBox({ value, onChange, error, placeholder, disabled }: {
   )
 }
 
-export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId, bindingView, bindingError, now }: InboxItemViewProps) {
+export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId, bindingView, bindingError, playbookTitles, now: fixedNow }: InboxItemViewProps) {
   const { t, i18n } = useTranslation()
+  const now = useNow(fixedNow)
   const since = relativeTime(item.since, now, i18n.language)
   const dueAt = 'dueAt' in item ? item.dueAt : undefined
 
@@ -201,7 +205,7 @@ export function InboxItemView({ item, actions, people = {}, roles, reviewDraftId
         <BindingBody item={item} binding={item.binding} actions={actions} roles={roles} view={bindingView} error={bindingError} now={now} />
       )}
       {item.kind === 'input' && !item.binding && <InputBody item={item} actions={actions} people={people} />}
-      {item.kind === 'decision' && !item.binding && <DecisionBody item={item} actions={actions} people={people} roles={roles} draftId={reviewDraftOf(item) ?? reviewDraftId} />}
+      {item.kind === 'decision' && !item.binding && <DecisionBody item={item} actions={actions} people={people} roles={roles} draftId={reviewDraftOf(item) ?? reviewDraftId} playbookTitles={playbookTitles} />}
       {item.kind === 'conversation' && <ConversationBody item={item} actions={actions} roles={roles} />}
       {item.kind === 'approval' && <ApprovalBody item={item} actions={actions} />}
       {item.kind === 'attention' && <AttentionBody item={item} actions={actions} />}
@@ -307,13 +311,14 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
 
 // ---------------------------------------------------------------- decision
 
-function DecisionBody({ item, actions, people, roles, draftId }: {
+function DecisionBody({ item, actions, people, roles, draftId, playbookTitles }: {
   item: Extract<MwInboxItem, { kind: 'decision' }>
   actions: InboxActions
   people: PeopleById
   roles?: MwRole[]
   /** A playbook change under review: the card links to its draft. */
   draftId?: string
+  playbookTitles?: Record<string, string>
 }) {
   const { t } = useTranslation()
   const [comment, setComment] = React.useState('')
@@ -351,7 +356,7 @@ function DecisionBody({ item, actions, people, roles, draftId }: {
         </Info_Alert>
       )}
       <Info_Section title={t('memwise.inbox.whatToReview')}>
-        <CaseFieldList values={reviewContext(item)} people={people} />
+        <CaseFieldList values={reviewContext(item, playbookTitles)} people={people} />
       </Info_Section>
       <div className="space-y-3">
         <CommentBox
@@ -380,10 +385,17 @@ function DecisionBody({ item, actions, people, roles, draftId }: {
   )
 }
 
-/** A change's review shows its words, not the draft's id (the button above opens the draft). */
-function reviewContext(item: Extract<MwInboxItem, { kind: 'decision' }>): Record<string, MwCaseValue> {
+/**
+ * A change's review shows its words, not ids: no draft id (the button above opens the draft), and
+ * the playbook by its title.
+ */
+export function reviewContext(item: Extract<MwInboxItem, { kind: 'decision' }>, playbookTitles?: Record<string, string>): Record<string, MwCaseValue> {
   if (!isMetaPlaybook(item.workflowId)) return item.context
   const { draft: _draft, ...rest } = item.context
+  const playbook = rest.playbook
+  if (playbook && !playbook.hidden && typeof playbook.value === 'string' && playbook.value) {
+    rest.playbook = { ...playbook, value: playbookTitles?.[playbook.value] ?? humanize(playbook.value) }
+  }
   return rest
 }
 

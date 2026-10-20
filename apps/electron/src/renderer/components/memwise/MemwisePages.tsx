@@ -19,6 +19,7 @@ import { navigate, routes } from '@/lib/navigate'
 import { sessionMetaMapAtom } from '@/atoms/sessions'
 import {
   memwiseDraftOpenTabAtom,
+  memwiseDraftsAtom,
   memwiseInboxAtom,
   memwisePeopleAtom,
   memwisePeopleOnlyAtom,
@@ -116,6 +117,15 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
   // A bind-plugin step: the binding review, read from its draft
   const binding = item && (item.kind === 'input' || item.kind === 'decision') ? item.binding : undefined
   const { data: bindingView, error: bindingError, reload: reloadBinding } = useMemwiseBinding(binding?.pluginId ?? null, binding?.draftId)
+  // A change's review names its playbook by title: live playbooks, and new ones by their draft's title.
+  const playbooks = useAtomValue(memwisePlaybooksAtom)
+  const drafts = useAtomValue(memwiseDraftsAtom)
+  const playbookTitles = React.useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const d of drafts ?? []) if (d.playbookTitle) out[d.workflowId] = d.playbookTitle
+    for (const p of playbooks ?? []) out[p.id] = p.title
+    return out
+  }, [playbooks, drafts])
 
   const actions = React.useMemo<InboxActions>(() => {
     const api = getMemwiseApi()
@@ -178,6 +188,7 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
           people={people}
           roles={roles}
           reviewDraftId={caseDraftId(reviewCase)}
+          playbookTitles={playbookTitles}
           bindingView={binding ? bindingView : undefined}
           bindingError={binding ? bindingError : undefined}
         />

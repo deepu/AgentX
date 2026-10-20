@@ -32,6 +32,7 @@ import { coerceInputText } from './lib/input-text'
 import { getSessionsToRefreshAfterStaleReconnect } from './lib/reconnect-recovery'
 import { formatSessionLoadFailure, shouldTreatSessionLoadFailureAsTransportFallback } from './lib/session-load'
 import { extractWorkspaceSlugFromPath } from '@memwise/shared/utils/workspace-slug'
+import { getPlainToolLabel } from '@memwise/shared/utils/toolNames'
 import { DEFAULT_THINKING_LEVEL } from '@memwise/shared/agent/thinking-levels'
 import { initRendererPerf } from './lib/perf'
 import {
@@ -880,7 +881,7 @@ export default function App() {
               const isAdminPrompt = effect.request.type === 'admin_approval'
               const promptBody = isAdminPrompt
                 ? `Admin approval required: ${effect.request.appName || effect.request.toolName}`
-                : `Permission required: ${effect.request.toolName}`
+                : `Permission required: ${getPlainToolLabel(effect.request.toolName) ?? effect.request.toolName}`
               showSessionNotification(notifySession, promptBody)
             }
             break

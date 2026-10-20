@@ -321,10 +321,14 @@ describe.skipIf(!pgAvailable)('Phase 3 kernel', () => {
     expect((await kernel.getRun(fresh.runId))!).toMatchObject({ workflowVersion: 2, workflowHash: versions[0]!.hash });
   }, 300_000);
 
+  let exampleDraft = '';
   test('a past case saved as an example in a change draft', async () => {
-    const r = await authoring.exampleFromCase({ caseId: finishedCase, name: 'asha-approved', correction: { step: 'verify', outcome: 'sent_back', note: 'blurred certificate' } }, manager);
-    expect(r.path).toBe('workflows/client-intake/examples/asha-approved.yaml');
+    const r = await authoring.exampleFromCase({ caseId: finishedCase, name: 'Unreadable GST certificate', correction: { step: 'verify', outcome: 'sent_back', note: 'blurred certificate' } }, manager);
+    // The file is a slug of the name; the name stays as typed inside it.
+    expect(r.path).toBe('workflows/client-intake/examples/unreadable-gst-certificate.yaml');
+    expect(r.example.name).toBe('Unreadable GST certificate');
     const text = (await authoring.read({ draftId: r.draftId, path: r.path })) as { content: string };
+    expect(text.content).toContain('name: Unreadable GST certificate');
     expect(text.content).toContain('startAt: verify');
     expect(text.content).toContain('outcome: sent_back');
     const d = (await authoring.getDraft(r.draftId))!;
@@ -332,7 +336,29 @@ describe.skipIf(!pgAvailable)('Phase 3 kernel', () => {
     expect(d.edits).toEqual([expect.objectContaining({ via: 'editor', status: 'kept', by: manager.personId })]);
     // The draft loads, with the new example case in it.
     expect(await authoring.quickCheck(r.draftId)).toEqual([]);
+
+    // Saved again under a name with the same slug: a new file beside it, not over it.
+    const again = await authoring.exampleFromCase({ caseId: finishedCase, name: 'unreadable GST  certificate!', draftId: r.draftId }, manager);
+    expect(again.path).toBe('workflows/client-intake/examples/unreadable-gst-certificate-2.yaml');
+    expect(((await authoring.read({ draftId: r.draftId, path: r.path })) as { content: string }).content).toBe(text.content);
+    exampleDraft = r.draftId;
   }, 60_000);
+
+  test('a check replays recent finished cases, also those that finished on an earlier version', async () => {
+    // client-intake is at v2 now; the finished intake case ran on v1.
+    const versions = await kernel.versions('client-intake');
+    expect(versions[0]).toMatchObject({ version: 2, live: true });
+    const { rows } = await kernel.pool.query(`select workflow_hash from mw.runs where case_id = $1`, [finishedCase]);
+    expect(rows[0]!.workflow_hash).toBe(versions.find((v) => v.version === 1)!.hash);
+    runnerCalls.length = 0;
+    const report = await authoring.check(exampleDraft);
+    const past = `past-${finishedCase.slice(-8).toLowerCase()}`;
+    expect(runnerCalls).toHaveLength(1);
+    expect(runnerCalls[0]!.extraExamples?.map((e) => e.name)).toEqual([past]);
+    expect(report.pastCases).toEqual([expect.objectContaining({ caseId: finishedCase, livePath: ['fill', 'check', 'verify', 'onboard', 'end'] })]);
+    // The replays are not reported as the playbook's own example cases.
+    expect(report.examples.map((e) => e.name)).not.toContain(past);
+  }, 120_000);
 
   test('submitDraft starts change-playbook at its check; a stale publish is refused', async () => {
     const draft = await authoring.createDraft({ workflowId: 'tiny-approval', title: 'Say please' }, staff);
@@ -346,7 +372,10 @@ describe.skipIf(!pgAvailable)('Phase 3 kernel', () => {
 
     const { runId, caseId } = await authoring.submitDraft(draft.id, staff);
     const review = await stepRunOf(runId, 'review');
-    expect((await kernel.getCase(caseId))!.values).toMatchObject({ draft: { value: draft.id }, playbook: { value: 'tiny-approval' }, title: { value: 'Say please' } });
+    const values = (await kernel.getCase(caseId))!.values;
+    expect(values).toMatchObject({ draft: { value: draft.id }, playbook: { value: 'tiny-approval' }, title: { value: 'Say please' } });
+    // The reviewer reads the summary: steps by their titles, no ids in code formatting.
+    expect(values.summary!.value).toBe('Version 1 → 2. Step “Approve the note”: instructions changed.');
     expect((await kernel.getTransitions(runId))[0]).toMatchObject({ from: 'check', to: 'review' });
     expect(review).toBe(`${runId}/1/review`);
   }, 120_000);

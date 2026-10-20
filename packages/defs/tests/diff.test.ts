@@ -115,6 +115,11 @@ steps:
     expect(words).toContain('Version 1 → 2.');
     expect(words).toContain('Step `work`: instructions, tools changed.');
     expect(words).toContain('Step `work` must now call `mail.send`.');
+    // Named for people (a review card): whatever the caller says, no code formatting.
+    const named = describeStructuralDiff(s, { name: (kind, id) => `“${kind}:${id}”` });
+    expect(named).toContain('Step “state:work” must now call “tool:mail.send”.');
+    expect(named).toContain('New case fields “field:email”.');
+    expect(named.join(' ')).not.toContain('`');
   });
 
   test('each step part is told apart', async () => {

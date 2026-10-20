@@ -104,6 +104,16 @@ export function WorkflowMap({ playbook: drawn, mode = 'design', live, change, hi
     return () => ro.disconnect()
   }, [])
   const scale = available && available < layout.width ? Math.max(MIN_SCALE, available / layout.width) : 1
+  // A map that scrolls fades at the side with more to see (scrollbars may be hidden until used).
+  const [more, setMore] = React.useState<{ left: boolean; right: boolean }>({ left: false, right: false })
+  const updateMore = React.useCallback(() => {
+    const el = scrollerRef.current
+    if (!el) return
+    const left = el.scrollLeft > 1
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+    setMore(m => (m.left === left && m.right === right ? m : { left, right }))
+  }, [])
+  React.useEffect(updateMore, [updateMore, available, scale, layout])
   React.useEffect(() => {
     const el = scrollerRef.current
     const node = current ? layout.nodes.find(n => n.id === current) : undefined
@@ -116,91 +126,97 @@ export function WorkflowMap({ playbook: drawn, mode = 'design', live, change, hi
 
   return (
     <div className={cn('flex flex-col gap-2', className)}>
-      <div
-        ref={scrollerRef}
-        className="overflow-x-auto overflow-y-hidden rounded-lg border border-border bg-sunken"
-        style={{ backgroundImage: 'radial-gradient(var(--border) 1px, transparent 1px)', backgroundSize: '18px 18px' }}
-        role="figure"
-        aria-label={t('memwise.map.label', { title: playbook.title })}
-      >
-        <div style={{ width: layout.width * scale, height: layout.height * scale }}>
-          <div className="relative origin-top-left" style={{ width: layout.width, height: layout.height, ...(scale < 1 ? { transform: `scale(${scale})` } : {}) }}>
-            <svg width={layout.width} height={layout.height} className="absolute inset-0" aria-hidden>
-              <defs>
-                {(['forward', 'failure', 'visited', 'added', 'changed', 'removed'] as const).map((key) => (
-                  <marker key={key} id={markerId(key)} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
-                    <path d="M 0 1 L 9 5 L 0 9 z" fill={STROKE[key]} />
-                  </marker>
-                ))}
-              </defs>
+      <div className="relative">
+        <div
+          ref={scrollerRef}
+          onScroll={updateMore}
+          className="overflow-x-auto overflow-y-hidden rounded-lg border border-border bg-sunken"
+          style={{ backgroundImage: 'radial-gradient(var(--border) 1px, transparent 1px)', backgroundSize: '18px 18px' }}
+          role="figure"
+          aria-label={t('memwise.map.label', { title: playbook.title })}
+          data-scrolls={more.left || more.right || undefined}
+        >
+          <div style={{ width: layout.width * scale, height: layout.height * scale }}>
+            <div className="relative origin-top-left" style={{ width: layout.width, height: layout.height, ...(scale < 1 ? { transform: `scale(${scale})` } : {}) }}>
+              <svg width={layout.width} height={layout.height} className="absolute inset-0" aria-hidden>
+                <defs>
+                  {(['forward', 'failure', 'visited', 'added', 'changed', 'removed'] as const).map((key) => (
+                    <marker key={key} id={markerId(key)} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+                      <path d="M 0 1 L 9 5 L 0 9 z" fill={STROKE[key]} />
+                    </marker>
+                  ))}
+                </defs>
+                {layout.edges.map((edge) => {
+                  const key = `${edge.from}>${edge.to}`
+                  const on = visitedEdges.has(key)
+                  const dim = !!path && !on
+                  const count = isLive ? live!.edges[key] : undefined
+                  const changed = changes?.edges[key]
+                  const width = on ? Math.max(2.25, edgeWidth(count, maxEdge)) : changed ? 2.25 : edgeWidth(count, maxEdge)
+                  const stroke = on ? STROKE.visited : changed ? STROKE[changed] : STROKE[edge.kind]
+                  const dash = changed === 'removed' ? '6 4' : edge.kind === 'back' && !on && !changed ? '5 4' : undefined
+                  const marker = on ? 'visited' : changed ?? (edge.kind === 'failure' ? 'failure' : 'forward')
+                  return (
+                    <path
+                      key={key}
+                      d={edgePath(edge.points)}
+                      fill="none"
+                      stroke={stroke}
+                      strokeWidth={width}
+                      strokeOpacity={dim ? 0.35 : changes && !changed ? 0.55 : edge.kind === 'failure' && !on && !changed ? 0.75 : 1}
+                      strokeDasharray={dash}
+                      strokeLinecap="round"
+                      markerEnd={`url(#${markerId(marker)})`}
+                      data-edge={key}
+                      data-change={changed}
+                      data-angle={Math.round(endAngle(edge.points))}
+                    />
+                  )
+                })}
+              </svg>
+
               {layout.edges.map((edge) => {
                 const key = `${edge.from}>${edge.to}`
                 const on = visitedEdges.has(key)
-                const dim = !!path && !on
                 const count = isLive ? live!.edges[key] : undefined
                 const changed = changes?.edges[key]
-                const width = on ? Math.max(2.25, edgeWidth(count, maxEdge)) : changed ? 2.25 : edgeWidth(count, maxEdge)
-                const stroke = on ? STROKE.visited : changed ? STROKE[changed] : STROKE[edge.kind]
-                const dash = changed === 'removed' ? '6 4' : edge.kind === 'back' && !on && !changed ? '5 4' : undefined
-                const marker = on ? 'visited' : changed ?? (edge.kind === 'failure' ? 'failure' : 'forward')
                 return (
-                  <path
-                    key={key}
-                    d={edgePath(edge.points)}
-                    fill="none"
-                    stroke={stroke}
-                    strokeWidth={width}
-                    strokeOpacity={dim ? 0.35 : changes && !changed ? 0.55 : edge.kind === 'failure' && !on && !changed ? 0.75 : 1}
-                    strokeDasharray={dash}
-                    strokeLinecap="round"
-                    markerEnd={`url(#${markerId(marker)})`}
-                    data-edge={key}
-                    data-change={changed}
-                    data-angle={Math.round(endAngle(edge.points))}
-                  />
+                  <span
+                    key={`label-${key}`}
+                    className={cn(
+                      'pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-sunken px-1 text-[11px] leading-4',
+                      on ? 'font-medium text-accent' : changed ? cn('font-medium', CHANGE_LABEL[changed]) : edge.kind === 'failure' ? 'text-destructive' : 'text-secondary',
+                      path && !on && 'opacity-60',
+                      changes && !changed && 'opacity-70',
+                    )}
+                    style={{ left: edge.labelAt.x, top: edge.labelAt.y }}
+                  >
+                    {edgeText(edge)}
+                    {count ? <span className="ml-1 text-tertiary tabular-nums">· {count}</span> : null}
+                  </span>
                 )
               })}
-            </svg>
 
-            {layout.edges.map((edge) => {
-              const key = `${edge.from}>${edge.to}`
-              const on = visitedEdges.has(key)
-              const count = isLive ? live!.edges[key] : undefined
-              const changed = changes?.edges[key]
-              return (
-                <span
-                  key={`label-${key}`}
-                  className={cn(
-                    'pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-sunken px-1 text-[11px] leading-4',
-                    on ? 'font-medium text-accent' : changed ? cn('font-medium', CHANGE_LABEL[changed]) : edge.kind === 'failure' ? 'text-destructive' : 'text-secondary',
-                    path && !on && 'opacity-60',
-                    changes && !changed && 'opacity-70',
-                  )}
-                  style={{ left: edge.labelAt.x, top: edge.labelAt.y }}
-                >
-                  {edgeText(edge)}
-                  {count ? <span className="ml-1 text-tertiary tabular-nums">· {count}</span> : null}
-                </span>
-              )
-            })}
-
-            {layout.nodes.map((node) => (
-              <MapNodeCard
-                key={node.id}
-                node={node}
-                playbook={playbook}
-                roles={roles}
-                count={isLive ? live!.byState[node.id] : undefined}
-                change={changes?.states[node.id]}
-                visited={visited.has(node.id)}
-                current={current === node.id}
-                dim={!!path && !visited.has(node.id)}
-                selected={selectedStateId === node.id}
-                onSelect={onSelectState && node.id !== END_ID ? () => onSelectState(node.id) : undefined}
-              />
-            ))}
+              {layout.nodes.map((node) => (
+                <MapNodeCard
+                  key={node.id}
+                  node={node}
+                  playbook={playbook}
+                  roles={roles}
+                  count={isLive ? live!.byState[node.id] : undefined}
+                  change={changes?.states[node.id]}
+                  visited={visited.has(node.id)}
+                  current={current === node.id}
+                  dim={!!path && !visited.has(node.id)}
+                  selected={selectedStateId === node.id}
+                  onSelect={onSelectState && node.id !== END_ID ? () => onSelectState(node.id) : undefined}
+                />
+              ))}
+            </div>
           </div>
         </div>
+      {more.left && <div className="pointer-events-none absolute inset-y-px left-px w-10 rounded-l-lg bg-gradient-to-r from-sunken to-transparent" aria-hidden data-more="left" />}
+      {more.right && <div className="pointer-events-none absolute inset-y-px right-px w-10 rounded-r-lg bg-gradient-to-l from-sunken to-transparent" aria-hidden data-more="right" />}
       </div>
       <Legend live={isLive} highlighted={!!path} change={!!changes} />
     </div>

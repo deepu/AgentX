@@ -108,6 +108,7 @@ Their definitions (names, effect classes, schemas) are also what the chat tools'
 | `playbook_finish` | `kernel.submitStep({ via })` | Ends the conversation step: outcome and writes; refused while checks have errors |
 
   They act as the person in the chat, with the conversation step's assignee role; draft writes are effect class `draft` (allowed by default, D29), so they don't prompt.
+- **Permission mode.** The chat opens in Ask mode, whatever the workspace default: the drafting tools run without prompts and the person is asked once ("Send the draft for review") before `playbook_finish`. In Explore, `playbook_finish` is refused with a message telling the person to switch to Ask to send the draft for review. While the chat waits for the person, the case shows as waiting on the step's assignee, not on the agent.
 - **Keep or discard.** Chat edits show highlighted in the step editor and the review screen until kept or discarded (`memwise:drafts:keep` / `discardEdit`).
 
 ## 5. Example cases, past cases and corrections (05 §12)

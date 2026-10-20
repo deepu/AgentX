@@ -238,6 +238,8 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     build = await api.call(staff, ch.PLAYBOOKS_BUILD, { request, title: 'Engagement letter' })
     expect(build.stepRunId).toBe(`${build.runId}/0/interview`)
     expect(sessions.created.find((s) => s.id === build.sessionId)?.name).toBe('Building: Engagement letter')
+    // Ask mode: drafting runs freely, and the person is asked once before the draft is sent for review.
+    expect(sessions.created.find((s) => s.id === build.sessionId)?.permissionMode).toBe('ask')
 
     // Context is a system-prompt block, not a message; the first turn is hidden.
     const context = sessions.contexts.get(build.sessionId)!
@@ -252,6 +254,8 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     const item = await inboxItem(staff, 'conversation', (i) => i.stepRunId === build.stepRunId)
     expect(item).toMatchObject({ caseId: build.caseId, workflowId: 'create-playbook', sessionId: build.sessionId, caseTitle: 'Engagement letter', assignee: 'staff' })
     expect(item.draftId).toBeUndefined()
+    // The case waits for the person to answer in the chat, not for the agent.
+    expect(await api.call<MwCase>(staff, ch.CASES_GET, build.caseId)).toMatchObject({ state: 'interview', waitingOn: { kind: 'role', role: 'staff' } })
     expect(await api.call<any>(staff, ch.CHAT_OPEN, { anchor: { kind: 'step', id: build.stepRunId } })).toEqual({ sessionId: build.sessionId })
     expect((await api.call<MwInboxItem[]>(manager, ch.INBOX_LIST)).some((i) => i.kind === 'conversation')).toBe(false)
     // Opening it as someone without the step's role is refused; so is building, before any run starts.
@@ -294,7 +298,9 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
 
     // The editor and the inbox see the draft, its chat edits and the passed check.
     const draft = await api.call<MwDraft>(staff, ch.DRAFTS_GET, letterDraft)
-    expect(draft).toMatchObject({ kind: 'create', workflowId: 'engagement-letter', stage: 'checked', reportStale: false, pendingEdits: 2, runId: build.runId, caseId: build.caseId })
+    expect(draft).toMatchObject({ kind: 'create', workflowId: 'engagement-letter', stage: 'checked', reportStale: false, pendingEdits: 2, runId: build.runId, caseId: build.caseId, inChat: true })
+    // Still in its chat: the chat sends it for review, not the draft screen.
+    expect(await api.call<any>(staff, ch.DRAFTS_SUBMIT, letterDraft)).toMatchObject({ applied: false, code: 'draft.in_chat' })
     expect(draft.edits.map((e) => [e.via, e.sessionId, e.byName])).toEqual([['chat', build.sessionId, 'Priya'], ['chat', build.sessionId, 'Priya']])
     expect(draft.files.find((f) => f.path === 'domain/roles.yaml')).toMatchObject({ status: 'modified', pendingEditId: first.editId, after: expect.stringContaining('partner:') })
     // The step editor gets every file of the playbook's folder, and the domain files it changes.
@@ -323,6 +329,7 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     expect(atReview.values.errors?.value).toBe(0)
     const inReview = await api.call<MwDraft>(manager, ch.DRAFTS_GET, letterDraft)
     expect(inReview.stage).toBe('in_review')
+    expect(inReview.inChat).toBeUndefined()
     expect(await api.call<any>(staff, ch.DRAFTS_SUBMIT, letterDraft)).toMatchObject({ applied: false, code: 'draft.in_review' })
 
     // The manager asks for a change first: the case goes back to the interview, and reopening the
@@ -391,6 +398,7 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
 
     change = await api.call(staff, ch.PLAYBOOKS_BUILD, { workflowId: 'client-intake', request: 'Before deciding, the check should always look at how similar past cases went.' })
     expect(sessions.created.find((s) => s.id === change.sessionId)?.name).toBe('Changing: Client intake')
+    expect(sessions.created.find((s) => s.id === change.sessionId)?.permissionMode).toBe('ask')
     const item = await inboxItem(staff, 'conversation', (i) => i.stepRunId === change.stepRunId)
     expect(item.workflowId).toBe('change-playbook')
     expect(item.sessionId).toBe(change.sessionId)
@@ -401,7 +409,7 @@ describe.skipIf(!postgresAvailable())('Phase 3 exit: building and changing playb
     expect(block).toContain('similar past cases went')
     expect(block).toContain(CHECK)
     const drafts = await api.call(staff, ch.DRAFTS_LIST, { workflowId: 'client-intake' })
-    expect(drafts.find((x: { id: string }) => x.id === changeDraft)).toMatchObject({ kind: 'change', stage: 'draft', baseVersion: 1, runId: change.runId })
+    expect(drafts.find((x: { id: string }) => x.id === changeDraft)).toMatchObject({ kind: 'change', stage: 'draft', baseVersion: 1, runId: change.runId, inChat: true })
   }, 180_000)
 
   it('the chat makes the check require the new tool; the example cases fail until they are updated', async () => {

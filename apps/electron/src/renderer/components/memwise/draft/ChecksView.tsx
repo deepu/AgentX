@@ -5,18 +5,20 @@
  */
 
 import * as React from 'react'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, CircleSlash, Clock, XCircle } from 'lucide-react'
-import type { MwDiagnostic, MwDraft, MwDraftReport, MwExampleOutcome, MwPastCaseOutcome, MwPlaybook } from '@memwise/shared/protocol'
+import type { MwDiagnostic, MwDraft, MwDraftReport, MwExampleOutcome, MwImpact, MwPastCaseOutcome, MwPlaybook } from '@memwise/shared/protocol'
 import { Info_Alert } from '@/components/info/Info_Alert'
 import { Info_Badge } from '@/components/info/Info_Badge'
 import { Info_Section } from '@/components/info/Info_Section'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@memwise/ui'
 import { cn } from '@/lib/utils'
-import { absoluteTime, humanize, relativeTime } from '../format'
+import { absoluteTime, humanize, relativeTime, toolLabel } from '../format'
 import { EffectBadge } from '../playbook/Tags'
-import { stepName } from './draft-model'
+import { joinList, stepName } from './draft-model'
+import { useNow } from '../use-now'
 
 export function DiagnosticList({ diagnostics }: { diagnostics: MwDiagnostic[] }) {
   return (
@@ -107,19 +109,24 @@ function PastCaseRow({ outcome, playbook, live, onOpenCase }: { outcome: MwPastC
   )
 }
 
+/** Another playbook the change touches, in the reader's words: "Engagement letter uses Customer and the Manager role". */
+export function otherPlaybookText(p: MwImpact['otherPlaybooks'][number], t: TFunction, lang?: string): string {
+  // Reports from before the split carry `uses` only: `customer`, `role manager`.
+  const roles = p.roles ?? p.uses.filter(u => u.startsWith('role ')).map(u => u.slice('role '.length))
+  const entities = p.entities ?? p.uses.filter(u => !u.startsWith('role '))
+  const what = [...entities.map(humanize), ...roles.map(r => t('memwise.draft.checks.impact.roleUse', { role: humanize(r) }))]
+  return t('memwise.draft.checks.impact.otherPlaybookUses', { playbook: p.title ?? humanize(p.id), what: joinList(what, lang) })
+}
+
 function ImpactView({ report, playbook, live }: { report: MwDraftReport; playbook?: MwPlaybook | null; live?: MwPlaybook | null }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const impact = report.impact
   if (!impact) return null
   const byState = Object.entries(impact.openCases.byState).filter(([, n]) => n > 0)
   return (
     <Info_Section title={t('memwise.draft.checks.impact.title')} description={t('memwise.draft.checks.impact.description')}>
+      {/* `impact.summary` is the same in English sentences for the chat and the CLI; the list below says it in the app's words. */}
       <div className="space-y-3 px-4 py-3" data-impact>
-        {impact.summary.length > 0 && (
-          <ul className="space-y-1 text-label text-foreground">
-            {impact.summary.map((s, i) => <li key={i}>{s}</li>)}
-          </ul>
-        )}
         <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-label">
           <dt className="text-tertiary">{t('memwise.draft.checks.impact.version')}</dt>
           <dd className="text-secondary">
@@ -148,7 +155,7 @@ function ImpactView({ report, playbook, live }: { report: MwDraftReport; playboo
               <dd className="flex flex-col gap-1">
                 {impact.newTools.map(tool => (
                   <span key={tool.name} className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-[12px] text-foreground">{tool.name}</span>
+                    <span className="text-foreground">{toolLabel(tool.name)}</span>
                     {tool.effect && <EffectBadge effect={tool.effect} />}
                     {!tool.bound && <Info_Badge color="destructive">{t('memwise.draft.checks.impact.notBound')}</Info_Badge>}
                   </span>
@@ -160,14 +167,16 @@ function ImpactView({ report, playbook, live }: { report: MwDraftReport; playboo
             <>
               <dt className="text-tertiary">{t('memwise.draft.checks.impact.newRequired')}</dt>
               <dd className="text-secondary">
-                {impact.newRequiredTools.map(r => t('memwise.draft.checks.impact.mustUse', { step: stepName(r.step, t, playbook, live), tool: r.tool })).join('; ')}
+                {impact.newRequiredTools.map(r => t('memwise.draft.checks.impact.mustUse', { step: stepName(r.step, t, playbook, live), tool: toolLabel(r.tool) })).join('; ')}
               </dd>
             </>
           )}
           {impact.otherPlaybooks.length > 0 && (
             <>
               <dt className="text-tertiary">{t('memwise.draft.checks.impact.otherPlaybooks')}</dt>
-              <dd className="text-secondary">{impact.otherPlaybooks.map(p => `${humanize(p.id)} (${p.uses.join(', ')})`).join('; ')}</dd>
+              <dd className="flex flex-col gap-1 text-secondary">
+                {impact.otherPlaybooks.map(p => <span key={p.id} data-other-playbook={p.id}>{otherPlaybookText(p, t, i18n.resolvedLanguage)}</span>)}
+              </dd>
             </>
           )}
         </dl>
@@ -205,6 +214,8 @@ export function CheckProgress({ startedAt, now }: { startedAt: number; now?: num
 
 export function ChecksView({ draft, live, checking, onCheck, onOpenCase, now }: ChecksViewProps) {
   const { t, i18n } = useTranslation()
+  // The check's own progress counts seconds; "checked 3 minutes ago" follows the shared clock.
+  const at = useNow(now)
   const report = draft.report
   const current = draft.diagnostics
   return (
@@ -242,7 +253,7 @@ export function ChecksView({ draft, live, checking, onCheck, onOpenCase, now }: 
               {report.summary}
               {' '}
               <span className="text-tertiary" title={absoluteTime(report.at, i18n.language)}>
-                {t('memwise.draft.checks.checkedAt', { time: relativeTime(report.at, now, i18n.language) })}
+                {t('memwise.draft.checks.checkedAt', { time: relativeTime(report.at, at, i18n.language) })}
               </span>
             </Info_Alert.Description>
           </Info_Alert>

@@ -4,6 +4,7 @@
  */
 import i18n from 'i18next'
 import { normalizePath, pathStartsWith, stripPathPrefix } from '@memwise/core/utils'
+import { getPlainToolLabel } from '@memwise/shared/utils/toolNames'
 import { parseDiffFromFile, type FileContents } from '@pierre/diffs'
 import { getDiffStats, getUnifiedDiffStats } from '../../code-viewer'
 import type { ActivityItem } from '../TurnCard'
@@ -123,7 +124,7 @@ export function getToolDisplayName(name: string): string {
     'source_get_prompt': 'Get Source Prompt',
   }
 
-  return displayNames[stripped] || stripped
+  return displayNames[stripped] || getPlainToolLabel(name) || stripped
 }
 
 /**

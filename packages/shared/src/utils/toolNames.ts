@@ -25,6 +25,29 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 };
 
 /**
+ * Plain labels for session tools that people who aren't developers meet, on permission
+ * cards and in the chat's activity rows: the MemWise playbook tools of a build/change chat
+ * (docs/memwise/20-phase-3-interfaces.md §4). Say what happens, in the person's words.
+ */
+const PLAIN_SESSION_TOOL_LABELS: Record<string, string> = {
+  playbook_vocabulary: 'Look up what a playbook may use',
+  playbook_read: 'Read the playbook',
+  playbook_write: 'Edit the draft',
+  playbook_diff: 'Show what the draft changes',
+  playbook_check: 'Check the draft',
+  playbook_finish: 'Send the draft for review',
+};
+
+/**
+ * The plain label of a session tool (`mcp__session__playbook_finish` → "Send the draft for
+ * review"), or undefined when it has none. Source tools of the same name are not matched.
+ */
+export function getPlainToolLabel(toolName: string): string | undefined {
+  const base = toolName.replace(/^(mcp__session__|session__)/, '');
+  return Object.hasOwn(PLAIN_SESSION_TOOL_LABELS, base) ? PLAIN_SESSION_TOOL_LABELS[base] : undefined;
+}
+
+/**
  * Set of tool names that represent parent task tools (subagent launchers).
  * The SDK renamed 'Task' to 'Agent' in v0.2.72 — both must be recognised.
  * Add future renames here instead of scattering checks across the codebase.

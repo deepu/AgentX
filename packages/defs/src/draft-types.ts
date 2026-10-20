@@ -164,8 +164,12 @@ export interface Impact {
   newTools: ImpactTool[];
   newRequiredTools: { step: string; tool: string }[];
   caseFields: StructuralDiff['caseFields'];
-  /** Domain changes (roles, entity types) and the other playbooks that use them. */
-  otherPlaybooks: { id: string; uses: string[] }[];
+  /**
+   * Domain changes (roles, entity types) and the other playbooks that use them: `uses` in words
+   * (`customer`, `role manager`), and the same split into the entity types and roles, for screens
+   * that say it in their own words. Reports written before the split have `uses` only.
+   */
+  otherPlaybooks: { id: string; uses: string[]; entities?: string[]; roles?: string[] }[];
   /** The same in plain sentences, for the review card. */
   summary: string[];
 }

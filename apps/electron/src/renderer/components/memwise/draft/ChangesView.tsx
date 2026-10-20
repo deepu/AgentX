@@ -92,26 +92,29 @@ export function FileDiff({ file, label, pending }: { file: MwFileChange; label: 
       </button>
       {open && (
         <div id={id} className="overflow-x-auto border-t border-separator bg-sunken py-1 font-mono text-[12px] leading-5">
-          {file.hunks.map((h, i) => (
-            <div key={i} data-hunk>
-              <div className="px-4 text-tertiary">@@ −{h.oldStart},{h.oldLines} +{h.newStart},{h.newLines} @@</div>
-              {h.lines.map((l, j) => (
-                <div
-                  key={j}
-                  data-line={l.kind}
-                  className={cn(
-                    'whitespace-pre px-4',
-                    l.kind === 'added' && 'bg-success-tint text-success',
-                    l.kind === 'removed' && 'bg-destructive-tint text-destructive',
-                    l.kind === 'same' && 'text-secondary',
-                  )}
-                >
-                  <span className="mr-2 inline-block w-3 select-none" aria-hidden>{l.kind === 'added' ? '+' : l.kind === 'removed' ? '−' : ' '}</span>
-                  {l.text}
-                </div>
-              ))}
-            </div>
-          ))}
+          {/* As wide as the longest line, so a line's color spans the whole row when scrolled sideways */}
+          <div className="w-max min-w-full">
+            {file.hunks.map((h, i) => (
+              <div key={i} data-hunk>
+                <div className="px-4 text-tertiary">@@ −{h.oldStart},{h.oldLines} +{h.newStart},{h.newLines} @@</div>
+                {h.lines.map((l, j) => (
+                  <div
+                    key={j}
+                    data-line={l.kind}
+                    className={cn(
+                      'whitespace-pre px-4',
+                      l.kind === 'added' && 'bg-success-tint text-success',
+                      l.kind === 'removed' && 'bg-destructive-tint text-destructive',
+                      l.kind === 'same' && 'text-secondary',
+                    )}
+                  >
+                    <span className="mr-2 inline-block w-3 select-none" aria-hidden>{l.kind === 'added' ? '+' : l.kind === 'removed' ? '−' : ' '}</span>
+                    {l.text}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

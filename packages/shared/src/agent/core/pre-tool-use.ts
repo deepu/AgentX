@@ -51,6 +51,7 @@ import { permissionsConfigCache, type PermissionsContext } from '../permissions-
 import type { PrerequisiteCheckResult } from './prerequisite-manager.ts';
 import { getBashRememberKey, getFileWriteRememberKey, getNetworkCommandHosts, type PermissionRemember } from './permission-remember.ts';
 import { rewriteBashWithRtk } from './rtk-rewrite.ts';
+import { getPlainToolLabel } from '../../utils/toolNames.ts';
 
 // ============================================================
 // TYPES
@@ -1124,10 +1125,13 @@ export function shouldPromptInAskMode(
       onDebug?.(`Auto-allowing "${toolName}" (previously approved)`);
       return null;
     }
+    // A session tool with a plain label (the playbook tools) is described by that label alone:
+    // "MCP: session/playbook_finish" means nothing to the person asked.
+    const plainLabel = getPlainToolLabel(toolName);
     return {
       promptType: 'mcp_mutation',
-      description: policy.description,
-      command: toolName,
+      description: plainLabel ?? policy.description,
+      ...(plainLabel ? {} : { command: toolName }),
       remember: { kind: 'command', key: toolName },
     };
   }

@@ -31,7 +31,7 @@ export function fakeServer() {
 }
 
 export function fakeSessions() {
-  const created: { workspaceId: string; name?: string; id: string }[] = []
+  const created: { workspaceId: string; name?: string; permissionMode?: string; id: string }[] = []
   const sent: { sessionId: string; message: string; hidden?: boolean }[] = []
   const contexts = new Map<string, Omit<SessionMemwiseContext, 'setAt'>>()
   const deleted = new Set<string>()
@@ -41,9 +41,9 @@ export function fakeSessions() {
     contexts,
     deleted,
     manager: {
-      async createSession(workspaceId: string, options?: { name?: string }) {
+      async createSession(workspaceId: string, options?: { name?: string; permissionMode?: string }) {
         const id = `session-${created.length + 1}`
-        created.push({ workspaceId, name: options?.name, id })
+        created.push({ workspaceId, name: options?.name, ...(options?.permissionMode ? { permissionMode: options.permissionMode } : {}), id })
         return { id, workspaceId, name: options?.name } as any
       },
       async getSession(sessionId: string) {

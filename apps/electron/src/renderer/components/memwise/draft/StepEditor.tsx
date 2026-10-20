@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { resultMessage } from '../format'
+import { humanize, resultMessage } from '../format'
 import { EffectivePolicyView } from '../playbook/EffectivePolicyView'
 import { Section, StepCheckpoint, StepFields, StepNext, StepTools } from '../playbook/StepDetail'
 import { PerformerTag } from '../playbook/Tags'
@@ -230,7 +230,7 @@ function StepCard({ draft, playbook, state, step, number, roles, onSave, focus, 
               <span className="text-label font-medium text-foreground">{t('memwise.editor.title')}</span>
               <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} disabled={saving} />
             </label>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]">
               <div className="flex flex-col gap-1.5">
                 <span className="text-label font-medium text-foreground">{t('memwise.editor.performer')}</span>
                 <Select value={form.performer} onValueChange={v => setForm(f => ({ ...f, performer: v as MwStep['performer'] }))} disabled={saving}>
@@ -366,8 +366,8 @@ function StepCard({ draft, playbook, state, step, number, roles, onSave, focus, 
         </Part>
         <Part parts={['outcomes', 'map', 'outcomeFrom']} changed={changed} pending={pending}>
           {step.outcomes.length > 0 && (
-            <Section title={t('memwise.playbook.outcomes')}>
-              <p className="text-label text-secondary">{step.outcomes.join(', ')}</p>
+            <Section title={t('memwise.playbook.outcomes')} className="mb-3">
+              <p className="text-label text-secondary">{step.outcomes.map(humanize).join(', ')}</p>
             </Section>
           )}
           <StepNext playbook={playbook} state={state} />

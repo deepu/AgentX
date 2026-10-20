@@ -1309,6 +1309,25 @@ describe('shouldPromptInAskMode', () => {
 
       expect(result).toBeNull();
     });
+
+    // A build/change chat in Ask mode: the person sees what happens, not the tool's name.
+    it('describes a playbook tool by its plain label', () => {
+      mockShouldAllowToolInMode.mockImplementation(
+        (_tool: string, _input: Record<string, unknown>, mode: string) =>
+          mode === 'safe' ? { allowed: false, reason: 'mutation' } : { allowed: true, reason: '' }
+      );
+
+      const result = shouldPromptInAskMode('mcp__session__playbook_finish', { outcome: 'ready' }, pm, {
+        workspaceRootPath: '/test',
+        activeSourceSlugs: [],
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.promptType).toBe('mcp_mutation');
+      expect(result!.description).toBe('Send the draft for review');
+      expect(result!.command).toBeUndefined();
+      expect(result!.remember).toEqual({ kind: 'command', key: 'mcp__session__playbook_finish' });
+    });
   });
 
   // --- API mutations ---
