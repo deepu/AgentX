@@ -63,7 +63,7 @@ export const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(
 
 export async function sha256(data: Uint8Array | string): Promise<Uint8Array> {
   const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
-  return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource));
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes)));
 }
 
 export async function sha256Hex(data: Uint8Array | string): Promise<string> {
@@ -111,7 +111,7 @@ export async function checkIdentity(identity: RelayIdentity): Promise<void> {
 }
 
 export async function signHello(identity: RelayIdentity, nonce: string, client = 'memwise'): Promise<Extract<CoreToRelay, { t: 'hello' }>> {
-  const key = await crypto.subtle.importKey('jwk', identity.privateJwk as JsonWebKey, ED25519, false, ['sign']);
+  const key = await crypto.subtle.importKey('jwk', identity.privateJwk as never /* a JsonWebKey; the type isn't in every lib this compiles under */, ED25519, false, ['sign']);
   const message = new TextEncoder().encode(helloMessage(nonce, identity.installId));
   const sig = new Uint8Array(await crypto.subtle.sign(ED25519, key, message));
   return { t: 'hello', v: PROTOCOL_VERSION, publicKey: identity.publicKey, sig: toBase64Url(sig), client };
@@ -139,8 +139,8 @@ export async function verifyHello(
   if (raw.length !== 32 || sig.length !== 64) return 'malformed hello';
   if ((await installIdOf(hello.publicKey)) !== installId) return 'the key does not belong to this install id';
   try {
-    const key = await crypto.subtle.importKey('raw', raw as BufferSource, ED25519, false, ['verify']);
-    const ok = await crypto.subtle.verify(ED25519, key, sig as BufferSource, new TextEncoder().encode(helloMessage(nonce, installId)));
+    const key = await crypto.subtle.importKey('raw', new Uint8Array(raw), ED25519, false, ['verify']);
+    const ok = await crypto.subtle.verify(ED25519, key, new Uint8Array(sig), new TextEncoder().encode(helloMessage(nonce, installId)));
     return ok ? null : 'bad signature';
   } catch {
     return 'bad signature';

@@ -84,7 +84,7 @@ describe('the install identity', () => {
     const file = relayIdentityFile(dir)
     const a = await loadOrCreateIdentity(file)
     expect(a.installId).toMatch(/^[a-z2-7]{16}$/)
-    expect(installIdOf(a.publicKey)).toBe(a.installId)
+    expect(await installIdOf(a.publicKey)).toBe(a.installId)
     expect(a.privateJwk).toMatchObject({ kty: 'OKP', crv: 'Ed25519', x: a.publicKey })
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600)
     expect(await loadOrCreateIdentity(file)).toEqual(a) // kept, not remade

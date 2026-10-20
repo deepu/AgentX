@@ -265,7 +265,7 @@ export function startRelayTunnel(opts: RelayTunnelOptions & RelayTunnelTestOptio
       const request = new Request(target, {
         method: r.method,
         headers: r.headers,
-        body: hasBody ? (concatBytes(r.parts) as BodyInit) : undefined,
+        body: hasBody ? new Uint8Array(concatBytes(r.parts)) : undefined,
         signal: r.abort.signal,
       });
       r.parts = [];
