@@ -694,6 +694,7 @@
   "memwise.inbox.commentRequired": "Visszaküldés előtt írja le, min kell változtatni.",
   "memwise.inbox.context": "Az ügyről",
   "memwise.inbox.done": "Kész",
+  "memwise.inbox.doneWith": "{{title}}: kész",
   "memwise.inbox.due": "Határidő: {{time}}",
   "memwise.inbox.email.cc": "Másolat",
   "memwise.inbox.email.subject": "Tárgy",

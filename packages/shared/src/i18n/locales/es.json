@@ -694,6 +694,7 @@
   "memwise.inbox.commentRequired": "Indique qué debe cambiar antes de devolverlo.",
   "memwise.inbox.context": "Sobre este caso",
   "memwise.inbox.done": "Hecho",
+  "memwise.inbox.doneWith": "{{title}}: listo",
   "memwise.inbox.due": "Vence {{time}}",
   "memwise.inbox.email.cc": "Cc",
   "memwise.inbox.email.subject": "Asunto",

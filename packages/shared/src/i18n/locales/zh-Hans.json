@@ -694,6 +694,7 @@
   "memwise.inbox.commentRequired": "退回前请说明需要修改的内容。",
   "memwise.inbox.context": "关于此案例",
   "memwise.inbox.done": "已完成",
+  "memwise.inbox.doneWith": "已完成 {{title}}",
   "memwise.inbox.due": "截止 {{time}}",
   "memwise.inbox.email.cc": "抄送",
   "memwise.inbox.email.subject": "主题",

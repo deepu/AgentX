@@ -696,6 +696,7 @@
   "memwise.inbox.commentRequired": "Zanim odeślesz, napisz, co trzeba zmienić.",
   "memwise.inbox.context": "O tej sprawie",
   "memwise.inbox.done": "Gotowe",
+  "memwise.inbox.doneWith": "{{title}}: gotowe",
   "memwise.inbox.due": "Termin: {{time}}",
   "memwise.inbox.email.cc": "DW",
   "memwise.inbox.email.subject": "Temat",

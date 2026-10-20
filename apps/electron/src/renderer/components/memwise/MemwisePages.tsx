@@ -75,14 +75,14 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
       uploadFile: upload,
       openCase: caseId => navigate(routes.view.cases(caseId)),
       onDone: result => {
-        toast.success(result.message ?? t('memwise.inbox.done'))
+        toast.success(result.message ?? (item ? t('memwise.inbox.doneWith', { title: item.caseTitle }) : t('memwise.inbox.done')))
         // Move on to the next item waiting, newest first.
         const rest = sortInbox((inbox ?? []).filter(i => i.id !== itemId))
         void refresh()
         navigate(routes.view.inbox(rest[0]?.id))
       },
     }
-  }, [workspaceId, upload, inbox, itemId, refresh, t])
+  }, [workspaceId, upload, inbox, itemId, item, refresh, t])
 
   if (!itemId) {
     return (

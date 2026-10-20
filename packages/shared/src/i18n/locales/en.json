@@ -694,6 +694,7 @@
   "memwise.inbox.commentRequired": "Say what needs to change before sending it back.",
   "memwise.inbox.context": "About this case",
   "memwise.inbox.done": "Done",
+  "memwise.inbox.doneWith": "Done with {{title}}",
   "memwise.inbox.due": "Due {{time}}",
   "memwise.inbox.email.cc": "Cc",
   "memwise.inbox.email.subject": "Subject",

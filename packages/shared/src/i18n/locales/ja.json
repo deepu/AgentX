@@ -694,6 +694,7 @@
   "memwise.inbox.commentRequired": "差し戻す前に、何を変える必要があるか書いてください。",
   "memwise.inbox.context": "このケースについて",
   "memwise.inbox.done": "完了",
+  "memwise.inbox.doneWith": "{{title}} を完了しました",
   "memwise.inbox.due": "期限: {{time}}",
   "memwise.inbox.email.cc": "Cc",
   "memwise.inbox.email.subject": "件名",

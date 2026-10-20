@@ -200,17 +200,26 @@ export function policyRules(project: ProjectDefs, compiled: CompiledPolicy): MwP
 }
 
 /** Why an effect needs approval, e.g. "outbound needs approval (Domain policy)". */
+/** Effect classes in plain words, for people deciding approvals. */
+const EFFECT_WORDS: Record<string, string> = {
+  read: 'Looking things up',
+  write: 'Changing records',
+  outbound: 'Sending anything outside the firm',
+  irreversible: 'Anything that cannot be undone',
+}
+
 export function approvalReason(project: ProjectDefs, compiled: CompiledPolicy | undefined, tool: string, effect: EffectClass): string {
-  if (!compiled) return `${effect} needs approval`
+  const what = EFFECT_WORDS[effect] ?? humanize(effect)
+  if (!compiled) return `${what} needs approval first.`
   const perTool = compiled.effective.tools.perTool[tool]?.treatment
-  if (perTool?.value === 'approve') return `${tool} needs approval (${layerName(project, perTool.origin)})`
+  if (perTool?.value === 'approve') return `"${tool}" needs approval first (set by: ${layerName(project, perTool.origin)}).`
   const cls = compiled.effective.effects[effect]
-  if (cls?.value === 'approve') return `${effect} needs approval (${layerName(project, cls.origin)})`
+  if (cls?.value === 'approve') return `${what} needs approval first (set by: ${layerName(project, cls.origin)}).`
   const taint = compiled.effective.taint
   if (effect === 'outbound' && taint.outboundWhenTainted.value === 'approve') {
-    return `the step read an uploaded document, so sending needs approval (${layerName(project, taint.outboundWhenTainted.origin)})`
+    return `The step read an uploaded document, so sending needs approval first (set by: ${layerName(project, taint.outboundWhenTainted.origin)}).`
   }
-  return `${effect} needs approval`
+  return `${what} needs approval first.`
 }
 
 // ---------------------------------------------------------------- playbooks

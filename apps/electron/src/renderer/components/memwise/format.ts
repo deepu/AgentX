@@ -38,6 +38,8 @@ export function toolLabel(tool: string): string {
   const last = parts[parts.length - 1] ?? tool
   // Record tools name the record too: `domain.customer.create` → "Create customer".
   if (parts.length === 3 && parts[0] === 'domain') return humanize(`${last} ${parts[1]}`)
+  // A bare verb says little alone: `email.send` → "Send email".
+  if (parts.length === 2 && !/[_-]/.test(last)) return humanize(`${last} ${parts[0]}`)
   return humanize(last)
 }
 
@@ -171,8 +173,10 @@ export function isDocumentValue(v: unknown): v is Pick<MwDocument, 'name'> & Par
 }
 
 export function formatMoney(v: { amount: number; currency: string }, locale?: string): string {
+  // Rupees read in lakhs and crores (₹4,20,00,000) for English readers; whole amounts without paise.
+  const loc = v.currency === 'INR' && (!locale || /^en(-|$)/.test(locale)) ? 'en-IN' : locale
   try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: v.currency, maximumFractionDigits: 2 }).format(v.amount)
+    return new Intl.NumberFormat(loc, { style: 'currency', currency: v.currency, minimumFractionDigits: Number.isInteger(v.amount) ? 0 : 2, maximumFractionDigits: 2 }).format(v.amount)
   } catch {
     return `${v.amount} ${v.currency}`
   }
