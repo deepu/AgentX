@@ -171,10 +171,12 @@ export interface MwLiveCounts {
 
 export type MwProvenance =
   | { kind: 'input'; at: string; by?: string }
-  | { kind: 'tool'; at: string; stepRunId: string; tool: string; callId: string }
+  | { kind: 'tool'; at: string; stepRunId: string; tool: string; callId: string; /** Phase 5: read from this document with this confidence, kept by this participant. */ document?: string; confidence?: number; confirmedBy?: string }
   | { kind: 'judgement'; at: string; stepRunId: string; rationale?: string; /** Set when a conversation step's chat wrote it (Phase 3). */ chatId?: string }
   | { kind: 'person'; at: string; by: string; stepRunId?: string }
   | { kind: 'system'; at: string; note?: string }
+  /** Phase 5: typed by an outside participant (the client) through a link; `by` is their label. */
+  | { kind: 'external'; at: string; by: string; linkId: string; stepRunId: string }
 
 export interface MwCaseValue {
   value: unknown
@@ -250,6 +252,10 @@ export interface MwCase extends MwCaseSummary {
   transitions: MwTransition[]
   /** The path the case took through the map, for highlighting: state ids in order. */
   path: string[]
+  /** Phase 5: links sent to outside participants on this case, newest first. */
+  links?: MwExternalLink[]
+  /** Phase 5: messages sent for this case (invites, reminders), newest first. */
+  deliveries?: MwDelivery[]
 }
 
 /** Why a case is back at a step it already did: the step that sent it back, its outcome and words. */
@@ -323,6 +329,8 @@ export type MwInboxItem =
       fields: MwField[]
       prefill: Record<string, MwCaseValue>
       outcomes: string[]
+      /** Phase 5: the step can read its documents (`extract:`); call memwise:external:extract. */
+      extract?: { documentsField: string; fields: string[]; minConfidence: number }
       /** Fields shown read-only above the form (the step's reads). */
       context: Record<string, MwCaseValue>
       since: string
@@ -462,6 +470,8 @@ export interface MwSubmitStepInput {
   outcome: string
   values?: Record<string, unknown>
   comment?: string
+  /** Phase 5: field -> suggestion id (memwise:external:extract) for values kept as read from a document. */
+  sources?: Record<string, string>
 }
 
 export interface MwSubmitResult {
@@ -551,7 +561,7 @@ export interface MwChange {
    * `drafts`: a draft was created, edited, checked, published or discarded (`id` = draft id).
    * `plugins` (Phase 4): a plugin was installed, or a binding or identity link changed.
    */
-  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins'
+  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins' | 'external' | 'relay'
   /** The run id for `run` changes. */
   id?: string
   /** The case the changed run belongs to (`run` changes). */
@@ -1170,3 +1180,128 @@ export interface MwEntityRecordInput {
   entity: string
   id: string
 }
+
+// ================================================================ Phase 5 (docs/memwise/23-phase-5-interfaces.md)
+// PHASE 5 CONTRACT: external links, the relay (public address) and channels. The same shapes
+// as the kernel's (`@memwise/defs/external`), kept here like the others so the renderer needs no kernel package.
+
+export type MwChannelName = 'email' | 'whatsapp'
+
+export interface MwExternalParticipant { name?: string; email?: string; phone?: string }
+
+/** A link as staff see it on the case (never the token). */
+export interface MwExternalLink {
+  id: string
+  kind: 'step' | 'inbox'
+  status: 'open' | 'used' | 'closed' | 'expired' | 'revoked'
+  runId: string
+  caseId: string
+  stepId?: string
+  stepRunId?: string
+  participant: MwExternalParticipant
+  via?: MwChannelName | 'copy'
+  note?: string
+  createdAt: string
+  createdBy?: string
+  expiresAt: string
+  sentAt?: string
+  firstOpenedAt?: string
+  lastOpenedAt?: string
+  draftSavedAt?: string
+  usedAt?: string
+  closedAt?: string
+  closedReason?: string
+  personId?: string
+  itemId?: string
+}
+
+export interface MwDelivery {
+  id: string
+  channel: MwChannelName
+  to: string
+  purpose: 'invite' | 'reminder' | 'notification'
+  linkId?: string
+  personId?: string
+  itemId?: string
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
+  error?: string
+  providerId?: string
+  at: string
+}
+
+export interface MwExtractSuggestion {
+  id: string
+  field: string
+  value: unknown
+  confidence: number
+  document: string
+  documentId: string
+  quote?: string
+  found: boolean
+  prefill: boolean
+}
+
+export interface MwExtractResult { suggestions: MwExtractSuggestion[]; notes?: string[] }
+
+export interface MwNotifySettings { email?: boolean; whatsapp?: string }
+
+/** `memwise:external:issue`: a link staff copy to send themselves. */
+export interface MwIssueLinkInput {
+  runId: string
+  stepId: string
+  participant: MwExternalParticipant
+  note?: string
+}
+
+export interface MwIssuedLink {
+  link: MwExternalLink
+  /** The full public URL; absent without a public address (then `message` says why). */
+  url?: string
+  message?: string
+}
+
+export interface MwResendPreview { to: string; via: MwChannelName; subject?: string; body: string }
+
+export interface MwExtractInput { stepRunId: string; documents: string[] }
+
+/** Settings → Public address. */
+export interface MwRelayStatus {
+  /** Turned on in settings (or by MEMWISE_RELAY_URL). */
+  enabled: boolean
+  state: 'off' | 'connecting' | 'connected' | 'error'
+  relayUrl?: string
+  installId?: string
+  /** Where links point: the relay's public address, or the server's own MEMWISE_PUBLIC_URL. */
+  publicUrl?: string
+  source?: 'relay' | 'server'
+  error?: string
+  since?: string
+}
+
+export interface MwRelayConfigureInput { enabled: boolean; relayUrl?: string }
+
+export type MwChannelsAvailable = Record<MwChannelName, { tool: string; plugin?: string } | null>
+
+// ---- Phase 5 renderer additions (additive): the inputs the app sends on the channels above.
+// memwise:external:links       (workspaceId, MwExternalLinksFilter)  → MwExternalLink[]
+// memwise:external:issue       (workspaceId, MwIssueLinkInput)       → MwIssuedLink
+// memwise:external:revoke      (workspaceId, linkId: string)         → MwSubmitResult
+// memwise:external:previewResend (workspaceId, MwResendInput)        → MwResendPreview | { message }
+// memwise:external:resend      (workspaceId, MwResendInput)          → MwResendResult
+// memwise:external:extract     (workspaceId, MwExtractInput)         → MwExtractResult
+// memwise:relay:status         (workspaceId)                         → MwRelayStatus
+// memwise:relay:configure      (workspaceId, MwRelayConfigureInput)  → MwRelayStatus
+// memwise:channels:available   (workspaceId)                         → MwChannelsAvailable
+// memwise:notify:get           (workspaceId)                         → MwNotifySettings (the current person's)
+// memwise:notify:set           (workspaceId, MwNotifySettings)       → MwNotifySettings
+
+export interface MwExternalLinksFilter { caseId?: string; runId?: string }
+
+/** `memwise:external:previewResend` and `memwise:external:resend`. */
+export interface MwResendInput {
+  linkId: string
+  /** Another channel than the link's own (a copied link has none). */
+  via?: MwChannelName
+}
+
+export interface MwResendResult extends MwSubmitResult { delivery?: MwDelivery }

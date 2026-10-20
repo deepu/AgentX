@@ -6,15 +6,17 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Paperclip, Plus, Trash2, X } from 'lucide-react'
-import type { MwDocument, MwField } from '@memwise/shared/protocol'
+import { FileText, Paperclip, Plus, Trash2, X } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@memwise/ui'
+import type { MwDocument, MwExtractSuggestion, MwField } from '@memwise/shared/protocol'
+import { Info_Badge } from '@/components/info/Info_Badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { formatBytes, humanize } from './format'
+import { formatBytes, formatValueInline, humanize } from './format'
 import {
   emptyItem,
   IDENTIFIER_EXAMPLES,
@@ -42,9 +44,18 @@ export interface GeneratedFormProps {
   onUpload?: UploadFile
   disabled?: boolean
   className?: string
+  /** Phase 5: what reading the documents found, per field (extract-model.ts). */
+  suggestions?: FormSuggestions
 }
 
-export function GeneratedForm({ fields, values, onChange, errors, serverErrors, onUpload, disabled, className }: GeneratedFormProps) {
+/** Per field: the suggestion its value came from (a badge), and others to offer ("Use this"). */
+export interface FormSuggestions {
+  source: (field: MwField) => MwExtractSuggestion | undefined
+  offers: (field: MwField) => MwExtractSuggestion[]
+  onUse: (field: MwField, suggestion: MwExtractSuggestion) => void
+}
+
+export function GeneratedForm({ fields, values, onChange, errors, serverErrors, onUpload, disabled, className, suggestions }: GeneratedFormProps) {
   return (
     <div className={cn('space-y-4', className)} data-memwise-form>
       {fields.map(f => {
@@ -59,9 +70,52 @@ export function GeneratedForm({ fields, values, onChange, errors, serverErrors, 
             serverErrors={serverErrors?.[f.name]}
             onUpload={onUpload}
             disabled={disabled}
+            source={suggestions?.source(f)}
+            offers={suggestions?.offers(f)}
+            onUse={suggestions ? s => suggestions.onUse(f, s) : undefined}
           />
         )
       })}
+    </div>
+  )
+}
+
+/** "From pan-card.pdf · 93%", with the words it was read from on hover. */
+function SuggestionBadge({ suggestion }: { suggestion: MwExtractSuggestion }) {
+  const { t } = useTranslation()
+  const badge = (
+    <Info_Badge color="warning" icon={<FileText className="size-3" />} data-suggestion-badge={suggestion.field}>
+      {t('memwise.form.fromDocument', { document: suggestion.document, confidence: Math.round(suggestion.confidence * 100) })}
+    </Info_Badge>
+  )
+  if (!suggestion.quote) return badge
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">{badge}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <span className="text-xs">{t('memwise.form.readFrom', { document: suggestion.document, quote: suggestion.quote })}</span>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function Offer({ field, suggestion, onUse, disabled }: { field: FormField; suggestion: MwExtractSuggestion; onUse?: () => void; disabled?: boolean }) {
+  const { t, i18n } = useTranslation()
+  const value = field.kind === 'enum' && typeof suggestion.value === 'string' ? humanize(suggestion.value) : formatValueInline(suggestion.value, t, i18n.language)
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-sm border border-dashed border-separator px-2.5 py-1.5 text-label-sm" data-offer={suggestion.field}>
+      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+        <span className="text-secondary">{t('memwise.form.foundIn', { document: suggestion.document })}</span>{' '}
+        <span className="font-medium text-foreground">{value}</span>
+        <span className="text-tertiary"> · {Math.round(suggestion.confidence * 100)}%</span>
+      </span>
+      {onUse && (
+        <Button type="button" variant="secondary" size="sm" onClick={onUse} disabled={disabled} data-action="use-suggestion">
+          {t('memwise.form.useThis')}
+        </Button>
+      )}
     </div>
   )
 }
@@ -76,9 +130,12 @@ interface FieldRowProps {
   disabled?: boolean
   /** Inside a record row: smaller label, no description. */
   nested?: boolean
+  source?: MwExtractSuggestion
+  offers?: MwExtractSuggestion[]
+  onUse?: (s: MwExtractSuggestion) => void
 }
 
-function FieldRow({ field, value, onChange, errors, serverErrors, onUpload, disabled, nested }: FieldRowProps) {
+function FieldRow({ field, value, onChange, errors, serverErrors, onUpload, disabled, nested, source, offers, onUse }: FieldRowProps) {
   const { t } = useTranslation()
   const id = React.useId()
   const messages = [
@@ -95,7 +152,9 @@ function FieldRow({ field, value, onChange, errors, serverErrors, onUpload, disa
           {!field.required && !nested && <span className="ml-1.5 font-normal text-tertiary">{t('memwise.form.optional')}</span>}
         </label>
       )}
+      {source && <div><SuggestionBadge suggestion={source} /></div>}
       <FieldControl id={id} field={field} value={value} onChange={onChange} onUpload={onUpload} disabled={disabled} invalid={messages.length > 0} />
+      {offers?.map(s => <Offer key={s.id} field={field} suggestion={s} onUse={onUse ? () => onUse(s) : undefined} disabled={disabled} />)}
       {!nested && (field.description || hint) && (
         <p className="text-label-sm text-tertiary">{[field.description, hint].filter(Boolean).join(' · ')}</p>
       )}

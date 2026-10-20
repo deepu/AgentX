@@ -1,0 +1,29 @@
+# Email over SMTP (docs/memwise/23-phase-5-interfaces.md §6): provides the capability `email_send`
+# with the fixed channel tool `email.send`, so links to clients, reminders and inbox notifications
+# go out through the business's own mail server. It replaces the sample email plugin: a domain binds
+# one email provider at a time (two plugins can't both bind `email.send`).
+id: memwise/email-smtp
+version: 1.0.0
+title: Email (SMTP)
+description: Sends email through your own mail server (SMTP with TLS or STARTTLS). Provides email_send.
+trust: first-party
+
+provides:
+  capabilities:
+    email_send: { tool: email.send }
+
+tools:
+  email.send:
+    description: Send an email through the mail server set up for this install.
+    effect: outbound
+    idempotent: true                   # the call's key seeds the Message-ID; a retried send is sent once
+    input:
+      type: object
+      properties:
+        to:      { type: string, description: "The recipient, name@example.com or Asha Rao <asha@example.com>; several separated by commas." }
+        subject: { type: string }
+        body:    { type: string, description: The message as plain text. }
+        html:    { type: string, description: The same message as HTML, sent as an alternative to the text. }
+      required: [to, subject, body]
+      additionalProperties: false
+    run: { builtin: email.smtp.send }

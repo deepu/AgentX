@@ -2,6 +2,7 @@
  * The effective-policy view (08 §2: "shown with the source of every rule"), and violations as
  * check diagnostics.
  */
+import { extractToolRefusal } from './decide.ts';
 import { EFFECT_CLASSES, type Diagnostic } from '@memwise/defs';
 import { originLabel } from './order.ts';
 import type { EffectivePolicy, PolicyViolation, Sourced } from './types.ts';
@@ -82,4 +83,19 @@ export function duration(ms: number): string {
     if (n) { text += `${n}${unit}`; rest -= n * size; }
   }
   return rest || !text ? `${text}${rest}ms` : text;
+}
+
+/**
+ * The policy half of the `extract:` check (23 §5): a bound `read` extraction tool that the
+ * step's effective policy still doesn't allow outright (denied, or held for approval). The
+ * structural half (bound, `read`, the fields) is `checkWorkflow`'s.
+ */
+export function extractDiagnostics(
+  step: import('@memwise/defs').StepDef | undefined, effective: import('./types.ts').EffectivePolicy,
+  tools: Record<string, { effect?: import('@memwise/defs').EffectClass }>,
+): Diagnostic[] {
+  const x = step?.extract;
+  if (!x || tools[x.tool]?.effect !== 'read') return [];
+  const why = extractToolRefusal(effective, x.tool, tools[x.tool]);
+  return why ? [{ severity: 'error', code: 'extract-tool-not-read', message: why, file: step!.file, path: 'extract.tool' }] : [];
 }

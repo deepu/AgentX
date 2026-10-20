@@ -23,7 +23,10 @@ import type {
   MwBinding, MwBindingGap, MwBindingReport, MwBindingState, MwBindingVersion, MwBindingView, MwClassSource, MwEntityLinkBadge,
   MwEntityRecord, MwIdentityCandidate, MwIdentityLink, MwInboxItem, MwMappedRecord, MwMatchMethod, MwPluginDetail,
   MwPluginSummary, MwPluginTool, MwPolicyDoc, MwPolicyLine, MwTransform, MwWorkflowOrigin,
+  MwDelivery, MwExternalLink, MwExtractResult, MwExtractSuggestion, MwProvenance,
 } from '@memwise/shared/protocol'
+import type { Provenance } from '@memwise/defs'
+import type { Delivery, ExternalLinkSummary, ExtractResult, ExtractSuggestion } from '@memwise/defs/external'
 import { isConversationStep } from './conversation'
 
 type JsonSchemaFn = (type: FieldDef['type'], recordTypes?: Record<string, { fields: Record<string, FieldDef> }>) => Record<string, unknown>
@@ -341,12 +344,38 @@ export function toPlaybook(ctx: DtoContext, wf: WorkflowDef, policies: Record<st
 
 // ---------------------------------------------------------------- cases
 
-export function toCaseValue(v: { value: unknown; provenance: MwCaseValue['provenance']; hidden?: boolean; tainted?: boolean } | undefined): MwCaseValue | undefined {
+/**
+ * A value's provenance as the screens show it: the kernel's own fields (`tainted`) are left out,
+ * a tool value keeps the document and confidence it was read with (Phase 5), and a value a client
+ * typed through a link keeps the link and the client's label.
+ */
+export function toProvenance(p: Provenance | MwProvenance): MwProvenance {
+  switch (p.kind) {
+    case 'input': return { kind: 'input', at: p.at, ...(p.by ? { by: p.by } : {}) }
+    case 'tool': return {
+      kind: 'tool', at: p.at, stepRunId: p.stepRunId, tool: p.tool, callId: p.callId,
+      ...(p.document ? { document: p.document } : {}),
+      ...(typeof p.confidence === 'number' ? { confidence: p.confidence } : {}),
+      ...(p.confirmedBy ? { confirmedBy: p.confirmedBy } : {}),
+    }
+    case 'judgement': return {
+      kind: 'judgement', at: p.at, stepRunId: p.stepRunId, ...(p.rationale ? { rationale: p.rationale } : {}), ...(p.chatId ? { chatId: p.chatId } : {}),
+    }
+    case 'person': return { kind: 'person', at: p.at, by: p.by, ...(p.stepRunId ? { stepRunId: p.stepRunId } : {}) }
+    case 'system': return { kind: 'system', at: p.at, ...(p.note ? { note: p.note } : {}) }
+    case 'external': return { kind: 'external', at: p.at, by: p.by, linkId: p.linkId, stepRunId: p.stepRunId }
+  }
+  return p
+}
+
+export function toCaseValue(v: { value: unknown; provenance: Provenance | MwProvenance; hidden?: boolean; tainted?: boolean } | undefined): MwCaseValue | undefined {
   if (!v) return undefined
+  // What a client typed is untrusted input (D67), whatever the view says.
+  const tainted = v.tainted || v.provenance.kind === 'external'
   return {
     value: v.hidden ? null : v.value,
-    provenance: v.provenance,
-    ...(v.tainted ? { tainted: true } : {}),
+    provenance: toProvenance(v.provenance),
+    ...(tainted ? { tainted: true } : {}),
     ...(v.hidden ? { hidden: true } : {}),
   }
 }
@@ -407,7 +436,46 @@ export function toTransition(t: TransitionRecord): MwTransition {
   }
 }
 
-export function toCase(ctx: DtoContext, view: CaseView): MwCase {
+// ---------------------------------------------------------------- external links and deliveries (Phase 5)
+
+export function toExternalLink(l: ExternalLinkSummary): MwExternalLink {
+  const out: MwExternalLink = {
+    id: l.id, kind: l.kind, status: l.status, runId: l.runId, caseId: l.caseId,
+    participant: { ...(l.participant.name ? { name: l.participant.name } : {}), ...(l.participant.email ? { email: l.participant.email } : {}), ...(l.participant.phone ? { phone: l.participant.phone } : {}) },
+    createdAt: l.createdAt, expiresAt: l.expiresAt,
+  }
+  const optional = ['stepId', 'stepRunId', 'via', 'note', 'createdBy', 'sentAt', 'firstOpenedAt', 'lastOpenedAt', 'draftSavedAt', 'usedAt', 'closedAt', 'closedReason', 'personId', 'itemId'] as const
+  for (const k of optional) if (l[k] !== undefined && l[k] !== null) (out as unknown as Record<string, unknown>)[k] = l[k]
+  return out
+}
+
+export function toDelivery(d: Delivery): MwDelivery {
+  return {
+    id: d.id, channel: d.channel, to: d.to, purpose: d.purpose, status: d.status, at: d.at,
+    ...(d.linkId ? { linkId: d.linkId } : {}), ...(d.personId ? { personId: d.personId } : {}), ...(d.itemId ? { itemId: d.itemId } : {}),
+    ...(d.error ? { error: d.error } : {}), ...(d.providerId ? { providerId: d.providerId } : {}),
+  }
+}
+
+export function toExtractSuggestion(x: ExtractSuggestion): MwExtractSuggestion {
+  return {
+    id: x.id, field: x.field, value: x.value, confidence: x.confidence, document: x.document, documentId: x.documentId,
+    ...(x.quote ? { quote: x.quote } : {}), found: x.found, prefill: x.prefill,
+  }
+}
+
+export function toExtractResult(r: ExtractResult): MwExtractResult {
+  return { suggestions: r.suggestions.map(toExtractSuggestion), ...(r.notes?.length ? { notes: [...r.notes] } : {}) }
+}
+
+/** What an input item's form may read from its documents (`extract:` on the step, 23 §5). */
+export function toInboxExtract(step: StepDef | undefined): { documentsField: string; fields: string[]; minConfidence: number } | undefined {
+  const x = step?.extract
+  if (!x) return undefined
+  return { documentsField: x.documents, fields: [...new Set(Object.values(x.fields))], minConfidence: x.minConfidence }
+}
+
+export function toCase(ctx: DtoContext, view: CaseView, extra: { links?: ExternalLinkSummary[]; deliveries?: Delivery[] } = {}): MwCase {
   const wf = ctx.project.workflows[view.summary.workflowId]
   return {
     ...toCaseSummary(ctx.project, view.summary),
@@ -417,6 +485,8 @@ export function toCase(ctx: DtoContext, view: CaseView): MwCase {
     timeline: view.stepRuns.map((r) => toStepRunSummary(ctx.project, view.summary.workflowId, r)),
     transitions: view.transitions.map(toTransition),
     path: [...view.path],
+    ...(extra.links ? { links: [...extra.links].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(toExternalLink) } : {}),
+    ...(extra.deliveries ? { deliveries: [...extra.deliveries].sort((a, b) => b.at.localeCompare(a.at)).map(toDelivery) } : {}),
   }
 }
 

@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 import { McpConnections, runCommandTool } from './routes.ts';
 
 /** Tool name prefixes the kernel keeps for itself (22 §2): a plugin may not bind them. */
-export const RESERVED_TOOL_PREFIXES = ['domain.', 'recall.', 'playbooks.', 'plugins.', 'identity.', 'step.', 'checkpoint.', 'explain.'];
+export const RESERVED_TOOL_PREFIXES = ['domain.', 'recall.', 'playbooks.', 'plugins.', 'identity.', 'step.', 'checkpoint.', 'explain.', 'external.'];
 export const isReservedToolName = (name: string) => RESERVED_TOOL_PREFIXES.some((p) => name.startsWith(p));
 
 /** A binding with the installed plugin version it pins. */

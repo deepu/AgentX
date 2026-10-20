@@ -51,3 +51,15 @@ export function decide(effective: EffectivePolicy, req: PolicyRequest): PolicyDe
   const why = winners.map(([label, t, o]) => `${label}: ${t} from ${originLabel(o)}`).join('; ');
   return { verdict, reason: `${what} ${VERB[verdict]}: ${why}.`, origins: winners.map(([, , o]) => o) };
 }
+
+/**
+ * Why a form may not run its step's extraction tool (23 §5, D68), or undefined when it may: the
+ * tool must be bound as `read` and be allowed outright by the step's effective policy (no
+ * approval, no preview: nothing waits on a person while a client fills a form).
+ */
+export function extractToolRefusal(effective: EffectivePolicy, tool: string, bound: { effect?: import('@memwise/defs').EffectClass } | undefined): string | undefined {
+  if (!bound) return `${tool} is not bound in the domain`;
+  if (bound.effect !== 'read') return `${tool} is ${bound.effect ?? 'unclassified (treated as irreversible)'}; a form may only run a read tool`;
+  const d = decide(effective, { tool, effect: 'read', classified: true, tainted: false });
+  return d.verdict === 'allow' ? undefined : `${tool} may not run from a form: ${d.reason}`;
+}

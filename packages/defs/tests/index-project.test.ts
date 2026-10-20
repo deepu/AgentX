@@ -41,7 +41,9 @@ describe('indexProject', () => {
       'policy domain domain/policy.yaml',
       'step client-intake/check workflows/client-intake/steps/check.md',
       'step client-intake/fill workflows/client-intake/steps/fill.md',
+      'step client-intake/invite workflows/client-intake/steps/invite.md',
       'step client-intake/onboard workflows/client-intake/steps/onboard.md',
+      'step client-intake/prepare workflows/client-intake/steps/prepare.md',
       'step client-intake/verify workflows/client-intake/steps/verify.md',
       'workflow client-intake workflows/client-intake',
     ]);
@@ -53,14 +55,16 @@ describe('indexProject', () => {
     const refsFrom = (fromId: string) => [...store.refs.values()].filter((r) => r.fromId === fromId).map((r) => `${r.toKind} ${r.toId}`).sort();
     expect(refsFrom('client-intake')).toEqual([
       'case_type client_intake', 'policy client-intake', 'policy domain',
-      'step client-intake/check', 'step client-intake/fill', 'step client-intake/onboard', 'step client-intake/verify',
+      'step client-intake/check', 'step client-intake/fill', 'step client-intake/invite', 'step client-intake/onboard',
+      'step client-intake/prepare', 'step client-intake/verify',
     ]);
     expect(refsFrom('client-intake/check')).toEqual([
-      'case_field client_intake.annual_turnover', 'case_field client_intake.client_email', 'case_field client_intake.client_name',
+      'case_field client_intake.annual_turnover', 'case_field client_intake.client_email', 'case_field client_intake.client_message',
+      'case_field client_intake.client_name',
       'case_field client_intake.documents', 'case_field client_intake.flags', 'case_field client_intake.gstin', 'case_field client_intake.gstin_ok',
       'case_field client_intake.legal_name', 'case_field client_intake.pan',
       'model_role checker',
-      'tool email.send', 'tool gst.validate_gstin', 'tool intake.extract_fields', 'tool recall.similar_cases', 'tool recall.step_record',
+      'tool gst.validate_gstin', 'tool intake.extract_fields', 'tool recall.similar_cases', 'tool recall.step_record',
     ]);
     expect(refsFrom('client_intake')).toEqual(['entity_type Customer']);
     expect(refsFrom('Customer')).toEqual(['entity_type Engagement']);

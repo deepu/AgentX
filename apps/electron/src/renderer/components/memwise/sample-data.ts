@@ -7,13 +7,17 @@ import type {
   MwCase,
   MwCaseSummary,
   MwCaseValue,
+  MwChannelsAvailable,
   MwExplanation,
+  MwExtractSuggestion,
   MwField,
   MwInboxItem,
   MwLiveCounts,
+  MwNotifySettings,
   MwPerson,
   MwPlaybook,
   MwPlaybookSummary,
+  MwRelayStatus,
   MwRole,
   MwStatus,
   MwStepRecord,
@@ -274,3 +278,96 @@ export const sampleInbox: MwInboxItem[] = [
     stepTitle: 'Client fills in the intake form', text: 'Acme Traders has not finished the intake form for 3 days.', since: T0,
   },
 ]
+
+// ---------------------------------------------------------------- Phase 5: client links, reading documents, public address
+
+const L0 = '2026-10-20T04:42:00.000Z'
+const L1 = '2026-10-20T05:20:00.000Z'
+const L2 = '2026-10-20T05:32:00.000Z'
+const asha = { name: 'Asha Rao', email: 'asha@raotraders.example', phone: '+919845012345' }
+const fromLink = { kind: 'external' as const, at: L2, by: 'Asha Rao', linkId: 'lnk_2', stepRunId: 'sr_fill_21' }
+
+/** A case waiting on the client: an earlier link was used, the newest is open (sent, opened, a draft saved). */
+export const sampleClientCase: MwCase = {
+  caseId: 'case_asha', runId: 'run_asha', workflowId: 'client-intake', workflowVersion: 2, title: 'Asha Rao',
+  state: 'fill', stateTitle: 'Client fills in the intake form', status: 'active', waitingOn: { kind: 'role', role: 'staff' },
+  createdAt: '2026-10-18T06:00:00.000Z', updatedAt: L2,
+  fields: [...sampleCaseFields, { name: 'client_phone', type: 'Phone', schema: { type: 'string' } }],
+  values: {
+    client_name: v('Asha Rao', { kind: 'person', at: T0, by: 'per_priya' }),
+    client_email: v('asha@raotraders.example', { kind: 'person', at: T0, by: 'per_priya' }),
+    client_phone: v('+919845012345', fromLink, { tainted: true }),
+    pan: v('AAACR1234A', { kind: 'tool', at: L2, stepRunId: 'sr_fill_20', tool: 'intake.extract_fields', callId: 'form.extract:1', document: 'pan-card.pdf', confidence: 0.93, confirmedBy: 'external:lnk_1' }, { tainted: true }),
+    gstin: v('29AAACR1234A1Z5', fromLink, { tainted: true }),
+  },
+  timeline: [
+    { stepRunId: 'sr_prepare_18', stepId: 'prepare', title: 'Prepare the request', performer: 'person', attempt: 1, status: 'completed', outcome: 'send_link', decidedBy: 'per_priya', tainted: false, startedAt: '2026-10-18T06:00:00.000Z', finishedAt: '2026-10-18T06:02:00.000Z' },
+    { stepRunId: 'sr_invite_19', stepId: 'invite', title: 'Send the client a link', performer: 'system', attempt: 1, status: 'completed', outcome: 'sent', tainted: false, startedAt: '2026-10-18T06:02:00.000Z', finishedAt: '2026-10-18T06:05:00.000Z' },
+    { stepRunId: 'sr_fill_20', stepId: 'fill', title: 'Client fills in the intake form', performer: 'external', attempt: 1, status: 'completed', outcome: 'submitted', decidedBy: 'external:lnk_1', tainted: true, startedAt: '2026-10-18T06:05:00.000Z', finishedAt: '2026-10-19T10:00:00.000Z' },
+    { stepRunId: 'sr_verify_21', stepId: 'verify', title: 'Manager approves onboarding', performer: 'person', attempt: 1, status: 'completed', outcome: 'sent_back', decidedBy: 'per_arjun', comment: 'Please upload a clearer GST certificate.', tainted: false, startedAt: '2026-10-19T10:05:00.000Z', finishedAt: '2026-10-20T04:30:00.000Z' },
+    { stepRunId: 'sr_fill_22', stepId: 'fill', title: 'Client fills in the intake form', performer: 'external', attempt: 2, status: 'waiting', tainted: false, startedAt: L0 },
+  ],
+  transitions: [],
+  path: ['prepare', 'invite', 'fill', 'check', 'verify', 'invite', 'fill'],
+  links: [
+    {
+      id: 'lnk_2', kind: 'step', status: 'open', runId: 'run_asha', caseId: 'case_asha', stepId: 'fill', stepRunId: 'sr_fill_22',
+      participant: asha, via: 'email', note: 'Please upload a clearer GST certificate.', createdAt: L0, createdBy: 'per_arjun',
+      expiresAt: '2026-10-27T04:42:00.000Z', sentAt: L0, firstOpenedAt: L1, lastOpenedAt: L1, draftSavedAt: L2,
+    },
+    {
+      id: 'lnk_1', kind: 'step', status: 'used', runId: 'run_asha', caseId: 'case_asha', stepId: 'fill', stepRunId: 'sr_fill_20',
+      participant: asha, via: 'whatsapp', createdAt: '2026-10-18T06:05:00.000Z', expiresAt: '2026-10-25T06:05:00.000Z',
+      sentAt: '2026-10-18T06:05:00.000Z', firstOpenedAt: '2026-10-18T07:10:00.000Z', usedAt: '2026-10-19T10:00:00.000Z',
+    },
+  ],
+  deliveries: [
+    { id: 'dlv_2', channel: 'email', to: 'asha@raotraders.example', purpose: 'invite', linkId: 'lnk_2', status: 'sent', at: L0 },
+    { id: 'dlv_1', channel: 'whatsapp', to: '+919845012345', purpose: 'invite', linkId: 'lnk_1', status: 'read', at: '2026-10-18T06:05:00.000Z' },
+  ],
+}
+
+/** An approval of the invite email: what Asha will get. */
+export const sampleInviteApproval: MwInboxItem = {
+  kind: 'approval', id: 'inb_invite_asha', approvalId: 'apr_9', stepRunId: 'sr_invite_19', caseId: 'case_asha', runId: 'run_asha',
+  caseTitle: 'Asha Rao', workflowId: 'client-intake', stepTitle: 'Send the client a link', tool: 'external.invite', effect: 'outbound',
+  preview: {
+    summary: 'Email to Asha Rao with a link to the form',
+    detail: {
+      via: 'email',
+      to: 'Asha Rao <asha@raotraders.example>',
+      subject: 'Acme & Co. needs a few details from you',
+      body: 'Hello Asha,\n\nAcme & Co. asks you to fill in a short form so we can open your account. You can add photos of your PAN card and GST certificate.\n\nhttps://k7q2m4x6p3r5s2t6.relay.memwise.app/f/mwl_…\n\nThe link works until 27 October.\n\nThank you,\nAcme & Co.',
+      expires: '27 Oct 2026',
+    },
+  },
+  reason: 'Outbound needs approval (playbook policy: staff or manager)',
+  since: L0,
+}
+
+/** A staff fill form that can read its documents. */
+export const sampleExtractInput: MwInboxItem = {
+  ...(sampleInbox[0] as Extract<MwInboxItem, { kind: 'input' }>),
+  id: 'inb_input_extract',
+  extract: { documentsField: 'documents', fields: ['pan', 'gstin'], minConfidence: 0.8 },
+  prefill: {
+    documents: v([{ id: 'file_pan', name: 'pan-card.pdf', mime: 'application/pdf', size: 182_000, sha256: 'a1' }], { kind: 'input', at: T3 }),
+  },
+}
+
+export const sampleSuggestions: MwExtractSuggestion[] = [
+  { id: 'sg_1', field: 'pan', value: 'AAACR1234A', confidence: 0.93, document: 'pan-card.pdf', documentId: 'file_pan', quote: 'Permanent Account Number AAACR1234A', found: true, prefill: true },
+  { id: 'sg_2', field: 'gstin', value: '29AAACR1234A1Z5', confidence: 0.61, document: 'pan-card.pdf', documentId: 'file_pan', found: true, prefill: false },
+]
+
+export const sampleRelayStatus: MwRelayStatus = {
+  enabled: true, state: 'connected', relayUrl: 'https://relay.memwise.app', installId: 'k7q2m4x6p3r5s2t6',
+  publicUrl: 'https://k7q2m4x6p3r5s2t6.relay.memwise.app', source: 'relay', since: L0,
+}
+
+export const sampleChannels: MwChannelsAvailable = {
+  email: { tool: 'email.send', plugin: 'Email (SMTP)' },
+  whatsapp: null,
+}
+
+export const sampleNotify: MwNotifySettings = { email: true, whatsapp: '+919845012345' }

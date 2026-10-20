@@ -23,6 +23,7 @@ import PermissionsSettingsPage from './PermissionsSettingsPage'
 import LabelsSettingsPage from './LabelsSettingsPage'
 import MessagingSettingsPage from './MessagingSettingsPage'
 import ServerSettingsPage from './ServerSettingsPage'
+import PublicAddressSettingsPage from './PublicAddressSettingsPage'
 import ShortcutsPage from './ShortcutsPage'
 import PreferencesPage from './PreferencesPage'
 
@@ -40,6 +41,7 @@ export const SETTINGS_PAGE_COMPONENTS: Record<SettingsSubpage, ComponentType> = 
   labels: LabelsSettingsPage,
   messaging: MessagingSettingsPage,
   server: ServerSettingsPage,
+  publicAddress: PublicAddressSettingsPage,
   shortcuts: ShortcutsPage,
   preferences: PreferencesPage,
 }

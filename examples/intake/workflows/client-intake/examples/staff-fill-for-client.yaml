@@ -1,0 +1,49 @@
+name: staff-fill-for-client
+description: >
+  The client is with a member of staff, who fills in the form for them instead of sending a link:
+  nothing is sent, and the check passes.
+case: {}
+submit:
+  prepare:
+    outcome: fill_for_client
+    values:
+      client_name: Asha Rao
+      client_phone: "+919876543210"
+      contact_by: whatsapp
+  fill:
+    outcome: submitted
+    values:
+      client_name: Asha Rao
+      client_email: asha@acme-traders.example
+      pan: AAACA1234A
+      gstin: 29AAACA1234A1Z5
+      annual_turnover: { amount: 42000000, currency: INR }
+      documents:
+        - { name: pan-card.pdf, kind: pan_card }
+        - { name: gst-certificate.pdf, kind: gst_certificate }
+tools:
+  gst.validate_gstin: { valid: true, legal_name: Acme Traders Private Limited }
+  intake.extract_fields:
+    fields:
+      - { name: pan, value: AAACA1234A, document: pan-card.pdf, confidence: 0.97 }
+      - { name: gstin, value: 29AAACA1234A1Z5, document: gst-certificate.pdf, confidence: 0.95 }
+model:
+  checker:
+    - toolCalls:
+        - { name: gst.validate_gstin, args: { gstin: 29AAACA1234A1Z5 } }
+        - { name: intake.extract_fields, args: { documents: [pan-card.pdf, gst-certificate.pdf] } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: checked
+            writes: { gstin_ok: true, legal_name: Acme Traders Private Limited, flags: [], client_message: "" }
+            rationale: The GSTIN is valid and both documents match what was typed.
+  verifier:
+    - toolCalls:
+        - name: checkpoint.verdict
+          args: { results: [ { rule: 1, passed: true, reason: There are no flags. } ] }
+expect:
+  outcome: fill_for_client
+  state: verify
+  writes: { gstin_ok: true, client_name: Asha Rao, pan: AAACA1234A }
+  effects: { external.invite: 0, email.send: 0 }

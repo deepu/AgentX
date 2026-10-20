@@ -55,17 +55,17 @@ describe('memwise init, draft, diff, convert', () => {
     const folder = folderIn(r.output);
     expect(folder).toStartWith(join(root, 'drafts', 'client-intake-'));
     const id = folder.split('/').pop()!;
-    expect((await readDraft(root, id))?.meta).toMatchObject({ title: 'Stricter check', kind: 'change', baseVersion: 1, createdBy: 'cli' });
+    expect((await readDraft(root, id))?.meta).toMatchObject({ title: 'Stricter check', kind: 'change', baseVersion: 2, createdBy: 'cli' });
     writeFileSync(join(folder, CHECK), readFileSync(join(folder, CHECK), 'utf8').replace(/\n*$/, '\n\nAlso check the PAN twice.\n'));
 
     const d = await cli(['diff', root, folder]);
     expect(d.code, d.output).toBe(0);
     expect(d.output).toContain(`--- live/${SHAPE}`);
-    expect(d.output).toContain('-version: 1\n+version: 2');
+    expect(d.output).toContain('-version: 2\n+version: 3');
     expect(d.output).toContain(`+++ draft/${CHECK}`);
     expect(d.output).toContain('+Also check the PAN twice.');
     expect(d.output).toContain('== in plain words');
-    expect(d.output).toContain('Version 1 → 2.');
+    expect(d.output).toContain('Version 2 → 3.');
     expect(d.output).toContain('Step `check`: instructions changed.');
 
     // A draft folder is a project: memwise check works on it.
@@ -115,14 +115,14 @@ describe.skipIf(!pgAvailable)('memwise push and test --json', () => {
     const r = await cli(['push', root, folder, '--database-url', db.url, ...testDb], 300_000);
     expect(r.code, r.output).toBe(0);
     expect(r.output).toContain('0 error(s)');
-    expect(r.output).toContain('4 passed, 0 failed, 0 skipped');
-    expect(r.output).toContain('published client-intake version 2 (2 file(s))');
+    expect(r.output).toContain('5 passed, 0 failed, 0 skipped');
+    expect(r.output).toContain('published client-intake version 3 (2 file(s))');
     const live = (await loadProject(root)).project.workflows['client-intake']!;
-    expect(live.version).toBe(2);
+    expect(live.version).toBe(3);
     expect(live.steps.check!.instructions).toEndWith('Be brief.');
     expect(live.hash).not.toBe(before.hash);
     const { rows } = await db.pool.query('select version, hash, source, draft_id from mw.workflow_versions where workflow_id = $1', ['client-intake']);
-    expect(rows).toEqual([{ version: 2, hash: live.hash, source: 'cli', draft_id: folder.split('/').pop() }]);
+    expect(rows).toEqual([{ version: 3, hash: live.hash, source: 'cli', draft_id: folder.split('/').pop() }]);
     // Published drafts are done.
     const again = await cli(['push', root, folder]);
     expect(again.code).toBe(1);
@@ -145,7 +145,7 @@ describe.skipIf(!pgAvailable)('memwise push and test --json', () => {
     const r2 = await cli(['push', root, stale], 120_000);
     expect(r2.code, r2.output).toBe(1);
     expect(r2.output).toContain(`these live files changed since the draft was made:\n  ${SHAPE}`);
-    expect(readFileSync(join(root, SHAPE), 'utf8')).toContain('version: 1');
+    expect(readFileSync(join(root, SHAPE), 'utf8')).toContain('version: 2');
   }, 120_000);
 
   test('test --json prints only the outcomes, extra examples included', async () => {
@@ -163,9 +163,9 @@ describe.skipIf(!pgAvailable)('memwise push and test --json', () => {
     const outcomes = JSON.parse(all.stdout) as { name: string; status: string; differences: string[] }[];
     expect(outcomes.map((o) => [o.name, o.status])).toEqual([
       ['clean-application', 'pass'], ['full-intake', 'pass'], ['onboard-creates-customer', 'pass'], ['pan-mismatch', 'pass'],
-      ['replay-onboard', 'pass'], ['replay-wrong', 'fail'],
+      ['staff-fill-for-client', 'pass'], ['replay-onboard', 'pass'], ['replay-wrong', 'fail'],
     ]);
-    expect(outcomes[5]!.differences[0]).toContain('state: expected fill, got end');
+    expect(outcomes[6]!.differences[0]).toContain('state: expected fill, got end');
     const unknown = await runChildSplit(['test', root, '--workflow', 'nope', '--json']);
     expect(unknown.code).toBe(1);
     expect(unknown.stdout).toBe('');

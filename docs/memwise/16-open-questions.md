@@ -24,6 +24,16 @@ Left open by Phase 3:
 - Replaying past cases on a draft compares where they started and ended; a step-by-step comparison, and re-running agent steps on a live model, are later.
 - A publish that changes the domain re-applies row rules, which can briefly conflict with a read made at the same moment (the reader retries).
 
+Left open by Phase 5 (see the status in [17](17-build-plan.md)):
+
+- Deploying the relay: the domain, wildcard DNS and certificate for one subdomain per install, the R2 bucket for shared pages, and who may publish pages to it (today anyone who can reach it).
+- Store-and-forward: while the core is offline the relay shows a plain "offline" page and keeps nothing; whether it should hold submissions until the core is back.
+- Durable Object rate limits reset when the object hibernates; subdomain mode and hibernation are untested on Cloudflare itself.
+- Link tokens are derived (HMAC of the link's key under a kernel key), and the invite message, link included, is kept in the effect ledger; whether to keep only a masked copy.
+- OAuth apps must be registered with the relay's callback before the relay becomes the default OAuth return address.
+- Reminders to a client who hasn't answered, and the form app in more languages.
+- Every kernel holds one Postgres `LISTEN` connection for the notifier.
+
 ## Domain and data
 
 6. **Link versus materialise.** How much plugin data the domain caches or copies by default, especially for analytics.
@@ -40,7 +50,7 @@ Left open by Phase 3:
 ## Pages and UI
 
 13. **Bridge:** adopt the MCP Apps bridge directly, or keep today's bridge (renamed) with an adapter.
-14. **The relay:** where it runs (our hosted service, self-hosted, an edge worker) and how links are authenticated.
+14. ~~**The relay:** where it runs (our hosted service, self-hosted, an edge worker) and how links are authenticated.~~ Settled in Phase 5: a Cloudflare Worker we host, the same hub self-hosted under Bun, and links as single-use, expiring tokens checked by the core (D66, D67).
 15. **The first component vocabulary**, and how much custom HTML workflow components may use.
 16. **Map editing:** when drag-and-drop editing on the map is worth building.
 

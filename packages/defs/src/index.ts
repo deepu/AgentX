@@ -9,11 +9,12 @@ export * from './types.ts';
 export * from './contracts.ts';
 export * from './draft-types.ts';
 export * from './plugin-types.ts';
+export type * from './external-types.ts';
 export { crashPoint } from './testing.ts';
 
 export { parseValueType, formatValueType, sameValueType, parseDuration, parseCount, parseRate } from './value-types.ts';
 export { parseWorkflowFile, parseExampleFile, type WorkflowShape } from './parse-workflow.ts';
-export { parseStepFile, splitFrontMatter, argSource } from './parse-step.ts';
+export { parseStepFile, splitFrontMatter, argSource, DEFAULT_MIN_CONFIDENCE } from './parse-step.ts';
 export { parseCaseFile, parseEntityFile, parseRolesFile } from './parse-types.ts';
 export { parsePolicyFile, policyToRaw, formatDuration } from './parse-policy.ts';
 export { sha256, type ParseResult } from './source.ts';

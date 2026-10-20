@@ -17,6 +17,9 @@ export const SAMPLE_ENV: CheckEnvironment = {
       .map((t) => [t, {}]),
   ),
 };
+// Phase 5: the form's extraction needs a `read` tool, and `external.invite` is the kernel's.
+SAMPLE_ENV.tools['intake.extract_fields'] = { effect: 'read' };
+SAMPLE_ENV.tools['external.invite'] = { effect: 'outbound' };
 
 export const ENV: CheckEnvironment = { tools: { 'lookup.customer': { effect: 'read' }, 'mail.send': { effect: 'outbound' } } };
 

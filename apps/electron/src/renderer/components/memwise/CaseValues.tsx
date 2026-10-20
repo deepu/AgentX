@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Cog, FileText, FileWarning, Lock, PenLine, Sparkles, User, Wrench } from 'lucide-react'
+import { Cog, FileText, FileWarning, Globe, Lock, PenLine, Sparkles, User, Wrench } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@memwise/ui'
 import type { MwCaseValue, MwField } from '@memwise/shared/protocol'
 import { Info_Badge } from '@/components/info/Info_Badge'
@@ -30,6 +30,7 @@ const TONE: Record<ProvenanceTone, { color: BadgeColor; icon: React.ReactNode }>
   system: { color: 'muted', icon: <Cog className="size-3" /> },
   tainted: { color: 'warning', icon: <FileWarning className="size-3" /> },
   hidden: { color: 'muted', icon: <Lock className="size-3" /> },
+  external: { color: 'warning', icon: <Globe className="size-3" /> },
 }
 
 export function ProvenanceBadge({ value, people }: { value: MwCaseValue; people?: PeopleById }) {

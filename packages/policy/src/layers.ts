@@ -29,9 +29,11 @@ export function stepLayer(step: StepDef, workflowId: string): PolicyLayer {
   if (step.budget?.timeMs !== undefined) budgets.timeMs = step.budget.timeMs;
   if (step.budget?.modelCalls !== undefined) budgets.modelCalls = step.budget.modelCalls;
 
-  // A step may call only what it lists, so the allow list is set even when it is empty.
+  // A step may call only what it lists, so the allow list is set even when it is empty. A form
+  // step's extraction tool (Phase 5, `extract:`) is one it calls while it waits.
+  const allow = step.extract && !step.tools.allowed.includes(step.extract.tool) ? [...step.tools.allowed, step.extract.tool] : [...step.tools.allowed];
   const derived: PolicyDoc = {
-    tools: { allow: [...step.tools.allowed], require: [...step.tools.required] },
+    tools: { allow, require: [...step.tools.required] },
     ...(Object.keys(budgets).length ? { budgets } : {}),
     // Prose checkpoint rules are judged by the verifier role, so the step permits it too.
     ...(step.model ? { modelRoles: step.checkpoint.length ? [...new Set([step.model, VERIFIER_ROLE])] : [step.model] } : {}),

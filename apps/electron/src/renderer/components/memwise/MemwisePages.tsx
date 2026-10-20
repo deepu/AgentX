@@ -30,7 +30,9 @@ import {
 } from '@/atoms/memwise'
 import {
   getMemwiseApi,
+  hasExternalCalls,
   useMemwiseBinding,
+  useMemwiseExternal,
   useMemwiseBuildPlaybook,
   useMemwiseCase,
   useMemwiseDraft,
@@ -44,6 +46,7 @@ import {
 } from '@/hooks/useMemwise'
 import type { MwCase, MwInboxItem, MwOpenChatInput, MwSubmitResult } from '@memwise/shared/protocol'
 import { CaseView } from './CaseView'
+import type { ClientLinkActions } from './ClientLinkPanel'
 import { InboxItemView, type InboxActions } from './InboxItemView'
 import { StepRecordDrawer } from './StepRecordDrawer'
 import { MemwiseStatusBanner } from './MemwiseStatus'
@@ -108,6 +111,7 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
   const roles = useAtomValue(memwiseRolesAtom)
   const refresh = useMemwiseRefresh()
   const upload = useMemwiseUpload()
+  const external = useMemwiseExternal()
   const store = useStore()
   const openChatBeside = useOpenChatBeside()
   const item = itemId ? inbox?.find(i => i.id === itemId) ?? null : null
@@ -137,6 +141,7 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
         dismiss: (id: string) => (workspaceId ? api.memwiseDismissInboxItem(workspaceId, id) : Promise.resolve(notAvailable())),
       } : {}),
       uploadFile: upload,
+      ...(api && typeof api.memwiseExtract === 'function' ? { extract: external.extract } : {}),
       openCase: caseId => navigate(routes.view.cases(caseId)),
       openDraft: draftId => navigate(routes.view.draft(draftId)),
       openPlugin: pluginId => navigate(routes.view.plugins(pluginId)),
@@ -167,7 +172,7 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
         navigate(routes.view.inbox(rest[0]?.id))
       },
     }
-  }, [workspaceId, upload, inbox, itemId, item, refresh, t, store, openChatBeside, reloadBinding])
+  }, [workspaceId, upload, external, inbox, itemId, item, refresh, t, store, openChatBeside, reloadBinding])
 
   if (!itemId) {
     return (
@@ -201,7 +206,7 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
 
 export function CasePage({ caseId }: { caseId: string | null }) {
   const { t } = useTranslation()
-  const { data: kase, error, loading } = useMemwiseCase(caseId)
+  const { data: kase, error, loading, reload } = useMemwiseCase(caseId)
   const { data: playbook } = useMemwisePlaybook(kase?.workflowId ?? null)
   const summaries = useAtomValue(memwisePlaybooksAtom)
   const people = peopleById(useAtomValue(memwisePeopleAtom))
@@ -215,6 +220,16 @@ export function CasePage({ caseId }: { caseId: string | null }) {
   const api = getMemwiseApi()
   const canSaveExample = !!kase && !isMetaPlaybook(kase.workflowId) && typeof api?.memwiseExampleFromCase === 'function'
   const draftId = caseDraftId(kase)
+  const external = useMemwiseExternal()
+  const reloadCase = reload
+  const linkActions = React.useMemo<ClientLinkActions | undefined>(() => (hasExternalCalls(api) ? {
+    issue: external.issue,
+    previewResend: external.previewResend,
+    resend: external.resend,
+    revoke: external.revoke,
+    openSettings: () => navigate(routes.view.settings('publicAddress')),
+    onChanged: reloadCase,
+  } : undefined), [api, external, reloadCase])
 
   React.useEffect(() => setOpenStep(null), [caseId])
 
@@ -262,6 +277,7 @@ export function CasePage({ caseId }: { caseId: string | null }) {
           roles={roles}
           onOpenStep={setOpenStep}
           onOpenPlaybook={id => navigate(routes.view.playbooks(id))}
+          linkActions={linkActions}
         />
       )}
       <StepRecordDrawer stepRunId={openStep} onClose={() => setOpenStep(null)} />

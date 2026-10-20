@@ -27,6 +27,12 @@
  *   MEMWISE_KERNEL               — '1' starts the kernel on the bundled Postgres under the config dir
  *   MEMWISE_PROJECT_DIR          — playbooks folder (default: <config dir>/project, seeded from examples/intake)
  *   MEMWISE_SCRIPTED_MODELS      — '1' runs the example cases' scripted model turns (demos)
+ *   MEMWISE_RELAY_URL            — the relay to connect to for a public address (default: off; Settings can change it)
+ *   MEMWISE_PUBLIC_PORT          — serve the public pages (client forms, inbox links, webhooks) on this port, plain HTTP
+ *   MEMWISE_PUBLIC_HOST          — bind address for MEMWISE_PUBLIC_PORT (default: 0.0.0.0)
+ *   MEMWISE_PUBLIC_URL           — the https address clients reach those pages at (links are made from it)
+ *   MEMWISE_PUBLIC_TRUST_PROXY   — '1' takes the client address from x-forwarded-for (behind your TLS proxy)
+ *   MEMWISE_BUSINESS_NAME        — the name clients see on forms and messages (default: the owner's name)
  */
 
 import { join } from 'node:path'
@@ -304,6 +310,8 @@ if (memwiseKernelRequested()) {
     mode: 'server',
     logger: { info: console.log, warn: console.warn, error: console.error },
     exampleRoots: [bundledAssetsRoot, process.env.MEMWISE_APP_ROOT, process.env.MEMWISE_RESOURCES_PATH].filter((r): r is string => !!r),
+    // Phase 5: the relay (MEMWISE_RELAY_URL or Settings) and MEMWISE_PUBLIC_PORT / MEMWISE_PUBLIC_URL are read by the service.
+    publicAddress: { client: `memwise-server/${process.env.MEMWISE_VERSION ?? packageVersion}` },
   })
 }
 

@@ -28,6 +28,7 @@ export { answeredBySubmit } from './machine.ts';
 export { CREATE_PLAYBOOK, CHANGE_PLAYBOOK } from './types.ts';
 // Phase 4 (docs/memwise/22-phase-4-interfaces.md)
 export { BIND_PLUGIN } from './types.ts';
+export { EXTERNAL_INVITE_TOOL } from './types.ts';
 export {
   bindingTools, bindingToolDefinitions, INSTALL_CHECK_TOOL, PROPOSE_BINDING_TOOL, CLASSIFY_TOOLS_TOOL, DRY_RUN_TOOL, FREEZE_TOOL,
   RESOLVE_IDENTITY_TOOL, type BindingOps, type InstallCheckResult, type ProposeBindingResult, type ClassifyToolsResult, type DryRunResult,

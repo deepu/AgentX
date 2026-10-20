@@ -1,0 +1,39 @@
+# WhatsApp through Meta's WhatsApp Business Cloud API (docs/memwise/23-phase-5-interfaces.md §6):
+# provides the capability `whatsapp_send` with the fixed channel tool `whatsapp.send`, so links to
+# clients and inbox notifications can go out on WhatsApp. Delivery updates come back through a
+# webhook on the public address (`/h/<hookId>`, scheme `meta`); see README.md.
+id: memwise/whatsapp-cloud
+version: 1.0.0
+title: WhatsApp (Cloud API)
+description: Sends WhatsApp messages from your business number through the WhatsApp Business Cloud API. Provides whatsapp_send.
+trust: first-party
+
+provides:
+  capabilities:
+    whatsapp_send: { tool: whatsapp.send }
+
+tools:
+  whatsapp.send:
+    description: Send a WhatsApp message, as an approved template or as text inside the 24 hours after the person last wrote.
+    effect: outbound
+    idempotent: true                   # a key it has sent is answered with the message id it got, never sent twice
+    input:
+      type: object
+      properties:
+        to:   { type: string, description: The phone number in international form, +919876543210. }
+        body: { type: string, description: A text message (only inside the 24-hour window). }
+        template:
+          type: object
+          description: An approved message template, its language code and the values for its placeholders.
+          properties:
+            name:     { type: string }
+            language: { type: string }
+            params:   { description: "Values for {{1}}, {{2}}… in order, or by name for templates with named placeholders." }
+          required: [name, language]
+          additionalProperties: false
+      required: [to]
+      additionalProperties: false
+    run: { builtin: whatsapp.cloud.send }
+
+environment:
+  network: [graph.facebook.com]

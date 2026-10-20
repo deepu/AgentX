@@ -120,7 +120,7 @@ export function roleTitle(role: string | undefined, roles?: MwRole[] | null): st
 
 // ---------------------------------------------------------------- provenance
 
-export type ProvenanceTone = 'person' | 'tool' | 'judgement' | 'input' | 'system' | 'tainted' | 'hidden'
+export type ProvenanceTone = 'person' | 'tool' | 'judgement' | 'input' | 'system' | 'tainted' | 'hidden' | 'external'
 
 export interface ProvenanceBadgeInfo {
   tone: ProvenanceTone
@@ -135,6 +135,25 @@ export function provenanceBadge(value: MwCaseValue, t: TFunction, people: People
     return { tone: 'hidden', text: t('memwise.case.provenance.hidden'), detail: t('memwise.case.provenance.hiddenDetail') }
   }
   const p = value.provenance
+  // Phase 5: typed by the client through a link (untrusted, so it says who rather than "a document")
+  if (p.kind === 'external') {
+    return { tone: 'external', text: t('memwise.case.provenance.external'), detail: t('memwise.case.provenance.externalDetail', { name: p.by }) }
+  }
+  // Phase 5: read from a document in a form and kept: which document, and how sure the reader was
+  if (p.kind === 'tool' && p.document) {
+    const confidence = typeof p.confidence === 'number' ? Math.round(p.confidence * 100) : undefined
+    const kept = keptBy(p.confirmedBy, t, people)
+    return {
+      tone: 'tainted',
+      text: confidence === undefined
+        ? t('memwise.case.provenance.toolDocument', { document: p.document })
+        : t('memwise.case.provenance.toolDocumentConfidence', { document: p.document, confidence }),
+      detail: [
+        t('memwise.case.provenance.toolDocumentDetail', { tool: toolLabel(p.tool), document: p.document }),
+        kept ? t('memwise.case.provenance.keptBy', { name: kept }) : undefined,
+      ].filter(Boolean).join(' '),
+    }
+  }
   if (value.tainted) {
     return {
       tone: 'tainted',
@@ -158,6 +177,13 @@ export function provenanceBadge(value: MwCaseValue, t: TFunction, people: People
     case 'system':
       return { tone: 'system', text: t('memwise.case.provenance.system'), detail: p.note }
   }
+}
+
+/** Who kept a value read from a document: the client (`external:<linkId>`) or a person. */
+function keptBy(confirmedBy: string | undefined, t: TFunction, people: PeopleById): string | undefined {
+  if (!confirmedBy) return undefined
+  if (confirmedBy.startsWith('external:')) return t('memwise.case.provenance.theClient')
+  return personName(confirmedBy, people)
 }
 
 // ---------------------------------------------------------------- values

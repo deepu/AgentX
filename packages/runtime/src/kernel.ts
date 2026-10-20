@@ -27,7 +27,9 @@ import { ChangeFeed } from './changes.ts';
 import { domainTools } from './domain-tools.ts';
 import { applyTimerActions, outsideEventRefusal, registerRunDriver } from './driver.ts';
 import { EXPLAINER_ROLE, explainStep } from './explain.ts';
-import { EXTRACTOR_ROLE, quarantinedExtractTool } from './extract.ts';
+import { createChannelService } from './external/channels.ts';
+import { createExternalService, externalInviteShape, type ExternalKernelService } from './external/service.ts';
+import { EXTRACTOR_ROLE, quarantinedExtractTool, readFieldSchema } from './extract.ts';
 import { driverIdOf, newCaseId, newRunId } from './ids.ts';
 import { compileMachine, type RunEvent } from './machine.ts';
 import { caseToExample } from './replay.ts';
@@ -45,6 +47,7 @@ import type { Actor, Authoring, EntityRow, Explanation, InboxItem, Kernel, Kerne
 import { approverRoles, DefinitionCache, getCaseView, inbox, listCases, liveCounts, mayApprove } from './views.ts';
 
 export const DEFAULT_ENGINE_VERSION = 'memwise-kernel-1';
+
 /** Schema of the DBOS data source's commit records (spike S5). */
 const TX_SCHEMA = 'dbos_tx';
 
@@ -111,7 +114,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     readFile: (id) => files.read(pool, id),
     getCase: (caseId) => cases.get(pool, caseId),
     async read({ role, file, fields, sessionId }) {
-      const schema = Object.fromEntries(Object.entries(fields).map(([k, description]) => [k, { type: 'string', description }]));
+      const schema = Object.fromEntries(Object.entries(fields).map(([k, description]) => [k, readFieldSchema(description)]));
       const r = await quarantinedRead({ models, role, text: file.text, fields: schema, sessionId, label: file.name });
       return r.values;
     },
@@ -123,6 +126,14 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   let authoring: Authoring | undefined;
   let pluginServices: PluginServices | undefined;
   const playbookTools = options.projectDir ? authoringTools(() => authoring, () => pool) : [];
+  // Phase 5: `external.invite`, made with the external service once the DBOS client exists.
+  let external: ExternalKernelService | undefined;
+  const inviteTool: ToolDefinition = {
+    ...externalInviteShape(),
+    unavailable: () => external?.inviteTool.unavailable?.(),
+    preview: (args, ctx) => external!.inviteTool.preview!(args as never, ctx),
+    execute: (args, ctx) => external!.inviteTool.execute(args as never, ctx),
+  };
   const pluginKernelTools = options.projectDir ? bindingTools(() => pluginServices?.ops) : [];
 
   // Phase 4: builtins for `run: { builtin }` (the caller's, and the kernel's real extractor), MCP
@@ -141,7 +152,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   // so a plugin tool routed to that builtin runs the same code whether or not a plugin binds it.
   const boundExtractor = builtins.get(extractor.name) ?? extractor;
   const buildTools = () => {
-    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), boundExtractor, ...playbookTools, ...pluginKernelTools]);
+    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => pool), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools]);
     const taken = new Map(base.map((t) => [t.name, t]));
     const fromPlugins = options.projectDir
       ? pluginTools(bound, taken, { root: options.projectDir, builtins, mcp })
@@ -187,6 +198,14 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const client = await DBOSClient.create({ systemDatabaseUrl: url });
 
   const getRun = (runId: string) => getRunRecord(pool, runId);
+  const submitDeps = {
+    withTransaction: <T,>(fn: (db: import('pg').PoolClient) => Promise<T>) => withTransaction(pool, fn),
+    workflow: (id: string, hash: string) => defs.workflow(id, hash),
+    entities: () => entities,
+    client,
+    sourcedProvenance: (db: import('pg').PoolClient, stepRunId: string, values: Record<string, unknown>, sources: Record<string, string>, by: string) =>
+      external!.sourcedProvenance(db, stepRunId, values, sources, by),
+  };
   const versionStore = new PgVersionStore();
 
   /**
@@ -364,12 +383,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
 
     // ---------------------------------------------------------------- Phase 2
 
-    submitStep: (input) => submitStep({
-      withTransaction: (fn) => withTransaction(pool, fn),
-      workflow: (id, hash) => defs.workflow(id, hash),
-      entities: () => entities,
-      client,
-    }, input),
+    submitStep: (input) => submitStep(submitDeps, input),
 
     async inbox(actor) {
       const items: InboxItem[] = await inbox(pool, defs, actor);
@@ -448,7 +462,13 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     get identity() { return pluginServices?.identity ?? withoutProject.identity; },
     entityRecord: (entity, id, actor) => needPlugins().entityRecord(entity, id, actor),
 
+    // ---------------------------------------------------------------- Phase 5 (23)
+
+    get external() { return external!; },
+    get channels() { return channels; },
+
     async shutdown() {
+      stopNotifier();
       await mcp.closeAll();
       await feed.close();
       await DBOS.shutdown({ deregister: true });
@@ -456,6 +476,28 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       await pool.end();
     },
   };
+  external = createExternalService({
+    pool, defs, client, tools: () => gateway, files, people, rates: new PgRateCounter(pool), entities: () => entities,
+    publicUrl: () => options.publicUrl?.() ?? process.env.MEMWISE_PUBLIC_URL ?? undefined,
+    ...(options.businessName !== undefined ? { businessName: options.businessName } : {}),
+    inbox: (actor) => kernel.inbox(actor),
+    submitStep: (input, opts) => submitStep(submitDeps, input, opts),
+    decideApproval: (decision, by) => kernel.decideApproval(decision, by),
+    sourceWorkflow: (id, hash) => {
+      const w = indexed?.project.workflows[id];
+      return w?.hash === hash ? w : undefined;
+    },
+  });
+  const channels = createChannelService({
+    pool, tools: () => gateway, people, external, inbox: (actor) => kernel.inbox(actor), subscribe: (l) => feed.subscribe(l),
+    async policyFor(item) {
+      if (item.kind === 'identity') return undefined;
+      // The playbook's policy without a step layer, as for an invite (a step's allow list is for its own calls).
+      const wf = await defs.latest(item.workflowId);
+      return wf ? (await defs.policy(wf)).effective : undefined;
+    },
+  });
+  const stopNotifier = channels.startNotifier();
   // Without a project folder there are no plugins: every call says so.
   const refuse = async (): Promise<never> => { throw new Error('createKernel({ projectDir }) is needed for plugins'); };
   const withoutProject = {

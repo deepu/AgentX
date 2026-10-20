@@ -480,6 +480,18 @@ export const CHANNEL_MAP = {
   memwiseListIdentityCandidates: invoke(RPC_CHANNELS.memwise.IDENTITY_LIST),
   memwiseDecideIdentity: invoke(RPC_CHANNELS.memwise.IDENTITY_DECIDE),
   memwiseGetEntityRecord: invoke(RPC_CHANNELS.memwise.ENTITIES_RECORD),
+  // Phase 5: external links, the relay (public address), channels (docs/memwise/23-phase-5-interfaces.md §11)
+  memwiseListExternalLinks: invoke(RPC_CHANNELS.memwise.EXTERNAL_LINKS),
+  memwiseIssueExternalLink: invoke(RPC_CHANNELS.memwise.EXTERNAL_ISSUE),
+  memwiseRevokeExternalLink: invoke(RPC_CHANNELS.memwise.EXTERNAL_REVOKE),
+  memwisePreviewResend: invoke(RPC_CHANNELS.memwise.EXTERNAL_PREVIEW_RESEND),
+  memwiseResendExternalLink: invoke(RPC_CHANNELS.memwise.EXTERNAL_RESEND),
+  memwiseExtract: invoke(RPC_CHANNELS.memwise.EXTERNAL_EXTRACT),
+  memwiseRelayStatus: invoke(RPC_CHANNELS.memwise.RELAY_STATUS),
+  memwiseConfigureRelay: invoke(RPC_CHANNELS.memwise.RELAY_CONFIGURE),
+  memwiseChannelsAvailable: invoke(RPC_CHANNELS.memwise.CHANNELS_AVAILABLE),
+  memwiseGetNotifySettings: invoke(RPC_CHANNELS.memwise.NOTIFY_GET),
+  memwiseSetNotifySettings: invoke(RPC_CHANNELS.memwise.NOTIFY_SET),
   onMemwiseChanged: listener(RPC_CHANNELS.memwise.CHANGED),
 
   // Automations

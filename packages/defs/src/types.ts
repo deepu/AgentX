@@ -186,10 +186,27 @@ export interface StepDef {
    * be one of the step's outcomes. Front matter: `outcomeFrom: { tool: playbooks.check_draft, field: outcome }`.
    */
   outcomeFrom?: { tool: string; field: string };
+  /**
+   * External and person steps: the extraction the form may run while the step waits (Phase 5,
+   * D68). Front matter: `extract: { tool, documents, fields, min_confidence }`.
+   */
+  extract?: ExtractDef;
   /** The Markdown body: the instructions in the expert's own words. */
   instructions: string;
   file: string;
   hash: string;
+}
+
+/** `extract:` on an external or person step (23 §5). */
+export interface ExtractDef {
+  /** A tool that is `read` in the step's effective policy (quarantined reading allowed). */
+  tool: string;
+  /** The `List<Document>` (or `Document`) write whose files it reads. */
+  documents: string;
+  /** Writes it may fill, by the result's field name; `{ legal_name: client_name }` maps a result name to a write. */
+  fields: Record<string, string>;
+  /** Suggestions at or above this (and found in the document) are pre-filled. Default 0.8. */
+  minConfidence: number;
 }
 
 // ---------------------------------------------------------------- workflows (05 §1-2)

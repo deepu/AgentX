@@ -74,6 +74,8 @@ export function startMemwiseKernel(log: Log): void {
       logger: log,
       exampleRoots: [resources, app.getAppPath(), repoRoot(), process.cwd()].filter((r): r is string => !!r),
       ...(pgBinDir ? { pgBinDir } : {}),
+      // Phase 5: the relay is told who is calling; the form app is found under exampleRoots.
+      publicAddress: { client: `memwise-desktop/${app.getVersion()}` },
     }))
     .catch((err: unknown) => {
       log.error('[memwise] kernel failed to load:', err instanceof Error ? err.message : err)

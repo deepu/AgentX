@@ -132,9 +132,20 @@ Choices made while building plugins and bindings ([22](22-phase-4-interfaces.md)
 | D64 | **Mappings are declarative and deterministic**: a fixed set of transforms, a direction, unmapped fields kept under the plugin's namespace. The domain stores identity links and its own fields; fields a plugin owns are read through the link, live. Writing back to the owner comes with linked entities in Phase 6. | No model runs when data moves (P1); links don't drift like copies (04 §5) | [22 §5](22-phase-4-interfaces.md) |
 | D65 | **Identity resolution is deterministic in Phase 4**: exact keys first, then a name similarity with thresholds; confident matches link, uncertain ones go to the inbox, decisions are recorded and never asked again. A model for fuzzy matches waits until this falls short. | Testable and explainable; the inbox catches the rest | [22 §6](22-phase-4-interfaces.md) |
 
+## Settled in Phase 5
+
+Choices made while building external participants and the relay ([23](23-phase-5-interfaces.md)).
+
+| # | Decision | Why | Docs |
+|---|---|---|---|
+| D66 | **Our own relay is a stateless forwarder the core dials out to**: a Cloudflare Worker with one Durable Object per install holding the core's WebSocket (hibernating when idle), and the same hub self-hosted under Bun. An install is named by its own Ed25519 key (the id is a hash of it), so the relay needs no accounts or secrets. It forwards only public routes (forms, inbox links, webhooks, the form's files), answers the OAuth callback and shared pages itself, and shows a plain "offline" page when the core isn't connected. Links are checked by the core, never the relay. | A laptop has no public address; a relay that stores nothing and can't mint access is safe to run for everyone (option 1b in the Cloudflare review) | [23 §2](23-phase-5-interfaces.md) |
+| D67 | **An external link is a random token for one external step of one run, single use, expiring, revocable, stored only as a hash.** It opens the step's current waiting step run and shows only that step's fields, the comments sent back to it and its note; opening never uses it, the accepted submission does, and every other open link of the step closes. Drafts are kept on the link. What a participant types has provenance `external` and is always tainted. The same table carries person-scoped inbox links. | A client is not a user (10 §5); mail scanners open links; client input is untrusted (D21) | [23 §3–4](23-phase-5-interfaces.md) |
+| D68 | **Extraction in the form is a component action**: an external or person step names one `read` tool under `extract:`, which its form may call while the step waits, through the gateway under a component token, journaled on the step run. Each value comes with a confidence that is capped unless the value is found in the document's text; only confident, found values are pre-filled, with a "from <document>" badge. A value kept as suggested keeps the tool's provenance (document, confidence, who confirmed it). | Field-level trust without letting a model's guess pass as the client's answer | [23 §5](23-phase-5-interfaces.md) |
+| D69 | **Sending a link is a system step calling `external.invite`, an `outbound` effect that needs approval by default**, delivered through channel tools with fixed names (`email.send`, `whatsapp.send`) that plugins provide (SMTP, WhatsApp Cloud API); messages are fixed templates with the exact text in the preview. People may opt in to get their inbox items by email or WhatsApp, with a single-use link that decides that one item; these kernel notifications to signed-up people need no approval. Webhooks are verified per hook and recorded; acting on them is Phase 6. | Outgoing messages stay previewed and approved (D43) and swappable by binding (06 §8) | [23 §6–7](23-phase-5-interfaces.md) |
+
 ## Agreed for Phase 6
 
-Agreed on 20 October 2026 from the eTMF trial of the model, and built in Phase 6 ([21](21-domains-and-records.md)). Numbers D53–D69 are left for decisions settled in Phases 3–5 (Phase 3 used D53–D60, Phase 4 D61–D65).
+Agreed on 20 October 2026 from the eTMF trial of the model, and built in Phase 6 ([21](21-domains-and-records.md)). Numbers D53–D69 were left for decisions settled in Phases 3–5 (Phase 3 used D53–D60, Phase 4 D61–D65, Phase 5 D66–D69).
 
 | # | Decision | Why | Docs |
 |---|---|---|---|

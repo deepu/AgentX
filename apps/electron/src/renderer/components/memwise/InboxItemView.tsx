@@ -7,12 +7,15 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { AlertTriangle, Bell, CheckCircle2, ClipboardList, FilePen, Link2, Mail, MessagesSquare, Puzzle, ShieldCheck, Undo2 } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCircle2, ClipboardList, FilePen, Link2, Mail, MessageCircle, MessagesSquare, Puzzle, ScanText, ShieldCheck, Undo2 } from 'lucide-react'
 import type {
   MwBindingView,
   MwCaseValue,
   MwDecideApprovalInput,
   MwDecideIdentityInput,
+  MwExtractInput,
+  MwExtractResult,
+  MwExtractSuggestion,
   MwInboxItem,
   MwRole,
   MwSendEventInput,
@@ -31,11 +34,13 @@ import { Markdown } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 import { CaseFieldList } from './CaseValues'
 import { isMetaPlaybook } from './draft/draft-model'
-import { GeneratedForm, type UploadFile } from './GeneratedForm'
+import { GeneratedForm, type FormSuggestions, type UploadFile } from './GeneratedForm'
+import { MessagePreview, messageShape } from './MessagePreview'
 import { BindingReview } from './plugins/BindingReview'
 import { identityRows, matchMethodLabel, scorePercent } from './plugins/plugin-model'
 import { useNow } from './use-now'
-import { buildSubmission, initialFormValues, type FormError, type FormValues } from './form-model'
+import { buildSubmission, initialFormValue, initialFormValues, toFormField, type FormError, type FormValues } from './form-model'
+import { activeSource, applySuggestions, documentIds, mergeSuggestions, offersFor, submitSources } from './extract-model'
 import {
   absoluteTime,
   attentionReason,
@@ -73,6 +78,8 @@ export interface InboxActions {
   decideIdentity?: (input: MwDecideIdentityInput) => Promise<MwSubmitResult>
   /** Open a plugin's page. */
   openPlugin?: (pluginId: string) => void
+  /** Phase 5: read the step's documents into its form (`memwise:external:extract`); absent: no "Read the documents". */
+  extract?: (input: MwExtractInput) => Promise<MwExtractResult>
   /** Save edits into a draft (the binding review's edits; `memwise:drafts:write`). */
   writeDraft?: (draftId: string, input: { path: string; content: string; summary: string }) => Promise<MwWriteDraftResult>
 }
@@ -221,6 +228,47 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
   const { t } = useTranslation()
   const [values, setValues] = React.useState<FormValues>(() => initialFormValues(item.fields, item.prefill))
   const [errors, setErrors] = React.useState<Record<string, FormError[]>>({})
+  // Phase 5: reading the step's documents into the form (item.extract)
+  const [suggestions, setSuggestions] = React.useState<MwExtractSuggestion[]>([])
+  const [sources, setSources] = React.useState<Record<string, string>>({})
+  const [reading, setReading] = React.useState(false)
+  const [readNote, setReadNote] = React.useState<{ variant: 'success' | 'info' | 'error'; text: string; notes?: string[] } | null>(null)
+  const extract = item.extract && actions.extract ? item.extract : undefined
+  const docIds = extract ? documentIds(values, extract.documentsField) : []
+  const formSuggestions = React.useMemo<FormSuggestions | undefined>(() => (suggestions.length ? {
+    source: f => activeSource(f, values[f.name], sources, suggestions),
+    offers: f => offersFor(f, values[f.name], suggestions),
+    onUse: (f, sg) => {
+      setValues(prev => ({ ...prev, [f.name]: initialFormValue(toFormField(f), sg.value) }))
+      setSources(prev => ({ ...prev, [f.name]: sg.id }))
+    },
+  } : undefined), [suggestions, sources, values])
+
+  const read = async () => {
+    if (!extract || !actions.extract || docIds.length === 0) return
+    setReading(true)
+    setReadNote(null)
+    try {
+      const r = await actions.extract({ stepRunId: item.stepRunId, documents: docIds })
+      const all = mergeSuggestions(suggestions, r.suggestions)
+      const next = applySuggestions(item.fields, { values, sources }, r.suggestions, all)
+      setSuggestions(all)
+      setValues(next.values)
+      setSources(next.sources)
+      const offered = r.suggestions.filter(sg => !next.filled.includes(sg.field)).length
+      setReadNote({
+        variant: next.filled.length || offered ? 'success' : 'info',
+        text: next.filled.length
+          ? t('memwise.form.read.filled', { count: next.filled.length })
+          : offered ? t('memwise.form.read.offered', { count: offered }) : t('memwise.form.read.nothing'),
+        notes: r.notes,
+      })
+    } catch (err) {
+      setReadNote({ variant: 'error', text: t('memwise.form.read.failed'), notes: [err instanceof Error ? err.message : String(err)] })
+    } finally {
+      setReading(false)
+    }
+  }
   const [comment, setComment] = React.useState('')
   const [commentError, setCommentError] = React.useState<string | undefined>()
   const { busy, result, run } = useAnswer(actions.onDone)
@@ -238,7 +286,14 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
     const s = buildSubmission(item.fields, values)
     setErrors(s.errors)
     if (!s.valid) return
-    void run(outcome, () => actions.submitStep({ stepRunId: item.stepRunId, outcome, values: s.values, comment: comment.trim() || undefined }))
+    const kept = submitSources(item.fields, values, sources, suggestions)
+    void run(outcome, () => actions.submitStep({
+      stepRunId: item.stepRunId,
+      outcome,
+      values: s.values,
+      comment: comment.trim() || undefined,
+      ...(Object.keys(kept).length ? { sources: kept } : {}),
+    }))
   }
 
   return (
@@ -257,7 +312,28 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
             submit(outcomes[0]!)
           }}
         >
+          {extract && (
+            <div className="space-y-2 rounded-md bg-fill-hover/50 p-3" data-extract>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="min-w-0 flex-1 text-label-sm text-secondary">
+                  {t('memwise.form.read.hint', { fields: extract.fields.map(humanize).join(', ') })}
+                </p>
+                <Button type="button" variant="secondary" size="sm" onClick={() => void read()} disabled={reading || docIds.length === 0 || !!busy || result?.applied} data-action="read-documents">
+                  <ScanText />
+                  {reading ? t('memwise.form.read.reading') : t('memwise.form.read.action')}
+                </Button>
+              </div>
+              {docIds.length === 0 && <p className="text-label-sm text-tertiary">{t('memwise.form.read.uploadFirst', { field: humanize(extract.documentsField) })}</p>}
+              {readNote && (
+                <Info_Alert variant={readNote.variant} inline icon={readNote.variant === 'error' ? <AlertTriangle /> : <CheckCircle2 />}>
+                  <Info_Alert.Title>{readNote.text}</Info_Alert.Title>
+                  {readNote.notes?.length ? <Info_Alert.Description>{readNote.notes.join(' ')}</Info_Alert.Description> : null}
+                </Info_Alert>
+              )}
+            </div>
+          )}
           <GeneratedForm
+            suggestions={formSuggestions}
             fields={item.fields}
             values={values}
             onChange={(name, v) => {
@@ -429,6 +505,9 @@ function ConversationBody({ item, actions, roles }: {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/** The kernel tool that sends a client the link to their form (23 §3). */
+const EXTERNAL_INVITE_TOOL = 'external.invite'
+
 /** The preview of an effect: an email reads as an email, anything else as labelled values. */
 export function EffectPreview({ summary, detail }: { summary: string; detail?: unknown }) {
   const { t, i18n } = useTranslation()
@@ -465,7 +544,7 @@ export function EffectPreview({ summary, detail }: { summary: string; detail?: u
 }
 
 function ApprovalBody({ item, actions }: { item: Extract<MwInboxItem, { kind: 'approval' }>; actions: InboxActions }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [comment, setComment] = React.useState('')
   const [commentError, setCommentError] = React.useState<string | undefined>()
   const { busy, result, run } = useAnswer(actions.onDone)
@@ -478,17 +557,37 @@ function ApprovalBody({ item, actions }: { item: Extract<MwInboxItem, { kind: 'a
     void run(status, () => actions.decideApproval({ approvalId: item.approvalId, status, comment: comment.trim() || undefined }))
   }
   const isEmail = item.tool === 'email.send' || item.tool.endsWith('.send_email')
+  // Phase 5: a message to someone outside (the client's form link, a WhatsApp message) reads as that message
+  const isInvite = item.tool === EXTERNAL_INVITE_TOOL
+  const message = isInvite || item.tool === 'whatsapp.send' ? messageShape(item.tool, item.preview.detail) : null
+  const whatsapp = message?.channel === 'whatsapp'
   return (
     <>
       <Info_Alert variant="info" icon={<ShieldCheck />}>
-        <Info_Alert.Title>{t('memwise.inbox.approvalTitle', { action: toolLabel(item.tool) })}</Info_Alert.Title>
-        <Info_Alert.Description>{item.reason}</Info_Alert.Description>
+        <Info_Alert.Title>
+          {isInvite
+            ? (message ? t('memwise.inbox.invite.title', { to: message.to }) : t('memwise.inbox.invite.titleNoOne'))
+            : t('memwise.inbox.approvalTitle', { action: toolLabel(item.tool) })}
+        </Info_Alert.Title>
+        <Info_Alert.Description>{isInvite ? t('memwise.inbox.invite.description', { reason: item.reason }) : item.reason}</Info_Alert.Description>
       </Info_Alert>
       <Info_Section
-        title={isEmail ? t('memwise.inbox.emailPreview') : t('memwise.inbox.preview')}
-        actions={isEmail ? <Mail className="size-4 text-tertiary" /> : undefined}
+        title={message ? (whatsapp ? t('memwise.inbox.whatsappPreview') : t('memwise.inbox.emailPreview')) : isEmail ? t('memwise.inbox.emailPreview') : t('memwise.inbox.preview')}
+        actions={message || isEmail ? (whatsapp ? <MessageCircle className="size-4 text-tertiary" /> : <Mail className="size-4 text-tertiary" />) : undefined}
       >
-        <EffectPreview summary={item.preview.summary} detail={item.preview.detail} />
+        {message ? (
+          <MessagePreview
+            channel={message.channel}
+            to={message.to}
+            subject={message.subject}
+            body={message.body}
+            extra={Object.entries(message.rest)
+              .filter(([, v]) => v !== undefined && v !== null && v !== '')
+              .map(([k, v]) => ({ label: humanize(k), value: formatValueInline(v, t, i18n.language) }))}
+          />
+        ) : (
+          <EffectPreview summary={item.preview.summary} detail={item.preview.detail} />
+        )}
       </Info_Section>
       <div className="space-y-3">
         <CommentBox

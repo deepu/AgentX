@@ -1,0 +1,18 @@
+case: client_intake
+fields:
+  client_name:     PersonName
+  client_email:    Email
+  pan:             Identifier(PAN)
+  gstin:           Identifier(GSTIN)
+  annual_turnover: Money
+  documents:       List<Document>
+  gstin_ok:        Boolean
+  legal_name:      Text
+  flags:           List<Flag>
+  customer:        Ref<Customer>
+  status:          Enum[draft, submitted, checked, approved, rejected]
+types:
+  Flag:
+    field:    Text
+    problem:  Text
+    document: Text

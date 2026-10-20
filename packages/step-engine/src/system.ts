@@ -103,7 +103,11 @@ export async function systemStepWorkflow(input: StepRunInput): Promise<StepResul
       return d;
     }, { name: `policy:${tool}` }) as GatewayDecision;
     const verdict = decision.decision.verdict;
-    if (verdict === 'deny') return finish('needs_person', `${tool} was refused by policy: ${decision.decision.reason}`);
+    if (verdict === 'deny') {
+      // No rule behind it: the tool itself can't run now (an unknown tool, no public address).
+      const why = decision.decision.origins.length ? 'was refused by policy' : "can't run now";
+      return finish('needs_person', `${tool} ${why}: ${decision.decision.reason}`);
+    }
 
     if (verdict === 'approve') {
       const id = `${input.stepRunId}:${callId}`;

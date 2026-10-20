@@ -2,6 +2,9 @@ case: client_intake
 fields:
   client_name:     PersonName
   client_email:    Email
+  client_phone:    Phone
+  contact_by:      Enum[email, whatsapp]
+  client_message:  Text
   pan:             Identifier(PAN)
   gstin:           Identifier(GSTIN)
   annual_turnover: Money
