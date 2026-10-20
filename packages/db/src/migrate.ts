@@ -11,7 +11,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 
-export const MIGRATIONS_DIR = fileURLToPath(new URL('../migrations', import.meta.url));
+/**
+ * The migrations folder. `MEMWISE_MIGRATIONS_DIR` overrides it (bundles where `import.meta.url`
+ * is unavailable, e.g. the Electron main process, ship a copy of the folder).
+ */
+export const MIGRATIONS_DIR = process.env.MEMWISE_MIGRATIONS_DIR
+  || (import.meta.url ? fileURLToPath(new URL('../migrations', import.meta.url)) : path.resolve('migrations'));
 
 /** Arbitrary but fixed: "mwmigr" in ASCII. Only needs to differ from other advisory locks we take. */
 const LOCK_KEY = '120364616919410';

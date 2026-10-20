@@ -120,6 +120,11 @@ export function mergeStricter(a: PolicyDoc, b: PolicyDoc): PolicyDoc {
   const roles = intersect(a.modelRoles, b.modelRoles);
   if (roles) out.modelRoles = roles;
 
+  if (a.approvals || b.approvals) {
+    const by = intersect(a.approvals?.by, b.approvals?.by);
+    out.approvals = by ? { ...a.approvals, ...b.approvals, by } : { ...a.approvals, ...b.approvals };
+  }
+
   if (a.taint || b.taint) {
     const ea = a.taint?.enabled, eb = b.taint?.enabled;
     const wa = a.taint?.outboundWhenTainted, wb = b.taint?.outboundWhenTainted;

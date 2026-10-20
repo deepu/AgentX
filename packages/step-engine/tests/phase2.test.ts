@@ -1,0 +1,234 @@
+// Phase 2 in the step engine: system (mechanical) steps, money budgets, and taint on writes.
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { DBOS } from '@dbos-inc/dbos-sdk';
+import type { CaseValue, StepDef } from '@memwise/defs';
+import { createModelGateway, createToolGateway, scriptedProvider, type ToolDefinition } from '@memwise/gateway';
+import {
+  AGENT_STEP_WORKFLOW, agentStepWorkflow, configureStepEngine, mapArgs, structuralChecks, systemStepWorkflow, SYSTEM_STEP_WORKFLOW,
+  type StepEngineDeps, type StepResult, type StepRunInput,
+} from '../src/index.ts';
+import { MemoryLedger, MemoryRecorder, createDatabase, example, intakeTools, launchDbos, realGateways, stepInput } from './helpers.ts';
+
+// Registered per file and deregistered after it, so other files in the same process (a kernel) can use the names.
+let agentStep: (input: StepRunInput) => Promise<StepResult>;
+let systemStep: (input: StepRunInput) => Promise<StepResult>;
+let db: Awaited<ReturnType<typeof createDatabase>>;
+
+beforeAll(async () => {
+  agentStep = DBOS.registerWorkflow((i: StepRunInput) => agentStepWorkflow(i), { name: AGENT_STEP_WORKFLOW });
+  systemStep = DBOS.registerWorkflow((i: StepRunInput) => systemStepWorkflow(i), { name: SYSTEM_STEP_WORKFLOW });
+  db = await createDatabase('phase2');
+  await launchDbos(db.url);
+});
+afterAll(async () => {
+  await DBOS.shutdown({ deregister: true });
+  await db.drop();
+});
+
+const clean = example('clean-application');
+
+async function run(body: typeof agentStep, input: StepRunInput, deps: StepEngineDeps): Promise<StepResult> {
+  configureStepEngine(deps);
+  return (await DBOS.startWorkflow(body, { workflowID: input.stepRunId })(input)).getResult();
+}
+
+// ---------------------------------------------------------------- system steps
+
+const created: { args: unknown; key: string }[] = [];
+const createCustomer: ToolDefinition<Record<string, unknown>> = {
+  name: 'domain.customer.create', description: 'Create a customer.', effect: 'write', idempotent: true,
+  inputSchema: { type: 'object', properties: { name: { type: 'string' }, gstin: { type: 'string' }, region: { type: 'string' } }, required: ['name'], additionalProperties: false },
+  async execute(args, ctx) {
+    created.push({ args, key: ctx.idempotencyKey });
+    return { id: `cust_${created.length}` };
+  },
+};
+const failing: ToolDefinition = { ...createCustomer, name: 'crm.broken', async execute() { throw new Error('CRM is down'); } };
+const extractor: ToolDefinition = {
+  name: 'docs.read', description: 'Read a document.', effect: 'read', quarantine: true,
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false }, async execute() { return { legal_name: 'Acme Traders' }; },
+};
+
+function onboard(id: string, change: (s: StepDef) => StepDef = (s) => s): StepRunInput {
+  const input = stepInput(id, clean, (s) => change({
+    ...s, id: 'onboard', title: 'Create the customer', performer: 'system', model: undefined, checkpoint: [], outcomes: ['done'],
+    reads: ['case.client_name', 'case.gstin'],
+    tools: { allowed: ['domain.customer.create'], required: ['domain.customer.create'] },
+    map: { 'domain.customer.create': { name: { case: 'client_name' }, gstin: { case: 'gstin' }, region: { value: 'south' } } },
+    writes: { customer: { field: 'customer', type: { kind: 'ref', entity: 'Customer' }, typeSource: 'Ref<Customer>', from: { kind: 'tool', tool: 'domain.customer.create', field: 'id' } } },
+  }));
+  return input;
+}
+
+const systemDeps = (tools: ToolDefinition[], recorder = new MemoryRecorder()) => ({
+  tools: createToolGateway({ tools, ledger: new MemoryLedger() }),
+  models: createModelGateway({ roles: {}, providers: [] }),
+  recorder,
+});
+
+describe('system steps', () => {
+  test('maps the arguments from the case, calls each required tool once and writes from its result', async () => {
+    created.length = 0;
+    const recorder = new MemoryRecorder();
+    const input = onboard('sys-ok');
+    const result = await run(systemStep, input, systemDeps([createCustomer], recorder));
+    expect(result).toMatchObject({ status: 'completed', outcome: 'done', tainted: false, usage: { modelCalls: 0, toolCalls: 1 } });
+    expect(created).toEqual([{ args: { name: 'Asha Rao', gstin: '29AAACA1234A1Z5', region: 'south' }, key: `${input.stepRunId}:domain.customer.create` }]);
+    expect(result.writes.customer).toEqual({
+      value: 'cust_1',
+      provenance: { kind: 'tool', at: expect.any(String), stepRunId: input.stepRunId, tool: 'domain.customer.create', callId: 'domain.customer.create' },
+    });
+    expect(recorder.keys(input.stepRunId)).toEqual(['policy:domain.customer.create', 'tool:domain.customer.create']);
+    expect(recorder.records.get(input.stepRunId)).toMatchObject({ performer: 'system', status: 'completed', outcome: 'done' });
+  });
+
+  test('a refused or failing call ends the step for a person', async () => {
+    // The caller compiles the policy into the input; deny the tool there.
+    const input = onboard('sys-deny2');
+    input.policy = { ...input.policy, tools: { ...input.policy.tools, denied: [{ value: 'domain.customer.create', origin: { layer: 'domain', name: 'domain' } }] } };
+    const refused = await run(systemStep, input, systemDeps([createCustomer]));
+    expect(refused).toMatchObject({ status: 'needs_person', outcome: 'needs_person' });
+    expect(refused.reason).toContain('refused by policy');
+
+    const broken = onboard('sys-broken', (s) => ({ ...s, tools: { allowed: ['crm.broken'], required: ['crm.broken'] }, map: { 'crm.broken': { name: { case: 'client_name' } } }, writes: {} }));
+    const r = await run(systemStep, broken, systemDeps([failing]));
+    expect(r).toMatchObject({ status: 'needs_person' });
+    expect(r.reason).toContain('CRM is down');
+  });
+
+  test('a value read from untrusted content is written tainted', async () => {
+    const input = onboard('sys-taint', (s) => ({
+      ...s, tools: { allowed: ['docs.read'], required: ['docs.read'] }, map: {},
+      writes: { legal_name: { field: 'legal_name', type: { kind: 'scalar', name: 'Text' }, typeSource: 'Text', from: { kind: 'tool', tool: 'docs.read', field: 'legal_name' } } },
+    }));
+    const r = await run(systemStep, input, systemDeps([extractor]));
+    expect(r).toMatchObject({ status: 'completed', tainted: true });
+    expect(r.writes.legal_name!.provenance).toMatchObject({ kind: 'tool', tool: 'docs.read', tainted: true });
+  });
+
+  test('mapArgs: case paths and literals; unset fields are left out', () => {
+    const snap = { id: 'c', caseType: 't', seq: 1, values: { a: { value: { b: 2 }, provenance: { kind: 'input', at: '' } } } as Record<string, CaseValue> };
+    expect(mapArgs({ x: { case: 'a.b' }, y: { value: 'lit' }, z: { case: 'missing' } }, snap)).toEqual({ x: 2, y: 'lit' });
+  });
+});
+
+// ---------------------------------------------------------------- money budgets
+
+const priced = (price: { inputPerMTok: number; outputPerMTok: number; currency: string }) => createModelGateway({
+  roles: { checker: { provider: 'scripted', model: 'c', price }, verifier: { provider: 'scripted', model: 'v' } },
+  providers: [scriptedProvider(clean.model!)],
+});
+const tools = () => createToolGateway({ tools: intakeTools(clean), ledger: new MemoryLedger() });
+const money = (amount: number, currency: string, layer: 'step' | 'workflow') => ({ value: { amount, currency }, origin: { layer, name: 'test' } as const });
+
+describe('money budgets', () => {
+  // The scripted provider reports 100 tokens a call: at 1,000,000 per million that is 100 INR a call.
+  const rupees = { inputPerMTok: 1_000_000, outputPerMTok: 1_000_000, currency: 'INR' };
+
+  test('a step budget stops the step for a person once spent', async () => {
+    const input = stepInput('money-step', clean);
+    input.policy = { ...input.policy, budgets: { ...input.policy.budgets, money: money(150, 'INR', 'step') } };
+    const r = await run(agentStep, input, { tools: tools(), models: priced(rupees), recorder: new MemoryRecorder() });
+    expect(r).toMatchObject({ status: 'needs_person' });
+    expect(r.reason).toBe('budget exceeded: money (limit 150 INR for the step, spent 200 INR)');
+    expect(r.usage.cost).toEqual({ amount: 200, currency: 'INR' });
+  });
+
+  test('a run budget counts what earlier steps spent', async () => {
+    const input = stepInput('money-run', clean);
+    const rule = money(1000, 'INR', 'workflow');
+    input.policy = { ...input.policy, budgets: { ...input.policy.budgets, money: rule }, runBudgets: { ...(input.policy.runBudgets ?? {}), money: rule } };
+    input.runSpent = { tokens: 0, modelCalls: 0, elapsedMs: 0, money: { amount: 950, currency: 'INR' } };
+    const r = await run(agentStep, input, { tools: tools(), models: priced(rupees), recorder: new MemoryRecorder() });
+    expect(r.reason).toBe('budget exceeded: money (limit 1000 INR for the run, spent 1050 INR)');
+    expect(r.usage.modelCalls).toBe(1);
+  });
+
+  test('spend in another currency is not compared', async () => {
+    const input = stepInput('money-usd', clean);
+    input.policy = { ...input.policy, budgets: { ...input.policy.budgets, money: money(0.01, 'USD', 'step') } };
+    const r = await run(agentStep, input, { tools: tools(), models: priced(rupees), recorder: new MemoryRecorder() });
+    expect(r.status).toBe('completed');
+  });
+});
+
+// ---------------------------------------------------------------- taint on writes
+
+describe('taint on writes', () => {
+  test('values from a quarantined tool, and judgement after reading one, are tainted', () => {
+    const input = stepInput('taint', clean);
+    const evidence = [
+      { tool: 'gst.validate_gstin', callId: 'c1', args: {}, result: { valid: true, legal_name: 'Acme Traders Private Limited' } },
+      { tool: 'intake.extract_fields', callId: 'c2', args: {}, result: { fields: [] }, tainted: true },
+    ];
+    const r = structuralChecks(input, { outcome: 'checked', writes: { gstin_ok: true, legal_name: 'Acme Traders Private Limited', flags: [] } }, evidence, ['gst.validate_gstin'], 'now');
+    expect(r.passed).toBe(true);
+    expect((r.writes.gstin_ok!.provenance as { tainted?: boolean }).tainted).toBeUndefined();
+    expect(r.writes.flags!.provenance).toMatchObject({ kind: 'judgement', tainted: true });
+  });
+});
+
+// ---------------------------------------------------------------- taint from the case (review finding)
+
+describe('taint carried in from the case', () => {
+  // Outbound allowed on its own, denied once tainted: what the call gets shows which rule applied.
+  const taintPolicy = (input: StepRunInput, tainted: boolean): StepRunInput => {
+    const origin = { layer: 'domain', name: 'test' } as const;
+    return {
+      ...input,
+      ...(tainted ? { tainted: true, taintedReads: ['client_email'] } : {}),
+      policy: {
+        ...input.policy,
+        effects: { ...input.policy.effects, outbound: { value: 'allow', origin } },
+        taint: { enabled: { value: true, origin }, outboundWhenTainted: { value: 'deny', origin } },
+      },
+    };
+  };
+
+  test('an agent step reading a tainted field gets the taint treatment on its first outbound call', async () => {
+    const script = {
+      checker: [
+        { toolCalls: [{ name: 'email.send', args: { to: 'asha@acme-traders.example' } }] },
+        { toolCalls: [{ name: 'step.finish', args: { outcome: 'needs_info', writes: { flags: [] }, rationale: 'asked the client' } }] },
+      ],
+    };
+    const change = (s: StepDef): StepDef => ({ ...s, tools: { allowed: ['email.send'], required: [] }, checkpoint: [], writes: { flags: s.writes.flags! } });
+    const results: Record<string, { result: StepResult; recorder: MemoryRecorder; calls: number }> = {};
+    for (const tainted of [false, true]) {
+      const id = `agent-taint-${tainted}`;
+      const recorder = new MemoryRecorder();
+      const g = realGateways({ ...clean, tools: { ...clean.tools, 'email.send': { message_id: 'm-1' } } }, { script });
+      const input = taintPolicy(stepInput(id, clean, change), tainted);
+      const result = await run(agentStep, input, { ...g, recorder, maxRepairs: 0 });
+      results[id] = { result, recorder, calls: g.calls['email.send'] ?? 0 };
+      const policy = recorder.journals.get(input.stepRunId)!.find((e) => e.kind === 'policy')!;
+      expect((policy.request as { tainted: boolean }).tainted).toBe(tainted);
+      expect((policy.response as { decision: { verdict: string } }).decision.verdict).toBe(tainted ? 'deny' : 'allow');
+    }
+    expect(results['agent-taint-false']!.calls).toBe(1);
+    expect(results['agent-taint-true']!.calls).toBe(0);
+    const t = results['agent-taint-true']!.result;
+    expect(t.tainted).toBe(true);
+    // Its judgement carries the taint on.
+    expect(t.writes.flags!.provenance).toMatchObject({ kind: 'judgement', tainted: true });
+    expect((results['agent-taint-false']!.result.writes.flags!.provenance as { tainted?: boolean }).tainted).toBeUndefined();
+  });
+
+  test('a system step mapping a tainted field into an outbound call gets the taint treatment', async () => {
+    const sent: unknown[] = [];
+    const mail: ToolDefinition = {
+      name: 'mail.send', description: 'Send mail.', effect: 'outbound', idempotent: true,
+      inputSchema: { type: 'object', properties: { to: { type: 'string' } }, additionalProperties: false },
+      async execute(args) { sent.push(args); return { ok: true }; },
+    };
+    const change = (s: StepDef): StepDef => ({
+      ...s, tools: { allowed: ['mail.send'], required: ['mail.send'] }, map: { 'mail.send': { to: { case: 'client_email' } } }, writes: {},
+    });
+    const ok = await run(systemStep, taintPolicy(onboard('sys-mail-clean', change), false), systemDeps([mail]));
+    expect(ok).toMatchObject({ status: 'completed', tainted: false });
+    const refused = await run(systemStep, taintPolicy(onboard('sys-mail-tainted', change), true), systemDeps([mail]));
+    expect(refused).toMatchObject({ status: 'needs_person', tainted: true });
+    expect(refused.reason).toContain('a tainted session');
+    expect(sent).toHaveLength(1);
+  });
+});

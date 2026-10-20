@@ -2,7 +2,7 @@
 import { basename } from 'node:path';
 import { exampleFormat, TIMEOUT_PATTERN, workflowFormat } from './formats.ts';
 import { asRecord, asString, compact, isRecord, readYaml, rememberLocator, Reporter, type ParseResult } from './source.ts';
-import { END_STATE, type ExampleCase, type ScriptedTurn, type StateDef, type WaitDef } from './types.ts';
+import { END_STATE, type ExampleCase, type ExampleSubmission, type ScriptedTurn, type StateDef, type WaitDef } from './types.ts';
 import { parseDuration } from './value-types.ts';
 
 /** What `workflow.yaml` holds on its own; `loadWorkflow` adds steps, case type, policy and examples. */
@@ -10,6 +10,7 @@ export interface WorkflowShape {
   id: string;
   version: number;
   title?: string;
+  owner?: string;
   start: string;
   /** States without `step` set; the loader sets it from the step files. */
   states: Record<string, StateDef>;
@@ -51,13 +52,14 @@ export function parseWorkflowFile(text: string, file: string): ParseResult<Workf
       }
       wait = compact({ remindMs, timeout });
     }
-    states[name] = compact({ name, on, wait });
+    states[name] = compact({ name, on, wait, assignee: asString(s.assignee) });
   }
 
   const value: WorkflowShape = compact({
     id: asString(data.workflow) ?? '',
     version: typeof data.version === 'number' ? data.version : 1,
     title: asString(data.title),
+    owner: asString(data.owner),
     start: asString(data.start) ?? '',
     states,
     case: asString(data.case),
@@ -90,7 +92,26 @@ export function parseExampleFile(text: string, file: string): ParseResult<Exampl
       }));
     }
   }
+  let submit: ExampleCase['submit'];
+  if (isRecord(data.submit)) {
+    const one = (v: unknown): ExampleSubmission | undefined => isRecord(v) && typeof v.outcome === 'string'
+      ? compact({ outcome: v.outcome, values: isRecord(v.values) ? v.values : undefined, comment: asString(v.comment) })
+      : undefined;
+    submit = {};
+    for (const [state, answer] of Object.entries(data.submit)) {
+      const parsed = Array.isArray(answer) ? answer.map(one).filter((a): a is ExampleSubmission => !!a) : one(answer);
+      if (parsed) submit[state] = parsed;
+    }
+  }
   const expect = asRecord(data.expect);
+  let entities: ExampleCase['expect']['entities'];
+  if (isRecord(expect.entities)) {
+    entities = {};
+    for (const [entity, want] of Object.entries(expect.entities)) {
+      if (typeof want === 'number') entities[entity] = want;
+      else if (Array.isArray(want)) entities[entity] = want.filter(isRecord);
+    }
+  }
   const value: ExampleCase = compact({
     name: asString(data.name) ?? basename(file).replace(/\.ya?ml$/, ''),
     description: asString(data.description),
@@ -101,6 +122,7 @@ export function parseExampleFile(text: string, file: string): ParseResult<Exampl
     approvals: isRecord(data.approvals)
       ? Object.fromEntries(Object.entries(data.approvals).filter(([, v]) => v === 'approve' || v === 'reject')) as ExampleCase['approvals']
       : undefined,
+    submit,
     expect: compact({
       outcome: asString(expect.outcome),
       state: asString(expect.state),
@@ -108,6 +130,7 @@ export function parseExampleFile(text: string, file: string): ParseResult<Exampl
       effects: isRecord(expect.effects)
         ? Object.fromEntries(Object.entries(expect.effects).filter(([, v]) => typeof v === 'number')) as Record<string, number>
         : undefined,
+      entities,
     }),
     file,
   });

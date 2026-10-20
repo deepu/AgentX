@@ -57,7 +57,9 @@ export function toPolicyDoc(raw: unknown, file?: string): PolicyDoc {
       })
     : undefined;
 
-  return compact({ name: asString(data.policy), effects, tools, budgets, modelRoles: list(data.modelRoles), taint, file });
+  const approvals = isRecord(data.approvals) ? compact({ by: list(data.approvals.by) }) : undefined;
+
+  return compact({ name: asString(data.policy), effects, tools, budgets, modelRoles: list(data.modelRoles), taint, approvals, file });
 }
 
 export function parsePolicyFile(text: string, file: string): ParseResult<PolicyDoc> {

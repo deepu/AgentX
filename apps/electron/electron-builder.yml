@@ -117,6 +117,14 @@ mac:
     # WhatsApp worker subprocess (self-contained; Baileys bundled in).
     - from: ../../packages/messaging-whatsapp-worker/dist/worker.cjs
       to: messaging-whatsapp-worker/worker.cjs
+    # MemWise kernel: its SQL migrations and the example playbooks the project folder is seeded from.
+    - from: ../../packages/db/migrations
+      to: memwise/migrations
+    - from: ../../examples/intake
+      to: examples/intake
+    # Bundled Postgres 18 (D37); main/memwise-kernel.ts looks in memwise/postgres/bin.
+    - from: ../../node_modules/@embedded-postgres/darwin-${arch}/native
+      to: memwise/postgres
   # Exclude binaries for other platforms
   files:
     - "!**/resources/bin/win32-*/**"
@@ -182,6 +190,14 @@ win:
     # WhatsApp worker subprocess (self-contained; Baileys bundled in).
     - from: ../../packages/messaging-whatsapp-worker/dist/worker.cjs
       to: messaging-whatsapp-worker/worker.cjs
+    # MemWise kernel: its SQL migrations and the example playbooks the project folder is seeded from.
+    - from: ../../packages/db/migrations
+      to: memwise/migrations
+    - from: ../../examples/intake
+      to: examples/intake
+    # Bundled Postgres 18 (D37); main/memwise-kernel.ts looks in memwise/postgres/bin.
+    - from: ../../node_modules/@embedded-postgres/windows-x64/native
+      to: memwise/postgres
 
 nsis:
   oneClick: true
@@ -209,6 +225,14 @@ linux:
     # WhatsApp worker subprocess (self-contained; Baileys bundled in).
     - from: ../../packages/messaging-whatsapp-worker/dist/worker.cjs
       to: messaging-whatsapp-worker/worker.cjs
+    # MemWise kernel: its SQL migrations and the example playbooks the project folder is seeded from.
+    - from: ../../packages/db/migrations
+      to: memwise/migrations
+    - from: ../../examples/intake
+      to: examples/intake
+    # Bundled Postgres 18 (D37); main/memwise-kernel.ts looks in memwise/postgres/bin.
+    - from: ../../node_modules/@embedded-postgres/linux-x64/native
+      to: memwise/postgres
   # Exclude binaries for other platforms
   files:
     - "!**/resources/bin/darwin-*/**"

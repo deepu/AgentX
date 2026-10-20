@@ -78,6 +78,8 @@ export type ErrorCode =
   | 'HANDLER_ERROR'
   | 'CHANNEL_NOT_FOUND'
   | 'AUTH_FAILED'
+  /** The connection is signed in as a person, and the channel is not one people may call. */
+  | 'FORBIDDEN'
   | 'PROTOCOL_VERSION_UNSUPPORTED'
   | 'SESSION_NOT_IDLE'
   | 'SESSION_ID_CONFLICT'
@@ -98,6 +100,7 @@ const KNOWN_ERROR_CODES: ReadonlySet<string> = new Set<ErrorCode>([
   'HANDLER_ERROR',
   'CHANNEL_NOT_FOUND',
   'AUTH_FAILED',
+  'FORBIDDEN',
   'PROTOCOL_VERSION_UNSUPPORTED',
   'SESSION_NOT_IDLE',
   'SESSION_ID_CONFLICT',

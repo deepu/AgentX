@@ -4,7 +4,7 @@ import { stepFormat } from './formats.ts';
 import { toPolicyDoc } from './parse-policy.ts';
 import { typeAt } from './parse-types.ts';
 import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, sha256, type ParseResult } from './source.ts';
-import type { Performer, StepDef, Strictness, WriteDef, WriteSource } from './types.ts';
+import type { ArgSource, Performer, StepDef, Strictness, WriteDef, WriteSource } from './types.ts';
 import { parseCount, parseDuration } from './value-types.ts';
 
 const PERFORMERS: Performer[] = ['agent', 'person', 'external', 'system'];
@@ -27,6 +27,13 @@ function writeSource(raw: unknown, performer: Performer): WriteSource {
   }
   // Agents judge; people (and outside participants) type the value in.
   return performer === 'person' || performer === 'external' ? { kind: 'person' } : { kind: 'judgement' };
+}
+
+/** `case.client_name` reads the case; `{ value: x }` or anything else is a literal. */
+export function argSource(raw: unknown): ArgSource {
+  if (typeof raw === 'string' && /^case\.[A-Za-z_][\w.]*$/.test(raw.trim())) return { case: raw.trim().slice(5) };
+  if (isRecord(raw) && Object.keys(raw).length === 1 && 'value' in raw) return { value: raw.value };
+  return { value: raw };
 }
 
 /** `file` is relative to the project root; the step id is the file name without `.md`. */
@@ -70,6 +77,14 @@ export function parseStepFile(text: string, file: string): ParseResult<StepDef> 
     });
   }
 
+  let map: StepDef['map'];
+  if (isRecord(data.map)) {
+    map = {};
+    for (const [tool, args] of Object.entries(data.map)) {
+      map[tool] = Object.fromEntries(Object.entries(asRecord(args)).map(([arg, src]) => [arg, argSource(src)]));
+    }
+  }
+
   const value: StepDef = compact({
     id: basename(file).replace(/\.md$/, ''),
     title: asString(data.title) ?? '',
@@ -83,6 +98,8 @@ export function parseStepFile(text: string, file: string): ParseResult<StepDef> 
     checkpoint: asStrings(data.checkpoint),
     outcomes: asStrings(data.outcomes),
     policy: isRecord(data.policy) ? toPolicyDoc(data.policy, file) : undefined,
+    assignee: asString(data.assignee),
+    map,
     instructions: parts.body.trim(),
     file,
     hash: sha256(text),

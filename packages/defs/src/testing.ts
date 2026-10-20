@@ -10,6 +10,7 @@
  *   after-tool-effect@<tool>    gateway, after the tool ran, before the ledger marks the key done
  *   after-ledger-complete@<tool> gateway, after the ledger marked the key done, before DBOS records the step
  *   waiting-approval@<tool>     step engine, after the approval request is recorded, while waiting
+ *   after-system-tool@<tool>    step engine, a system step's tool call is recorded by DBOS, before the next one (Phase 2)
  *   before-finish               step engine, after the checkpoint passed, before the step record is finished
  *   after-step-before-commit@<state>  runtime, after a step returned, before the transition commits
  *   in-commit@<state>           runtime, inside the commit transaction

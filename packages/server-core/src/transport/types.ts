@@ -8,6 +8,8 @@ export interface RequestContext {
   clientId: string
   workspaceId: string | null
   webContentsId: number | null
+  /** The MemWise person this connection signed in as (a personal token or web login); absent for the shared token. */
+  personId?: string
 }
 
 export type HandlerFn = (ctx: RequestContext, ...args: any[]) => Promise<any> | any

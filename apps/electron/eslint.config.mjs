@@ -82,7 +82,7 @@ export default [
         },
       },
       // Custom style rules
-      'craft-styles': {
+      'memwise-styles': {
         rules: {
           'no-hardcoded-z-index': noHardcodedZIndex,
           'no-nonstandard-shadows': noNonstandardShadows,

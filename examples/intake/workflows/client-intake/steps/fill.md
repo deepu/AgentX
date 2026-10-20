@@ -1,6 +1,7 @@
 ---
 title: Client fills in the intake form
 performer: external
+assignee: staff                # staff fill the form on the client's behalf until external links arrive
 strictness: strict
 writes:
   client_name:     { type: PersonName, from: person }
@@ -12,4 +13,4 @@ writes:
 outcomes: [submitted]
 ---
 The client enters their details and uploads their PAN card and GST certificate.
-(The form and the external link arrive in Phases 2 and 5.)
+Until clients can be sent a link to the form, a member of staff fills it in for them.

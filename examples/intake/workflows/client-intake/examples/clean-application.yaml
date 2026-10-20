@@ -31,6 +31,15 @@ model:
     - toolCalls:
         - name: checkpoint.verdict
           args: { results: [ { rule: 1, passed: true, reason: There are no flags. } ] }
+  explainer:
+    - toolCalls:
+        - name: explain.answer
+          args:
+            answer: Nothing was flagged. The GST registry confirmed the GSTIN is valid, and both documents matched what the client typed.
+            cites:
+              - { kind: journal, ref: "tool:gst.validate_gstin:call_checker_0_0", label: GST registry lookup }
+              - { kind: output, ref: flags, label: No flags written }
+            grounded: true
 expect:
   outcome: checked
   state: verify

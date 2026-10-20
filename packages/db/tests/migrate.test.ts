@@ -4,16 +4,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { createPool, createTestDatabase, migrate, postgresAvailable, withTransaction, type TestDatabase } from '../src/index.ts';
 
+const ALL = ['0001_kernel.sql', '0002_people_and_domain.sql'];
+
 describe.skipIf(!postgresAvailable())('migrate', () => {
   let db: TestDatabase;
   beforeAll(async () => { db = await createTestDatabase('mw_migrate', { migrate: false }); }, 60_000);
   afterAll(() => db?.drop());
 
   test('applies the kernel schema once; a second run is a no-op', async () => {
-    expect(await migrate(db.pool)).toEqual(['0001_kernel.sql']);
+    expect(await migrate(db.pool)).toEqual(ALL);
     expect(await migrate(db.pool)).toEqual([]);
-    const { rows } = await db.pool.query('select name, checksum from mw.schema_migrations');
-    expect(rows.map((r) => r.name)).toEqual(['0001_kernel.sql']);
+    const { rows } = await db.pool.query('select name, checksum from mw.schema_migrations order by name');
+    expect(rows.map((r) => r.name)).toEqual(ALL);
     expect(rows[0].checksum).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -22,7 +24,7 @@ describe.skipIf(!postgresAvailable())('migrate', () => {
     const pools = [0, 1, 2, 3].map(() => createPool(fresh.url, { max: 2 }));
     try {
       const results = await Promise.all(pools.map((p) => migrate(p)));
-      expect(results.flat()).toEqual(['0001_kernel.sql']);
+      expect(results.flat()).toEqual(ALL);
     } finally {
       await Promise.all(pools.map((p) => p.end()));
       await fresh.drop();

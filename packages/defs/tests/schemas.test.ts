@@ -7,7 +7,7 @@ import { SAMPLE } from './fixture.ts';
 
 describe('JSON Schemas', () => {
   test('one per file format, draft 2020-12, with titles', () => {
-    expect(Object.keys(jsonSchemas).sort()).toEqual(['case', 'entity', 'example', 'policy', 'step', 'workflow']);
+    expect(Object.keys(jsonSchemas).sort()).toEqual(['case', 'entity', 'example', 'policy', 'roles', 'step', 'workflow']);
     for (const schema of Object.values(jsonSchemas)) {
       expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
       expect(schema.type).toBe('object');
@@ -33,6 +33,7 @@ describe('JSON Schemas', () => {
       ['policy', yamlFile(join(wf, 'policy.yaml'))],
       ['policy', yamlFile(join(SAMPLE, 'domain/policy.yaml'))],
       ['entity', yamlFile(join(SAMPLE, 'domain/entities/customer.yaml'))],
+      ['roles', yamlFile(join(SAMPLE, 'domain/roles.yaml'))],
       ['example', yamlFile(join(wf, 'examples/pan-mismatch.yaml'))],
       ...['check', 'fill', 'onboard', 'verify'].map((s): [keyof typeof formats, unknown] =>
         ['step', parse(splitFrontMatter(readFileSync(join(wf, `steps/${s}.md`), 'utf8'))!.yaml)]),

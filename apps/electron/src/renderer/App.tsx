@@ -62,6 +62,8 @@ import { visibleSessionIdsAtom } from '@/atoms/panel-stack'
 import { getSessionTitle } from '@/utils/session'
 import { extractBadges } from '@/lib/mentions'
 import { getDefaultStore } from 'jotai'
+import { memwisePersonConnectionAtom } from '@/atoms/memwise'
+import { isPersonOnlyConnection } from '@/hooks/useMemwise'
 import {
   ShikiThemeProvider,
   PlatformProvider,
@@ -677,6 +679,8 @@ export default function App() {
 
   // Refresh LLM connections from config (called on workspace change and after connection updates)
   const refreshLlmConnections = useCallback(async () => {
+    // A person's own sign-in has no chats, so no model connections to show
+    if (isPersonOnlyConnection()) return
     const connections = await window.electronAPI.listLlmConnectionsWithStatus()
     setLlmConnections(connections)
     setDefaultLlmConnectionSlug(resolveDefaultConnectionSlug(connections))
@@ -742,8 +746,11 @@ export default function App() {
 
         const needs = await window.electronAPI.getSetupNeeds()
         setSetupNeeds(needs)
+        // Connected now, so the advertised channels say whether this is a person's own sign-in
+        const personOnly = isPersonOnlyConnection()
+        store.set(memwisePersonConnectionAtom, personOnly)
 
-        if (needs.isFullyConfigured) {
+        if (needs.isFullyConfigured || personOnly) {
           // If no workspace is selected (thin client without MEMWISE_WORKSPACE_ID),
           // show workspace picker before entering the main app
           if (!wsId) {
@@ -788,6 +795,11 @@ export default function App() {
 
     window.electronAPI.getWorkspaces().then(setWorkspaces)
     window.electronAPI.getNotificationsEnabled().then(setNotificationsEnabled).catch(() => {})
+    // A person's own sign-in reaches the playbook screens only: no chats, models or drafts to load
+    if (isPersonOnlyConnection()) {
+      setSessionsLoaded(true)
+      return
+    }
 
     // Show actionable toast for missing system dependencies (Windows only)
     window.electronAPI.getSystemWarnings().then((warnings) => {

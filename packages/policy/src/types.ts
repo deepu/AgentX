@@ -34,7 +34,7 @@ export interface EffectivePolicy {
     required: Sourced<string>[];
     perTool: Record<string, {
       treatment?: Sourced<Treatment>;
-      /** Compiled and shown, not enforced until Phase 2. */
+      /** Enforced by the tool gateway when it is given a rate counter (19 §7). */
       rateLimit?: Sourced<{ count: number; perMs: number }>;
     }>;
   };
@@ -48,6 +48,12 @@ export interface EffectivePolicy {
   runBudgets?: PolicyBudgets;
   /** null: any role. */
   modelRoles: Sourced<string[]> | null;
+  /**
+   * Roles that may decide effect approvals: the intersection of every layer's `approvals.by`
+   * (19 §1). Absent: no layer says; the step's assignee role, else the workflow owner, else any
+   * signed-in person decides.
+   */
+  approvers?: Sourced<string[]>;
   taint: { enabled: Sourced<boolean>; outboundWhenTainted: Sourced<Treatment> };
   /** The layers this was compiled from, top to bottom. */
   layers: { kind: LayerKind; name: string; source?: string }[];
@@ -57,7 +63,7 @@ export interface PolicyBudgets {
   tokens?: Sourced<number>;
   timeMs?: Sourced<number>;
   modelCalls?: Sourced<number>;
-  /** Compiled and shown, not enforced until Phase 2. */
+  /** Enforced by the step engine when the model role has a price in the same currency (19 §7). */
   money?: Sourced<Money>;
 }
 

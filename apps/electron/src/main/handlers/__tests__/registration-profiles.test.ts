@@ -108,6 +108,7 @@ async function getExpectedCoreChannels(): Promise<Set<string>> {
     resources,
     transfer,
     decisions,
+    memwise,
   ] = await Promise.all([
     import('@memwise/server-core/handlers/rpc/auth'),
     import('@memwise/server-core/handlers/rpc/automations'),
@@ -129,6 +130,7 @@ async function getExpectedCoreChannels(): Promise<Set<string>> {
     import('@memwise/server-core/handlers/rpc/resources'),
     import('@memwise/server-core/handlers/rpc/transfer'),
     import('@memwise/server-core/handlers/rpc/decisions'),
+    import('@memwise/server-core/handlers/rpc/memwise'),
   ])
 
   return new Set([
@@ -152,6 +154,7 @@ async function getExpectedCoreChannels(): Promise<Set<string>> {
     ...resources.HANDLED_CHANNELS,
     ...transfer.HANDLED_CHANNELS,
     ...decisions.HANDLED_CHANNELS,
+    ...memwise.HANDLED_CHANNELS,
   ])
 }
 

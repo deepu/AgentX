@@ -19,6 +19,14 @@ const WA_WORKER_DIR = join(ROOT_DIR, "packages/messaging-whatsapp-worker");
 const WA_WORKER_SOURCE = join(WA_WORKER_DIR, "src/worker.ts");
 const WA_WORKER_OUTPUT = join(WA_WORKER_DIR, "dist/worker.cjs");
 
+const MEMWISE_OPTIONAL_EXTERNALS = [
+  "winston",
+  "winston-transport",
+  "@opentelemetry/sdk-logs",
+  "@opentelemetry/exporter-trace-otlp-proto",
+  "@opentelemetry/exporter-logs-otlp-proto",
+];
+
 // Load .env file if it exists
 function loadEnvFile(): void {
   const envPath = join(ROOT_DIR, ".env");
@@ -316,6 +324,9 @@ async function main(): Promise<void> {
       // fails every Telegram API call with a TypeError.
       "--alias:node-fetch=./apps/electron/src/main/shims/node-fetch.cjs",
       "--alias:abort-controller=./apps/electron/src/main/shims/abort-controller.cjs",
+      // MemWise kernel: DBOS loads these only when OTLP telemetry is enabled, which we never
+      // turn on; they are not installed, so leave the requires unresolved.
+      ...MEMWISE_OPTIONAL_EXTERNALS.map((m) => `--external:${m}`),
       ...buildDefines,
     ],
     cwd: ROOT_DIR,

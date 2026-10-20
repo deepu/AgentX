@@ -40,6 +40,7 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 | 16 | [Open questions](16-open-questions.md) | What's left, including the spikes that start the build |
 | 17 | [Build plan](17-build-plan.md) | Phases 0–6, each with an exit test, the spikes and the risks |
 | 18 | [Kernel interfaces](18-kernel-interfaces.md) | The Phase 1 package boundaries, contracts and conventions |
+| 19 | [Phase 2 interfaces](19-phase-2-interfaces.md) | People and roles, domain tables, human and system steps, the app API and screens |
 
 ## Status labels
 
@@ -49,4 +50,4 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 
 ## Next
 
-The [build plan](17-build-plan.md): Phase 2, client intake for internal users, built on the kernel.
+The [build plan](17-build-plan.md): Phase 3, building and changing playbooks by chat, on top of the Phase 2 app.

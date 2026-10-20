@@ -6,7 +6,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseExampleFile, parseWorkflowFile } from './parse-workflow.ts';
 import { parsePolicyFile } from './parse-policy.ts';
 import { parseStepFile } from './parse-step.ts';
-import { parseCaseFile, parseEntityFile } from './parse-types.ts';
+import { parseCaseFile, parseEntityFile, parseRolesFile } from './parse-types.ts';
 import { locatorOf, rememberLocator, Reporter } from './source.ts';
 import type { CaseTypeDef, Diagnostic, EntityTypeDef, ExampleCase, PolicyDoc, ProjectDefs, StepDef, WorkflowDef } from './types.ts';
 
@@ -134,6 +134,7 @@ export async function loadWorkflow(dir: string, projectRoot: string): Promise<{ 
     id: shape.id || folderName,
     version: shape.version,
     ...(shape.title !== undefined ? { title: shape.title } : {}),
+    ...(shape.owner !== undefined ? { owner: shape.owner } : {}),
     start: shape.start,
     states,
     steps,
@@ -151,7 +152,7 @@ export async function loadWorkflow(dir: string, projectRoot: string): Promise<{ 
 /** Loads a whole project folder (see the layout in types.ts). Content errors are diagnostics; it never throws for them. */
 export async function loadProject(root: string): Promise<{ project: ProjectDefs; diagnostics: Diagnostic[] }> {
   const abs = resolve(root);
-  const project: ProjectDefs = { root: abs, entities: {}, workflows: {} };
+  const project: ProjectDefs = { root: abs, roles: {}, entities: {}, workflows: {} };
   const diagnostics: Diagnostic[] = [];
   if (!(await isDir(abs))) {
     diagnostics.push({ severity: 'error', code: 'missing-project', message: `${root} is not a folder` });
@@ -163,6 +164,13 @@ export async function loadProject(root: string): Promise<{ project: ProjectDefs;
     const r = parsePolicyFile(await readFile(domainPolicy, 'utf8'), 'domain/policy.yaml');
     diagnostics.push(...r.diagnostics);
     if (r.value) project.domainPolicy = r.value;
+  }
+
+  const rolesFile = join(abs, 'domain', 'roles.yaml');
+  if (existsSync(rolesFile)) {
+    const r = parseRolesFile(await readFile(rolesFile, 'utf8'), 'domain/roles.yaml');
+    diagnostics.push(...r.diagnostics);
+    if (r.value) project.roles = r.value;
   }
 
   const entityDir = join(abs, 'domain', 'entities');

@@ -44,9 +44,18 @@ export async function verifyJwt(token: string, secret: string): Promise<JwtPaylo
   }
 }
 
-export async function createSessionToken(secret: string): Promise<string> {
+export async function createSessionToken(secret: string, personId?: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
-  return signJwt({ sub: 'webui', iat: now, exp: now + JWT_EXPIRY_SECONDS }, secret)
+  return signJwt({ sub: personId ? `${PERSON_SUBJECT_PREFIX}${personId}` : 'webui', iat: now, exp: now + JWT_EXPIRY_SECONDS }, secret)
+}
+
+/** Session subjects for a MemWise person signed in with email and password. */
+const PERSON_SUBJECT_PREFIX = 'person:'
+
+/** The person a session cookie belongs to; null for the shared-password session or no session. */
+export async function sessionPersonId(cookieHeader: string | null, secret: string): Promise<string | null> {
+  const session = await validateSession(cookieHeader, secret)
+  return session?.sub?.startsWith(PERSON_SUBJECT_PREFIX) ? session.sub.slice(PERSON_SUBJECT_PREFIX.length) : null
 }
 
 // ---------------------------------------------------------------------------

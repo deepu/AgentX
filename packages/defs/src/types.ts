@@ -116,6 +116,8 @@ export interface PolicyDoc {
   /** Model roles the layer permits. */
   modelRoles?: string[];
   taint?: { enabled?: boolean; outboundWhenTainted?: Treatment };
+  /** Roles that may decide effect approvals (Phase 2); compiled tighten-only (intersection). */
+  approvals?: { by?: string[] };
   file?: string;
 }
 
@@ -133,6 +135,12 @@ export type WriteSource =
   | { kind: 'judgement' }
   /** A person enters it (person and external steps). */
   | { kind: 'person' };
+
+/**
+ * Where a system step's tool argument comes from (`map:` in the front matter): `case.<path>`
+ * reads the case (`{ case: 'client_name' }`, the path without `case.`); anything else is a literal.
+ */
+export type ArgSource = { case: string } | { value: unknown };
 
 export interface WriteDef {
   field: string;
@@ -161,6 +169,10 @@ export interface StepDef {
   outcomes: string[];
   /** Optional extra policy layer for this step (merged with the layer derived from the fields above). */
   policy?: PolicyDoc;
+  /** Role that does (or decides) a person or external step (Phase 2). */
+  assignee?: string;
+  /** System steps: the arguments of each tool call, by tool then argument, in call order (Phase 2). */
+  map?: Record<string, Record<string, ArgSource>>;
   /** The Markdown body: the instructions in the expert's own words. */
   instructions: string;
   file: string;
@@ -183,6 +195,8 @@ export interface StateDef {
   wait?: WaitDef;
   /** Set when `steps/<name>.md` exists. A state without a step file is a wait state (waits for an outside event). */
   step?: string;
+  /** Role whose attention a wait state (e.g. `needs_person`) needs (Phase 2). */
+  assignee?: string;
 }
 
 /** A loaded, parsed workflow folder. This whole object is the run's definition snapshot (D36). */
@@ -191,6 +205,8 @@ export interface WorkflowDef {
   id: string;
   version: number;
   title?: string;
+  /** Role that gets attention items for this workflow: stopped runs, needs_person (Phase 2). */
+  owner?: string;
   start: string;
   states: Record<string, StateDef>;
   /** Keyed by state name. */
@@ -229,6 +245,11 @@ export interface ExampleCase {
   model?: Record<string, ScriptedTurn[]>;
   /** Answers to approval requests, by tool name. */
   approvals?: Record<string, 'approve' | 'reject'>;
+  /**
+   * Answers to person and external steps, by state (Phase 2): one answer for every visit, or a
+   * list consumed in order. A run waiting in a state without an answer left is where it stops.
+   */
+  submit?: Record<string, ExampleSubmission | ExampleSubmission[]>;
   expect: {
     /** Outcome of the first step run (the step at `startAt`). */
     outcome?: string;
@@ -238,15 +259,32 @@ export interface ExampleCase {
     writes?: Record<string, unknown>;
     /** Number of times each tool's effect actually happened. */
     effects?: Record<string, number>;
+    /**
+     * Rows in the domain tables after the run, by entity type (Phase 2): a count, or the rows
+     * expected (each matched on the listed fields only; the count must match too).
+     */
+    entities?: Record<string, number | Record<string, unknown>[]>;
   };
   file: string;
 }
 
+/** A scripted answer to a person or external step in an example case. */
+export interface ExampleSubmission {
+  outcome: string;
+  values?: Record<string, unknown>;
+  comment?: string;
+}
+
 // ---------------------------------------------------------------- project
+
+/** One role from `domain/roles.yaml` (Phase 2). */
+export interface RoleDef { id: string; title: string; description?: string }
 
 export interface ProjectDefs {
   root: string;
   domainPolicy?: PolicyDoc;
+  /** `domain/roles.yaml`; empty when the project declares no roles. */
+  roles: Record<string, RoleDef>;
   entities: Record<string, EntityTypeDef>;
   workflows: Record<string, WorkflowDef>;
 }
@@ -270,7 +308,10 @@ export interface Diagnostic {
 /** What the checks need to know beyond the files: which tools are bound in the domain. */
 export interface CheckEnvironment {
   /** Tool names bound in the domain, with their effect class (undefined = unclassified). */
-  tools: Record<string, { effect?: EffectClass }>;
-  /** Roles that exist (approval steps must reference one). */
+  tools: Record<string, { effect?: EffectClass; /** JSON Schema of the arguments, when known (system-step `map` checks). */ inputSchema?: Record<string, unknown> }>;
+  /**
+   * Roles that exist (assignees, owners and approvers must reference one). `checkProject` fills
+   * it from the project's `domain/roles.yaml` when not given; undefined means roles aren't checked.
+   */
   roles?: string[];
 }

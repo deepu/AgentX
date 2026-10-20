@@ -1,7 +1,7 @@
 /** `case.yaml` and `domain/entities/*.yaml`: fields made of value types. */
-import { caseFormat, entityFormat } from './formats.ts';
+import { caseFormat, entityFormat, rolesFormat } from './formats.ts';
 import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, sha256, type ParseResult, type PathKey } from './source.ts';
-import { SCALAR_TYPES, type CaseTypeDef, type EntityTypeDef, type FieldDef, type RecordTypeDef } from './types.ts';
+import { SCALAR_TYPES, type CaseTypeDef, type EntityTypeDef, type FieldDef, type RecordTypeDef, type RoleDef } from './types.ts';
 import { parseValueType } from './value-types.ts';
 
 /** Parses a type expression, reporting `invalid-type` at the path when it can't be read. */
@@ -88,4 +88,24 @@ export function parseEntityFile(text: string, file: string): ParseResult<EntityT
   });
   rememberLocator(value, src.locate);
   return { value, diagnostics: report.diagnostics };
+}
+
+/** `domain/roles.yaml`: `roles: { staff: { title: Staff, description: … } }`, or `staff: Staff`. */
+export function parseRolesFile(text: string, file: string): ParseResult<Record<string, RoleDef>> {
+  const src = readYaml(text, file);
+  const report = new Reporter(file, src.locate);
+  report.diagnostics.push(...src.diagnostics);
+  if (src.data === null || src.data === undefined) return { value: src.diagnostics.length ? undefined : {}, diagnostics: report.diagnostics };
+  if (!isRecord(src.data)) {
+    report.error('invalid-format', 'expected roles: a map of role id to { title, description }');
+    return { diagnostics: report.diagnostics };
+  }
+  report.validate(rolesFormat, src.data);
+  const roles: Record<string, RoleDef> = {};
+  for (const [id, spec] of Object.entries(asRecord(src.data.roles))) {
+    if (typeof spec === 'string') roles[id] = { id, title: spec };
+    else if (isRecord(spec)) roles[id] = compact({ id, title: asString(spec.title) ?? id, description: asString(spec.description) });
+  }
+  rememberLocator(roles, src.locate);
+  return { value: roles, diagnostics: report.diagnostics };
 }

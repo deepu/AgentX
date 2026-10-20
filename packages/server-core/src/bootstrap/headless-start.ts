@@ -10,6 +10,7 @@ import { setBundledAssetsRoot } from '@memwise/shared/utils'
 import { WsRpcServer, type WsRpcTlsOptions } from '../transport/server'
 import type { EventSink, RpcServer } from '../transport/types'
 import { createHeadlessPlatform } from '../runtime/platform-headless'
+import { getMemwiseService } from '../memwise/host'
 import type { PlatformServices } from '../runtime/platform'
 
 interface ModelRefreshServiceLike {
@@ -50,11 +51,28 @@ export interface ServerBootstrapOptions<TSessionManager, THandlerDeps> {
   tls?: WsRpcTlsOptions
   /** Cookie-based session validator for web UI auth on WebSocket upgrade. */
   validateSessionCookie?: (cookieHeader: string | null) => Promise<boolean>
+  /** A MemWise person's personal token, accepted besides the shared server token (resolves to the person id). */
+  authenticatePersonToken?: (token: string) => Promise<string | null>
+  /** The MemWise person a web session cookie belongs to. */
+  sessionCookiePerson?: (cookieHeader: string | null) => Promise<string | null>
+  /** Whether a signed-in person may still use the app; default: they exist in MemWise and are not disabled. */
+  personActive?: (personId: string) => Promise<boolean>
   /**
    * Optional HTTP request handler for non-WebSocket requests on the RPC port.
    * When provided, the WsRpcServer serves HTTP (e.g. WebUI) on the same port.
    */
   httpHandler?: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void
+}
+
+/**
+ * A person's sign-in stays valid while MemWise knows them and they are not disabled. Before the
+ * kernel is up nobody can be checked; the person channels are refused by the kernel anyway then.
+ */
+async function memwisePersonActive(personId: string): Promise<boolean> {
+  const svc = getMemwiseService()
+  if (!svc) return true
+  const person = await svc.kernel.people.get(personId)
+  return !!person && !person.disabled
 }
 
 export interface ServerHandlerContext {
@@ -374,11 +392,16 @@ export async function bootstrapServer<TSessionManager, THandlerDeps>(
     requireAuth: true,
     validateToken: async (t) => t === serverToken,
     validateSessionCookie: options.validateSessionCookie,
+    authenticatePersonToken: options.authenticatePersonToken,
+    sessionCookiePerson: options.sessionCookiePerson,
+    personActive: options.personActive ?? memwisePersonActive,
     serverId: options.serverId ?? 'headless',
     serverVersion: options.serverVersion,
     tls: options.tls,
     httpHandler: options.httpHandler,
     onClientConnected: options.onClientConnected,
+    // Who a desktop connection acts as is kept per client until it can no longer reconnect
+    onClientExpired: (clientId) => { getMemwiseService()?.forgetClient(clientId) },
     onClientDisconnected: (clientId) => {
       options.cleanupClientResources?.(clientId)
       // Best-effort: notify SM so it can drop browser-host pins for this client.

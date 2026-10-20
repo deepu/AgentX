@@ -6,9 +6,10 @@ The tool and effect gateway and the thin model gateway ([07 §2, §4, §5](../..
 
 ## Tools
 
-- `createToolGateway({ tools, ledger, secrets })`:
+- `createToolGateway({ tools, ledger, secrets, rates?, rateScope? })`:
   - `check(req, policy, { tainted })` resolves the effect class for the arguments, asks `decide()` from `@memwise/policy`, and builds a preview for `preview`/`approve` verdicts (the tool's own, or `"<tool> with <args>"`). Unknown tools are denied.
   - `execute(req, decision)` refuses denied calls, checks the arguments (required keys, top-level types), injects secrets into `ctx.secrets` and redacts their values from results and errors. Every class but `read` goes through the effect ledger by idempotency key: `done` returns the stored result (`replayed`), `pending` runs again only for `idempotent` tools and otherwise returns `unknown`, `failed` runs again. Crash points `after-tool-effect` and `after-ledger-complete`.
+  - Rate limits (19 §7): `check` copies the tool's `rateLimit` from the policy into the (journaled) decision; `execute` counts the call through `rates` (`PgRateCounter` in `@memwise/db`) only where it is really about to run (after the ledger claimed the key; a replayed `done` key never counts) and refuses past the limit with `denied`: `rate limit: gst.validate_gstin allows 10 calls per 1m; try later`.
 - `resolveEffect(tool, args)`: declared class or a function of the arguments; undeclared is `irreversible`, unclassified (D29).
 - `effectFromAnnotations(a)`: a class seeded from MCP hints (destructive -> irreversible, read-only -> read, open-world -> outbound), a proposal a person confirms at binding. `@memwise/shared`'s MCP pool keeps an identical copy.
 - `stubTools(tools, stubs)`: the same definitions with example-case results; `.calls` counts real runs.
@@ -16,6 +17,8 @@ The tool and effect gateway and the thin model gateway ([07 §2, §4, §5](../..
 ## Models
 
 - `createModelGateway({ roles, providers, sink })`: role -> provider and model, budget check before the call (`BudgetExceededError`), fallbacks in order, every attempt reported to the sink. A reply with `stopReason` `error`/`aborted` is a failure, so the DBOS step policy retries (D38).
+- Money (19 §7): `ModelRoleConfig.price` (`{ inputPerMTok, outputPerMTok, currency }`) prices each call into `ModelCallResult.cost`; `spendOf(usage, price)`, `addMoney`, `exceedsMoney(spent, budget)` (undefined across currencies) are for the step engine's `budgets.money` check.
+- `quarantinedRead({ models, role, text, fields })` (19 §5, D21): one call with no tools, the text fenced as untrusted data; only a JSON object of the requested fields, each checked against its JSON Schema (`matchesSchema`), comes back as `values`; anything else is `dropped`.
 - `piAiProvider({ id, apiKey?, baseUrl? })`: pi-ai with `anthropic` or `openai` (or any pi-ai `provider`), pi-ai retries off.
 - `scriptedProvider(script)`: deterministic replies by role and turn, for example cases and tests.
 

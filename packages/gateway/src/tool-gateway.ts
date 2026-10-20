@@ -3,7 +3,7 @@
  * preview, then run through the effect ledger with secrets injected.
  */
 import { crashPoint, type EffectClass, type EffectPreview } from '@memwise/defs';
-import { decide, type EffectivePolicy } from '@memwise/policy';
+import { decide, rateLimitOf, rateLimitRefusal, type EffectivePolicy } from '@memwise/policy';
 import { resolveEffect } from './effects.ts';
 import { redactSecrets } from './redact.ts';
 import type {
@@ -27,7 +27,7 @@ export const genericPreview = (tool: string, args: unknown): EffectPreview => ({
   detail: args,
 });
 
-export function createToolGateway({ tools, ledger, secrets }: ToolGatewayOptions): ToolGateway {
+export function createToolGateway({ tools, ledger, secrets, rates, rateScope = 'domain' }: ToolGatewayOptions): ToolGateway {
   const byName = new Map<string, ToolDefinition>();
   for (const tool of tools) {
     if (byName.has(tool.name)) throw new Error(`tool "${tool.name}" is bound twice`);
@@ -53,6 +53,27 @@ export function createToolGateway({ tools, ledger, secrets }: ToolGatewayOptions
       out[name] = value;
     }
     return out;
+  }
+
+  /**
+   * Counts the call against the rate limit journaled with the decision. Runs only where the
+   * call is really about to happen (inside the executed step, after the ledger claimed the
+   * key), so a replay that returns a recorded result never counts again.
+   *
+   * A crash after counting but before the result is recorded (the DBOS step never finished)
+   * makes the replay count the same call again. That over-count is accepted: counting must
+   * happen before the effect, so a limit is never run past, and erring on the side of refusing
+   * a call costs a retry while erring the other way breaks the limit.
+   */
+  async function overLimit(tool: ToolDefinition, decision: GatewayDecision): Promise<string | undefined> {
+    if (!rates || !decision.rateLimit) return undefined;
+    try {
+      const r = await rates.take(tool.name, rateScope, decision.rateLimit);
+      return r.allowed ? undefined : rateLimitRefusal(tool.name, decision.rateLimit);
+    } catch (e) {
+      // Can't count: refuse rather than run past a limit.
+      return `rate limit: could not count calls of ${tool.name} (${errorText(e)}); try later`;
+    }
   }
 
   /** Runs the tool; never throws. Secret values are redacted from the result and from errors. */
@@ -85,6 +106,8 @@ export function createToolGateway({ tools, ledger, secrets }: ToolGatewayOptions
       const { effect, classified } = resolveEffect(tool, req.args);
       const decision = decide(policy, { tool: tool.name, effect, classified, tainted: state.tainted });
       const out: GatewayDecision = { tool: tool.name, effect, classified, decision };
+      const rateLimit = rateLimitOf(policy, tool.name);
+      if (rateLimit) out.rateLimit = rateLimit;
       if (decision.verdict === 'preview' || decision.verdict === 'approve') out.preview = await preview(tool, req.args);
       return out;
     },
@@ -100,6 +123,8 @@ export function createToolGateway({ tools, ledger, secrets }: ToolGatewayOptions
       // The class journaled with the decision, not a fresh one: the call does what was approved.
       const effect = decision.effect;
       if (!LEDGERED.has(effect)) {
+        const refused = await overLimit(tool, decision);
+        if (refused) return { status: 'denied', reason: refused };
         const r = await run(tool, req);
         return r.ok ? { status: 'ok', result: r.result, effect, replayed: false } : { status: 'error', error: r.error };
       }
@@ -112,6 +137,12 @@ export function createToolGateway({ tools, ledger, secrets }: ToolGatewayOptions
         return { status: 'unknown', reason: `${tool.name} started at ${state.startedAt} and its result was lost; it is not idempotent, so it was not run again` };
       }
       // new, failed, or pending on an idempotent tool (the provider dedupes on the same key).
+      const refused = await overLimit(tool, decision);
+      if (refused) {
+        // Released, so a later attempt with the same key may claim it again.
+        await ledger.fail(key, refused);
+        return { status: 'denied', reason: refused };
+      }
       const r = await run(tool, req);
       if (!r.ok) {
         await ledger.fail(key, r.error);

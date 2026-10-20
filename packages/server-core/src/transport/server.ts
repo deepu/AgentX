@@ -27,6 +27,7 @@ import {
 } from '@memwise/shared/protocol'
 import type { RpcServer, HandlerFn, RequestContext } from './types'
 import { serializeEnvelope, deserializeEnvelope } from './codec'
+import { personMayCall as defaultPersonMayCall } from './person-channels'
 import { createLogger } from '@memwise/shared/utils'
 
 // ---------------------------------------------------------------------------
@@ -45,6 +46,10 @@ interface ClientConnection {
   ws: WebSocket
   workspaceId: string | null
   webContentsId: number | null
+  /** MemWise person signed in on this connection (personal token or web login); null for the shared token. */
+  personId: string | null
+  /** A person connection ended by the server (signed out, disabled): it may not reconnect. */
+  ended?: boolean
   capabilities: Set<string>
   missedPongs: number
   alive: boolean
@@ -93,6 +98,22 @@ export interface WsRpcServerOptions {
    * If provided, a valid session cookie is accepted as an alternative to a bearer token.
    */
   validateSessionCookie?: (cookieHeader: string | null) => Promise<boolean>
+  /**
+   * A person's personal sign-in token, tried when the shared token does not match. Resolves to
+   * the person id (put on RequestContext.personId), or null. The shared token stays the
+   * machine/admin credential.
+   */
+  authenticatePersonToken?: (token: string) => Promise<string | null>
+  /** The person a valid session cookie belongs to (web login with email and password), or null. */
+  sessionCookiePerson?: (cookieHeader: string | null) => Promise<string | null>
+  /**
+   * Whether a signed-in person may still use the app (exists, not disabled). Checked on the
+   * handshake, before every request of a person connection and on each heartbeat, so disabling a
+   * person ends their live connections and their sessions stop working at once.
+   */
+  personActive?: (personId: string) => Promise<boolean>
+  /** Which channels a person connection may call. Default: `personMayCall` (person-channels.ts). */
+  personMayCall?: (channel: string) => boolean
   /** Server identity stamp on outgoing events. Default: 'local' */
   serverId?: string
   /** TLS configuration. When provided, the server listens on wss:// instead of ws://. */
@@ -105,6 +126,8 @@ export interface WsRpcServerOptions {
   onClientConnected?: (info: { clientId: string; webContentsId: number | null; workspaceId: string | null; capabilities: string[] }) => void
   /** Called when a client disconnects. */
   onClientDisconnected?: (clientId: string) => void
+  /** Called when a disconnected client can no longer reconnect (its replay window ended), so per-client state may go. */
+  onClientExpired?: (clientId: string) => void
   /**
    * Optional HTTP request handler for non-WebSocket requests.
    * When provided, regular HTTP requests to the server's port are
@@ -140,6 +163,10 @@ export class WsRpcServer implements RpcServer {
   private readonly requireAuth: boolean
   private readonly validateToken: ((token: string) => Promise<boolean>) | null
   private readonly validateSessionCookie: ((cookieHeader: string | null) => Promise<boolean>) | null
+  private readonly authenticatePersonToken: WsRpcServerOptions['authenticatePersonToken']
+  private readonly sessionCookiePerson: WsRpcServerOptions['sessionCookiePerson']
+  private readonly personActive: WsRpcServerOptions['personActive']
+  private readonly personMayCall: (channel: string) => boolean
   private readonly serverId: string
   private readonly tlsOptions: WsRpcTlsOptions | null
   private readonly serverVersion: string
@@ -148,6 +175,7 @@ export class WsRpcServer implements RpcServer {
   private readonly maxClients: number
   private readonly onClientConnected: WsRpcServerOptions['onClientConnected']
   private readonly onClientDisconnected: WsRpcServerOptions['onClientDisconnected']
+  private readonly onClientExpired: WsRpcServerOptions['onClientExpired']
   private readonly httpHandler: WsRpcServerOptions['httpHandler']
 
   constructor(opts?: WsRpcServerOptions) {
@@ -156,12 +184,17 @@ export class WsRpcServer implements RpcServer {
     this.requireAuth = opts?.requireAuth ?? false
     this.validateToken = opts?.validateToken ?? null
     this.validateSessionCookie = opts?.validateSessionCookie ?? null
+    this.authenticatePersonToken = opts?.authenticatePersonToken
+    this.sessionCookiePerson = opts?.sessionCookiePerson
+    this.personActive = opts?.personActive
+    this.personMayCall = opts?.personMayCall ?? defaultPersonMayCall
     this.serverId = opts?.serverId ?? 'local'
     this.serverVersion = opts?.serverVersion ?? ''
     this.tlsOptions = opts?.tls ?? null
     this.maxClients = opts?.maxClients ?? 50
     this.onClientConnected = opts?.onClientConnected
     this.onClientDisconnected = opts?.onClientDisconnected
+    this.onClientExpired = opts?.onClientExpired
     this.httpHandler = opts?.httpHandler
   }
 
@@ -432,6 +465,7 @@ export class WsRpcServer implements RpcServer {
         }
 
         // Auth check — bearer token OR session cookie (web UI)
+        let personId: string | null = null
         if (this.requireAuth) {
           let authenticated = false
 
@@ -440,9 +474,28 @@ export class WsRpcServer implements RpcServer {
             authenticated = await this.validateToken(envelope.token)
           }
 
+          // 1b. A person's own token (MemWise people sign-in)
+          if (!authenticated && envelope.token && this.authenticatePersonToken) {
+            personId = await this.authenticatePersonToken(envelope.token).catch(() => null)
+            authenticated = !!personId
+          }
+
           // 2. Fallback: try session cookie from HTTP upgrade request (web UI path)
           if (!authenticated && this.validateSessionCookie && upgradeRequestCookie) {
             authenticated = await this.validateSessionCookie(upgradeRequestCookie)
+            if (authenticated && this.sessionCookiePerson) {
+              // A person's cookie that can't be resolved must not fall back to the admin session
+              try {
+                personId = await this.sessionCookiePerson(upgradeRequestCookie)
+              } catch {
+                authenticated = false
+              }
+            }
+          }
+
+          // 3. A person who was disabled (or removed) is refused, whatever they signed in with
+          if (authenticated && personId && !(await this.isPersonActive(personId))) {
+            authenticated = false
           }
 
           if (!authenticated) {
@@ -462,7 +515,8 @@ export class WsRpcServer implements RpcServer {
             // Identity must match (workspace + webContentsId)
             const identityMatch =
               prevClient.workspaceId === (envelope.workspaceId ?? null) &&
-              prevClient.webContentsId === (envelope.webContentsId ?? null)
+              prevClient.webContentsId === (envelope.webContentsId ?? null) &&
+              prevClient.personId === personId
 
             if (identityMatch) {
               // Valid reconnect — prepare client state but do NOT add to
@@ -500,7 +554,7 @@ export class WsRpcServer implements RpcServer {
                   serverVersion: this.serverVersion || undefined,
                   maxMessageBytes: this.maxMessageBytes,
                   clientId: prevClient.id,
-                  registeredChannels: [...this.handlers.keys()],
+                  registeredChannels: this.channelsFor(prevClient),
                   reconnected: true,
                 }
                 this.safeSend(ws, serializeEnvelope(ack))
@@ -524,7 +578,7 @@ export class WsRpcServer implements RpcServer {
                   serverVersion: this.serverVersion || undefined,
                   maxMessageBytes: this.maxMessageBytes,
                   clientId: prevClient.id,
-                  registeredChannels: [...this.handlers.keys()],
+                  registeredChannels: this.channelsFor(prevClient),
                   reconnected: true,
                   stale: true,
                 }
@@ -568,6 +622,7 @@ export class WsRpcServer implements RpcServer {
           ws,
           workspaceId: envelope.workspaceId ?? null,
           webContentsId: envelope.webContentsId ?? null,
+          personId,
           capabilities: new Set(envelope.clientCapabilities ?? []),
           missedPongs: 0,
           alive: true,
@@ -586,7 +641,7 @@ export class WsRpcServer implements RpcServer {
           serverVersion: this.serverVersion || undefined,
           maxMessageBytes: this.maxMessageBytes,
           clientId,
-          registeredChannels: [...this.handlers.keys()],
+          registeredChannels: this.channelsFor(client),
         }
         this.safeSend(ws, serializeEnvelope(ack))
 
@@ -661,10 +716,24 @@ export class WsRpcServer implements RpcServer {
       return
     }
 
+    // A person's own sign-in reaches the playbook screens only (person-channels.ts)
+    if (client.personId) {
+      if (!this.personMayCall(channel)) {
+        this.sendResponseError(client.ws, id, channel, 'FORBIDDEN', 'This is not available when you are signed in with your own account.')
+        return
+      }
+      if (!(await this.isPersonActive(client.personId))) {
+        this.sendResponseError(client.ws, id, channel, 'AUTH_FAILED', 'Your sign-in is no longer valid. Sign in again.')
+        this.endPersonConnection(client)
+        return
+      }
+    }
+
     const ctx: RequestContext = {
       clientId: client.id,
       workspaceId: client.workspaceId,
       webContentsId: client.webContentsId,
+      ...(client.personId ? { personId: client.personId } : {}),
     }
 
     try {
@@ -711,8 +780,57 @@ export class WsRpcServer implements RpcServer {
         }
         client.alive = false
         client.ws.ping()
+
+        if (client.personId) {
+          const c = client
+          void this.isPersonActive(c.personId!).then((active) => { if (!active) this.endPersonConnection(c) })
+        }
       }
     }, HEARTBEAT_INTERVAL_MS)
+  }
+
+  // -------------------------------------------------------------------------
+  // People signed in with their own account
+  // -------------------------------------------------------------------------
+
+  /** Channels advertised to a client: all of them for the admin token, the person subset otherwise. */
+  private channelsFor(client: { personId: string | null }): string[] {
+    const all = [...this.handlers.keys()]
+    return client.personId ? all.filter((ch) => this.personMayCall(ch)) : all
+  }
+
+  private async isPersonActive(personId: string): Promise<boolean> {
+    if (!this.personActive) return true
+    try {
+      return await this.personActive(personId)
+    } catch {
+      return false
+    }
+  }
+
+  /** Close a person's connection for good: no reconnect replay, the client must sign in again. */
+  private endPersonConnection(client: ClientConnection): void {
+    const retained = this.disconnectedClients.get(client.id)
+    if (retained) {
+      clearTimeout(retained.timer)
+      this.disconnectedClients.delete(client.id)
+    }
+    client.ended = true
+    if (client.ws.readyState === client.ws.OPEN || client.ws.readyState === client.ws.CONNECTING) {
+      client.ws.close(4005, 'Auth failed')
+    }
+  }
+
+  /** End every live connection of a person now (e.g. right after they were disabled). */
+  disconnectPerson(personId: string): number {
+    let n = 0
+    for (const client of [...this.clients.values()]) {
+      if (client.personId === personId) { this.endPersonConnection(client); n++ }
+    }
+    for (const { client } of [...this.disconnectedClients.values()]) {
+      if (client.personId === personId) { this.endPersonConnection(client); n++ }
+    }
+    return n
   }
 
   // -------------------------------------------------------------------------
@@ -725,11 +843,16 @@ export class WsRpcServer implements RpcServer {
       transportLog.info('Client disconnected', { clientId: client.id })
       this.clients.delete(client.id)
 
-      // Retain buffer for potential reconnect
-      const timer = setTimeout(() => {
-        this.disconnectedClients.delete(client.id)
-      }, DISCONNECTED_CLIENT_TTL_MS)
-      this.disconnectedClients.set(client.id, { client, timer })
+      // Retain buffer for potential reconnect (not for a person connection that was ended)
+      if (!client.ended) {
+        const timer = setTimeout(() => {
+          if (this.disconnectedClients.get(client.id)?.client === client) {
+            this.disconnectedClients.delete(client.id)
+            this.expireClient(client.id)
+          }
+        }, DISCONNECTED_CLIENT_TTL_MS)
+        this.disconnectedClients.set(client.id, { client, timer })
+      }
 
       // Cap disconnectedClients to prevent unbounded growth
       if (this.disconnectedClients.size > 50) {
@@ -738,17 +861,25 @@ export class WsRpcServer implements RpcServer {
           const oldest = this.disconnectedClients.get(oldestKey)
           if (oldest) clearTimeout(oldest.timer)
           this.disconnectedClients.delete(oldestKey)
+          this.expireClient(oldestKey)
         }
       }
 
       this.rejectPendingInvokesForClient(client.id)
       this.onClientDisconnected?.(client.id)
+      if (!this.disconnectedClients.has(client.id)) this.expireClient(client.id)
     })
 
     ws.on('pong', () => {
       client.alive = true
       client.missedPongs = 0
     })
+  }
+
+  private expireClient(clientId: string): void {
+    // Reconnected under the same id meanwhile: still in use
+    if (this.clients.has(clientId)) return
+    try { this.onClientExpired?.(clientId) } catch { /* the listener's failure is its own */ }
   }
 
   /** Assign a per-client seq, retain the event for replay, and optionally send it immediately. */

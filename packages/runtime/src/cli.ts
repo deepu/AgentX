@@ -6,6 +6,7 @@ import { checkProject, loadProject, type Diagnostic, type ProjectDefs, type Step
 import type { ToolDefinition } from '@memwise/gateway';
 import { compilePolicy, describePolicy, layersFor, violationsToDiagnostics } from '@memwise/policy';
 import { recallTools } from '@memwise/step-engine';
+import { domainTools } from './domain-tools.ts';
 import { runExample, type ExampleResult } from './examples.ts';
 import { sampleTools } from './sample-tools.ts';
 
@@ -15,10 +16,10 @@ const USAGE = `usage:
   memwise record <step-run-id> --database-url <url>
   memwise policy <project> <workflow> <step>`;
 
-/** The tools a project is checked against in Phase 1: the sample set and the recall tools. */
-function boundTools(): ToolDefinition[] {
-  const noReader = {} as StepRecordReader; // only names and classes are read, never executed
-  return [...sampleTools(), ...recallTools(noReader)];
+/** The tools a project is checked against: the sample set, the recall tools and the project's domain tools. */
+function boundTools(project?: ProjectDefs): ToolDefinition[] {
+  const noReader = {} as StepRecordReader; // only names, classes and schemas are read, never executed
+  return [...sampleTools(), ...recallTools(noReader), ...domainTools(project?.entities ?? {})];
 }
 
 async function load(dir: string): Promise<{ project: ProjectDefs; diagnostics: Diagnostic[] }> {
@@ -34,7 +35,7 @@ function printDiagnostics(diagnostics: Diagnostic[]) {
 
 async function check(dir: string): Promise<number> {
   const { project, diagnostics } = await load(dir);
-  const tools = Object.fromEntries(boundTools().map((t) => [t.name, { effect: typeof t.effect === 'string' ? t.effect : undefined }]));
+  const tools = Object.fromEntries(boundTools(project).map((t) => [t.name, { effect: typeof t.effect === 'string' ? t.effect : undefined, inputSchema: t.inputSchema }]));
   const all = [...diagnostics, ...checkProject(project, { tools })];
   // Policy tightening, per step (the workflow layer is checked as part of each step's stack).
   const seen = new Set<string>();

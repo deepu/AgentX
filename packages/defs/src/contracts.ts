@@ -6,15 +6,16 @@
  * `@memwise/gateway`, `@memwise/step-engine` and `@memwise/runtime` call them.
  * Change only additively.
  */
-import type { EffectClass, StepDef, Treatment, WorkflowDef } from './types.ts';
+import type { EffectClass, Money, StepDef, Treatment, WorkflowDef } from './types.ts';
 
 // ---------------------------------------------------------------- provenance and case values
 
 /** Where a case value came from (05 §5: values are typed and carry provenance). */
 export type Provenance =
   | { kind: 'input'; at: string; by?: string }
-  | { kind: 'tool'; at: string; stepRunId: string; tool: string; callId: string }
-  | { kind: 'judgement'; at: string; stepRunId: string; rationale?: string }
+  /** `tainted`: the value came from (or was judged after reading) untrusted content (Phase 2, D21). */
+  | { kind: 'tool'; at: string; stepRunId: string; tool: string; callId: string; tainted?: boolean }
+  | { kind: 'judgement'; at: string; stepRunId: string; rationale?: string; tainted?: boolean }
   | { kind: 'person'; at: string; by: string; stepRunId?: string }
   | { kind: 'system'; at: string; note?: string };
 
@@ -119,7 +120,7 @@ export interface StepRecord {
   outputs: Record<string, CaseValue>;
   checkpoint: CheckResult[];
   rationale?: string;
-  usage: { tokens: number; modelCalls: number; toolCalls: number; durationMs: number; costUsd?: number };
+  usage: { tokens: number; modelCalls: number; toolCalls: number; durationMs: number; costUsd?: number; /** Priced model calls (Phase 2); absent when unpriced or in mixed currencies. */ cost?: Money };
   tainted: boolean;
   startedAt: string;
   finishedAt?: string;

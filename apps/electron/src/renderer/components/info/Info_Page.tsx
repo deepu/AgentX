@@ -49,6 +49,8 @@ export interface Info_PageHeroProps {
 export interface Info_PageContentProps {
   children: React.ReactNode
   className?: string
+  /** Use the panel's width instead of the reading column (wide drawings such as a map). */
+  wide?: boolean
 }
 
 function Info_PageRoot({
@@ -148,12 +150,12 @@ function Info_PageHero({ avatar, title, tagline, meta, actions, className }: Inf
   )
 }
 
-function Info_PageContent({ children, className }: Info_PageContentProps) {
+function Info_PageContent({ children, className, wide }: Info_PageContentProps) {
   return (
     <div className="relative flex-1 min-h-0">
       {/* No edge mask: the hero sits 16px under the header and a fade would dim it. */}
       <ScrollArea className="h-full">
-        <div className={DETAIL_COLUMN_CLASS}>
+        <div className={cn(DETAIL_COLUMN_CLASS, wide && 'max-w-[1360px]')}>
           <div className={cn('space-y-6', className)}>{children}</div>
         </div>
       </ScrollArea>

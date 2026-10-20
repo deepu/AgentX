@@ -85,6 +85,8 @@ The first usable workflow (D6), in the app.
 - **Example cases** for intake.
 - **Exit test:** staff start an intake in the desktop app, fill the form on the client's behalf, the agent checks it, the manager approves or sends back from the inbox, Onboard writes `Customer`. The map shows live cases, and "why was this flagged?" is answered from the step record.
 
+**Status (October 2026).** Built as five parallel pieces against the interfaces in [19](19-phase-2-interfaces.md); decisions are D45–D52 in the [decision log](15-decisions.md). The exit test is `packages/server-core/src/memwise/__tests__/exit.test.ts`: it drives the app API as two people against a real Postgres with scripted models, from starting an intake to a `Customer` row, a send-back with a comment, live counts and a grounded "why was this flagged?". The kernel runs inside the desktop app and the standalone server, and the packaged app bundles Postgres. Not done yet: a packaged build has not been tried on each platform, a chat opened on a case shows its first message, changing the model connection needs a restart, old rate-limit events are not pruned, and the map has no "proposed change" mode or Mermaid export (both belong to Phase 3).
+
 ## Phase 3 · Build and change by chat
 
 - **Step editor** with chat beside it; every edit is a draft; chat changes show highlighted with check and example-case results; keep or discard.

@@ -17,10 +17,10 @@ import { DBOS, type StepConfig } from '@dbos-inc/dbos-sdk';
 import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from '@earendil-works/pi-ai';
 import {
   crashPoint, type ApprovalDecision, type ApprovalRequest, type AssembledContext, type CaseValue, type CheckResult,
-  type JournalEntry, type StepRecord,
+  type JournalEntry, type Money, type StepRecord,
 } from '@memwise/defs';
 import {
-  exceededLimit, toolNameFromModel, type Budget, type GatewayCallResult, type GatewayDecision, type ModelCallResult,
+  addMoney, exceedsMoney, exceededLimit, toolNameFromModel, type Budget, type GatewayCallResult, type GatewayDecision, type ModelCallResult,
   type ModelRequest, type Spent,
 } from '@memwise/gateway';
 import { VERIFIER_ROLE, type Sourced } from '@memwise/policy';
@@ -122,6 +122,8 @@ class StepRun {
   tainted = false;
   tokens = 0;
   costUsd = 0;
+  /** What this step run's model calls cost; `mixed` once two currencies meet (then unenforced). */
+  cost: Money | undefined | 'mixed';
   /** Every model call, verifier calls included (usage and crash points). */
   modelCalls = 0;
   /** The agent's own calls: what model-call budgets count. A verifier call does not use up a turn. */
@@ -140,6 +142,8 @@ class StepRun {
 
   constructor(readonly input: StepRunInput, readonly deps: StepEngineDeps) {
     this.messages = [{ role: 'user', content: `Begin the step: ${input.step.title}.`, timestamp: input.startedAt }];
+    // Untrusted content read from the case counts like content read in this session (07 §6).
+    this.tainted = input.tainted === true;
     this.budget = stepBudget(input);
     this.runBudget = runBudget(input);
     this.required = requiredTools(input);
@@ -195,6 +199,28 @@ class StepRun {
     for (const [scope, budget, spent] of [['the step', this.budget, own], ['the run', this.runBudget, run]] as const) {
       const limit = exceededLimit(calls(budget), spent);
       if (limit) return `budget exceeded: ${limit} (limit ${budget[limit]} for ${scope}, spent ${JSON.stringify(spent)})`;
+    }
+    return this.moneyRefusal();
+  }
+
+  /**
+   * Money budgets (19 §7), like the token budget: one set by the step layer is for this step run,
+   * any other for the whole run. Spend in another currency than the budget is not compared (the
+   * check warns "money budget not enforced"), and neither is spend nobody priced.
+   */
+  private moneyRefusal(): string | undefined {
+    const p = this.input.policy;
+    const own = this.cost === 'mixed' ? undefined : this.cost;
+    if (!own) return undefined;
+    const stepBudget = p.budgets.money?.origin.layer === 'step' ? p.budgets.money.value : undefined;
+    const runRule = (p.runBudgets ?? p.budgets).money;
+    const runBudget = runRule && runRule.origin.layer !== 'step' ? runRule.value : undefined;
+    const before = this.input.runSpent?.money;
+    const runSpent = before ? addMoney(before, own) : own;
+    const fmt = (m: Money) => `${m.amount} ${m.currency}`;
+    for (const [scope, budget, spent] of [['the step', stepBudget, own], ['the run', runBudget, runSpent]] as const) {
+      if (!budget || !spent) continue;
+      if (exceedsMoney(spent, budget)) return `budget exceeded: money (limit ${fmt(budget)} for ${scope}, spent ${fmt(spent)})`;
     }
     return undefined;
   }
@@ -293,6 +319,7 @@ class StepRun {
     if (!verifier) this.agentCalls += 1;
     this.tokens += call.usage.totalTokens;
     this.costUsd += call.usage.costUsd ?? 0;
+    if (call.cost && this.cost !== 'mixed') this.cost = addMoney(this.cost, call.cost) ?? 'mixed';
     this.activeMs += call.durationMs;
     // After DBOS recorded the call, in its own step: a recorder failure can't make the call run again.
     const { message } = call;
@@ -382,7 +409,7 @@ class StepRun {
     this.toolCalls += 1;
     this.activeMs += out.durationMs;
     if (out.result.status === 'ok') {
-      this.evidence.push({ tool, callId: call.id, args, result: out.result.result });
+      this.evidence.push({ tool, callId: call.id, args, result: out.result.result, ...(out.quarantine ? { tainted: true } : {}) });
       // Untrusted content entered the session (07 §6): outbound calls from here on are checked as tainted.
       if (out.quarantine) this.tainted = true;
     }
@@ -452,7 +479,7 @@ class StepRun {
         stepHash: input.step.hash, performer: input.step.performer, status, outcome: finalOutcome, token: input.token,
         ...(this.ctx ? { context: this.ctx } : {}), outputs: writes, checkpoint: this.checkpoint,
         ...(this.rationale !== undefined ? { rationale: this.rationale } : {}),
-        usage: { ...usage, durationMs, ...(this.costUsd ? { costUsd: this.costUsd } : {}) },
+        usage: { ...usage, durationMs, ...(this.costUsd ? { costUsd: this.costUsd } : {}), ...(this.cost && this.cost !== 'mixed' ? { cost: this.cost } : {}) },
         tainted: this.tainted, startedAt: new Date(input.startedAt).toISOString(), finishedAt: new Date(finishedAt).toISOString(),
       };
       await deps.recorder.finish(record);
@@ -461,7 +488,7 @@ class StepRun {
     return {
       stepRunId: input.stepRunId, status, outcome: finalOutcome, writes,
       ...(this.rationale !== undefined ? { rationale: this.rationale } : {}),
-      checkpoint: this.checkpoint, usage: { ...usage, durationMs }, tainted: this.tainted,
+      checkpoint: this.checkpoint, usage: { ...usage, durationMs, ...(this.cost && this.cost !== 'mixed' ? { cost: this.cost } : {}) }, tainted: this.tainted,
       ...(reason ? { reason } : {}),
     };
   }
