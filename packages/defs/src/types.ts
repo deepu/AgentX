@@ -231,6 +231,12 @@ export interface WorkflowDef {
   dir: string;
   /** sha256 over every file in the folder (sorted path + content); identifies this exact definition. */
   hash: string;
+  /**
+   * Phase 4: set when the workflow comes from a plugin, referenced through its binding (`dir` is
+   * then inside `plugins/`, and `hash` covers the plugin's folder and the binding), or was forked
+   * from one into `workflows/` (`forked_from:` in workflow.yaml).
+   */
+  origin?: import('./plugin-types.ts').WorkflowOrigin;
 }
 
 /** The final pseudo-state every workflow may transition to. */
@@ -299,7 +305,12 @@ export interface ProjectDefs {
   /** `domain/roles.yaml`; empty when the project declares no roles. */
   roles: Record<string, RoleDef>;
   entities: Record<string, EntityTypeDef>;
+  /** Authored workflows plus plugin workflows resolved through frozen bindings (Phase 4). */
   workflows: Record<string, WorkflowDef>;
+  /** Phase 4: plugins installed in `plugins/`, by id (the newest version present). */
+  plugins?: Record<string, import('./plugin-types.ts').InstalledPlugin>;
+  /** Phase 4: frozen bindings (`domain/bindings/*.yaml`), by plugin id. */
+  bindings?: Record<string, import('./plugin-types.ts').BindingDef>;
 }
 
 // ---------------------------------------------------------------- checks (05 §8)
