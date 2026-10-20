@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
-import type { AgentEvent } from '@craft-agent/core/types'
-import type { SessionEvent } from '@craft-agent/shared/protocol'
+import type { AgentEvent } from '@memwise/core/types'
+import type { SessionEvent } from '@memwise/shared/protocol'
 import { SessionManager, createManagedSession } from './SessionManager.ts'
 
 type ManagedSession = ReturnType<typeof createManagedSession>

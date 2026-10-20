@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react"
 import * as React from "react"
 import { motion, type Variants } from "motion/react"
 import { ChevronRight } from "lucide-react"
-import { TWEEN } from "@craft-agent/ui/motion"
+import { TWEEN } from "@memwise/ui/motion"
 
 import { cn } from "@/lib/utils"
 import {

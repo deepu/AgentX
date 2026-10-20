@@ -10,19 +10,19 @@ import {
   PAGE_DATA_PATCH_MAX_BYTES,
 } from './data-write.ts';
 import { PageDataStore, PAGE_DATA_MAX_KV_KEYS, PAGE_DATA_MAX_SERIES } from './data-store.ts';
-import type { PageDataSnapshot } from '@craft-agent/core';
+import type { PageDataSnapshot } from '@memwise/core';
 
 // Pin dev-mode runtime resolution: this suite spawns the real Bun runtime via
 // resolveScriptRuntime and must assert dev behavior (PATH fallback allowed)
-// even when the suite runs under a packaged Craft Agents host (agent Bash
-// sessions inherit CRAFT_IS_PACKAGED=true).
-const SAVED_IS_PACKAGED = process.env.CRAFT_IS_PACKAGED;
+// even when the suite runs under a packaged MemWise host (agent Bash
+// sessions inherit MEMWISE_IS_PACKAGED=true).
+const SAVED_IS_PACKAGED = process.env.MEMWISE_IS_PACKAGED;
 beforeAll(() => {
-  process.env.CRAFT_IS_PACKAGED = '0';
+  process.env.MEMWISE_IS_PACKAGED = '0';
 });
 afterAll(() => {
-  if (SAVED_IS_PACKAGED === undefined) delete process.env.CRAFT_IS_PACKAGED;
-  else process.env.CRAFT_IS_PACKAGED = SAVED_IS_PACKAGED;
+  if (SAVED_IS_PACKAGED === undefined) delete process.env.MEMWISE_IS_PACKAGED;
+  else process.env.MEMWISE_IS_PACKAGED = SAVED_IS_PACKAGED;
 });
 
 describe('page data write (spawned Bun one-shot)', () => {
@@ -30,7 +30,7 @@ describe('page data write (spawned Bun one-shot)', () => {
   let slug: string;
 
   beforeAll(() => {
-    workspace = mkdtempSync(join(tmpdir(), 'craft-data-write-'));
+    workspace = mkdtempSync(join(tmpdir(), 'memwise-data-write-'));
     slug = createPage(workspace, { name: 'Write Target', kind: 'live' }).slug;
   });
   afterAll(() => {

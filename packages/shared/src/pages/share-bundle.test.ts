@@ -25,7 +25,7 @@ const HTML = '<!doctype html><html><body>bundle</body></html>';
 let root: string;
 
 beforeAll(() => {
-  root = mkdtempSync(join(tmpdir(), 'craft-share-bundle-'));
+  root = mkdtempSync(join(tmpdir(), 'memwise-share-bundle-'));
 });
 
 afterAll(() => {

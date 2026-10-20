@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * craft-cli — Terminal client for Craft Agent server.
+ * memwise-cli — Terminal client for MemWise server.
  *
- * Connects over WebSocket (ws:// or wss://) to a running Craft Agent server
+ * Connects over WebSocket (ws:// or wss://) to a running MemWise server
  * and provides commands for listing resources, managing sessions, sending
  * messages with real-time streaming, and validating server health.
  */
@@ -146,9 +146,9 @@ export function parseArgs(argv: string[]): CliArgs {
   }
 
   // Env var fallbacks
-  if (!url) url = process.env.CRAFT_SERVER_URL ?? ''
-  if (!token) token = process.env.CRAFT_SERVER_TOKEN ?? ''
-  if (!tlsCa) tlsCa = process.env.CRAFT_TLS_CA
+  if (!url) url = process.env.MEMWISE_SERVER_URL ?? ''
+  if (!token) token = process.env.MEMWISE_SERVER_TOKEN ?? ''
+  if (!tlsCa) tlsCa = process.env.MEMWISE_TLS_CA
   if (!provider) provider = process.env.LLM_PROVIDER ?? 'anthropic'
   if (!model) model = process.env.LLM_MODEL ?? ''
   if (!apiKey) apiKey = process.env.LLM_API_KEY ?? ''
@@ -1354,7 +1354,7 @@ export function getValidateSteps(): ValidateStep[] {
           sourceSlugs: enableSlugs,
         })
         return await waitForSendEvents(client, ctx.createdSessionId,
-          `[source:craft-public] List the documents under the "CraftAgents E2E Test" folder inside the "CraftAgents" folder. Just list their names.`,
+          `[source:craft-public] List the documents under the "MemWise E2E Test" folder inside the "MemWise" folder. Just list their names.`,
           180_000, false, undefined, ctx.onEvent)
       },
     },
@@ -1391,7 +1391,7 @@ export function getValidateSteps(): ValidateStep[] {
 mkdir -p "${skillDir}" && cat > "${skillDir}/SKILL.md" << 'SKILLEOF'
 ---
 name: "CLI Validate Skill"
-description: "Validation skill created by craft-cli"
+description: "Validation skill created by memwise-cli"
 requiredSources:
   - "${sourceSlug}"
 ---
@@ -1910,13 +1910,13 @@ export async function runValidation(
 // ---------------------------------------------------------------------------
 
 function printHelp(): void {
-  process.stdout.write(`craft-cli — Terminal client for Craft Agent server
+  process.stdout.write(`memwise-cli — Terminal client for MemWise server
 
-Usage: craft-cli [options] <command> [args...]
+Usage: memwise-cli [options] <command> [args...]
 
 Connection:
-  --url <ws[s]://...>    Server URL (default: $CRAFT_SERVER_URL)
-  --token <secret>       Auth token (default: $CRAFT_SERVER_TOKEN)
+  --url <ws[s]://...>    Server URL (default: $MEMWISE_SERVER_URL)
+  --token <secret>       Auth token (default: $MEMWISE_SERVER_TOKEN)
   --workspace <id>       Workspace ID (auto-detected if omitted)
   --timeout <ms>         Request timeout (default: 10000)
   --tls-ca <path>        Custom CA cert for self-signed TLS
@@ -1955,21 +1955,21 @@ Commands:
                          --verbose, -v       Show server stderr output
 
 Examples:
-  craft-cli run "What files are in the current directory?"
-  craft-cli run --source craft-kb "Summarize today's daily note"
-  craft-cli run --workspace-dir .github/agents --source craft-public "Read the doc"
-  craft-cli run --provider openai --model gpt-4o "Summarize this repo"
-  OPENAI_API_KEY=sk-... craft-cli run --provider openai "Hello"
-  GOOGLE_API_KEY=... craft-cli run --provider google --model gemini-2.0-flash "Hello"
-  DEEPSEEK_API_KEY=sk-... craft-cli run --provider deepseek --model deepseek-flash "Hello"
-  echo "Analyze this code" | craft-cli run
-  craft-cli ping
-  craft-cli sessions
-  craft-cli send abc-123 "What files are in the current directory?"
-  echo "Summarize this" | craft-cli send abc-123
-  craft-cli --validate-server
-  craft-cli invoke system:homeDir
-  craft-cli --json workspaces | jq '.[].name'
+  memwise-cli run "What files are in the current directory?"
+  memwise-cli run --source craft-kb "Summarize today's daily note"
+  memwise-cli run --workspace-dir .github/agents --source craft-public "Read the doc"
+  memwise-cli run --provider openai --model gpt-4o "Summarize this repo"
+  OPENAI_API_KEY=sk-... memwise-cli run --provider openai "Hello"
+  GOOGLE_API_KEY=... memwise-cli run --provider google --model gemini-2.0-flash "Hello"
+  DEEPSEEK_API_KEY=sk-... memwise-cli run --provider deepseek --model deepseek-flash "Hello"
+  echo "Analyze this code" | memwise-cli run
+  memwise-cli ping
+  memwise-cli sessions
+  memwise-cli send abc-123 "What files are in the current directory?"
+  echo "Summarize this" | memwise-cli send abc-123
+  memwise-cli --validate-server
+  memwise-cli invoke system:homeDir
+  memwise-cli --json workspaces | jq '.[].name'
 `)
 }
 
@@ -2010,7 +2010,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 
   // All other commands need a server URL
   if (!args.url) {
-    err('No server URL. Use --url <ws://...> or set $CRAFT_SERVER_URL')
+    err('No server URL. Use --url <ws://...> or set $MEMWISE_SERVER_URL')
     process.exit(1)
   }
 

@@ -15,11 +15,11 @@ import { ChevronRight } from 'lucide-react'
 import { Info_DataTable, SortableHeader, INFO_TABLE_HEADER_CLASS, INFO_TABLE_SORTABLE_HEADER_CLASS } from './Info_DataTable'
 import { Info_Badge } from './Info_Badge'
 import { Info_FullscreenButton } from './Info_FullscreenButton'
-import { DataTableOverlay } from '@craft-agent/ui'
+import { DataTableOverlay } from '@memwise/ui'
 import { LabelIcon } from '@/components/ui/label-icon'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
-import type { LabelConfig } from '@craft-agent/shared/labels'
+import type { LabelConfig } from '@memwise/shared/labels'
 
 interface LabelsDataTableProps {
   /** Label tree (root-level nodes with nested children) */

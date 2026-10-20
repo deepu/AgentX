@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { CheckCircle2, CircleAlert, ExternalLink, Info, TriangleAlert } from "lucide-react"
-import { Spinner, UserMessageBubble } from "@craft-agent/ui"
+import { Spinner, UserMessageBubble } from "@memwise/ui"
 import { cn } from "@/lib/utils"
 import { IconButton } from "@/components/ui/button"
 import { Markdown, CollapsibleMarkdownProvider, StreamingMarkdown, type RenderMode } from "@/components/markdown"

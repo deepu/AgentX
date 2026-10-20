@@ -50,7 +50,7 @@ export type McpClientConfig = HttpMcpClientConfig | StdioMcpClientConfig;
  * If you add a new entry here, update it there too.
  */
 const BLOCKED_ENV_VARS = [
-  // Craft Agent auth (set by the app itself)
+  // MemWise auth (set by the app itself)
   'ANTHROPIC_API_KEY',
   'CLAUDE_CODE_OAUTH_TOKEN',
 
@@ -95,10 +95,10 @@ function toRequestOptions(options?: PoolRequestOptions): RequestOptions {
 
 /**
  * Interface for clients managed by McpClientPool.
- * Both CraftMcpClient (remote MCP sources) and ApiSourcePoolClient (API sources) implement this.
+ * Both MemWiseMcpClient (remote MCP sources) and ApiSourcePoolClient (API sources) implement this.
  *
  * The optional members expose what an MCP server offers beyond tools (resources,
- * prompts, its instructions). Only CraftMcpClient implements them; API sources are
+ * prompts, its instructions). Only MemWiseMcpClient implements them; API sources are
  * tools-only, and the pool reports that instead of calling them.
  */
 export interface PoolClient {
@@ -116,14 +116,14 @@ export interface PoolClient {
   getPrompt?(name: string, args?: Record<string, string>, options?: PoolRequestOptions): Promise<GetPromptResult>;
 }
 
-export class CraftMcpClient implements PoolClient {
+export class MemWiseMcpClient implements PoolClient {
   private client: Client;
   private transport: Transport;
   private connected = false;
 
   constructor(config: McpClientConfig) {
     this.client = new Client({
-      name: 'craft-agent',
+      name: 'memwise',
       version: '1.0.0',
     });
 

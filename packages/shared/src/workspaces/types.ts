@@ -5,7 +5,7 @@
  * is scoped to a workspace.
  *
  * Directory structure:
- * ~/.craft-agent/workspaces/{slug}/
+ * ~/.memwise/workspaces/{slug}/
  *   ├── config.json      - Workspace settings
  *   ├── sources/         - Data sources (MCP, API, local)
  *   └── sessions/        - Conversation sessions
@@ -31,7 +31,7 @@ export interface LocalMcpConfig {
   /**
    * Whether local (stdio) MCP servers are enabled for this workspace.
    * When false, only HTTP-based MCP servers will be used.
-   * Default: true (can be overridden by CRAFT_LOCAL_MCP_ENABLED env var)
+   * Default: true (can be overridden by MEMWISE_LOCAL_MCP_ENABLED env var)
    */
   enabled: boolean;
 }
@@ -62,7 +62,7 @@ export interface WorkspaceConfig {
   /**
    * Local MCP server configuration.
    * Controls whether stdio-based MCP servers can be spawned in this workspace.
-   * Resolution order: ENV (CRAFT_LOCAL_MCP_ENABLED) > workspace config > default (true)
+   * Resolution order: ENV (MEMWISE_LOCAL_MCP_ENABLED) > workspace config > default (true)
    */
   localMcpServers?: LocalMcpConfig;
 

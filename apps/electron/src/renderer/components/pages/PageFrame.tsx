@@ -10,8 +10,8 @@ import type {
   PageDataSnapshot,
   PageKind,
   PageRenderLease,
-} from '@craft-agent/shared/pages/types'
-import { isPageGrantUsable } from '@craft-agent/shared/pages/types'
+} from '@memwise/shared/pages/types'
+import { isPageGrantUsable } from '@memwise/shared/pages/types'
 import {
   PageActionRateLimiter,
   buildPageActionResultMessage,
@@ -80,7 +80,7 @@ function sandboxForKind(kind: PageKind): string {
  * resources/docs/pages.md) set dark text on an unset background, so the frame keeps a
  * white canvas in every theme and mode. The chrome around it (PageView) uses roles.
  */
-// eslint-disable-next-line craft-styles/no-raw-palette-colors -- page canvas, see above
+// eslint-disable-next-line memwise-styles/no-raw-palette-colors -- page canvas, see above
 const PAGE_CANVAS_CLASS = 'h-full w-full border-0 bg-white'
 
 /** Transient user activation, propagated from clicks inside the frame. */

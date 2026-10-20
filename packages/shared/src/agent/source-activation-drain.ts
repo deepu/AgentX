@@ -5,7 +5,7 @@
  * activates a new source mid-turn, the agent must end the current turn so
  * the renderer can re-send the user's message with the new tools live. The
  * naive abort-on-first-tool_result path discards sibling tool_results from
- * the same parallel-tool batch, leaving Craft's session journal with orphan
+ * the same parallel-tool batch, leaving MemWise's session journal with orphan
  * `tool_use` IDs that block all subsequent sends.
  *
  * This controller defers the abort. The agent yields events normally but
@@ -31,7 +31,7 @@
  *     `shouldFireBeforeEvent()` before yielding each event.
  */
 
-import type { AgentEvent } from '@craft-agent/core/types';
+import type { AgentEvent } from '@memwise/core/types';
 
 export interface PendingActivationRestart {
   sourceSlug: string;

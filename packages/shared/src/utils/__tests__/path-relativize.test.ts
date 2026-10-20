@@ -16,7 +16,7 @@ import {
 // Every row from the reporter's tables, ground truth on the left.
 const REPORTED_PATHS = [
   '/Volumes/home/Drive',
-  '/Users/samflorentine/.craft-agent',
+  '/Users/samflorentine/.memwise',
   '/Volumes./home',
   '//sam@192.168.1.100/home',
   '/opt/homebrew',
@@ -44,7 +44,7 @@ const REPORTED_PATHS = [
 
 const REPORTER_COMMAND = [
   'echo "MARKER_A=/Volumes/home/Drive"',
-  'echo "MARKER_B=/Users/samflorentine/.craft-agent"',
+  'echo "MARKER_B=/Users/samflorentine/.memwise"',
   'echo "MARKER_C=/Volumes./home"',
   'echo "MARKER_D=//sam@192.168.1.100/home"',
   'echo "MARKER_E=/opt/homebrew"',

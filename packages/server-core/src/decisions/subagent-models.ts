@@ -8,9 +8,9 @@
  * leaves the user's Settings default in charge.
  */
 
-import type { SubagentModelPicker, SubagentTask } from '@craft-agent/shared/agent'
-import type { SubagentModel } from '@craft-agent/shared/config/storage'
-import { isDecisionFeatureActive, type DecisionRequest, type DecisionResult } from '@craft-agent/shared/decisions'
+import type { SubagentModelPicker, SubagentTask } from '@memwise/shared/agent'
+import type { SubagentModel } from '@memwise/shared/config/storage'
+import { isDecisionFeatureActive, type DecisionRequest, type DecisionResult } from '@memwise/shared/decisions'
 import { FOREGROUND_MAX_DEADLINE_MS, openDecisionPoint, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 
 /** The rated level must come with this much confidence. */

@@ -1,6 +1,6 @@
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
-import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
-import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
+import { RPC_CHANNELS } from '@memwise/shared/protocol'
+import { getWorkspaceByNameOrId } from '@memwise/shared/config'
+import { pushTyped, type RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 
 export const HANDLED_CHANNELS = [
@@ -18,7 +18,7 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
   const log = deps.platform.logger
 
   async function broadcastChanged(workspaceId: string, workspaceRootPath: string): Promise<void> {
-    const { loadWorkspaceProjects } = await import('@craft-agent/shared/projects')
+    const { loadWorkspaceProjects } = await import('@memwise/shared/projects')
     const projects = loadWorkspaceProjects(workspaceRootPath)
     pushTyped(server, RPC_CHANNELS.projects.CHANGED, { to: 'workspace', workspaceId }, workspaceId, projects)
   }
@@ -30,7 +30,7 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
       log.error(`PROJECTS_GET: Workspace not found: ${workspaceId}`)
       return []
     }
-    const { loadWorkspaceProjects } = await import('@craft-agent/shared/projects')
+    const { loadWorkspaceProjects } = await import('@memwise/shared/projects')
     return loadWorkspaceProjects(workspace.rootPath)
   })
 
@@ -38,16 +38,16 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
   server.handle(RPC_CHANNELS.projects.GET_ONE, async (_ctx, workspaceId: string, projectIdOrSlug: string) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) return null
-    const { loadProject, loadProjectById } = await import('@craft-agent/shared/projects')
+    const { loadProject, loadProjectById } = await import('@memwise/shared/projects')
     return loadProject(workspace.rootPath, projectIdOrSlug)
       ?? loadProjectById(workspace.rootPath, projectIdOrSlug)
   })
 
   // Create a new project
-  server.handle(RPC_CHANNELS.projects.CREATE, async (_ctx, workspaceId: string, input: import('@craft-agent/shared/projects').CreateProjectInput) => {
+  server.handle(RPC_CHANNELS.projects.CREATE, async (_ctx, workspaceId: string, input: import('@memwise/shared/projects').CreateProjectInput) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
-    const { createProject } = await import('@craft-agent/shared/projects')
+    const { createProject } = await import('@memwise/shared/projects')
     const project = createProject(workspace.rootPath, {
       name: input.name?.trim() || 'New Project',
       description: input.description,
@@ -65,11 +65,11 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
     _ctx,
     workspaceId: string,
     projectSlug: string,
-    patch: Partial<Omit<import('@craft-agent/shared/projects').ProjectConfig, 'id' | 'slug' | 'createdAt'>>,
+    patch: Partial<Omit<import('@memwise/shared/projects').ProjectConfig, 'id' | 'slug' | 'createdAt'>>,
   ) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
-    const { updateProject } = await import('@craft-agent/shared/projects')
+    const { updateProject } = await import('@memwise/shared/projects')
     const updated = updateProject(workspace.rootPath, projectSlug, patch)
     await broadcastChanged(workspaceId, workspace.rootPath)
     return updated
@@ -80,16 +80,16 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
 
-    const { loadProject, deleteProject } = await import('@craft-agent/shared/projects')
+    const { loadProject, deleteProject } = await import('@memwise/shared/projects')
     const project = loadProject(workspace.rootPath, projectSlug)
     if (!project) {
       log.warn(`PROJECTS_DELETE: project ${projectSlug} not found`)
       return
     }
 
-    const { unbindProjectFromSessions } = await import('@craft-agent/shared/sessions')
+    const { unbindProjectFromSessions } = await import('@memwise/shared/sessions')
     const touched = await unbindProjectFromSessions(workspace.rootPath, project.config.id)
-    const { unbindProjectFromPages } = await import('@craft-agent/shared/pages')
+    const { unbindProjectFromPages } = await import('@memwise/shared/pages')
     const touchedPages = unbindProjectFromPages(workspace.rootPath, project.config.id)
     deleteProject(workspace.rootPath, projectSlug)
     await broadcastChanged(workspaceId, workspace.rootPath)
@@ -100,7 +100,7 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
   server.handle(RPC_CHANNELS.projects.LIST_ASSETS, async (_ctx, workspaceId: string, projectSlug: string) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) return []
-    const { listProjectAssets } = await import('@craft-agent/shared/projects')
+    const { listProjectAssets } = await import('@memwise/shared/projects')
     return listProjectAssets(workspace.rootPath, projectSlug)
   })
 
@@ -109,11 +109,11 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
     _ctx,
     workspaceId: string,
     projectSlug: string,
-    input: import('@craft-agent/shared/projects').UploadProjectAssetInput,
+    input: import('@memwise/shared/projects').UploadProjectAssetInput,
   ) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
-    const { uploadProjectAsset } = await import('@craft-agent/shared/projects')
+    const { uploadProjectAsset } = await import('@memwise/shared/projects')
     const asset = uploadProjectAsset(workspace.rootPath, projectSlug, input)
     await broadcastChanged(workspaceId, workspace.rootPath)
     log.info(`Uploaded asset ${asset.filename} to project ${projectSlug}`)
@@ -129,7 +129,7 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
   ) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
-    const { deleteProjectAsset } = await import('@craft-agent/shared/projects')
+    const { deleteProjectAsset } = await import('@memwise/shared/projects')
     deleteProjectAsset(workspace.rootPath, projectSlug, filename)
     await broadcastChanged(workspaceId, workspace.rootPath)
   })

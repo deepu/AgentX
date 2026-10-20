@@ -3,7 +3,7 @@
  * Moved out of TurnCard.tsx unchanged so the row components can share them.
  */
 import i18n from 'i18next'
-import { normalizePath, pathStartsWith, stripPathPrefix } from '@craft-agent/core/utils'
+import { normalizePath, pathStartsWith, stripPathPrefix } from '@memwise/core/utils'
 import { parseDiffFromFile, type FileContents } from '@pierre/diffs'
 import { getDiffStats, getUnifiedDiffStats } from '../../code-viewer'
 import type { ActivityItem } from '../TurnCard'

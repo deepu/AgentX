@@ -5,7 +5,7 @@ import { AlertCircle, Flag, Hand } from "lucide-react"
 import { useActionLabel } from "@/actions"
 import { cn } from "@/lib/utils"
 import { rendererPerf } from "@/lib/perf"
-import { Spinner } from "@craft-agent/ui"
+import { Spinner } from "@memwise/ui"
 import { EntityRow } from "@/components/ui/entity-row"
 import { EntityListBadge } from "@/components/ui/entity-list-badge"
 import { SessionMenu } from "./SessionMenu"
@@ -23,7 +23,7 @@ import { navigate, routes } from "@/lib/navigate"
 import type { SessionMeta } from "@/atoms/sessions"
 import { messagingBindingsBySessionAtom } from "@/atoms/messaging"
 import { useAtomValue } from "jotai"
-import { extractLabelId } from "@craft-agent/shared/labels"
+import { extractLabelId } from "@memwise/shared/labels"
 
 /** Messaging bindings are labelled by platform name; the chip itself is neutral (labels are taxonomy, not status). */
 const PLATFORM_LABEL: Record<'telegram' | 'whatsapp', string> = {

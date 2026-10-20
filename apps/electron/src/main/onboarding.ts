@@ -3,13 +3,13 @@
  *
  * Handles workspace setup and configuration persistence.
  */
-import { getAuthState, getSetupNeeds } from '@craft-agent/shared/auth'
-import { isSetupDeferred, setSetupDeferred } from '@craft-agent/shared/config/storage'
-import { getCredentialManager } from '@craft-agent/shared/credentials'
-import { prepareClaudeOAuth, exchangeClaudeCode, hasValidOAuthState, clearOAuthState, prepareMcpOAuth } from '@craft-agent/shared/auth'
-import { validateMcpConnection } from '@craft-agent/shared/mcp'
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
-import type { RpcServer } from '@craft-agent/server-core/transport'
+import { getAuthState, getSetupNeeds } from '@memwise/shared/auth'
+import { isSetupDeferred, setSetupDeferred } from '@memwise/shared/config/storage'
+import { getCredentialManager } from '@memwise/shared/credentials'
+import { prepareClaudeOAuth, exchangeClaudeCode, hasValidOAuthState, clearOAuthState, prepareMcpOAuth } from '@memwise/shared/auth'
+import { validateMcpConnection } from '@memwise/shared/mcp'
+import { RPC_CHANNELS } from '@memwise/shared/protocol'
+import type { RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from './handlers/handler-deps'
 
 // ============================================

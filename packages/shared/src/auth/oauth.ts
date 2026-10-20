@@ -26,7 +26,7 @@ export interface OAuthCallbacks {
 const CALLBACK_PORT_START = 8914;
 const CALLBACK_PORT_END = 8924;
 const CALLBACK_PATH = '/oauth/callback';
-const CLIENT_NAME = 'Claude Code (Craft Agent)';
+const CLIENT_NAME = 'Claude Code (MemWise)';
 
 // Generate PKCE code verifier and challenge
 function generatePKCE(): { verifier: string; challenge: string } {
@@ -40,7 +40,7 @@ function generateState(): string {
   return randomBytes(16).toString('hex');
 }
 
-export class CraftOAuth {
+export class MemWiseOAuth {
   private config: OAuthConfig;
   private server: Server | null = null;
   private callbacks: OAuthCallbacks;
@@ -270,7 +270,7 @@ export class CraftOAuth {
       }
     } else {
       // Use a default client ID for public clients
-      clientId = 'craft-agent';
+      clientId = 'memwise';
       this.callbacks.onStatus(`Using default client ID: ${clientId}`);
     }
 
@@ -463,7 +463,7 @@ export class CraftOAuth {
 
 /**
  * Register an MCP OAuth client dynamically.
- * Extracted from CraftOAuth.registerClient for reuse in prepareMcpOAuth.
+ * Extracted from MemWiseOAuth.registerClient for reuse in prepareMcpOAuth.
  */
 class McpClientRegistrationError extends Error {
   status?: number;
@@ -594,10 +594,10 @@ export async function prepareMcpOAuth(
       // Dynamic client registration can be intentionally gated by providers
       // (for example returning 403 for unapproved clients). In that case,
       // fall back to a default client ID and proceed with the flow.
-      clientId = 'craft-agent';
+      clientId = 'memwise';
     }
   } else {
-    clientId = 'craft-agent';
+    clientId = 'memwise';
   }
 
   // RFC 8707 resource indicator: the canonical identifier the server declared in

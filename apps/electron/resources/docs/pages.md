@@ -76,7 +76,7 @@ Rules that make pages work everywhere (local sandbox AND published copies):
 
   window.addEventListener('message', (event) => {
     const msg = event.data;
-    if (!msg || msg.protocol !== 'craft-pages/v1') return;
+    if (!msg || msg.protocol !== 'memwise-pages/v1') return;
     if (msg.type === 'init') {           // { page: {slug, kind}, nonce, snapshot, grants }
       nonce = msg.payload.nonce;
       handleGrants(msg.payload.grants);  // [{ id, action, expiresAt }] — usable grants
@@ -91,7 +91,7 @@ Rules that make pages work everywhere (local sandbox AND published copies):
   });
 
   // Ask the host for init (also delivered automatically after load)
-  window.parent.postMessage({ protocol: 'craft-pages/v1', type: 'ready' }, '*');
+  window.parent.postMessage({ protocol: 'memwise-pages/v1', type: 'ready' }, '*');
 </script>
 ```
 
@@ -100,7 +100,7 @@ Rules that make pages work everywhere (local sandbox AND published copies):
 Sandboxed pages cannot navigate. Ask the host (only http/https URLs, requires a user gesture):
 
 ```js
-window.parent.postMessage({ protocol: 'craft-pages/v1', type: 'open-url', nonce, url: 'https://example.com' }, '*');
+window.parent.postMessage({ protocol: 'memwise-pages/v1', type: 'open-url', nonce, url: 'https://example.com' }, '*');
 ```
 
 ## Source actions (grants)
@@ -109,7 +109,7 @@ Interactive pages can trigger calls against the workspace's sources (e.g. a "Sen
 
 ```js
 window.parent.postMessage({
-  protocol: 'craft-pages/v1',
+  protocol: 'memwise-pages/v1',
   type: 'action',
   requestId: crypto.randomUUID(),
   nonce,                                   // from init — required
@@ -143,7 +143,7 @@ const NEEDS = [
 ];
 // After init: request anything still missing (max 8 entries per request).
 if (NEEDS.some(n => !grantFor(n.action))) {
-  window.parent.postMessage({ protocol: 'craft-pages/v1', type: 'grant-request', nonce, requests: NEEDS }, '*');
+  window.parent.postMessage({ protocol: 'memwise-pages/v1', type: 'grant-request', nonce, requests: NEEDS }, '*');
 }
 ```
 
@@ -165,14 +165,14 @@ What you must know about grants:
 
 ### Running a host script (script grants)
 
-A `script` grant lets a **local** page run a workspace-relative script on the host machine — the highest-privilege action a page can take. It reuses the same runner as scheduled refreshes: **argv spawn (never a shell)**, path confined to the workspace (symlink-aware), a `CRAFT_*`-only environment (no `PATH`, no credentials), and a 60s default timeout (15min max).
+A `script` grant lets a **local** page run a workspace-relative script on the host machine — the highest-privilege action a page can take. It reuses the same runner as scheduled refreshes: **argv spawn (never a shell)**, path confined to the workspace (symlink-aware), a `MEMWISE_*`-only environment (no `PATH`, no credentials), and a 60s default timeout (15min max).
 
 ```js
 // Descriptor requested via grant-request:
 //   { kind: 'script', script: 'pages/<slug>/build.sh', runtime: 'bun'|'node'|'python3'?, args?: string[] }
 // The invocation is a BARE TRIGGER — script/runtime/args all come from the grant:
 window.parent.postMessage({
-  protocol: 'craft-pages/v1', type: 'action',
+  protocol: 'memwise-pages/v1', type: 'action',
   requestId: crypto.randomUUID(), nonce,
   grantId: scriptGrant.id,
   invocation: { kind: 'script' }              // nothing else — the page cannot pass args
@@ -187,7 +187,7 @@ Rules specific to script grants:
 - **Match by descriptor** the same way as other kinds, but on `script` + `runtime` (defaulting to `bun`) + ordered `args` — there is no `sourceSlug`/`toolName`.
 - **Always mutating** — only fire from a real click handler; it will be rejected without fresh user activation.
 - **Not shareable.** A page that holds a script grant **cannot be published** at all (publish fails with `PAGE_SHARE_SCRIPT_GRANT`) — even the inert view-only path is refused, and stale/expired script grants count too. The user can remove the approval (⋯ → Approved actions, or inline in the Share dialog) and then publish; you cannot revoke grants with a tool. Mention this trade-off when adding a script action to a page the user may want to share.
-- The script's working directory is the workspace root; `CRAFT_PAGE_DIR` / `CRAFT_PAGE_DATA_DIR` / `CRAFT_WORKSPACE_PATH` point it at the page's own data. Running a script does **not** touch the page's scheduled-refresh status.
+- The script's working directory is the workspace root; `MEMWISE_PAGE_DIR` / `MEMWISE_PAGE_DATA_DIR` / `MEMWISE_WORKSPACE_PATH` point it at the page's own data. Running a script does **not** touch the page's scheduled-refresh status.
 
 ## Scheduled refresh
 
@@ -199,13 +199,13 @@ refresh: { cron: "*/15 * * * *", script: "scripts/refresh-build-health.ts" }
 
 The cron expression is validated on write: it must parse, must actually fire, and must not run more often than **every 5 minutes** (`*/5 * * * *` is the fastest accepted schedule) — an invalid spec makes `create_page`/`update_page` fail with the reason.
 
-The script must live **inside the workspace** and runs under **Bun** with a minimal environment: `CRAFT_WORKSPACE_PATH`, `CRAFT_PAGE_SLUG`, `CRAFT_PAGE_DIR`, `CRAFT_PAGE_DATA_DIR` (plus other `CRAFT_*` vars). Flow: update the store → export the snapshot → exit 0. The executor stamps `page.json` afterwards, which pushes the new snapshot to open renders.
+The script must live **inside the workspace** and runs under **Bun** with a minimal environment: `MEMWISE_WORKSPACE_PATH`, `MEMWISE_PAGE_SLUG`, `MEMWISE_PAGE_DIR`, `MEMWISE_PAGE_DATA_DIR` (plus other `MEMWISE_*` vars). Flow: update the store → export the snapshot → exit 0. The executor stamps `page.json` afterwards, which pushes the new snapshot to open renders.
 
 ```ts
 // scripts/refresh-build-health.ts  (Bun)
-import { openPageDataStore } from '@craft-agent/shared/pages/data-store';
+import { openPageDataStore } from '@memwise/shared/pages/data-store';
 
-const store = openPageDataStore(process.env.CRAFT_WORKSPACE_PATH!, process.env.CRAFT_PAGE_SLUG!);
+const store = openPageDataStore(process.env.MEMWISE_WORKSPACE_PATH!, process.env.MEMWISE_PAGE_SLUG!);
 const res = await fetch('https://ci.example.com/api/summary');   // scripts CAN use the network
 const summary = await res.json();
 store.kvSet('summary', summary);
@@ -214,7 +214,7 @@ store.exportSnapshot();
 store.close();
 ```
 
-If `@craft-agent/shared` is not resolvable from the workspace (e.g. packaged installs), write a self-contained script with `bun:sqlite` against `$CRAFT_PAGE_DATA_DIR/store.sqlite` using this exact schema, and write the snapshot atomically (temp file + rename) to `$CRAFT_PAGE_DATA_DIR/snapshot.json`:
+If `@memwise/shared` is not resolvable from the workspace (e.g. packaged installs), write a self-contained script with `bun:sqlite` against `$MEMWISE_PAGE_DATA_DIR/store.sqlite` using this exact schema, and write the snapshot atomically (temp file + rename) to `$MEMWISE_PAGE_DATA_DIR/snapshot.json`:
 
 ```sql
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);
@@ -267,11 +267,11 @@ Users publish pages from the page's **Share** button (feature-flagged): password
 
   window.addEventListener('message', (event) => {
     const msg = event.data;
-    if (!msg || msg.protocol !== 'craft-pages/v1') return;
+    if (!msg || msg.protocol !== 'memwise-pages/v1') return;
     if (msg.type === 'init') { nonce = msg.payload.nonce; render(msg.payload.snapshot); }
     else if (msg.type === 'data') { render(msg.payload.snapshot); }
   });
-  window.parent.postMessage({ protocol: 'craft-pages/v1', type: 'ready' }, '*');
+  window.parent.postMessage({ protocol: 'memwise-pages/v1', type: 'ready' }, '*');
 </script>
 </body>
 </html>

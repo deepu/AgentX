@@ -1,12 +1,12 @@
 import * as React from 'react'
 import { useTranslation } from "react-i18next"
 import { toast } from 'sonner'
-import { checkAttachmentSizes, DEFAULT_MAX_MESSAGE_BYTES, formatAttachmentBytes, type AttachmentSizeInput, type AttachmentSizeProblem } from '@craft-agent/shared/protocol'
+import { checkAttachmentSizes, DEFAULT_MAX_MESSAGE_BYTES, formatAttachmentBytes, type AttachmentSizeInput, type AttachmentSizeProblem } from '@memwise/shared/protocol'
 import {
   Paperclip,
   ChevronUp,
 } from 'lucide-react'
-import { Icon_Home, consoleSnippetCommand } from '@craft-agent/ui'
+import { Icon_Home, consoleSnippetCommand } from '@memwise/ui'
 
 import { IconButton } from '@/components/ui/button'
 import {
@@ -24,7 +24,7 @@ import {
   InlineLabelMenu,
   useInlineLabelMenu,
 } from '@/components/ui/label-menu'
-import type { LabelConfig } from '@craft-agent/shared/labels'
+import type { LabelConfig } from '@memwise/shared/labels'
 import { parseMentions } from '@/lib/mentions'
 import { RichTextInput, type RichTextInputHandle } from '@/components/ui/rich-text-input'
 import { useInputAvailableHeight } from '@/hooks/useInputAvailableHeight'
@@ -51,9 +51,9 @@ import { CompactWorkingDirectorySelector } from '@/components/ui/CompactWorkingD
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
-import { isPermissionMode, planExecutionMode, type PermissionMode } from '@craft-agent/shared/agent/modes'
+import { isPermissionMode, planExecutionMode, type PermissionMode } from '@memwise/shared/agent/modes'
 import { useAvailablePermissionModes } from '@/hooks/useAvailablePermissionModes'
-import type { ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
+import type { ThinkingLevel } from '@memwise/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
 import { hasOpenOverlay } from '@/lib/overlay-detection'
 import { ToolbarStatusSlot } from './ToolbarStatusSlot'
@@ -641,8 +641,8 @@ export function FreeFormInput({
       }, 0)
     }
 
-    window.addEventListener('craft:insert-text', handleInsertText as EventListener)
-    return () => window.removeEventListener('craft:insert-text', handleInsertText as EventListener)
+    window.addEventListener('memwise:insert-text', handleInsertText as EventListener)
+    return () => window.removeEventListener('memwise:insert-text', handleInsertText as EventListener)
   }, [sessionId, isFocusedPanel, syncToParent, richInputRef])
 
   const clearInputDraft = React.useCallback(() => {
@@ -693,8 +693,8 @@ export function FreeFormInput({
       onSubmit(text, undefined)
     }
 
-    window.addEventListener('craft:approve-plan', handleApprovePlan as EventListener)
-    return () => window.removeEventListener('craft:approve-plan', handleApprovePlan as EventListener)
+    window.addEventListener('memwise:approve-plan', handleApprovePlan as EventListener)
+    return () => window.removeEventListener('memwise:approve-plan', handleApprovePlan as EventListener)
   }, [sessionId, permissionMode, previousPermissionMode, onPermissionModeChange, onSubmit, consumeInputDraftSnapshot])
 
   // Live completion and reload recovery share one persisted-state dispatcher.
@@ -727,10 +727,10 @@ export function FreeFormInput({
       if ((event as CustomEvent<{ sessionId?: string }>).detail?.sessionId === sessionId) request()
     }
     requestPendingPlanRef.current = request
-    window.addEventListener('craft:compaction-complete', handleCompactionComplete)
+    window.addEventListener('memwise:compaction-complete', handleCompactionComplete)
     request()
     return () => {
-      window.removeEventListener('craft:compaction-complete', handleCompactionComplete)
+      window.removeEventListener('memwise:compaction-complete', handleCompactionComplete)
       if (requestPendingPlanRef.current === request) requestPendingPlanRef.current = null
       dispatcher.dispose()
     }
@@ -766,8 +766,8 @@ export function FreeFormInput({
         preparing = false
       }
     }
-    window.addEventListener('craft:approve-plan-with-compact', handleApprovePlanWithCompact as unknown as EventListener)
-    return () => window.removeEventListener('craft:approve-plan-with-compact', handleApprovePlanWithCompact as unknown as EventListener)
+    window.addEventListener('memwise:approve-plan-with-compact', handleApprovePlanWithCompact as unknown as EventListener)
+    return () => window.removeEventListener('memwise:approve-plan-with-compact', handleApprovePlanWithCompact as unknown as EventListener)
   }, [sessionId, isFocusedPanel, permissionMode, previousPermissionMode, onPermissionModeChange, onSubmit, consumeInputDraftSnapshot])
 
   // Listen for craft:focus-input events (restore focus after popover/dropdown closes)
@@ -792,8 +792,8 @@ export function FreeFormInput({
       }
     }
 
-    window.addEventListener('craft:focus-input', handleFocusInput)
-    return () => window.removeEventListener('craft:focus-input', handleFocusInput)
+    window.addEventListener('memwise:focus-input', handleFocusInput)
+    return () => window.removeEventListener('memwise:focus-input', handleFocusInput)
   }, [sessionId, isFocusedPanel, richInputRef])
 
   // Recover queued focus requests after session switch/mount races.
@@ -865,8 +865,8 @@ export function FreeFormInput({
       richInputRef.current?.focus()
     }
 
-    window.addEventListener('craft:paste-files', handlePasteFiles as unknown as EventListener)
-    return () => window.removeEventListener('craft:paste-files', handlePasteFiles as unknown as EventListener)
+    window.addEventListener('memwise:paste-files', handlePasteFiles as unknown as EventListener)
+    return () => window.removeEventListener('memwise:paste-files', handlePasteFiles as unknown as EventListener)
   }, [disabled, sessionId, isFocusedPanel, richInputRef, refuseOversizedAttachment])
 
   // Build active commands list for slash command menu
@@ -1266,8 +1266,8 @@ export function FreeFormInput({
       submitMessage()
     }
 
-    window.addEventListener('craft:submit-input', handleSubmitInput as EventListener)
-    return () => window.removeEventListener('craft:submit-input', handleSubmitInput as EventListener)
+    window.addEventListener('memwise:submit-input', handleSubmitInput as EventListener)
+    return () => window.removeEventListener('memwise:submit-input', handleSubmitInput as EventListener)
   }, [sessionId, isFocusedPanel, submitMessage])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1616,7 +1616,7 @@ export function FreeFormInput({
             `displayLabel`, and `displayLabelKey` reach the popover. The previous
             cherry-pick dropped `inlineExecution: true`, which made the popover
             fall back to the same-window deep-link path; that worked inside
-            Electron but launched the desktop app from the WebUI via `craftagents://`.
+            Electron but launched the desktop app from the WebUI via `memwise://`.
             Match the AppShell pattern (which already uses spread). */}
         {addLabelEditConfig && (
           <EditPopover

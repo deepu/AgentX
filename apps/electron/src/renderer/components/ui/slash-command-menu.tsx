@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useTranslation } from "react-i18next"
 import { Command as CommandPrimitive } from 'cmdk'
 import { Check, Minimize2 } from 'lucide-react'
-import { Icon_Folder } from '@craft-agent/ui'
+import { Icon_Folder } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 import {
   INLINE_MENU_FOOTER,
@@ -14,7 +14,7 @@ import {
   INLINE_MENU_SEPARATOR,
   INLINE_MENU_SURFACE,
 } from './inline-menu-styles'
-import { DEFAULT_PERMISSION_MODES, PERMISSION_MODE_CONFIG, PERMISSION_MODE_ORDER, isPermissionMode, type PermissionMode } from '@craft-agent/shared/agent/modes'
+import { DEFAULT_PERMISSION_MODES, PERMISSION_MODE_CONFIG, PERMISSION_MODE_ORDER, isPermissionMode, type PermissionMode } from '@memwise/shared/agent/modes'
 
 // ============================================================================
 // Types

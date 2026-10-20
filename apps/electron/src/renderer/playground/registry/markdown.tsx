@@ -1,6 +1,6 @@
 import * as React from 'react'
 import type { ComponentEntry } from './types'
-import { Markdown, CollapsibleMarkdownProvider, CodeBlock, InlineCode, MarkdownDatatableBlock, MarkdownSpreadsheetBlock, MarkdownImageBlock, ImageCardStack, PlatformProvider, RunCommandProvider } from '@craft-agent/ui'
+import { Markdown, CollapsibleMarkdownProvider, CodeBlock, InlineCode, MarkdownDatatableBlock, MarkdownSpreadsheetBlock, MarkdownImageBlock, ImageCardStack, PlatformProvider, RunCommandProvider } from '@memwise/ui'
 
 const sampleMarkdown = `# Welcome to Markdown
 
@@ -126,7 +126,7 @@ def get_user_by_id(user_id: int) -> Optional[User]:
     return users.get(user_id)`
 
 const jsonCode = `{
-  "name": "craft-agent",
+  "name": "memwise",
   "version": "1.0.0",
   "dependencies": {
     "react": "^18.2.0",

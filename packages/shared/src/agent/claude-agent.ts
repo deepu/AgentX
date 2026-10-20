@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { getSystemPrompt } from '../prompts/system.ts';
 import { BaseAgent, type MiniAgentConfig, MINI_AGENT_TOOLS, MINI_AGENT_MCP_KEYS } from './base-agent.ts';
 import type { BackendConfig, PostInitResult, PermissionRequestType, SdkMcpServerConfig } from './backend/types.ts';
-// Plan types are used by UI components; not needed in craft-agent.ts since Safe Mode is user-controlled
+// Plan types are used by UI components; not needed in memwise.ts since Safe Mode is user-controlled
 import { parseError, type AgentError } from './errors.ts';
 import { mapClaudeSdkAssistantError, type ClaudeSdkApiError } from './claude-sdk-error-mapper.ts';
 import { runErrorDiagnostics } from './diagnostics.ts';
@@ -131,10 +131,10 @@ export {
   PERMISSION_MODE_ORDER,
   PERMISSION_MODE_CONFIG,
 } from './mode-manager.ts';
-// Documentation is served via local files at ~/.craft-agent/docs/
+// Documentation is served via local files at ~/.memwise/docs/
 
 // Import and re-export AgentEvent from core (single source of truth)
-import type { AgentEvent } from '@craft-agent/core/types';
+import type { AgentEvent } from '@memwise/core/types';
 export type { AgentEvent };
 
 // Stateless tool matching — pure functions for SDK message → AgentEvent conversion
@@ -547,8 +547,8 @@ export class ClaudeAgent extends BaseAgent {
    * WS2 keep-alive: when true, use one long-lived streaming-input `query()` per
    * session so background sub-agents survive across turns (instead of a fresh
    * per-turn subprocess that tears them down at turn end). Resolved once from
-   * `CRAFT_KEEP_BG_AGENTS_ALIVE` via the shared resolver. Default is ON (opt-out);
-   * set `CRAFT_KEEP_BG_AGENTS_ALIVE=0` to force the per-turn kill-switch path.
+   * `MEMWISE_KEEP_BG_AGENTS_ALIVE` via the shared resolver. Default is ON (opt-out);
+   * set `MEMWISE_KEEP_BG_AGENTS_ALIVE=0` to force the per-turn kill-switch path.
    */
   private readonly keepBackgroundTasksAlive: boolean = resolveKeepBackgroundTasksAlive();
 
@@ -1257,7 +1257,7 @@ export class ClaudeAgent extends BaseAgent {
       // without an explicit opt-in. The betas header only works for API key users;
       // for OAuth the [1m] model suffix is the way. Use the suffix unconditionally
       // since it works for both auth paths. See: anthropics/claude-agent-sdk-typescript#238
-      // Gated by enable1MContext in global config (~/.craft-agent/config.json).
+      // Gated by enable1MContext in global config (~/.memwise/config.json).
       // The interceptor also reads this to strip the SDK-injected beta header.
       const use1M = this.config.enable1MContext !== false;
       const effectiveModel = use1M && getModelContextWindow(model) === 1_000_000
@@ -1325,7 +1325,7 @@ export class ClaudeAgent extends BaseAgent {
               preset: 'claude_code' as const,
               // Record the rendered system prompt once per SDK session and reuse it on
               // every later request and on resume (SDK ≥0.3.267 default, pinned here on
-              // purpose). Craft already pins the append's inputs per session (see the
+              // purpose). MemWise already pins the append's inputs per session (see the
               // pinnedPreferencesPrompt drift notice) — a prompt that changes
               // mid-conversation invalidates the cache prefix and, on Opus 5.5 / Fable,
               // can invalidate earlier thinking blocks. Per-turn context travels on the
@@ -1370,7 +1370,7 @@ export class ClaudeAgent extends BaseAgent {
           // Build user-defined hooks from automations.json using the workspace-level AutomationSystem
           const userHooks: Partial<Record<string, SdkAutomationCallbackMatcher[]>> = this.automationSystem?.buildSdkHooks() ?? {};
           if (Object.keys(userHooks).length > 0) {
-            debug('[CraftAgent] User SDK hooks loaded:', Object.keys(userHooks).join(', '));
+            debug('[MemWiseAgent] User SDK hooks loaded:', Object.keys(userHooks).join(', '));
           }
 
           // Internal hooks for permission handling and logging
@@ -1644,7 +1644,7 @@ export class ClaudeAgent extends BaseAgent {
           // api-tools.ts already and come through unchanged.
           // No matcher on purpose: a PostToolUse hook that matches a tool also stops the CLI
           // (>=0.3.287) from detaching that call to the background when the user sends a message
-          // mid-turn. Craft never sees a detached call's late result (it reaches the model as a
+          // mid-turn. MemWise never sees a detached call's late result (it reaches the model as a
           // queued task notification), so keep every tool attached. The event adapter still
           // renders a detached placeholder sensibly (`isDetachedToolCallResult`).
           PostToolUse: [{
@@ -2392,7 +2392,7 @@ This is a branched conversation. All prior messages in this conversation are par
               message:
                 'The Claude Agent SDK binary expected on disk is not present. ' +
                 'This usually means the app bundle is incomplete (interrupted download, partial update, ' +
-                'or a security tool removed it). Reinstalling Craft Agents typically fixes this.',
+                'or a security tool removed it). Reinstalling MemWise typically fixes this.',
               details: [
                 probedBinary ? `Expected binary: ${probedBinary}` : 'Binary path: unknown',
                 probedCwd ? `Subprocess cwd: ${probedCwd} (${cwdExists ? 'exists' : 'missing'})` : '',
@@ -3476,11 +3476,11 @@ This is a branched conversation. All prior messages in this conversation are par
 // ============================================================
 // Backward Compatibility Exports
 // ============================================================
-// These aliases allow gradual migration from CraftAgent to ClaudeAgent.
+// These aliases allow gradual migration from MemWiseAgent to ClaudeAgent.
 // Once all consumers are updated, these can be removed.
 
 /** @deprecated Use ClaudeAgent instead */
-export { ClaudeAgent as CraftAgent };
+export { ClaudeAgent as MemWiseAgent };
 
 /** @deprecated Use ClaudeAgentConfig instead */
-export type { ClaudeAgentConfig as CraftAgentConfig };
+export type { ClaudeAgentConfig as MemWiseAgentConfig };

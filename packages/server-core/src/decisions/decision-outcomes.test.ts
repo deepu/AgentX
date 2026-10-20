@@ -13,7 +13,7 @@ import {
   type DecisionLayerFeature,
   type DecisionOutcomeRecord,
   type DecisionRecord,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 import { pickTurnThinkingLevel } from './adaptive-thinking'
 import { checkAutomationCondition } from './automation-condition'
 import { buildLargeResultFilter } from './large-results'

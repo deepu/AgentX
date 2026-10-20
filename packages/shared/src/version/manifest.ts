@@ -1,8 +1,10 @@
 import { debug } from "../utils/debug";
 
-const VERSIONS_URL = 'https://thecraftagents.com/electron';
+// MemWise has no release feed yet (the inherited one served Craft Agents builds).
+const VERSIONS_URL = process.env.MEMWISE_VERSIONS_URL?.trim() || null;
 
 export async function getLatestVersion(): Promise<string | null> {
+    if (!VERSIONS_URL) return null;
     try {
       const response = await fetch(`${VERSIONS_URL}/latest`);
       const data = await response.json();
@@ -19,6 +21,7 @@ export async function getLatestVersion(): Promise<string | null> {
 }
 
 export async function getManifest(version: string): Promise<VersionManifest | null> {
+    if (!VERSIONS_URL) return null;
     try {
         const url = `${VERSIONS_URL}/${version}/manifest.json`;
         debug(`[manifest] Getting manifest for version: ${url}`);

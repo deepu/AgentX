@@ -41,7 +41,7 @@ describe('PromptBuilder developer context split', () => {
 });
 
 function createGitFixture(): { root: string; packageDir: string } {
-  const root = mkdtempSync(join(tmpdir(), 'craft-prompt-builder-git-'));
+  const root = mkdtempSync(join(tmpdir(), 'memwise-prompt-builder-git-'));
   tempDirs.push(root);
   const packageDir = join(root, 'packages', 'shared');
   mkdirSync(packageDir, { recursive: true });

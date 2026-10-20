@@ -4,7 +4,7 @@
  * Motion guardrails from the design system (design spec §6.6, implementation plan A0):
  * - no `transition-all` / `transition: all` (animate named properties only);
  * - motion/react `visualDuration` must be paired with `bounce` (motion 12 otherwise silently runs
- *   a 100/10 spring with ~16% overshoot) — use SPRING presets from @craft-agent/ui/motion;
+ *   a 100/10 spring with ~16% overshoot) — use SPRING presets from @memwise/ui/motion;
  * - never animate layout properties (width, height, margin*, padding*, top/left/right/bottom) in
  *   motion `animate`/`initial`/`exit`/`while*` objects — use transform/opacity and FLIP.
  */
@@ -36,7 +36,7 @@ module.exports = {
     schema: [],
     messages: {
       transitionAll: 'Avoid transition-all: list the properties that change (e.g. transition-colors, transition-[transform,opacity]).',
-      visualDurationWithoutBounce: 'visualDuration without bounce becomes a 100/10 spring with ~16% overshoot. Pass bounce, or use SPRING presets from @craft-agent/ui/motion.',
+      visualDurationWithoutBounce: 'visualDuration without bounce becomes a 100/10 spring with ~16% overshoot. Pass bounce, or use SPRING presets from @memwise/ui/motion.',
       layoutAnimation: 'Animating "{{prop}}" runs layout every frame. Animate transform/opacity instead (x/y/scale, or FLIP).',
     },
   },

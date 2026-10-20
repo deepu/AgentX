@@ -2,26 +2,26 @@ import log from 'electron-log/main'
 import { appendFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 // Leaf import: the logger initializes before the rest of shared config is loaded.
-import { CONFIG_DIR } from '@craft-agent/shared/config/paths'
+import { CONFIG_DIR } from '@memwise/shared/config/paths'
 import type {
   MessagingLogContext,
   MessagingLogMeta,
   MessagingLogger,
-} from '@craft-agent/messaging-gateway'
+} from '@memwise/messaging-gateway'
 
 /**
  * Resolve debug mode deterministically across runtimes.
  *
  * Priority:
  * 1) --debug flag always enables debug mode
- * 2) CRAFT_IS_PACKAGED env (when explicitly set)
+ * 2) MEMWISE_IS_PACKAGED env (when explicitly set)
  * 3) Electron runtime heuristic (defaultApp => dev, otherwise packaged)
  * 4) Non-Electron runtimes default to debug mode (headless Bun / node --check)
  */
 function resolveDebugMode(): boolean {
   if (process.argv.includes('--debug')) return true
 
-  const packagedEnv = process.env.CRAFT_IS_PACKAGED
+  const packagedEnv = process.env.MEMWISE_IS_PACKAGED
   if (packagedEnv === 'true') return false
   if (packagedEnv === 'false') return true
 

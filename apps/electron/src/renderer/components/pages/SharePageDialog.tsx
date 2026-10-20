@@ -13,24 +13,24 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { Spinner } from '@craft-agent/ui'
+import { Spinner } from '@memwise/ui'
 import { Info_Alert } from '@/components/info'
-import type { LoadedPage, PageActionGrant } from '@craft-agent/shared/pages/types'
-import { isPageGrantUsable } from '@craft-agent/shared/pages/types'
+import type { LoadedPage, PageActionGrant } from '@memwise/shared/pages/types'
+import { isPageGrantUsable } from '@memwise/shared/pages/types'
 import { describeGrantAction, useGrantRemoval } from './grant-visuals'
 
 /**
  * Share dialog: publish / republish / password management / unpublish.
  *
  * Server-side gating is authoritative (the publish RPCs re-check the
- * CRAFT_FEATURE_PAGES_SHARING flag); `sharingEnabled` only controls what the
+ * MEMWISE_FEATURE_PAGES_SHARING flag); `sharingEnabled` only controls what the
  * dialog offers. Unpublish is always offered for a published page so a
  * disabled flag can never strand a public copy (design §12).
  */
 
 /**
- * Client-side mirror of the Worker's PASSWORD_MIN_LENGTH (workers/pages/
- * src/password.ts). UX only — the Worker re-validates on create/update and is
+ * Client-side mirror of the share Worker's PASSWORD_MIN_LENGTH (the Worker is
+ * not part of this repository). UX only — the Worker re-validates on create/update and is
  * authoritative — but keep the two in sync so users get inline feedback rather
  * than a server error toast.
  */

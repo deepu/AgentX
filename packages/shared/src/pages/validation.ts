@@ -1,7 +1,7 @@
 /**
  * Page Config Validation
  *
- * Zod schemas mirroring the page types in @craft-agent/core, applied on every
+ * Zod schemas mirroring the page types in @memwise/core, applied on every
  * page.json write (validate-on-write, like sources) so malformed configs never
  * reach disk. Read paths stay lenient (parse errors → null) like projects.
  */

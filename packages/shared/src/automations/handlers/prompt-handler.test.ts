@@ -276,7 +276,7 @@ describe('PromptHandler', () => {
       const onPromptsReady = jest.fn();
       const configProvider = createMockConfigProvider({
         LabelAdd: [{
-          actions: [{ type: 'prompt', prompt: 'Label $CRAFT_LABEL was added' }],
+          actions: [{ type: 'prompt', prompt: 'Label $MEMWISE_LABEL was added' }],
         }],
       });
 
@@ -300,7 +300,7 @@ describe('PromptHandler', () => {
       const onPromptsReady = jest.fn();
       const configProvider = createMockConfigProvider({
         LabelAdd: [{
-          actions: [{ type: 'prompt', prompt: 'Label ${CRAFT_LABEL} was added to ${CRAFT_WORKSPACE_ID}' }],
+          actions: [{ type: 'prompt', prompt: 'Label ${MEMWISE_LABEL} was added to ${MEMWISE_WORKSPACE_ID}' }],
         }],
       });
 

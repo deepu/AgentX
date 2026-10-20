@@ -178,6 +178,6 @@ describe('generateLabelSlug', () => {
     expect(long).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/)
     expect(long.startsWith('task-powershell-fejlesztesi')).toBe(true)
     expect(generateLabelSlug('  Café & Crème  ')).toBe('cafe-creme')
-    expect(generateLabelSlug('TASK-craft-agents-pages-feature-1')).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/)
+    expect(generateLabelSlug('TASK-memwise-pages-feature-1')).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/)
   })
 })

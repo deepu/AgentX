@@ -1,6 +1,6 @@
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
-import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
-import type { RpcServer } from '@craft-agent/server-core/transport'
+import { RPC_CHANNELS } from '@memwise/shared/protocol'
+import { getWorkspaceByNameOrId } from '@memwise/shared/config'
+import type { RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 
 export const HANDLED_CHANNELS = [
@@ -14,7 +14,7 @@ export function registerStatusesHandlers(server: RpcServer, _deps: HandlerDeps):
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error('Workspace not found')
 
-    const { listStatuses } = await import('@craft-agent/shared/statuses')
+    const { listStatuses } = await import('@memwise/shared/statuses')
     return listStatuses(workspace.rootPath)
   })
 
@@ -24,7 +24,7 @@ export function registerStatusesHandlers(server: RpcServer, _deps: HandlerDeps):
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error('Workspace not found')
 
-    const { reorderStatuses } = await import('@craft-agent/shared/statuses')
+    const { reorderStatuses } = await import('@memwise/shared/statuses')
     reorderStatuses(workspace.rootPath, orderedIds)
   })
 }

@@ -1,7 +1,7 @@
 {
-  "name": "Craft Agents",
-  "description": "Cool neutrals from the Craft app with the Craft Agents purple",
-  "author": "Craft Agent",
+  "name": "MemWise",
+  "description": "Cool neutrals with the MemWise purple",
+  "author": "MemWise",
   "license": "MIT",
   "supportedModes": ["light", "dark"],
   "shikiTheme": {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import type { DecisionResult } from '@craft-agent/shared/decisions'
+import type { DecisionResult } from '@memwise/shared/decisions'
 import { buildRepairScopePicker, buildRepairScopeRequest, readRepairScope, REPAIR_MAX_NODES } from './task-repairs'
 
 function nouls(values: Record<string, number>): DecisionResult {

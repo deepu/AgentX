@@ -1,7 +1,7 @@
 {
   "name": "Craft",
   "description": "The Craft Docs palette with Craft blue",
-  "author": "Craft Agent",
+  "author": "MemWise",
   "license": "MIT",
   "supportedModes": ["light", "dark"],
   "shikiTheme": {

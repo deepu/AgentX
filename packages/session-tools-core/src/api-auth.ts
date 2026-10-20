@@ -2,11 +2,11 @@
  * API source credential parsing and request-auth assembly.
  *
  * One implementation shared by the runtime request path in
- * `@craft-agent/shared` (`sources/api-tools.ts`, `sources/credential-manager.ts`)
+ * `@memwise/shared` (`sources/api-tools.ts`, `sources/credential-manager.ts`)
  * and the `source_test` validator in this package, so the validator sends
  * exactly what the generated `api_<source>` tools send (OSS #1067).
  *
- * Pure module: no I/O and no workspace imports. `@craft-agent/shared` depends
+ * Pure module: no I/O and no workspace imports. `@memwise/shared` depends
  * on this package, not the other way round, so this is the lowest layer both
  * sides can reach.
  */

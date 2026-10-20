@@ -7,7 +7,7 @@
  * Guarantees (locked design):
  * - Script path is workspace-relative and must resolve inside the workspace
  *   (symlink-aware isPathWithinDirectory).
- * - Child env is CRAFT_*-only (see buildScriptEnv in utils.ts).
+ * - Child env is MEMWISE_*-only (see buildScriptEnv in utils.ts).
  * - SIGTERM on timeout with a SIGKILL fallback so trapped signals can't hang
  *   the host process.
  * - Page refreshes record their outcome on page.json LAST, making it the
@@ -23,7 +23,7 @@ import { isAbsolute, join } from 'node:path';
 import {
   resolveScriptRuntime,
   isPathWithinDirectory,
-} from '@craft-agent/session-tools-core';
+} from '@memwise/session-tools-core';
 import { createLogger } from '../utils/debug.ts';
 import { recordPageRefresh } from '../pages/storage.ts';
 import { HISTORY_FIELD_MAX_LENGTH } from './constants.ts';
@@ -44,7 +44,7 @@ const OUTPUT_CAPTURE_MAX_BYTES = 16 * 1024;
 export interface ScriptExecutionContext {
   /** Workspace root — scripts must live inside it and run with it as cwd */
   workspaceRootPath: string;
-  /** CRAFT_*-only environment (build with buildScriptEnv) */
+  /** MEMWISE_*-only environment (build with buildScriptEnv) */
   env: Record<string, string>;
   /**
    * Optional cooperative-cancellation signal. When it aborts, the child gets

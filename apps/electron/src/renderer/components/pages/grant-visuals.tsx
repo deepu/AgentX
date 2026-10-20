@@ -10,8 +10,8 @@ import * as React from 'react'
 import { Globe2, ShieldAlert, TerminalSquare, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
-import type { PageActionDescriptor, PageActionGrant } from '@craft-agent/shared/pages/types'
-import { isPageGrantUsable } from '@craft-agent/shared/pages/types'
+import type { PageActionDescriptor, PageActionGrant } from '@memwise/shared/pages/types'
+import { isPageGrantUsable } from '@memwise/shared/pages/types'
 import { relativeTime } from './page-visuals'
 
 type Translate = (key: string, opts?: Record<string, unknown>) => string

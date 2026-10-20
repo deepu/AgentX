@@ -1,4 +1,4 @@
-import type { PermissionRisk } from '@craft-agent/core/types'
+import type { PermissionRisk } from '@memwise/core/types'
 import type { PermissionRequest } from '../../../../../shared/types'
 import type { StructuredInputState } from './types'
 import type { DecisionTone } from './DecisionCard'

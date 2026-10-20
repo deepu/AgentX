@@ -3,10 +3,10 @@ import { execFileSync } from 'node:child_process'
 import { uptime as osUptime } from 'node:os'
 import { join, basename } from 'node:path'
 import { lockHolderMatchesLock, parseTasklistImageName, type LockIdentity } from './lock-identity.ts'
-import { OAuthFlowStore } from '@craft-agent/shared/auth'
-import { ensureConfigDir, loadStoredConfig, saveConfig } from '@craft-agent/shared/config'
-import { CONFIG_DIR } from '@craft-agent/shared/config/paths'
-import { setBundledAssetsRoot } from '@craft-agent/shared/utils'
+import { OAuthFlowStore } from '@memwise/shared/auth'
+import { ensureConfigDir, loadStoredConfig, saveConfig } from '@memwise/shared/config'
+import { CONFIG_DIR } from '@memwise/shared/config/paths'
+import { setBundledAssetsRoot } from '@memwise/shared/utils'
 import { WsRpcServer, type WsRpcTlsOptions } from '../transport/server'
 import type { EventSink, RpcServer } from '../transport/types'
 import { createHeadlessPlatform } from '../runtime/platform-headless'
@@ -262,7 +262,7 @@ function acquireServerLock(logger: PlatformServices['logger']): void {
             throw new Error(
               `Another server instance is already running (PID ${lock.pid}). ` +
               `If this is stale, delete ${LOCK_FILE} and retry. ` +
-              `To run a parallel instance (e.g. for dev), set CRAFT_CONFIG_DIR to a different path.`
+              `To run a parallel instance (e.g. for dev), set MEMWISE_CONFIG_DIR to a different path.`
             )
           }
         } else {
@@ -331,9 +331,9 @@ function ensureGlobalConfigExists(platform: PlatformServices): void {
 export async function bootstrapServer<TSessionManager, THandlerDeps>(
   options: ServerBootstrapOptions<TSessionManager, THandlerDeps>,
 ): Promise<ServerInstance<TSessionManager>> {
-  const serverToken = options.serverToken ?? process.env.CRAFT_SERVER_TOKEN
+  const serverToken = options.serverToken ?? process.env.MEMWISE_SERVER_TOKEN
   if (!serverToken) {
-    throw new Error('Server token is required. Pass options.serverToken or set CRAFT_SERVER_TOKEN.')
+    throw new Error('Server token is required. Pass options.serverToken or set MEMWISE_SERVER_TOKEN.')
   }
 
   const entropy = validateTokenEntropy(serverToken)
@@ -344,7 +344,7 @@ export async function bootstrapServer<TSessionManager, THandlerDeps>(
   const platform = options.platformFactory?.() ?? createHeadlessPlatform({ appVersion: options.serverVersion })
 
   const bundledAssetsRoot = options.bundledAssetsRoot
-    ?? process.env.CRAFT_BUNDLED_ASSETS_ROOT
+    ?? process.env.MEMWISE_BUNDLED_ASSETS_ROOT
     ?? process.cwd()
   setBundledAssetsRoot(bundledAssetsRoot)
 
@@ -361,8 +361,8 @@ export async function bootstrapServer<TSessionManager, THandlerDeps>(
   const modelRefreshService = options.initModelRefreshService()
   const sessionManager = options.createSessionManager()
 
-  const rpcHost = options.rpcHost ?? process.env.CRAFT_RPC_HOST ?? '127.0.0.1'
-  const rpcPortRaw = options.rpcPort ?? parseInt(process.env.CRAFT_RPC_PORT ?? '9100', 10)
+  const rpcHost = options.rpcHost ?? process.env.MEMWISE_RPC_HOST ?? '127.0.0.1'
+  const rpcPortRaw = options.rpcPort ?? parseInt(process.env.MEMWISE_RPC_PORT ?? '9100', 10)
   if (!Number.isFinite(rpcPortRaw) || rpcPortRaw < 0 || rpcPortRaw > 65535) {
     throw new Error(`Invalid RPC port: ${rpcPortRaw}`)
   }
@@ -421,7 +421,7 @@ export async function bootstrapServer<TSessionManager, THandlerDeps>(
 
   modelRefreshService.startAll()
 
-  platform.logger.info(`Craft Agent server listening on ${wsServer.protocol}://${rpcHost}:${wsServer.port}`)
+  platform.logger.info(`MemWise server listening on ${wsServer.protocol}://${rpcHost}:${wsServer.port}`)
 
   let stopped = false
   const stop = async (): Promise<void> => {

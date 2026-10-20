@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useAtomValue } from 'jotai'
-import { availablePermissionModes, type PermissionMode } from '@craft-agent/shared/agent/modes'
+import { availablePermissionModes, type PermissionMode } from '@memwise/shared/agent/modes'
 import { guardedModeAvailableAtom } from '@/atoms/permission-modes'
 
 /**

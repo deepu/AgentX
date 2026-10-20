@@ -5,12 +5,12 @@
  *
  * The capture renders the page exactly as PageFrame does: the page HTML is the
  * srcDoc of an opaque sandboxed iframe (never `allow-same-origin`), and the
- * trusted host posts the `craft-pages/v1` init message so data-driven pages
+ * trusted host posts the `memwise-pages/v1` init message so data-driven pages
  * paint with their snapshot. No action bridge — a poster never executes source
  * actions.
  */
 
-import type { PageDataSnapshot, PageKind } from '@craft-agent/shared/pages/types'
+import type { PageDataSnapshot, PageKind } from '@memwise/shared/pages/types'
 
 /** Logical render viewport (16:10) the offscreen window uses. */
 export const THUMB_LOGICAL_WIDTH = 1000
@@ -72,7 +72,7 @@ export function buildThumbnailHostHtml(input: {
   function deliver() {
     try {
       frame.contentWindow.postMessage(
-        { protocol: 'craft-pages/v1', type: 'init', payload: { page: PAGE, nonce: 'preview', snapshot: SNAPSHOT } },
+        { protocol: 'memwise-pages/v1', type: 'init', payload: { page: PAGE, nonce: 'preview', snapshot: SNAPSHOT } },
         '*'
       );
     } catch (e) { /* opaque-origin race — the ready handler retries */ }
@@ -80,7 +80,7 @@ export function buildThumbnailHostHtml(input: {
   frame.addEventListener('load', deliver);
   window.addEventListener('message', function (event) {
     var m = event.data;
-    if (m && m.protocol === 'craft-pages/v1' && m.type === 'ready') deliver();
+    if (m && m.protocol === 'memwise-pages/v1' && m.type === 'ready') deliver();
   });
 </script>
 </body>

@@ -5,7 +5,7 @@
  * the mediated source-action bridge.
  *
  * NOT exported here: ./data-store.ts (bun:sqlite) — Bun-only by design, import
- * it via the '@craft-agent/shared/pages/data-store' subpath from Bun scripts.
+ * it via the '@memwise/shared/pages/data-store' subpath from Bun scripts.
  */
 
 // Types (core page types re-exported plus storage-layer shapes)

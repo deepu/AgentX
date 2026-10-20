@@ -1,5 +1,5 @@
 /**
- * Decision layer usage report over ~/.craft-agent/logs/decisions.jsonl (and the rotated
+ * Decision layer usage report over ~/.memwise/logs/decisions.jsonl (and the rotated
  * decisions.prev.jsonl): calls, failures, latency and — from the outcome lines — how often
  * each feature's answer changed behaviour.
  *

@@ -1,16 +1,16 @@
 import type { ComponentEntry } from './types'
-import { CraftAgentsLogo } from '@/components/icons/CraftAgentsLogo'
-import { CraftAgentsSymbol } from '@/components/icons/CraftAgentsSymbol'
+import { MemWiseLogo } from '@/components/icons/MemWiseLogo'
+import { MemWiseSymbol } from '@/components/icons/MemWiseSymbol'
 import { PanelLeftRounded } from '@/components/icons/PanelLeftRounded'
 import { SquarePenRounded } from '@/components/icons/SquarePenRounded'
 
 export const iconComponents: ComponentEntry[] = [
   {
-    id: 'craft-agents-logo',
-    name: 'CraftAgentsLogo',
+    id: 'memwise-logo',
+    name: 'MemWiseLogo',
     category: 'Icons',
-    description: 'Full Craft Agents branding logo with text',
-    component: CraftAgentsLogo,
+    description: 'Full MemWise branding logo with text',
+    component: MemWiseLogo,
     props: [
       {
         name: 'className',
@@ -26,11 +26,11 @@ export const iconComponents: ComponentEntry[] = [
     ],
   },
   {
-    id: 'craft-agents-symbol',
-    name: 'CraftAgentsSymbol',
+    id: 'memwise-symbol',
+    name: 'MemWiseSymbol',
     category: 'Icons',
-    description: 'Craft Agents "E" pixel art symbol icon (brand color: #9570BE)',
-    component: CraftAgentsSymbol,
+    description: 'MemWise "M" pixel art symbol icon (brand color: #9570BE)',
+    component: MemWiseSymbol,
     props: [
       {
         name: 'className',

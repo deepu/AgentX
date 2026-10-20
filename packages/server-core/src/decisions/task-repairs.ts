@@ -9,7 +9,7 @@
  * repair budget is unchanged.
  */
 
-import { DECISION_MAX_QUESTIONS_PER_CALL, type DecisionRequest, type DecisionResult } from '@craft-agent/shared/decisions'
+import { DECISION_MAX_QUESTIONS_PER_CALL, type DecisionRequest, type DecisionResult } from '@memwise/shared/decisions'
 import type { RepairScopeFn } from '../tasks/TaskRunner'
 import { openDecisionPoint, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 

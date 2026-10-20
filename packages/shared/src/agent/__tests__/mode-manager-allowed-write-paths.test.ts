@@ -17,7 +17,7 @@ describe('matchesAllowedWritePath', () => {
   });
 
   it('expands ~ in patterns', () => {
-    expect(matchesAllowedWritePath(join(homedir(), '.craft-agent', 'x.json'), ['~/.craft-agent/**'])).toBe(true);
+    expect(matchesAllowedWritePath(join(homedir(), '.memwise', 'x.json'), ['~/.memwise/**'])).toBe(true);
   });
 
   it('checks every pattern and ignores invalid ones', () => {

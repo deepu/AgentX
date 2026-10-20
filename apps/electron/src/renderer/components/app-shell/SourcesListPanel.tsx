@@ -5,7 +5,7 @@ import { DatabaseZap } from 'lucide-react'
 import { SourceAvatar } from '@/components/ui/source-avatar'
 import { deriveConnectionStatus } from '@/components/ui/source-status-indicator'
 import { EntityPanel } from '@/components/ui/entity-panel'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 import { EntityListEmptyScreen } from '@/components/ui/entity-list-empty'
 import { sourceSelection } from '@/hooks/useEntitySelection'
@@ -140,7 +140,7 @@ export function SourcesListPanel({
             <SourceMenu
               sourceSlug={source.config.slug}
               sourceName={source.config.name}
-              onOpenInNewWindow={() => window.electronAPI.openUrl(`craftagents://sources/source/${source.config.slug}?window=focused`)}
+              onOpenInNewWindow={() => window.electronAPI.openUrl(`memwise://sources/source/${source.config.slug}?window=focused`)}
               onShowInFinder={() => window.electronAPI.showInFolder(source.folderPath)}
               onDelete={() => onDeleteSource(source.config.slug)}
               onSendToWorkspace={hasOtherWorkspaces ? () => {

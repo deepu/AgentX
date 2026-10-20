@@ -12,7 +12,7 @@
  * asked for input or gave up (children run unattended, nobody would answer).
  */
 
-import { isDecisionFeatureActive, type DecisionRequest, type DecisionResult } from '@craft-agent/shared/decisions'
+import { isDecisionFeatureActive, type DecisionRequest, type DecisionResult } from '@memwise/shared/decisions'
 import type { NodeOutcomeFn } from '../tasks/TaskRunner'
 import { openDecisionPoint, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 

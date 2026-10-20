@@ -1,8 +1,8 @@
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { motion } from "motion/react"
-import { Spinner } from "@craft-agent/ui"
-import { TWEEN } from "@craft-agent/ui/motion"
+import { Spinner } from "@memwise/ui"
+import { TWEEN } from "@memwise/ui/motion"
 
 /**
  * Processing status messages - cycles through these randomly

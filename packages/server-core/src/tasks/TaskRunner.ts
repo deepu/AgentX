@@ -1,7 +1,7 @@
 /**
  * The Conductor — an in-process DAG runner for Tasks.
  *
- * A `task.yaml` (parsed + validated in @craft-agent/shared/tasks) describes a
+ * A `task.yaml` (parsed + validated in @memwise/shared/tasks) describes a
  * graph of nodes; each node is a child session. The Conductor:
  *   1. schedules ready nodes (deps satisfied) honoring `max_parallel`,
  *   2. dispatches each as a child session (create + sendMessage), interpolating
@@ -20,7 +20,7 @@
  * The runner depends on a minimal `ConductorSessionHost` interface (which
  * SessionManager structurally satisfies) so it is unit-testable with a mock.
  */
-import type { CreateSessionOptions } from '@craft-agent/shared/protocol';
+import type { CreateSessionOptions } from '@memwise/shared/protocol';
 import type { SessionCompletionEvent } from '../sessions/SessionManager';
 import {
   type TaskSpec,
@@ -42,8 +42,8 @@ import {
   writeRunSpecSnapshot,
   DEFAULT_REPAIR_ATTEMPTS,
   MAX_REPAIR_ATTEMPTS_CAP,
-} from '@craft-agent/shared/tasks';
-import type { DecisionRequest, DecisionResult } from '@craft-agent/shared/decisions';
+} from '@memwise/shared/tasks';
+import type { DecisionRequest, DecisionResult } from '@memwise/shared/decisions';
 import { classifyVerdictWithDecision } from './verdict-decision';
 
 // ---------------------------------------------------------------------------

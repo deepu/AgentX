@@ -68,8 +68,8 @@ import { resolvePiModel, isDeniedMiniModelId } from './model-resolution.ts';
 import { pickProviderAppropriateMiniModel } from './pick-mini-model.ts';
 import { queryMiniModel } from './mini-model-query.ts';
 import {
-  CRAFT_PI_EPHEMERAL_QUERY_DEADLINE_MS,
-  createCraftSettingsManager,
+  MEMWISE_PI_EPHEMERAL_QUERY_DEADLINE_MS,
+  createMemWiseSettingsManager,
 } from './session-settings.ts';
 import {
   EphemeralQueryCancelledError,
@@ -98,9 +98,9 @@ import { getDefaultSummarizationModel } from '../../shared/src/config/models.ts'
 import { createWebFetchTool } from './tools/web-fetch.ts';
 import { resolveSearchProvider } from './tools/search/resolve-provider.ts';
 import { createSearchTool } from './tools/search/create-search-tool.ts';
-import { allowCraftMetadataProperties, stripCraftMetadata } from './craft-metadata-schema.ts';
+import { allowMemWiseMetadataProperties, stripMemWiseMetadata } from './memwise-metadata-schema.ts';
 import {
-  createCraftResourceLoader,
+  createMemWiseResourceLoader,
   createSystemPromptOverride,
   type SystemPromptOverride,
 } from './system-prompt-override.ts';
@@ -109,7 +109,7 @@ import { waitForCompaction, MANUAL_COMPACT_WAIT_MS, PROMPT_COMPACT_WAIT_MS } fro
 import type { PiCompactResult, PiContextUsagePayload, PiLargeResultGateRequest, PiLargeResultGateResponse } from '../../shared/src/agent/backend/pi/protocol.ts';
 import { createLargeResultGateClient } from './large-result-gate.ts';
 import { adaptCredentialForPiSdk, type PiCredential } from './adapt-credential.ts';
-import { resolveCraftAgentDir } from './agent-dir.ts';
+import { resolveMemWiseAgentDir } from './agent-dir.ts';
 import { toPiProviderId } from '../../shared/src/config/pi-provider-ids.ts';
 import { providerEndpointEnv } from './provider-endpoint-env.ts';
 
@@ -268,7 +268,7 @@ type OutboundMessage =
 // ============================================================
 
 let piSession: AgentSession | null = null;
-// Forces Craft's system prompt onto piSession (see system-prompt-override.ts);
+// Forces MemWise's system prompt onto piSession (see system-prompt-override.ts);
 // recreated together with the session.
 let piSessionPromptOverride: SystemPromptOverride | null = null;
 // A stop must also cancel a manual compact still waiting for auto-compaction.
@@ -434,18 +434,18 @@ function shouldPreferCustomEndpoint(): boolean {
  */
 function setInterceptorApiHints(model: { api?: string; provider?: string; baseUrl?: string } | undefined): void {
   if (!model) {
-    delete process.env.CRAFT_PI_MODEL_API;
-    delete process.env.CRAFT_PI_MODEL_PROVIDER;
-    delete process.env.CRAFT_PI_MODEL_BASE_URL;
+    delete process.env.MEMWISE_PI_MODEL_API;
+    delete process.env.MEMWISE_PI_MODEL_PROVIDER;
+    delete process.env.MEMWISE_PI_MODEL_BASE_URL;
     return;
   }
 
-  process.env.CRAFT_PI_MODEL_API = model.api || '';
-  process.env.CRAFT_PI_MODEL_PROVIDER = model.provider || '';
-  process.env.CRAFT_PI_MODEL_BASE_URL = model.baseUrl || '';
+  process.env.MEMWISE_PI_MODEL_API = model.api || '';
+  process.env.MEMWISE_PI_MODEL_PROVIDER = model.provider || '';
+  process.env.MEMWISE_PI_MODEL_BASE_URL = model.baseUrl || '';
 
   debugLog(
-    `[interceptor-hint] api=${process.env.CRAFT_PI_MODEL_API || '-'} provider=${process.env.CRAFT_PI_MODEL_PROVIDER || '-'} baseUrl=${process.env.CRAFT_PI_MODEL_BASE_URL || '-'}`,
+    `[interceptor-hint] api=${process.env.MEMWISE_PI_MODEL_API || '-'} provider=${process.env.MEMWISE_PI_MODEL_PROVIDER || '-'} baseUrl=${process.env.MEMWISE_PI_MODEL_BASE_URL || '-'}`,
   );
 }
 
@@ -674,9 +674,9 @@ async function ensureSession(): Promise<AgentSession> {
   // settingsManager: explicit in-memory settings (retry policy, compaction)
   // instead of the SDK default that merges `<cwd>/.pi/settings.json` from the
   // user's working directory and writes to `<agentDir>/settings.json`.
-  const settingsManager = createCraftSettingsManager('main', { autoCompactWindow: initConfig.autoCompactWindow });
+  const settingsManager = createMemWiseSettingsManager('main', { autoCompactWindow: initConfig.autoCompactWindow });
   // Resource isolation: never resolve extensions/skills from ~/.pi/agent.
-  const agentDir = resolveCraftAgentDir(initConfig);
+  const agentDir = resolveMemWiseAgentDir(initConfig);
   const sessionOptions: CreateAgentSessionOptions = {
     cwd,
     agentDir,
@@ -687,7 +687,7 @@ async function ensureSession(): Promise<AgentSession> {
   };
 
   if (initConfig.sessionPath) {
-    // Session resume: use a per-Craft-session directory so the Pi SDK can
+    // Session resume: use a per-MemWise-session directory so the Pi SDK can
     // persist and resume its own session across subprocess restarts.
     // continueRecent() loads the existing session if one exists, otherwise
     // creates a new one — so this handles both first-run and resume.
@@ -761,11 +761,11 @@ async function ensureSession(): Promise<AgentSession> {
     sessionOptions.thinkingLevel = piThinkingLevel;
   }
 
-  // Craft's system prompt is forced through a before_agent_start extension
+  // MemWise's system prompt is forced through a before_agent_start extension
   // registered on the resource loader (see system-prompt-override.ts). The
   // loader otherwise mirrors the one createAgentSession would build itself.
   const systemPromptOverride = createSystemPromptOverride();
-  sessionOptions.resourceLoader = await createCraftResourceLoader({
+  sessionOptions.resourceLoader = await createMemWiseResourceLoader({
     cwd,
     agentDir,
     settingsManager,
@@ -833,7 +833,7 @@ function wrapToolsWithHooks(tools: ToolDefinition<any, any>[]): ToolDefinition<a
 
 function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any> {
   const originalExecute = tool.execute;
-  const parameters = allowCraftMetadataProperties(tool.parameters);
+  const parameters = allowMemWiseMetadataProperties(tool.parameters);
 
   const wrappedExecute: ToolDefinition<any, any>['execute'] = async (
     toolCallId,
@@ -857,10 +857,10 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
     // Send to main process for permission checking + transforms
     inputObj = await requestPreToolUseApproval(sdkToolName, inputObj, toolCallId);
 
-    // Metadata is for Craft UI only. Keep a final defensive strip here so the
+    // Metadata is for MemWise UI only. Keep a final defensive strip here so the
     // upstream Pi tool implementation always receives clean executable args,
     // even if a future pre-tool-use path returns `allow` without modification.
-    inputObj = stripCraftMetadata(inputObj);
+    inputObj = stripMemWiseMetadata(inputObj);
 
     // Execute original tool with (potentially modified) input
     const result = await originalExecute(toolCallId, inputObj, signal, onUpdate, ctx);
@@ -927,7 +927,7 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
 /**
  * A main-process tool result as a Pi tool result. Failures are flagged with
  * `isError` (Pi >=0.99) so the model gets an error tool result and
- * `tool_execution_end.isError` marks the call failed in Craft, as a thrown error
+ * `tool_execution_end.isError` marks the call failed in MemWise, as a thrown error
  * would; before, they reached both as successes.
  */
 function proxyToolResult(result: { content: string; isError: boolean }): AgentToolResult<undefined> {
@@ -1061,9 +1061,9 @@ async function queryLlm(
     // Create minimal ephemeral session: no tools (an empty allowlist also keeps
     // extension and MCP tools out), and the same isolated agentDir as the main
     // session plus the system-prompt override.
-    const ephemeralSettings = createCraftSettingsManager('ephemeral');
+    const ephemeralSettings = createMemWiseSettingsManager('ephemeral');
     const ephemeralPromptOverride = createSystemPromptOverride();
-    const ephemeralAgentDir = resolveCraftAgentDir(initConfig!);
+    const ephemeralAgentDir = resolveMemWiseAgentDir(initConfig!);
     const ephemeralOptions: CreateAgentSessionOptions = {
       cwd: resolvedCwd(),
       agentDir: ephemeralAgentDir,
@@ -1072,7 +1072,7 @@ async function queryLlm(
       sessionManager: PiSessionManager.inMemory(),
       settingsManager: ephemeralSettings,
       model: piModel,
-      resourceLoader: await createCraftResourceLoader({
+      resourceLoader: await createMemWiseResourceLoader({
         cwd: resolvedCwd(),
         agentDir: ephemeralAgentDir,
         settingsManager: ephemeralSettings,
@@ -1177,7 +1177,7 @@ function runEphemeralLlmQuery(
 ): Promise<LLMQueryResult> {
   return ephemeralQueries.run(
     id,
-    CRAFT_PI_EPHEMERAL_QUERY_DEADLINE_MS,
+    MEMWISE_PI_EPHEMERAL_QUERY_DEADLINE_MS,
     lifecycle => queryLlm(request, lifecycle),
   );
 }
@@ -1376,7 +1376,7 @@ function applyProviderEndpointEnv(config: InitMessage): void {
   }
 }
 
-/** Craft wire auth with the provider id the Pi SDK knows (see pi-provider-ids.ts). */
+/** MemWise wire auth with the provider id the Pi SDK knows (see pi-provider-ids.ts). */
 function toPiAuth(piAuth: NonNullable<InitMessage['piAuth']>): NonNullable<InitMessage['piAuth']> {
   return { ...piAuth, provider: toPiProviderId(piAuth.provider) };
 }
@@ -1403,7 +1403,7 @@ async function handleInit(msg: Extract<InboundMessage, { type: 'init' }>): Promi
   moduleRuntimePromise = null;
   piModelRegistry = null;
 
-  // Craft's stored provider ids → Pi SDK ids, once, so every consumer below
+  // MemWise's stored provider ids → Pi SDK ids, once, so every consumer below
   // (credential store, model resolution, search) sees the SDK's id.
   initConfig = msg.piAuth ? { ...msg, piAuth: toPiAuth(msg.piAuth) } : msg;
   applyProviderEndpointEnv(initConfig);
@@ -1437,7 +1437,7 @@ async function handlePrompt(msg: Extract<InboundMessage, { type: 'prompt' }>): P
 
     const session = await ensureSession();
 
-    // Force the Craft-built system prompt onto the Pi session through the
+    // Force the MemWise-built system prompt onto the Pi session through the
     // before_agent_start override created with it (see system-prompt-override.ts).
     if (msg.systemPrompt) {
       piSessionPromptOverride?.set(msg.systemPrompt);
@@ -1469,7 +1469,7 @@ async function handlePrompt(msg: Extract<InboundMessage, { type: 'prompt' }>): P
     // calls agent.continue() to retry once. Running our own session.compact()
     // in parallel raced against the SDK and is the documented cause of the
     // AbortController crash in `_runAutoCompaction` (see
-    // plans/fix-pi-gpt-compaction.md). PiEventAdapter holds the Craft event
+    // plans/fix-pi-gpt-compaction.md). PiEventAdapter holds the MemWise event
     // queue open across the SDK's recovery flow so the recovered turn
     // reaches the UI.
 

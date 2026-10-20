@@ -13,7 +13,7 @@ interface AppMenuMobilePreviewProps {
 }
 
 /**
- * Renders the production AppMenu inside a phone-shaped frame. The Craft logo
+ * Renders the production AppMenu inside a phone-shaped frame. The MemWise logo
  * acts as the dropdown/sheet trigger — same component TopBar uses, with
  * compact-mode behavior enabled via the AppShell context override.
  */
@@ -25,7 +25,7 @@ export function AppMenuMobilePreview({
     <MobilePlaygroundProviders>
       <MobileWebUIFrame device={device} showBezel={showBezel}>
         <div className="flex flex-col h-full">
-          {/* Faux TopBar so the Craft logo trigger sits in a recognisable strip */}
+          {/* Faux TopBar so the MemWise logo trigger sits in a recognisable strip */}
           <div className="h-11 shrink-0 px-2 flex items-center border-b border-border bg-background">
             <AppMenu
               onNewChat={log('onNewChat')}
@@ -40,7 +40,7 @@ export function AppMenuMobilePreview({
           </div>
           <div className="flex-1 flex items-start justify-center pt-12">
             <p className="text-xs text-muted-foreground/70 px-6 text-center">
-              Tap the Craft logo (top-left) to open the menu.<br />
+              Tap the MemWise logo (top-left) to open the menu.<br />
               Settings &amp; Help open as full-screen sub-pages in compact mode.
             </p>
           </div>

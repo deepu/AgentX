@@ -1,7 +1,7 @@
 /**
  * PreferencesPage
  *
- * Form-based editor for stored user preferences (~/.craft-agent/preferences.json).
+ * Form-based editor for stored user preferences (~/.memwise/preferences.json).
  * Features:
  * - Fixed input fields for known preferences (name, timezone, location, language)
  * - Free-form textarea for notes
@@ -13,7 +13,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { routes } from '@/lib/navigate'
-import { Spinner } from '@craft-agent/ui'
+import { Spinner } from '@memwise/ui'
 import {
   SettingsPage,
   SettingsSection,

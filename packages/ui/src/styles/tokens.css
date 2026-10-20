@@ -1,5 +1,5 @@
 /* =============================================================================
-   Craft Agents design tokens — the single source of truth.
+   MemWise design tokens — the single source of truth.
 
    Imported by every app stylesheet after `@import "tailwindcss"`:
      packages/ui/src/styles/index.css  (viewer, marketing)
@@ -24,7 +24,7 @@
 :root {
   color-scheme: light;
 
-  /* 1 ── theme input (default theme "Craft Agents", light) */
+  /* 1 ── theme input (default theme "MemWise", light) */
   --background: #fcfdfe;
   --foreground: #1a1c1e;
   --accent: oklch(0.52 0.19 292);

@@ -12,8 +12,8 @@
  * Background-task output and stop (the composer's task chips) are session channels in sessions.ts
  * (`sessions:getBackgroundTaskOutput`, `sessions:stopBackgroundTask`).
  */
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
-import type { ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
+import { RPC_CHANNELS } from '@memwise/shared/protocol'
+import type { ThinkingLevel } from '@memwise/shared/agent/thinking-levels'
 import type {
   TaskCreateRequest,
   TaskCreateResult,
@@ -25,8 +25,8 @@ import type {
   TaskGetResult,
   TaskResultsDto,
   TaskResultNodeDto,
-} from '@craft-agent/shared/protocol'
-import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
+} from '@memwise/shared/protocol'
+import { getWorkspaceByNameOrId } from '@memwise/shared/config'
 import {
   parseTaskYaml,
   saveTaskSpec,
@@ -41,9 +41,9 @@ import {
   nodeTitle,
   DEFAULT_REPAIR_ATTEMPTS,
   MAX_REPAIR_ATTEMPTS_CAP,
-} from '@craft-agent/shared/tasks'
-import { createLogger } from '@craft-agent/shared/utils'
-import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
+} from '@memwise/shared/tasks'
+import { createLogger } from '@memwise/shared/utils'
+import { pushTyped, type RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 import type { ISessionManager } from '../session-manager-interface'
 import { TaskRunner, createTaskFromSpec, finishTaskOrchestrator } from '../../tasks'

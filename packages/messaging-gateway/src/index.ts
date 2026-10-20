@@ -1,7 +1,7 @@
 /**
- * @craft-agent/messaging-gateway
+ * @memwise/messaging-gateway
  *
- * Messaging gateway for Craft Agent — Telegram & WhatsApp.
+ * Messaging gateway for MemWise — Telegram & WhatsApp.
  */
 
 export { MessagingGateway, type GatewayOptions } from './gateway'

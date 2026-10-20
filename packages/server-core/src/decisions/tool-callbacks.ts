@@ -16,7 +16,7 @@
  * Nothing here grants authority: the result is advice for the agent.
  */
 
-import type { DecisionToolCallbacks, DecisionToolRequest, DecisionToolResult } from '@craft-agent/session-tools-core'
+import type { DecisionToolCallbacks, DecisionToolRequest, DecisionToolResult } from '@memwise/session-tools-core'
 import {
   getDecisionRecorder,
   resolveDecisionClient,
@@ -25,7 +25,7 @@ import {
   type DecisionRecorder,
   type DecisionRequest,
   type ResolveDecisionClientOptions,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 
 export interface DecisionToolCallbacksDeps {
   sessionId: string

@@ -8,7 +8,7 @@ const STORAGE_MODULE_PATH = pathToFileURL(join(import.meta.dir, '..', 'storage.t
 
 describe('getAutoCompactWindow', () => {
   it('returns only integers the Claude CLI accepts (100K–1M), else undefined for the SDK default', () => {
-    const configDir = mkdtempSync(join(tmpdir(), 'craft-agent-config-compact-'))
+    const configDir = mkdtempSync(join(tmpdir(), 'memwise-config-compact-'))
     const values = [null, 400_000, 100_000, 1_000_000, 99_999, 1_000_001, 250_000.5, '400000']
     // One subprocess (storage resolves CONFIG_DIR at import): rewrite config.json per value
     // and read it back through the real getter.
@@ -24,7 +24,7 @@ describe('getAutoCompactWindow', () => {
          console.log(String(getAutoCompactWindow()))
        }`,
     ], {
-      env: { ...process.env, CRAFT_CONFIG_DIR: configDir },
+      env: { ...process.env, MEMWISE_CONFIG_DIR: configDir },
       stdout: 'pipe',
       stderr: 'pipe',
     })

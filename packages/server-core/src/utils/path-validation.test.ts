@@ -50,7 +50,7 @@ describe('validatePathFormat', () => {
 
 describe('isValidWorkingDirectory', () => {
   it('accepts an existing Unix directory', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'craft-agent-path-validation-'))
+    const dir = mkdtempSync(join(tmpdir(), 'memwise-path-validation-'))
     try {
       expect(isValidWorkingDirectory(dir, 'darwin')).toEqual({ valid: true })
     } finally {
@@ -59,7 +59,7 @@ describe('isValidWorkingDirectory', () => {
   })
 
   it('rejects a file path', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'craft-agent-path-validation-'))
+    const dir = mkdtempSync(join(tmpdir(), 'memwise-path-validation-'))
     const file = join(dir, 'file.txt')
     writeFileSync(file, 'x')
 

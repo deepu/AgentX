@@ -2,41 +2,41 @@ import { describe, expect, it } from 'bun:test'
 import { join } from 'node:path'
 import { isPathInside, resolveInheritedAppEnv, sourceCheckoutRoot } from './inherited-app-env'
 
-const own = '/work/CraftAgentsDev/sdk-uplift-release'
-const app = '/work/CraftAgentsDev/craft-agents-design-remake'
+const own = '/work/MemWiseDev/sdk-uplift-release'
+const app = '/work/MemWiseDev/memwise-design-remake'
 
 describe('resolveInheritedAppEnv', () => {
-  it("ignores a running app's CRAFT_APP_ROOT and every CRAFT_* path inside it", () => {
+  it("ignores a running app's MEMWISE_APP_ROOT and every MEMWISE_* path inside it", () => {
     const env = {
-      CRAFT_APP_ROOT: app,
-      CRAFT_RESOURCES_BASE: `${app}/apps/electron`,
-      CRAFT_UV: `${app}/apps/electron/resources/bin/darwin-arm64/uv`,
-      CRAFT_CLI_ENTRY: `${app}/packages/craft-cli/src/cli.ts`,
-      CRAFT_SESSION_DIR: '/work/CraftAgentWS/sessions/261010-onyx-heron',
-      CRAFT_CONFIG_DIR: '',
-      CRAFT_DEBUG: '1',
+      MEMWISE_APP_ROOT: app,
+      MEMWISE_RESOURCES_BASE: `${app}/apps/electron`,
+      MEMWISE_UV: `${app}/apps/electron/resources/bin/darwin-arm64/uv`,
+      MEMWISE_CLI_ENTRY: `${app}/packages/memwise-cli/src/cli.ts`,
+      MEMWISE_SESSION_DIR: '/work/MemWiseAgentWS/sessions/261010-onyx-heron',
+      MEMWISE_CONFIG_DIR: '',
+      MEMWISE_DEBUG: '1',
       PATH: `${app}/bin:/usr/bin`,
     }
     const result = resolveInheritedAppEnv(env, own, own)
     expect(result.ignoredAppRoot).toBe(app)
     expect(result.appRootPath).toBe(own)
-    expect(result.dropKeys.sort()).toEqual(['CRAFT_APP_ROOT', 'CRAFT_CLI_ENTRY', 'CRAFT_RESOURCES_BASE', 'CRAFT_UV'])
+    expect(result.dropKeys.sort()).toEqual(['MEMWISE_APP_ROOT', 'MEMWISE_CLI_ENTRY', 'MEMWISE_RESOURCES_BASE', 'MEMWISE_UV'])
   })
 
   it('falls back to the checkout root when the cwd is outside it', () => {
-    expect(resolveInheritedAppEnv({ CRAFT_APP_ROOT: app }, own, '/tmp').appRootPath).toBe(own)
+    expect(resolveInheritedAppEnv({ MEMWISE_APP_ROOT: app }, own, '/tmp').appRootPath).toBe(own)
   })
 
-  it('keeps a CRAFT_APP_ROOT inside its own checkout', () => {
-    const result = resolveInheritedAppEnv({ CRAFT_APP_ROOT: `${own}/apps/electron` }, own, own)
+  it('keeps a MEMWISE_APP_ROOT inside its own checkout', () => {
+    const result = resolveInheritedAppEnv({ MEMWISE_APP_ROOT: `${own}/apps/electron` }, own, own)
     expect(result).toEqual({ appRootPath: `${own}/apps/electron`, dropKeys: [] })
   })
 
-  it('honors CRAFT_APP_ROOT for bundled servers (no source checkout)', () => {
-    expect(resolveInheritedAppEnv({ CRAFT_APP_ROOT: '/app' }, null, '/srv')).toEqual({ appRootPath: '/app', dropKeys: [] })
+  it('honors MEMWISE_APP_ROOT for bundled servers (no source checkout)', () => {
+    expect(resolveInheritedAppEnv({ MEMWISE_APP_ROOT: '/app' }, null, '/srv')).toEqual({ appRootPath: '/app', dropKeys: [] })
   })
 
-  it('defaults to the cwd when CRAFT_APP_ROOT is unset', () => {
+  it('defaults to the cwd when MEMWISE_APP_ROOT is unset', () => {
     expect(resolveInheritedAppEnv({}, own, own)).toEqual({ appRootPath: own, dropKeys: [] })
   })
 })

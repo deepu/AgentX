@@ -15,9 +15,9 @@
  */
 
 import { join } from 'node:path'
-import type { DecisionRequest, DecisionResult } from '@craft-agent/shared/decisions'
-import type { LoadedSkill } from '@craft-agent/shared/skills'
-import { extractTagline, isSourceUsable, type LoadedSource } from '@craft-agent/shared/sources'
+import type { DecisionRequest, DecisionResult } from '@memwise/shared/decisions'
+import type { LoadedSkill } from '@memwise/shared/skills'
+import { extractTagline, isSourceUsable, type LoadedSource } from '@memwise/shared/sources'
 import { FOREGROUND_MAX_DEADLINE_MS, openDecisionPoint, recordDecisionFollowUp, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 
 /**

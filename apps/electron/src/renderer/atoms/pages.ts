@@ -12,7 +12,7 @@
  */
 
 import { atom } from 'jotai'
-import type { LoadedPage } from '@craft-agent/shared/pages/types'
+import type { LoadedPage } from '@memwise/shared/pages/types'
 
 export const pagesAtom = atom<LoadedPage[]>([])
 

@@ -16,13 +16,13 @@ import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { routes } from '@/lib/navigate'
 import { X, MoreHorizontal, Pencil, Trash2, Star, ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, RefreshCcw, Settings2, MessageSquareMore, Zap, Clock, Check, Plus } from 'lucide-react'
 import type { CredentialHealthStatus, CredentialHealthIssue } from '../../../shared/types'
-import { Spinner, FullscreenOverlayBase, Tooltip, TooltipTrigger, TooltipContent, AnimatedCollapsibleContent } from '@craft-agent/ui'
+import { Spinner, FullscreenOverlayBase, Tooltip, TooltipTrigger, TooltipContent, AnimatedCollapsibleContent } from '@memwise/ui'
 import { useSetAtom } from 'jotai'
 import { fullscreenOverlayOpenAtom } from '@/atoms/overlay'
 import { DECISION_SETTINGS_CHANGED_EVENT } from '@/atoms/permission-modes'
 import type { LlmConnectionWithStatus, ThinkingLevel, WorkspaceSettings, Workspace } from '../../../shared/types'
 import type { DecisionLayerFeature, DecisionLayerStatus, DecisionLayerSettingsPatch, DecisionProviderId, DecisionServerProbe, DecisionTestResult, DecisionToggleUsage } from '../../../shared/types'
-import { DEFAULT_THINKING_LEVEL, THINKING_LEVELS } from '@craft-agent/shared/agent/thinking-levels'
+import { DEFAULT_THINKING_LEVEL, THINKING_LEVELS } from '@memwise/shared/agent/thinking-levels'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import {
   DropdownMenu,
@@ -275,13 +275,13 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
         const piLabel = !isSubscription && connection.piAuthProvider
           ? PI_AUTH_PROVIDER_LABELS[connection.piAuthProvider]
           : null
-        parts.push(piLabel ?? 'Craft Agents Backend')
+        parts.push(piLabel ?? 'MemWise Backend')
         break
       }
       case 'pi_compat':
         parts.push(connection.baseUrl?.toLowerCase().includes('manifest.build')
           ? 'Manifest'
-          : 'Craft Agents Backend Compatible')
+          : 'MemWise Backend Compatible')
         break
       default: parts.push(provider || 'Unknown')
     }
@@ -596,7 +596,7 @@ function WorkspaceOverrideCard({ workspace, llmConnections, onSettingsChange }: 
                     value: conn.slug,
                     label: conn.name,
                     description: conn.providerType === 'anthropic' ? 'Anthropic' :
-                                 conn.providerType === 'pi' ? 'Craft Agents Backend' :
+                                 conn.providerType === 'pi' ? 'MemWise Backend' :
                                  conn.providerType || 'Unknown',
                   })),
                 ]}
@@ -1594,8 +1594,8 @@ export default function AiSettingsPage() {
               value: conn.slug,
               label: conn.name,
               description: conn.providerType === 'anthropic' ? 'Anthropic API' :
-                           conn.providerType === 'pi' ? 'Craft Agents Backend' :
-                           conn.providerType === 'pi_compat' ? (conn.baseUrl?.toLowerCase().includes('manifest.build') ? 'Manifest' : 'Craft Agents Backend Compatible') :
+                           conn.providerType === 'pi' ? 'MemWise Backend' :
+                           conn.providerType === 'pi_compat' ? (conn.baseUrl?.toLowerCase().includes('manifest.build') ? 'Manifest' : 'MemWise Backend Compatible') :
                            conn.providerType || 'Unknown',
             }))}
           />

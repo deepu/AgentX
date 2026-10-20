@@ -9,7 +9,7 @@
  * `null` (feature off, unavailable, unsure) keeps today's behaviour.
  */
 
-import type { DecisionRequest } from '@craft-agent/shared/decisions'
+import type { DecisionRequest } from '@memwise/shared/decisions'
 import { openDecisionPoint, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 
 /** Longer first messages are treated as requests without asking. */

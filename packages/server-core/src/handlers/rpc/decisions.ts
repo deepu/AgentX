@@ -6,9 +6,9 @@
  * that affects permissions or session behaviour.
  */
 
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
-import { isDecisionProviderId, type DecisionProviderId } from '@craft-agent/shared/decisions/types'
-import type { RpcServer } from '@craft-agent/server-core/transport'
+import { RPC_CHANNELS } from '@memwise/shared/protocol'
+import { isDecisionProviderId, type DecisionProviderId } from '@memwise/shared/decisions/types'
+import type { RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 
 export const HANDLED_CHANNELS = [
@@ -33,7 +33,7 @@ function assertProvider(provider: unknown): asserts provider is DecisionProvider
 
 export function registerDecisionsHandlers(server: RpcServer, _deps: HandlerDeps): void {
   server.handle(RPC_CHANNELS.decisions.GET_SETTINGS, async () => {
-    const { getDecisionLayerSettings } = await import('@craft-agent/shared/config/storage')
+    const { getDecisionLayerSettings } = await import('@memwise/shared/config/storage')
     return getDecisionLayerSettings()
   })
 
@@ -41,12 +41,12 @@ export function registerDecisionsHandlers(server: RpcServer, _deps: HandlerDeps)
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
       throw new Error('Decision settings patch must be an object')
     }
-    const { setDecisionLayerSettings } = await import('@craft-agent/shared/config/storage')
+    const { setDecisionLayerSettings } = await import('@memwise/shared/config/storage')
     return setDecisionLayerSettings(patch)
   })
 
   server.handle(RPC_CHANNELS.decisions.GET_STATUS, async () => {
-    const { getDecisionLayerStatus } = await import('@craft-agent/shared/decisions')
+    const { getDecisionLayerStatus } = await import('@memwise/shared/decisions')
     return getDecisionLayerStatus()
   })
 
@@ -55,20 +55,20 @@ export function registerDecisionsHandlers(server: RpcServer, _deps: HandlerDeps)
     if (typeof apiKey !== 'string' || !apiKey.trim()) {
       throw new Error('API key must not be empty')
     }
-    const { getCredentialManager } = await import('@craft-agent/shared/credentials')
+    const { getCredentialManager } = await import('@memwise/shared/credentials')
     await getCredentialManager().setDecisionApiKey(provider, apiKey.trim())
   })
 
   server.handle(RPC_CHANNELS.decisions.DELETE_API_KEY, async (_ctx, provider: string) => {
     assertProvider(provider)
-    const { getCredentialManager } = await import('@craft-agent/shared/credentials')
+    const { getCredentialManager } = await import('@memwise/shared/credentials')
     return getCredentialManager().deleteDecisionApiKey(provider)
   })
 
   // Local servers (Laya, custom): GET {baseUrl}/health so the Settings card can say whether
   // the server is up and which checkpoints it loaded. Never throws; no key is sent.
   server.handle(RPC_CHANNELS.decisions.PROBE_SERVER, async (_ctx, options?: { baseUrl?: string }) => {
-    const { probeConfiguredDecisionServer } = await import('@craft-agent/shared/decisions')
+    const { probeConfiguredDecisionServer } = await import('@memwise/shared/decisions')
     return probeConfiguredDecisionServer(undefined, {
       baseUrlOverride: typeof options?.baseUrl === 'string' ? options.baseUrl : undefined,
     })
@@ -76,14 +76,14 @@ export function registerDecisionsHandlers(server: RpcServer, _deps: HandlerDeps)
 
   // Per-toggle checks, failures and changes from decisions.jsonl (and its rotated copy).
   server.handle(RPC_CHANNELS.decisions.GET_USAGE, async () => {
-    const { readDecisionToggleUsage } = await import('@craft-agent/shared/decisions')
+    const { readDecisionToggleUsage } = await import('@memwise/shared/decisions')
     return readDecisionToggleUsage(new Date(Date.now() - USAGE_WINDOW_MS))
   })
 
   server.handle(RPC_CHANNELS.decisions.TEST, async (_ctx, options?: { settings?: Record<string, unknown>; apiKey?: string }) => {
-    const { testDecisionConnection } = await import('@craft-agent/shared/decisions')
+    const { testDecisionConnection } = await import('@memwise/shared/decisions')
     return testDecisionConnection({
-      settings: options?.settings as import('@craft-agent/shared/decisions').DecisionLayerSettingsPatch | undefined,
+      settings: options?.settings as import('@memwise/shared/decisions').DecisionLayerSettingsPatch | undefined,
       apiKey: typeof options?.apiKey === 'string' ? options.apiKey : undefined,
     })
   })

@@ -9,7 +9,7 @@ import type { ThinkingLevel as PiThinkingLevel } from '@earendil-works/pi-agent-
 import type { ThinkingLevel } from '../../thinking-levels.ts';
 
 /**
- * Map Craft's {@link ThinkingLevel} to Pi's `ThinkingLevel`.
+ * Map MemWise's {@link ThinkingLevel} to Pi's `ThinkingLevel`.
  * All levels pass through 1:1 — Pi clamps per model internally
  * (`clampThinkingLevel` in pi-ai), so `max` degrades to the model's
  * ceiling on models without native max support (e.g. GPT-5.6 and GPT-6

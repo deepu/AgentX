@@ -19,7 +19,7 @@ export function queuePendingFocusForSession(sessionId?: string | null): void {
  */
 export function dispatchFocusInputEvent(detail: FocusInputEventDetail = {}): void {
   queuePendingFocusForSession(detail.sessionId)
-  window.dispatchEvent(new CustomEvent<FocusInputEventDetail>('craft:focus-input', { detail }))
+  window.dispatchEvent(new CustomEvent<FocusInputEventDetail>('memwise:focus-input', { detail }))
 }
 
 /**

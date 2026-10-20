@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { ChevronUp } from "lucide-react"
 import { fitLabelCount } from './fit-labels'
 import { cn } from "@/lib/utils"
-import { formatDisplayValue, sessionLabelChips } from "@craft-agent/shared/labels"
+import { formatDisplayValue, sessionLabelChips } from "@memwise/shared/labels"
 import { EntityListLabelBadge } from "@/components/ui/entity-list-label-badge"
 import { useSessionListContext } from "@/context/SessionListContext"
 import type { SessionMeta } from "@/atoms/sessions"
@@ -69,7 +69,7 @@ export function SessionBadges({ item }: SessionBadgesProps) {
       // Read each chip's intrinsic capped width, not its current ellipsized fallback width — with the
       // SAME caps it renders with: later chips stop at 140px (EntityListLabelBadge's cap), but the first
       // chip may use the whole line when nothing is hidden. Measuring it at 140px made a long first label
-      // ("TASK-craft-agents-ui-redesign-4") render wider than budgeted and push the rest out of the row.
+      // ("TASK-memwise-ui-redesign-4") render wider than budgeted and push the rest out of the row.
       // Restore synchronously before paint.
       const previousMax = chipEls.map(chip => chip.style.maxWidth)
       chipEls.forEach((chip, index) => { chip.style.maxWidth = index === 0 ? `${container.clientWidth}px` : '140px' })

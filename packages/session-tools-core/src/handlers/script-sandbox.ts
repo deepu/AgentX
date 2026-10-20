@@ -67,7 +67,7 @@ export async function handleScriptSandbox(
   if (!existsSync(sandboxScriptDir)) {
     mkdirSync(sandboxScriptDir, { recursive: true });
   }
-  const tempScript = join(sandboxScriptDir, `craft-sandbox-${ctx.sessionId}-${Date.now()}${ext}`);
+  const tempScript = join(sandboxScriptDir, `memwise-sandbox-${ctx.sessionId}-${Date.now()}${ext}`);
 
   writeFileSync(tempScript, args.script, 'utf-8');
 

@@ -30,7 +30,7 @@ import type {
   PageShareInfo,
   PageClaudeArtifactInfo,
   PageThumbnailInfo,
-} from '@craft-agent/core';
+} from '@memwise/core';
 import { atomicWriteFileSync, readJsonFileSync } from '../utils/files.ts';
 import { generateUniqueSlug } from '../utils/slug.ts';
 import { debug } from '../utils/debug.ts';

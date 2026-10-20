@@ -9,7 +9,7 @@ import {
   StyledContextMenuContent,
   StyledContextMenuItem,
 } from '@/components/ui/styled-context-menu'
-import type { LoadedPage } from '@craft-agent/shared/pages/types'
+import type { LoadedPage } from '@memwise/shared/pages/types'
 import { PageFreshness, PageKindBadge, PagePosterPlaceholder } from './page-visuals'
 import { useInView } from '@/hooks/useInView'
 
@@ -31,7 +31,7 @@ interface PageTileProps {
  * sunken well, then title and a meta row. Shows the cached preview poster when one is fresh
  * (lazily fetched once the tile scrolls into view); otherwise the kind placeholder. "Fresh" = the
  * poster's digest matches the current content digest, mirroring `isThumbnailFresh` server-side
- * (inlined here — the renderer must not import Node-backed `@craft-agent/shared` code).
+ * (inlined here — the renderer must not import Node-backed `@memwise/shared` code).
  *
  * Hover lifts the card 2px (× --motion-scale, so 0 under reduced motion) onto elev-2 over 150ms.
  */

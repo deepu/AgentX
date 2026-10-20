@@ -34,7 +34,7 @@ function guidePath(slug: string): string {
 }
 
 function browserDocPath(): string {
-  return resolve(join(process.env.CRAFT_CONFIG_DIR || join(homedir(), '.craft-agent'), 'docs', 'browser-tools.md'));
+  return resolve(join(process.env.MEMWISE_CONFIG_DIR || join(homedir(), '.memwise'), 'docs', 'browser-tools.md'));
 }
 
 /** `path` with the home directory spelled `prefix` (`~`, `$HOME`, `${HOME}`), as an agent would type it. */

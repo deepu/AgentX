@@ -2,7 +2,7 @@ import * as React from 'react'
 import type { ComponentEntry } from './types'
 import { AttachmentPreview } from '@/components/app-shell/AttachmentPreview'
 import { SetupAuthBanner } from '@/components/app-shell/SetupAuthBanner'
-import { TurnCard, type ActivityItem } from '@craft-agent/ui'
+import { TurnCard, type ActivityItem } from '@memwise/ui'
 import type { BackgroundTask } from '@/components/app-shell/ActiveTasksBar'
 import { ActiveOptionBadges } from '@/components/app-shell/ActiveOptionBadges'
 import { ChatInputZone, InputContainer } from '@/components/app-shell/input'
@@ -12,11 +12,11 @@ import { EmptyStateHint, getHintCount, getHintTemplate } from '@/components/chat
 import { NewChatEmptyState } from '@/components/app-shell/chat-display/TranscriptStates'
 import { NewChatSuggestions } from '@/components/app-shell/chat-display/NewChatSuggestions'
 import { pickNewChatSuggestions } from '@/components/app-shell/chat-display/new-chat-suggestions'
-import type { LoadedSource } from '@craft-agent/shared/sources/types'
+import type { LoadedSource } from '@memwise/shared/sources/types'
 import { Button } from '@/components/ui/button'
 import { motion } from 'motion/react'
 import { ArrowUp, Paperclip, ChevronDown, Circle, Sparkles } from 'lucide-react'
-import type { LabelConfig } from '@craft-agent/shared/labels'
+import type { LabelConfig } from '@memwise/shared/labels'
 import type { SessionStatus } from '@/config/session-status-config'
 import type { FileAttachment, PermissionRequest, PermissionMode } from '../../../shared/types'
 import { cn } from '@/lib/utils'
@@ -591,10 +591,10 @@ interface InputContainerPlaygroundProps {
 function InputContainerPlayground({
   disabled = false,
   isProcessing = false,
-  placeholder = 'Message Craft Agent...',
+  placeholder = 'Message MemWise...',
   currentModel = 'claude-sonnet-4-6',
   permissionMode = 'ask',
-  workingDirectory = '/Users/demo/projects/craft-agent',
+  workingDirectory = '/Users/demo/projects/memwise',
   inputMode = 'freeform',
   compactMode = false,
   showOptionBadges = true,
@@ -730,7 +730,7 @@ function InputContainerPlayground({
     if (!showAttachments || attachmentFiles.length === 0) return
 
     const timer = setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('craft:paste-files', {
+      window.dispatchEvent(new CustomEvent('memwise:paste-files', {
         detail: {
           files: attachmentFiles,
           sessionId: playgroundSessionId,
@@ -861,7 +861,7 @@ function ActiveTasksBarContext({ tasks = sampleBackgroundTasks }: ActiveTasksBar
 
         {/* Real InputContainer */}
         <InputContainer
-          placeholder="Message Craft Agent..."
+          placeholder="Message MemWise..."
           disabled={false}
           isProcessing={false}
           currentModel="claude-sonnet-4-6"
@@ -869,7 +869,7 @@ function ActiveTasksBarContext({ tasks = sampleBackgroundTasks }: ActiveTasksBar
           onPermissionModeChange={setPermissionMode}
           sources={mockSources}
           enabledSourceSlugs={['github-api', 'local-files']}
-          workingDirectory="/Users/demo/projects/craft-agent"
+          workingDirectory="/Users/demo/projects/memwise"
           sessionId="playground-session"
           onSubmit={mockInputCallbacks.onSubmit}
           onModelChange={mockInputCallbacks.onModelChange}
@@ -964,7 +964,7 @@ function PermissionInputToggle({ autoToggle = false, autoToggleInterval = 3000, 
 
       {/* Real InputContainer - handles animation automatically */}
       <InputContainer
-        placeholder="Message Craft Agent..."
+        placeholder="Message MemWise..."
         disabled={false}
         isProcessing={false}
         currentModel="claude-sonnet-4-6"
@@ -972,7 +972,7 @@ function PermissionInputToggle({ autoToggle = false, autoToggleInterval = 3000, 
         onPermissionModeChange={setPermissionMode}
         sources={mockSources}
         enabledSourceSlugs={['github-api', 'local-files']}
-        workingDirectory="/Users/demo/projects/craft-agent"
+        workingDirectory="/Users/demo/projects/memwise"
         sessionId="playground-session"
         structuredInput={structuredInput}
         onStructuredResponse={handlePermissionResponse}
@@ -1396,7 +1396,7 @@ export const chatComponents: ComponentEntry[] = [
         name: 'placeholder',
         description: 'Textarea placeholder text',
         control: { type: 'string', placeholder: 'Message...' },
-        defaultValue: 'Message Craft Agent...',
+        defaultValue: 'Message MemWise...',
       },
       {
         name: 'currentModel',
@@ -1477,7 +1477,7 @@ export const chatComponents: ComponentEntry[] = [
         name: 'workingDirectory',
         description: 'Current working directory',
         control: { type: 'string', placeholder: '/path/to/project' },
-        defaultValue: '/Users/demo/projects/craft-agent',
+        defaultValue: '/Users/demo/projects/memwise',
       },
       {
         name: 'seedRecentDirs',

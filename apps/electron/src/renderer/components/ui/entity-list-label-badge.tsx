@@ -1,12 +1,12 @@
 import { useState } from "react"
-import { parseLabelEntry, formatLabelEntry, formatDisplayValue } from "@craft-agent/shared/labels"
-import { resolveEntityColor } from "@craft-agent/shared/colors"
+import { parseLabelEntry, formatLabelEntry, formatDisplayValue } from "@memwise/shared/labels"
+import { resolveEntityColor } from "@memwise/shared/colors"
 import { useTheme } from "@/context/ThemeContext"
 import { cn } from "@/lib/utils"
 import { openLabelLink } from "@/lib/open-label-link"
 import { LabelValuePopover } from "./label-value-popover"
 import { LabelValueTypeIcon } from "./label-icon"
-import type { LabelConfig } from "@craft-agent/shared/labels"
+import type { LabelConfig } from "@memwise/shared/labels"
 
 interface EntityListLabelBadgeProps {
   label: LabelConfig

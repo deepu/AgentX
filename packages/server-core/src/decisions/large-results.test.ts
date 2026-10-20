@@ -11,7 +11,7 @@ import {
   readDecisionLog,
   resolveDecisionEndpoint,
   type DecisionClientResolution,
-} from '@craft-agent/shared/decisions'
+} from '@memwise/shared/decisions'
 import {
   buildLargeResultFilter,
   chooseRelevantParts,

@@ -1,7 +1,7 @@
 /**
  * Claude Event Adapter
  *
- * Maps Claude SDK messages (SDKMessage) to Craft Agent's AgentEvent format.
+ * Maps Claude SDK messages (SDKMessage) to MemWise's AgentEvent format.
  * Extracted from ClaudeAgent.convertSDKMessage() for testability and to share
  * lifecycle scaffolding with PiEventAdapter via BaseEventAdapter.
  *
@@ -13,7 +13,7 @@
  */
 
 import type { SDKMessage, SDKAssistantMessageError } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentEvent, ContextUsageSnapshot } from '@craft-agent/core/types';
+import type { AgentEvent, ContextUsageSnapshot } from '@memwise/core/types';
 import { contextAfterCompaction, contextFromClaude } from '../../context-usage.ts';
 import type { AgentError } from '../../errors.ts';
 import { BaseEventAdapter } from '../base-event-adapter.ts';
@@ -460,7 +460,7 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
       if (isDetachedToolCallResult(toolUseResultValue)) {
         // The SDK moved this call (WebFetch/WebSearch) to the background for a message the user
         // sent mid-turn; its tool_result text is a model-directed placeholder, and the real
-        // result reaches the model later as a queued task notification Craft never sees.
+        // result reaches the model later as a queued task notification MemWise never sees.
         for (const event of resultEvents) {
           if (event.type === 'tool_result') {
             event.result = DETACHED_TOOL_CALL_RESULT;
@@ -714,7 +714,7 @@ export const DETACHED_TOOL_CALL_RESULT =
 
 /**
  * `tool_use_result` of a call that stepped aside for a mid-turn user message (SDK >=0.3.287,
- * WebFetch/WebSearch only). Craft's matcher-less PostToolUse hook keeps the CLI from detaching
+ * WebFetch/WebSearch only). MemWise's matcher-less PostToolUse hook keeps the CLI from detaching
  * calls at all (`claude-agent.ts`), so this only guards against that hook ever being narrowed.
  */
 export function isDetachedToolCallResult(value: unknown): boolean {

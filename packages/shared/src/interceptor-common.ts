@@ -24,20 +24,20 @@ export const IS_PACKAGED = process.argv.some(arg => arg.includes('app.asar'));
 export const INTERCEPTOR_LOGGING_ENABLED = !IS_PACKAGED;
 
 export const DEBUG = INTERCEPTOR_LOGGING_ENABLED &&
-  (process.argv.includes('--debug') || process.env.CRAFT_DEBUG === '1');
+  (process.argv.includes('--debug') || process.env.MEMWISE_DEBUG === '1');
 
 /**
  * Config directory. Re-derived from the environment rather than imported from
  * config/paths.ts because this module is preloaded standalone into the Pi
  * subprocess; keep the rule in sync with `resolveConfigDir()`.
  */
-const CONFIG_DIR = process.env.CRAFT_CONFIG_DIR?.trim() || join(homedir(), '.craft-agent');
+const CONFIG_DIR = process.env.MEMWISE_CONFIG_DIR?.trim() || join(homedir(), '.memwise');
 
 /** Config file path for reading settings in the SDK subprocess */
 export const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 
 /** Session directory — set by env var (subprocess) or setSessionDir() (main process) */
-let _sessionDir: string | null = process.env.CRAFT_SESSION_DIR || null;
+let _sessionDir: string | null = process.env.MEMWISE_SESSION_DIR || null;
 
 // ============================================================================
 // LOGGING
@@ -55,15 +55,15 @@ const MAX_LOG_AGE_MS = 24 * 60 * 60 * 1000;
 /** Hard cap on a single entry, so one oversized entry can't dominate the file. */
 export const MAX_LOG_ENTRY_CHARS = 4 * 1024 * 1024;
 
-/** Cap applied to request bodies on the `CRAFT_DEBUG_FULL_BODIES` opt-in path. */
+/** Cap applied to request bodies on the `MEMWISE_DEBUG_FULL_BODIES` opt-in path. */
 export const MAX_LOGGED_BODY_CHARS = 2 * 1024 * 1024;
 
 /**
- * When `CRAFT_DEBUG_FULL_BODIES=1`, request bodies are written to interceptor.log
+ * When `MEMWISE_DEBUG_FULL_BODIES=1`, request bodies are written to interceptor.log
  * instead of being replaced by a size placeholder. Opt-in only — bodies carry user
  * prompts, tool arguments and base64 image payloads (OSS #1033).
  */
-export const DEBUG_FULL_BODIES = process.env.CRAFT_DEBUG_FULL_BODIES === '1';
+export const DEBUG_FULL_BODIES = process.env.MEMWISE_DEBUG_FULL_BODIES === '1';
 
 interface LogLimits {
   maxBytes: number;
@@ -378,7 +378,7 @@ export interface ToolMetadata {
  * - Survives subprocess restarts (session resume) via file persistence
  *
  * The session directory is determined by:
- * - SDK subprocess: CRAFT_SESSION_DIR env var (set by main process before spawn)
+ * - SDK subprocess: MEMWISE_SESSION_DIR env var (set by main process before spawn)
  * - Main process: toolMetadataStore.setSessionDir(path) called during agent creation
  *
  * IMPORTANT: Multiple sessions can run concurrently in the main process (parallel chats,

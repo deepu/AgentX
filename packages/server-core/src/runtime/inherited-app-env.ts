@@ -1,15 +1,15 @@
 /**
- * Guard a headless server against runtime paths inherited from a running Craft app.
+ * Guard a headless server against runtime paths inherited from a running MemWise app.
  *
- * The desktop app publishes its own locations on `process.env` (CRAFT_APP_ROOT,
- * CRAFT_RESOURCES_BASE, CRAFT_UV, CRAFT_BUN, CRAFT_SCRIPTS, …) so the tools it spawns find
+ * The desktop app publishes its own locations on `process.env` (MEMWISE_APP_ROOT,
+ * MEMWISE_RESOURCES_BASE, MEMWISE_UV, MEMWISE_BUN, MEMWISE_SCRIPTS, …) so the tools it spawns find
  * them, and every agent shell inherits them. A server started from such a shell (an agent
  * testing a branch in another worktree) would then resolve the Pi server bundle, the native
  * `claude` binary, uv and bun from the APP's checkout and silently run that code instead of
  * its own.
  *
  * Only applies when this server runs from a source checkout: bundled servers (Docker,
- * `scripts/build-server.ts`) set CRAFT_APP_ROOT themselves and keep honoring it.
+ * `scripts/build-server.ts`) set MEMWISE_APP_ROOT themselves and keep honoring it.
  */
 import { existsSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
@@ -17,9 +17,9 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 export interface InheritedAppEnvResolution {
   /** Root to resolve bundled runtimes from. */
   appRootPath: string
-  /** CRAFT_APP_ROOT that was ignored because it points into another checkout. */
+  /** MEMWISE_APP_ROOT that was ignored because it points into another checkout. */
   ignoredAppRoot?: string
-  /** CRAFT_* variables to drop: paths inside the ignored checkout. */
+  /** MEMWISE_* variables to drop: paths inside the ignored checkout. */
   dropKeys: string[]
 }
 
@@ -47,7 +47,7 @@ export function resolveInheritedAppEnv(
   sourceRoot: string | null,
   cwd: string,
 ): InheritedAppEnvResolution {
-  const configured = env.CRAFT_APP_ROOT?.trim()
+  const configured = env.MEMWISE_APP_ROOT?.trim()
   if (!sourceRoot || !configured || isPathInside(resolve(configured), sourceRoot)) {
     return { appRootPath: configured || cwd, dropKeys: [] }
   }
@@ -55,7 +55,7 @@ export function resolveInheritedAppEnv(
   const foreignRoot = resolve(configured)
   const dropKeys = Object.keys(env).filter((key) => {
     const value = env[key]?.trim()
-    return key.startsWith('CRAFT_') && !!value && isAbsolute(value) && isPathInside(resolve(value), foreignRoot)
+    return key.startsWith('MEMWISE_') && !!value && isAbsolute(value) && isPathInside(resolve(value), foreignRoot)
   })
   return {
     appRootPath: isPathInside(resolve(cwd), sourceRoot) ? cwd : sourceRoot,

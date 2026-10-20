@@ -131,7 +131,7 @@ export const ChatHeader = React.memo(function ChatHeader({
     const route = routes.view.allSessions(sessionId)
     const separator = route.includes('?') ? '&' : '?'
     try {
-      await window.electronAPI?.openUrl(`craftagents://${route}${separator}window=focused`)
+      await window.electronAPI?.openUrl(`memwise://${route}${separator}window=focused`)
     } catch (error) {
       console.error('[ChatHeader] openUrl failed:', error)
     }

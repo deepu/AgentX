@@ -17,7 +17,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
+import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import type { HandlerFn, RequestContext, RpcServer } from '../../transport/types'
 
 interface TransferState {
@@ -47,7 +47,7 @@ const activeTransfers = new Map<string, TransferState>()
 const transferableHandlers = new Map<string, HandlerFn>()
 
 function getTransferTtlMs(): number {
-  const raw = Number(process.env.CRAFT_TRANSFER_TTL_MS)
+  const raw = Number(process.env.MEMWISE_TRANSFER_TTL_MS)
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TRANSFER_TTL_MS
 }
 
@@ -125,7 +125,7 @@ export function registerTransferHandlers(server: RpcServer): void {
     }
 
     const transferId = randomUUID()
-    const dir = join(tmpdir(), `craft-transfer-${transferId}`)
+    const dir = join(tmpdir(), `memwise-transfer-${transferId}`)
     await mkdir(dir, { recursive: true })
 
     const transfer: TransferState = {

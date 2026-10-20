@@ -78,7 +78,7 @@ describe('pi-turn-anchors sidecar', () => {
 })
 
 describe('copyPiTurnAnchorsForBranch', () => {
-  it('copies only anchors whose Craft message id is in the branch path', async () => {
+  it('copies only anchors whose MemWise message id is in the branch path', async () => {
     const src = sessionDir('source')
     const dst = sessionDir('branch')
 

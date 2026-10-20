@@ -7,7 +7,7 @@
 
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, XCircle } from 'lucide-react'
-import { Spinner } from '@craft-agent/ui'
+import { Spinner } from '@memwise/ui'
 import { Info_Alert } from '@/components/info'
 import { cn } from '@/lib/utils'
 import type { TestResult } from './types'

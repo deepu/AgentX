@@ -16,7 +16,7 @@
  */
 
 import * as React from 'react'
-import { AnimatedCollapsibleContent } from '@craft-agent/ui'
+import { AnimatedCollapsibleContent } from '@memwise/ui'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'

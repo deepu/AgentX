@@ -65,16 +65,16 @@ describe('McpClientPool.ensureConnected', () => {
   });
 
   test('refuses stdio configs when local MCP is disabled for the workspace', async () => {
-    const prev = process.env.CRAFT_LOCAL_MCP_ENABLED;
-    process.env.CRAFT_LOCAL_MCP_ENABLED = 'false';
+    const prev = process.env.MEMWISE_LOCAL_MCP_ENABLED;
+    process.env.MEMWISE_LOCAL_MCP_ENABLED = 'false';
     try {
       const pool = new TestPool({ workspaceRootPath: '/tmp/ws-does-not-exist' });
       const stdio: SdkMcpServerConfig = { type: 'stdio', command: 'echo', args: [] };
       await expect(pool.ensureConnected('local', stdio)).rejects.toThrow(/Local MCP is disabled/);
       expect(pool.connectCalls.length).toBe(0);
     } finally {
-      if (prev === undefined) delete process.env.CRAFT_LOCAL_MCP_ENABLED;
-      else process.env.CRAFT_LOCAL_MCP_ENABLED = prev;
+      if (prev === undefined) delete process.env.MEMWISE_LOCAL_MCP_ENABLED;
+      else process.env.MEMWISE_LOCAL_MCP_ENABLED = prev;
     }
   });
 });

@@ -1,7 +1,7 @@
 /**
- * @craft-agent/core
+ * @memwise/core
  *
- * Core types and utilities for Craft Agent.
+ * Core types and utilities for MemWise.
  *
  * NOTE: This package currently only exports types and utilities.
  * Storage, credentials, agent, auth, mcp, and prompts are still

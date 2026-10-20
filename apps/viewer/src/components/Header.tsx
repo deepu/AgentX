@@ -6,9 +6,9 @@ import { Sun, Moon, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 /**
- * CraftAgentLogo - The Craft Agent "C" logo
+ * MemWiseAgentLogo - The MemWise "M" logo
  */
-function CraftAgentLogo({ className }: { className?: string }) {
+function MemWiseAgentLogo({ className }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -16,9 +16,9 @@ function CraftAgentLogo({ className }: { className?: string }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <g transform="translate(3.4502, 3)" fill="currentColor">
+      <g transform="translate(4, 3)" fill="currentColor">
         <path
-          d="M3.17890888,3.6 L3.17890888,0 L16,0 L16,3.6 L3.17890888,3.6 Z M9.642,7.2 L9.64218223,10.8 L0,10.8 L0,3.6 L16,3.6 L16,7.2 L9.642,7.2 Z M3.17890888,18 L3.178,14.4 L0,14.4 L0,10.8 L16,10.8 L16,18 L3.17890888,18 Z"
+          d="M0,0 L6.6667,0 L6.6667,3.6 L9.3333,3.6 L9.3333,0 L16,0 L16,18 L12,18 L12,7.2 L9.3333,7.2 L9.3333,10.8 L6.6667,10.8 L6.6667,7.2 L4,7.2 L4,18 L0,18 Z"
           fillRule="nonzero"
         />
       </g>
@@ -42,9 +42,9 @@ export function Header({ hasSession, sessionTitle, isDark, onToggleTheme, onClea
       <a
         href="https://thecraftagents.com"
         className="hover:opacity-80 transition-opacity"
-        title="Craft Agent"
+        title="MemWise"
       >
-        <CraftAgentLogo className="w-6 h-6 text-[#9570BE]" />
+        <MemWiseAgentLogo className="w-6 h-6 text-[#9570BE]" />
       </a>
 
       {/* Session title - centered */}

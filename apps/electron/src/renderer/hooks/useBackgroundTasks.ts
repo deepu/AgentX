@@ -9,7 +9,7 @@ import { useAtom } from 'jotai'
 import { useCallback } from 'react'
 import { toast } from 'sonner'
 import i18n from 'i18next'
-import type { StopBackgroundTaskResult } from '@craft-agent/shared/protocol'
+import type { StopBackgroundTaskResult } from '@memwise/shared/protocol'
 import { backgroundTasksAtomFamily, type BackgroundTask } from '@/atoms/sessions'
 
 /** How long a chip waits for the SDK's stopped notification before offering Stop again. */

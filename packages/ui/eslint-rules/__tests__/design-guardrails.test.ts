@@ -8,10 +8,10 @@ const paletteRule = require('../no-raw-palette-colors.cjs')
 
 function run(ruleName: string, rule: unknown, code: string) {
   const linter = new Linter({ configType: 'eslintrc' })
-  linter.defineRule(`craft-styles/${ruleName}`, rule as never)
+  linter.defineRule(`memwise-styles/${ruleName}`, rule as never)
   return linter.verify(code, {
     parserOptions: { ecmaVersion: 'latest', sourceType: 'module', ecmaFeatures: { jsx: true } },
-    rules: { [`craft-styles/${ruleName}`]: 'warn' },
+    rules: { [`memwise-styles/${ruleName}`]: 'warn' },
   })
 }
 

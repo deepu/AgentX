@@ -9,7 +9,7 @@
 import * as React from 'react'
 import { useState } from 'react'
 import { Markdown } from '@/components/markdown'
-import { DocumentFormattedMarkdownOverlay } from '@craft-agent/ui'
+import { DocumentFormattedMarkdownOverlay } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 import { Info_FullscreenButton } from './Info_FullscreenButton'
 

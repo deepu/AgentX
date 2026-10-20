@@ -79,12 +79,12 @@ describe('isReadOnlyMcpToolName', () => {
 });
 
 describe('Explore mode with the app default MCP patterns', () => {
-  const originalConfigDir = process.env.CRAFT_CONFIG_DIR;
+  const originalConfigDir = process.env.MEMWISE_CONFIG_DIR;
   const tempDirs: string[] = [];
 
   afterEach(() => {
-    if (originalConfigDir === undefined) delete process.env.CRAFT_CONFIG_DIR;
-    else process.env.CRAFT_CONFIG_DIR = originalConfigDir;
+    if (originalConfigDir === undefined) delete process.env.MEMWISE_CONFIG_DIR;
+    else process.env.MEMWISE_CONFIG_DIR = originalConfigDir;
     permissionsConfigCache.clear();
     for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
@@ -101,7 +101,7 @@ describe('Explore mode with the app default MCP patterns', () => {
       allowedApiEndpoints: [],
       allowedWritePaths: [],
     }));
-    process.env.CRAFT_CONFIG_DIR = configDir;
+    process.env.MEMWISE_CONFIG_DIR = configDir;
     permissionsConfigCache.clear();
     return { workspaceRootPath };
   }

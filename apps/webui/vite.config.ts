@@ -100,7 +100,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'jotai'],
-    exclude: ['@craft-agent/ui'],
+    exclude: ['@memwise/ui'],
     esbuildOptions: {
       supported: { 'top-level-await': true },
       target: 'esnext',
@@ -111,12 +111,12 @@ export default defineConfig({
     open: false,
     host: true,
     // Proxy API + WS to the headless server so the dev bundle on :5175 works
-    // end-to-end with HMR. Target port follows CRAFT_RPC_PORT (default 9100).
-    // Auto-detects TLS: if the server has CRAFT_RPC_TLS_KEY/CERT set, we proxy
+    // end-to-end with HMR. Target port follows MEMWISE_RPC_PORT (default 9100).
+    // Auto-detects TLS: if the server has MEMWISE_RPC_TLS_KEY/CERT set, we proxy
     // over https/wss with secure:false to accept the self-signed dev cert.
     proxy: (() => {
-      const port = process.env.CRAFT_RPC_PORT ?? '9100'
-      const useTls = Boolean(process.env.CRAFT_RPC_TLS_KEY || process.env.CRAFT_RPC_TLS_CERT)
+      const port = process.env.MEMWISE_RPC_PORT ?? '9100'
+      const useTls = Boolean(process.env.MEMWISE_RPC_TLS_KEY || process.env.MEMWISE_RPC_TLS_CERT)
       const httpProto = useTls ? 'https' : 'http'
       const wsProto = useTls ? 'wss' : 'ws'
       const httpTarget = `${httpProto}://127.0.0.1:${port}`

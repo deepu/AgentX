@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import type { DecisionRequest, DecisionResult } from '@craft-agent/shared/decisions'
+import type { DecisionRequest, DecisionResult } from '@memwise/shared/decisions'
 import { packRelevanceCalls, scoreRelevance } from './relevance'
 
 const result = (answers: DecisionResult['answers']): DecisionResult => ({ model: 'm', modelReported: true, requestedModel: 'm', answers, usage: { inputTokens: 1, outputTokens: 0 }, latencyMs: 1, state: { sha256: 'x', bytes: 1, truncated: false } })

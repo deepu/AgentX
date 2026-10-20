@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, Check, ChevronDown, Image as ImageIcon } from 'lucide-react'
-import { Spinner, Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
+import { Spinner, Tooltip, TooltipContent, TooltipTrigger } from '@memwise/ui'
 import * as storage from '@/lib/local-storage'
 import { cn } from '@/lib/utils'
 import {
@@ -19,7 +19,7 @@ import {
 import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 import { ANTHROPIC_MODELS, getModelShortName, type ModelDefinition } from '@config/models'
 import { isCompatProvider, modelSupportsImages, type LlmConnectionWithStatus } from '@config/llm-connections'
-import { THINKING_LEVELS, getThinkingLevelNameKey, type ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
+import { THINKING_LEVELS, getThinkingLevelNameKey, type ThinkingLevel } from '@memwise/shared/agent/thinking-levels'
 import { stripPiPrefixForDisplay } from './model-picker-helpers'
 import type { PickerMode } from './picker-mode'
 import type { ToggleModelVision } from './useModelVisionToggle'

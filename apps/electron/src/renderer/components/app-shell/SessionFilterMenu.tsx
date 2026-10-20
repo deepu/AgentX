@@ -24,7 +24,7 @@ import {
   Trash2,
   X,
 } from "lucide-react"
-import { Tooltip, TooltipTrigger, TooltipContent } from "@craft-agent/ui"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@memwise/ui"
 import { cn } from "@/lib/utils"
 import { isMac } from "@/lib/platform"
 import { HeaderIconButton } from "@/components/ui/HeaderIconButton"
@@ -41,8 +41,8 @@ import {
 import { LabelIcon } from "@/components/ui/label-icon"
 import { filterSessionStatuses as filterLabelMenuStates } from "@/components/ui/label-menu"
 import { createLabelMenuItems, filterItems as filterLabelMenuItems, type LabelMenuItem } from "@/components/ui/label-menu-utils"
-import { findLabelById } from "@craft-agent/shared/labels"
-import type { LabelConfig } from "@craft-agent/shared/labels"
+import { findLabelById } from "@memwise/shared/labels"
+import type { LabelConfig } from "@memwise/shared/labels"
 import type { SessionStatus, SessionStatusId } from "@/config/session-status-config"
 import type { FilterMode } from "./inherited-filter-params"
 import type { ChatGroupingMode } from "./SessionList"

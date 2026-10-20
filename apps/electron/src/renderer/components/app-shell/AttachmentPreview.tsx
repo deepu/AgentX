@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { X, Image as ImageIcon } from "lucide-react"
-import { Spinner, FileTypeIcon, getFileTypeLabel } from "@craft-agent/ui"
+import { Spinner, FileTypeIcon, getFileTypeLabel } from "@memwise/ui"
 import { cn } from "@/lib/utils"
 import type { FileAttachment } from "../../../shared/types"
 

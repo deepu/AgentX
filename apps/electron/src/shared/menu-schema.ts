@@ -13,7 +13,7 @@
  */
 
 import { RPC_CHANNELS } from './types'
-import { FEATURE_FLAGS } from '@craft-agent/shared/feature-flags'
+import { FEATURE_FLAGS } from '@memwise/shared/feature-flags'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -228,7 +228,7 @@ export const MENU_SECTIONS: MenuSection[] = [EDIT_MENU, VIEW_MENU, WINDOW_MENU]
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Root-level leaf actions exposed in the Craft logo menu.
+ * Root-level leaf actions exposed in the MemWise logo menu.
  *
  * Both DesktopAppMenu (dropdown) and MobileAppMenu (full-screen sheet) read from
  * this collection. Desktop renders all four directly inline. Mobile filters out
@@ -276,7 +276,7 @@ export const ROOT_MENU = {
     type: 'action',
     id: 'quit',
     actionId: 'app.quit',
-    labelKey: 'menu.quitCraftAgents',
+    labelKey: 'menu.quitMemWise',
     shortcut: 'CmdOrCtrl+Q',
     shortcutDisplayMac: '⌘Q',
     shortcutDisplayOther: 'Ctrl+Q',

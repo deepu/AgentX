@@ -10,7 +10,7 @@ import {
   DrawerClose,
 } from '@/components/ui/drawer'
 import { cn } from '@/lib/utils'
-import type { PermissionMode } from '@craft-agent/shared/agent/modes'
+import type { PermissionMode } from '@memwise/shared/agent/modes'
 import { useAvailablePermissionModes } from '@/hooks/useAvailablePermissionModes'
 import { PermissionModeIcon as ModeIcon } from '@/components/ui/slash-command-menu'
 import { MODE_CHIP_TONE, MODE_ICON_TONE, knownMode } from './composer-styles'

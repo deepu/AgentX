@@ -32,7 +32,7 @@
 import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react'
 import { flushSync } from 'react-dom'
 import { useAtomValue } from 'jotai'
-import { FlipOnChange, cancelFlip, cancelSlideOut, playSlideX, SPRING, type FlipTarget } from '@craft-agent/ui/motion'
+import { FlipOnChange, cancelFlip, cancelSlideOut, playSlideX, SPRING, type FlipTarget } from '@memwise/ui/motion'
 import { cn } from '@/lib/utils'
 import { useToastAnchor } from '@/components/ui/sonner'
 import { panelStackAtom, focusedPanelIdAtom, focusedPanelRouteAtom } from '@/atoms/panel-stack'

@@ -2,8 +2,8 @@
  * Server DTO types — data shapes used by RPC handlers and SessionManager.
  *
  * These were previously in apps/electron/src/shared/types.ts.
- * Extracted here so handler code in @craft-agent/server-core can import
- * from @craft-agent/shared/protocol without reaching into the app.
+ * Extracted here so handler code in @memwise/server-core can import
+ * from @memwise/shared/protocol without reaching into the app.
  */
 
 import type {
@@ -14,7 +14,7 @@ import type {
   AnnotationV1,
   ContextUsageSnapshot,
   PermissionRequest as BasePermissionRequest,
-} from '@craft-agent/core/types'
+} from '@memwise/core/types'
 import type { PermissionMode } from '../agent/mode-types'
 import type { ThinkingLevel } from '../agent/thinking-levels'
 import type { CustomEndpointConfig } from '../config/llm-connections'
@@ -25,7 +25,7 @@ import type {
 } from '../agent/index'
 
 // Re-export generateMessageId for handler convenience
-export { generateMessageId } from '@craft-agent/core/types'
+export { generateMessageId } from '@memwise/core/types'
 
 // ---------------------------------------------------------------------------
 // Session types
@@ -310,7 +310,7 @@ export interface TaskGenerateResult {
   orchestratorSessionId: string
   /** Slug of the authored spec; empty when generation produced an invalid spec. */
   slug: string
-  /** Parsed TaskSpec when valid (consumers cast to TaskSpec from @craft-agent/shared/tasks). */
+  /** Parsed TaskSpec when valid (consumers cast to TaskSpec from @memwise/shared/tasks). */
   spec?: unknown
   /** The raw task.yaml the orchestrator produced — shown and editable in the editor. */
   yaml: string
@@ -349,7 +349,7 @@ export interface TaskRunSnapshotDto {
 export interface TaskGetResult {
   slug: string
   validation: TaskValidationResultDto
-  /** The parsed TaskSpec (from @craft-agent/shared/tasks) when valid; consumers cast. */
+  /** The parsed TaskSpec (from @memwise/shared/tasks) when valid; consumers cast. */
   spec?: unknown
   /** Active run snapshot when a runId was supplied and known; otherwise null. */
   run?: TaskRunSnapshotDto | null

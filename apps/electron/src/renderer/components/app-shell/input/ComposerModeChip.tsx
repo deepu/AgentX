@@ -8,7 +8,7 @@ import {
   permissionModeCommandsFor,
   type SlashCommandId,
 } from '@/components/ui/slash-command-menu'
-import { isPermissionMode, type PermissionMode } from '@craft-agent/shared/agent/modes'
+import { isPermissionMode, type PermissionMode } from '@memwise/shared/agent/modes'
 import { useAvailablePermissionModes } from '@/hooks/useAvailablePermissionModes'
 import { cn } from '@/lib/utils'
 import { actionHotkeyKeys } from './action-hotkey'
@@ -86,7 +86,7 @@ export function ComposerModeChip({ permissionMode, onPermissionModeChange, sessi
           // Don't auto-focus the text input on touch devices — it pulls up the virtual keyboard
           const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
           if (!isTouchDevice) {
-            window.dispatchEvent(new CustomEvent('craft:focus-input', {
+            window.dispatchEvent(new CustomEvent('memwise:focus-input', {
               detail: { sessionId }
             }))
           }

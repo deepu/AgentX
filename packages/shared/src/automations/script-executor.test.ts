@@ -3,7 +3,7 @@
  *
  * Successor to the pre-rename command-executor tests (recovered from
  * 9f013b3f^): the security model changed from shell + allowlist to
- * argv spawn + workspace containment + CRAFT_*-only env, so the cases
+ * argv spawn + workspace containment + MEMWISE_*-only env, so the cases
  * here assert the new invariants.
  */
 
@@ -100,13 +100,13 @@ describe('script-executor', () => {
     it('passes argv and the provided env (and nothing else CRAFT-relevant)', async () => {
       writeFileSync(
         join(workspaceDir, 'env.ts'),
-        'console.log(JSON.stringify({ argv: process.argv.slice(2), craft: process.env.CRAFT_EVENT, leak: process.env.SCRIPT_EXECUTOR_LEAK_PROBE ?? null }))',
+        'console.log(JSON.stringify({ argv: process.argv.slice(2), craft: process.env.MEMWISE_EVENT, leak: process.env.SCRIPT_EXECUTOR_LEAK_PROBE ?? null }))',
       );
       process.env.SCRIPT_EXECUTOR_LEAK_PROBE = 'should-not-leak';
       try {
         const result = await executeScriptAction(
           action({ script: 'env.ts', args: ['--flag', 'value'] }),
-          ctx({ CRAFT_EVENT: 'SchedulerTick' }),
+          ctx({ MEMWISE_EVENT: 'SchedulerTick' }),
         );
         expect(result.success).toBe(true);
         const parsed = JSON.parse(result.stdout) as { argv: string[]; craft: string; leak: string | null };
@@ -242,33 +242,33 @@ describe('script-executor', () => {
   });
 
   describe('buildScriptEnv', () => {
-    it('is CRAFT_*-only plus documented platform essentials', () => {
-      process.env.CRAFT_TEST_PASSTHROUGH = 'yes';
-      process.env.NOT_CRAFT_SECRET = 'no';
+    it('is MEMWISE_*-only plus documented platform essentials', () => {
+      process.env.MEMWISE_TEST_PASSTHROUGH = 'yes';
+      process.env.NOT_MEMWISE_SECRET = 'no';
       try {
         const env = buildScriptEnv(
           'SchedulerTick',
           { workspaceId: 'ws', timestamp: 123, localTime: '10:00', utcTime: 't' } as never,
           { workspaceRootPath: workspaceDir, page: 'dash' },
         );
-        expect(env.CRAFT_TEST_PASSTHROUGH).toBe('yes');
-        expect(env.NOT_CRAFT_SECRET).toBeUndefined();
-        expect(env.CRAFT_EVENT).toBe('SchedulerTick');
-        expect(env.CRAFT_WORKSPACE_PATH).toBe(workspaceDir);
-        expect(env.CRAFT_PAGE_SLUG).toBe('dash');
-        expect(env.CRAFT_PAGE_DIR).toBe(join(workspaceDir, 'pages', 'dash'));
-        expect(env.CRAFT_PAGE_DATA_DIR).toBe(join(workspaceDir, 'pages', 'dash', 'data'));
+        expect(env.MEMWISE_TEST_PASSTHROUGH).toBe('yes');
+        expect(env.NOT_MEMWISE_SECRET).toBeUndefined();
+        expect(env.MEMWISE_EVENT).toBe('SchedulerTick');
+        expect(env.MEMWISE_WORKSPACE_PATH).toBe(workspaceDir);
+        expect(env.MEMWISE_PAGE_SLUG).toBe('dash');
+        expect(env.MEMWISE_PAGE_DIR).toBe(join(workspaceDir, 'pages', 'dash'));
+        expect(env.MEMWISE_PAGE_DATA_DIR).toBe(join(workspaceDir, 'pages', 'dash', 'data'));
         expect(env.PATH).toBeUndefined();
-        // Every key is CRAFT_* or a documented essential
+        // Every key is MEMWISE_* or a documented essential
         const essentials = new Set(IS_WINDOWS
           ? ['USERPROFILE', 'SYSTEMROOT', 'WINDIR', 'SYSTEMDRIVE', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP']
           : ['HOME']);
         for (const key of Object.keys(env)) {
-          expect(key.startsWith('CRAFT_') || essentials.has(key)).toBe(true);
+          expect(key.startsWith('MEMWISE_') || essentials.has(key)).toBe(true);
         }
       } finally {
-        delete process.env.CRAFT_TEST_PASSTHROUGH;
-        delete process.env.NOT_CRAFT_SECRET;
+        delete process.env.MEMWISE_TEST_PASSTHROUGH;
+        delete process.env.NOT_MEMWISE_SECRET;
       }
     });
   });

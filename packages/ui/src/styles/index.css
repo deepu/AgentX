@@ -1,7 +1,7 @@
 /**
- * @craft-agent/ui — shared stylesheet entry (viewer, marketing).
+ * @memwise/ui — shared stylesheet entry (viewer, marketing).
  *
- *   @import "@craft-agent/ui/styles";
+ *   @import "@memwise/ui/styles";
  *   @source "../**\/*.{tsx,ts}";
  *
  * Tokens (colors, type, radii, elevation, motion, z-index) live in tokens.css — the single

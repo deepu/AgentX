@@ -46,7 +46,7 @@ import { Button } from "@/components/ui/button"
 import { HeaderIconButton } from "@/components/ui/HeaderIconButton"
 import { resolveInheritedFilterParams, type FilterMode } from "./inherited-filter-params"
 import { Separator } from "@/components/ui/separator"
-import { Tooltip, TooltipTrigger, TooltipContent, DocumentFormattedMarkdownOverlay } from "@craft-agent/ui"
+import { Tooltip, TooltipTrigger, TooltipContent, DocumentFormattedMarkdownOverlay } from "@memwise/ui"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -91,7 +91,7 @@ import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSourc
 import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import { sourcesAtom } from "@/atoms/sources"
 import { DECISION_SETTINGS_CHANGED_EVENT, guardedModeAvailableAtom } from "@/atoms/permission-modes"
-import { DEFAULT_PERMISSION_MODES } from "@craft-agent/shared/agent/modes"
+import { DEFAULT_PERMISSION_MODES } from "@memwise/shared/agent/modes"
 import { RtkUpdatePrompt } from "@/components/RtkUpdateDialog"
 import { skillsAtom } from "@/atoms/skills"
 import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute } from "@/atoms/panel-stack"
@@ -103,9 +103,9 @@ import { useContainerWidth } from "@/hooks/useContainerWidth"
 import { LabelIcon, LabelValueTypeIcon } from "@/components/ui/label-icon"
 import { filterSessionStatuses as filterLabelMenuStates } from "@/components/ui/label-menu"
 import { createLabelMenuItems, filterItems as filterLabelMenuItems, type LabelMenuItem } from "@/components/ui/label-menu-utils"
-import { buildLabelTree, getDescendantIds, getLabelDisplayName, flattenLabels, extractLabelId, findLabelById, sortLabelsForDisplay, matchesLabelFilter } from "@craft-agent/shared/labels"
-import type { LabelConfig, LabelTreeNode } from "@craft-agent/shared/labels"
-import { resolveEntityColor } from "@craft-agent/shared/colors"
+import { buildLabelTree, getDescendantIds, getLabelDisplayName, flattenLabels, extractLabelId, findLabelById, sortLabelsForDisplay, matchesLabelFilter } from "@memwise/shared/labels"
+import type { LabelConfig, LabelTreeNode } from "@memwise/shared/labels"
+import { resolveEntityColor } from "@memwise/shared/colors"
 import * as storage from "@/lib/local-storage"
 import { toast } from "sonner"
 import { navigate, routes } from "@/lib/navigate"
@@ -1052,7 +1052,7 @@ function AppShellContent({
       const filesArray = Array.from(files)
       const targetSessionId = focusedSessionId ?? session.selected
       if (!targetSessionId) return
-      window.dispatchEvent(new CustomEvent('craft:paste-files', {
+      window.dispatchEvent(new CustomEvent('memwise:paste-files', {
         detail: { files: filesArray, sessionId: targetSessionId }
       }))
     }

@@ -5,8 +5,8 @@
  * Light mode is default, with optional dark mode overrides.
  *
  * Storage locations:
- * - App override:   ~/.craft-agent/theme.json
- * - Preset themes:  ~/.craft-agent/themes/*.json
+ * - App override:   ~/.memwise/theme.json
+ * - Preset themes:  ~/.memwise/themes/*.json
  */
 
 import {
@@ -216,7 +216,7 @@ export function getBackgroundColor(isDark: boolean): string {
 }
 
 /**
- * Default theme ("Craft Agents"): cool neutrals from the Craft app and the brand purple (design spec §2.2).
+ * Default theme ("MemWise"): cool neutrals and the brand purple (design spec §2.2).
  * Its solved roles are static CSS in packages/ui/src/styles/tokens.css (asserted by theme-roles.test.ts).
  */
 export const DEFAULT_THEME: ThemeOverrides = {

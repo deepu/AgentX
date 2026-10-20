@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Hand, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { PermissionRisk } from '@craft-agent/core/types'
+import type { PermissionRisk } from '@memwise/core/types'
 import type { PermissionRequest as PermissionRequestType } from '../../../../../shared/types'
 import type { PermissionResponse } from './types'
 import {

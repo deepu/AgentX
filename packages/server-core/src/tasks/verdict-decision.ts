@@ -12,7 +12,7 @@
  * unsure, failed) leaves the runner exactly as it was.
  */
 
-import type { ChoiceQuestion, DecisionRequest, DecisionResult, NoulQuestion } from '@craft-agent/shared/decisions'
+import type { ChoiceQuestion, DecisionRequest, DecisionResult, NoulQuestion } from '@memwise/shared/decisions'
 import { recordDecisionOutcome } from '../decisions/decision-point'
 
 /** Winning option needs this much confidence… */

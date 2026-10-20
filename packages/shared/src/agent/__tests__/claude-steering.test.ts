@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test';
-import type { AgentEvent } from '@craft-agent/core/types';
+import type { AgentEvent } from '@memwise/core/types';
 import { PendingSteers } from '../backend/claude/pending-steers.ts';
 import { ClaudeAgent } from '../claude-agent.ts';
 import { AbortReason } from '../backend/types.ts';

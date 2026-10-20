@@ -1,0 +1,16 @@
+{
+  "name": "@memwise/defs",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "File formats, JSON Schemas, checks and the definitions indexer (MemWise)",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

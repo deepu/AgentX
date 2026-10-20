@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useTheme } from '@/hooks/useTheme'
 import { useSetAtom, useStore, useAtomValue, useAtom } from 'jotai'
 import type { Session, Workspace, SessionEvent, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, SetupNeeds, SessionStatus, NewChatActionParams, ContentBadge, LlmConnectionWithStatus, PermissionModeState } from '../shared/types'
-import type { SessionDraft, DraftAttachmentRef } from '@craft-agent/shared/config'
+import type { SessionDraft, DraftAttachmentRef } from '@memwise/shared/config'
 import type { SessionOptions, SessionOptionUpdates } from './hooks/useSessionOptions'
 import { defaultSessionOptions, mergeSessionOptions } from './hooks/useSessionOptions'
 import { generateMessageId } from '../shared/types'
@@ -15,7 +15,7 @@ import { OnboardingWizard, ReauthScreen } from '@/components/onboarding'
 import { WorkspacePicker } from '@/components/workspace'
 import { ResetConfirmationDialog } from '@/components/ResetConfirmationDialog'
 import { SplashScreen } from '@/components/SplashScreen'
-import { TooltipProvider } from '@craft-agent/ui'
+import { TooltipProvider } from '@memwise/ui'
 import { FocusProvider } from '@/context/FocusContext'
 import { ModalProvider } from '@/context/ModalContext'
 import { DismissibleLayerProvider } from '@/context/DismissibleLayerContext'
@@ -31,8 +31,8 @@ import { stripMarkdown } from './utils/text'
 import { coerceInputText } from './lib/input-text'
 import { getSessionsToRefreshAfterStaleReconnect } from './lib/reconnect-recovery'
 import { formatSessionLoadFailure, shouldTreatSessionLoadFailureAsTransportFallback } from './lib/session-load'
-import { extractWorkspaceSlugFromPath } from '@craft-agent/shared/utils/workspace-slug'
-import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels'
+import { extractWorkspaceSlugFromPath } from '@memwise/shared/utils/workspace-slug'
+import { DEFAULT_THINKING_LEVEL } from '@memwise/shared/agent/thinking-levels'
 import { initRendererPerf } from './lib/perf'
 import {
   initializeSessionsAtom,
@@ -70,7 +70,7 @@ import {
   CodePreviewOverlay,
   DocumentFormattedMarkdownOverlay,
   JSONPreviewOverlay,
-} from '@craft-agent/ui'
+} from '@memwise/ui'
 import { useLinkInterceptor, type FilePreviewState } from '@/hooks/useLinkInterceptor'
 import { useTransportConnectionState } from '@/hooks/useTransportConnectionState'
 import { useStaleSessionRecovery } from '@/hooks/useStaleSessionRecovery'
@@ -429,7 +429,7 @@ export default function App() {
     setSplashHidden(true)
   }, [])
 
-  // Theme state (ThemeProvider injects CSS variables, incl. ~/.craft-agent/theme.json overrides).
+  // Theme state (ThemeProvider injects CSS variables, incl. ~/.memwise/theme.json overrides).
   // shikiTheme is passed to ShikiThemeProvider to ensure correct syntax highlighting
   // theme for dark-only themes in light system mode
   const { shikiTheme, isDark } = useTheme()
@@ -744,7 +744,7 @@ export default function App() {
         setSetupNeeds(needs)
 
         if (needs.isFullyConfigured) {
-          // If no workspace is selected (thin client without CRAFT_WORKSPACE_ID),
+          // If no workspace is selected (thin client without MEMWISE_WORKSPACE_ID),
           // show workspace picker before entering the main app
           if (!wsId) {
             setAppState('workspace-picker')
@@ -915,7 +915,7 @@ export default function App() {
             handleInputChange(sessionId, restored)
             // handleInputChange updates the ref but ChatPage has local state.
             // Dispatch a custom event so ChatPage re-reads the draft.
-            window.dispatchEvent(new CustomEvent('craft:restore-input', {
+            window.dispatchEvent(new CustomEvent('memwise:restore-input', {
               detail: { sessionId, text: restored },
             }))
             break
@@ -995,7 +995,7 @@ export default function App() {
       // persisted readiness and claims dispatch atomically; this event alone is
       // not proof that Accept & Compact may execute the plan.
       if (event.type === 'info' && event.statusType === 'compaction_complete') {
-        window.dispatchEvent(new CustomEvent('craft:compaction-complete', {
+        window.dispatchEvent(new CustomEvent('memwise:compaction-complete', {
           detail: { sessionId }
         }))
       }
@@ -1955,7 +1955,7 @@ export default function App() {
     openNewChat,
   ])
 
-  // Platform actions for @craft-agent/ui components (overlays, etc.)
+  // Platform actions for @memwise/ui components (overlays, etc.)
   // Memoized to prevent re-renders when these callbacks don't change
   // NOTE: Must be defined before early returns to maintain consistent hook order
   const platformActions = useMemo(() => ({

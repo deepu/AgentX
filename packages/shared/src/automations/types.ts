@@ -11,7 +11,7 @@ import type { ThinkingLevel } from '../agent/thinking-levels.ts';
 // Event Types
 // ============================================================================
 
-/** App events - handled by Craft */
+/** App events - handled by MemWise */
 export type AppEvent =
   | 'LabelAdd'
   | 'LabelRemove'
@@ -54,7 +54,7 @@ export const AGENT_EVENTS: AgentEvent[] = [
 // Action Definitions
 // ============================================================================
 
-/** A prompt action - sends a prompt to Craft Agent */
+/** A prompt action - sends a prompt to MemWise */
 export interface PromptAction {
   type: 'prompt';
   prompt: string;
@@ -109,8 +109,8 @@ export type ScriptActionRuntime = 'bun' | 'node' | 'python3';
  * - The script path is workspace-relative and must stay within the workspace
  *   (symlink-aware check at execution time).
  * - argv spawn through resolveScriptRuntime — no shell interpretation.
- * - The child env contains ONLY CRAFT_* variables (event context + workspace
- *   paths + pass-through of the user's CRAFT_* exports), never full process.env.
+ * - The child env contains ONLY MEMWISE_* variables (event context + workspace
+ *   paths + pass-through of the user's MEMWISE_* exports), never full process.env.
  * - Runs of the same matcher never overlap (per-matcher concurrency lock).
  */
 export interface ScriptAction {
@@ -125,7 +125,7 @@ export interface ScriptAction {
   timeoutMs?: number;
   /**
    * Page slug this script refreshes. When set, the executor injects
-   * CRAFT_PAGE_* env vars and records the outcome on the page's page.json
+   * MEMWISE_PAGE_* env vars and records the outcome on the page's page.json
    * (the completion marker the config watcher turns into `pages:changed`).
    */
   page?: string;
@@ -340,7 +340,7 @@ export interface AutomationResult {
   event: string;
   matched: number;
   results: ActionExecutionResult[];
-  /** Prompts that should be executed by Craft Agent (with metadata) */
+  /** Prompts that should be executed by MemWise (with metadata) */
   pendingPrompts: PendingPrompt[];
 }
 

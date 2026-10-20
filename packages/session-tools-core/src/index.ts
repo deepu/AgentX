@@ -82,7 +82,7 @@ export {
   getEffectiveHeaderNames,
 } from './source-helpers.ts';
 
-// API credential parsing and request-auth assembly (shared with @craft-agent/shared)
+// API credential parsing and request-auth assembly (shared with @memwise/shared)
 export {
   isBasicAuthCredential,
   isMultiHeaderCredential,

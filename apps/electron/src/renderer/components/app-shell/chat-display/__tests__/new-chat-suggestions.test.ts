@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import type { LoadedSource } from '@craft-agent/shared/sources/types'
+import type { LoadedSource } from '@memwise/shared/sources/types'
 import {
   newChatSuggestionKind,
   newChatSuggestionLabel,

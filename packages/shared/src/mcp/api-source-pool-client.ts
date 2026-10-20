@@ -3,7 +3,7 @@
  *
  * Connects to an in-process McpServer (created by createSdkMcpServer) via
  * in-memory transport, exposing it through the same PoolClient interface
- * that CraftMcpClient uses for remote MCP sources.
+ * that MemWiseMcpClient uses for remote MCP sources.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';

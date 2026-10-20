@@ -3,7 +3,7 @@
  *
  * Every text-bearing role (text tiers, status/accent text, focus ring, control border, solid fills and
  * their labels) is SOLVED against the worst surface it can sit on, so bundled presets, user themes and
- * `~/.craft-agent/theme.json` overrides all keep WCAG AA without per-theme tuning.
+ * `~/.memwise/theme.json` overrides all keep WCAG AA without per-theme tuning.
  *
  * Pure module: no DOM, no Node APIs — usable in main, renderer, server and tests.
  *

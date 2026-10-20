@@ -54,7 +54,7 @@ export interface SessionEvent {
   [key: string]: unknown
 }
 
-/** PermissionRequest shape from @craft-agent/core. */
+/** PermissionRequest shape from @memwise/core. */
 interface PermissionRequest {
   requestId: string
   toolName: string

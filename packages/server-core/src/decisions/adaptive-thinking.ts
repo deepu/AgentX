@@ -15,9 +15,9 @@
  * shows per thinking level how often the user pushed back.
  */
 
-import type { ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
-import { THINKING_LEVEL_IDS } from '@craft-agent/shared/agent/thinking-levels'
-import type { DecisionRequest, DecisionResult } from '@craft-agent/shared/decisions'
+import type { ThinkingLevel } from '@memwise/shared/agent/thinking-levels'
+import { THINKING_LEVEL_IDS } from '@memwise/shared/agent/thinking-levels'
+import type { DecisionRequest, DecisionResult } from '@memwise/shared/decisions'
 import { FOREGROUND_MAX_DEADLINE_MS, openDecisionPoint, recordDecisionFollowUp, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 
 /** The rated level must come with this much confidence. */

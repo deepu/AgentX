@@ -5,9 +5,9 @@
  * renderer, and binding store together. One instance per workspace.
  */
 
-import type { ISessionManager } from '@craft-agent/server-core/handlers'
-import type { PushTarget } from '@craft-agent/shared/protocol'
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
+import type { ISessionManager } from '@memwise/server-core/handlers'
+import type { PushTarget } from '@memwise/shared/protocol'
+import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import {
   evaluateBindingAccess,
   evaluatePreBindingAccess,

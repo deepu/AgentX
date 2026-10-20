@@ -1,6 +1,6 @@
 /**
  * Adversarial log test: a query-auth source's credential must never reach the
- * debug log. executeApiRequest logs "{method} {url}" under CRAFT_DEBUG, and
+ * debug log. executeApiRequest logs "{method} {url}" under MEMWISE_DEBUG, and
  * for `auth.type === 'query'` buildUrl embeds the live credential in that URL
  * (`?api_key=…`) — this test captures the real stderr sink and asserts the
  * secret is absent, so reverting the redaction at the call site fails here.

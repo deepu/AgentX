@@ -87,7 +87,7 @@ describe('parsePageBridgeMessage', () => {
     expect(parsePageBridgeMessage(null)).toBeNull()
     expect(parsePageBridgeMessage('hi')).toBeNull()
     expect(parsePageBridgeMessage({ type: 'ready' })).toBeNull()
-    expect(parsePageBridgeMessage({ protocol: 'craft-pages/v0', type: 'ready' })).toBeNull()
+    expect(parsePageBridgeMessage({ protocol: 'memwise-pages/v0', type: 'ready' })).toBeNull()
     expect(parsePageBridgeMessage({ protocol: PAGE_BRIDGE_PROTOCOL, type: 'eval' })).toBeNull()
   })
 
@@ -232,7 +232,7 @@ describe('isSafeExternalUrl', () => {
     expect(isSafeExternalUrl('http://example.com')).toBe(true)
     expect(isSafeExternalUrl('file:///etc/passwd')).toBe(false)
     expect(isSafeExternalUrl('javascript:alert(1)')).toBe(false)
-    expect(isSafeExternalUrl('craftagents://action/new-chat')).toBe(false)
+    expect(isSafeExternalUrl('memwise://action/new-chat')).toBe(false)
     expect(isSafeExternalUrl('not a url')).toBe(false)
   })
 })

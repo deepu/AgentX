@@ -1,12 +1,12 @@
 {
-  "name": "@craft-agent/cli",
+  "name": "@memwise/cli",
   "version": "0.15.3",
   "license": "Apache-2.0",
-  "description": "Terminal client for Craft Agent server",
+  "description": "Terminal client for MemWise server",
   "type": "module",
   "main": "src/index.ts",
   "bin": {
-    "craft-cli": "src/index.ts"
+    "memwise-cli": "src/index.ts"
   },
   "scripts": {
     "start": "bun run src/index.ts",
@@ -14,8 +14,8 @@
     "test": "bun test src/"
   },
   "dependencies": {
-    "@craft-agent/shared": "workspace:*",
-    "@craft-agent/server-core": "workspace:*"
+    "@memwise/shared": "workspace:*",
+    "@memwise/server-core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

@@ -19,7 +19,7 @@
  *                           written atomically by refresh scripts
  *
  * These types are environment-agnostic (renderer/main/webui safe). Storage,
- * validation, and execution live in @craft-agent/shared/pages.
+ * validation, and execution live in @memwise/shared/pages.
  */
 
 // ============================================================================

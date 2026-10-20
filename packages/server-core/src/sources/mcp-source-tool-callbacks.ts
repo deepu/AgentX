@@ -14,13 +14,13 @@
  * maps its SDK objects onto the plain session-tools-core shapes.
  */
 
-import type { McpClientPool, McpPromptListing, McpResourceListing } from '@craft-agent/shared/mcp'
+import type { McpClientPool, McpPromptListing, McpResourceListing } from '@memwise/shared/mcp'
 import type {
   McpSourcePrompt,
   McpSourceResource,
   McpSourceResourceTemplate,
   McpSourceToolCallbacks,
-} from '@craft-agent/session-tools-core'
+} from '@memwise/session-tools-core'
 
 /** The pool methods the callbacks use (a structural slice, so tests can pass a fake). */
 export type McpSourcePool = Pick<McpClientPool, 'listResources' | 'readResource' | 'listPrompts' | 'getPrompt'>

@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { PageActionGrant, PageActionRequest, PageConfig, PageRenderLease } from '@craft-agent/core';
+import type { PageActionGrant, PageActionRequest, PageConfig, PageRenderLease } from '@memwise/core';
 import {
   MAX_LIVE_LEASES,
   PAGE_ACTION_MAX_IN_FLIGHT_PER_LEASE,

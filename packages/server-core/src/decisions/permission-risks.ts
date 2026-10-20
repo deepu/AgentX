@@ -8,8 +8,8 @@
  * buttons and its outcome are unchanged, and no answer means no badges.
  */
 
-import type { PermissionRisk } from '@craft-agent/core/types'
-import type { DecisionRequest, DecisionResult } from '@craft-agent/shared/decisions'
+import type { PermissionRisk } from '@memwise/core/types'
+import type { DecisionRequest, DecisionResult } from '@memwise/shared/decisions'
 import { openDecisionPoint, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 
 /** "Yes" probability that shows a badge. */

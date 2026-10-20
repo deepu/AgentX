@@ -8,7 +8,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { LANGUAGES, type LanguageCode } from '@craft-agent/shared/i18n'
+import { LANGUAGES, type LanguageCode } from '@memwise/shared/i18n'
 import type { ColumnDef } from '@tanstack/react-table'
 import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
@@ -271,7 +271,7 @@ export default function AppearanceSettingsPage() {
           window.electronAPI.getHomeDir(),
         ])
         setToolIcons(mappings)
-        setToolIconsJsonPath(`${homeDir}/.craft-agent/tool-icons/tool-icons.json`)
+        setToolIconsJsonPath(`${homeDir}/.memwise/tool-icons/tool-icons.json`)
       } catch (error) {
         console.error('Failed to load tool icon mappings:', error)
       }

@@ -50,7 +50,7 @@ export function SessionInfoPopover({
 
     if (!nextOpen) {
       requestAnimationFrame(() => {
-        window.dispatchEvent(new CustomEvent('craft:focus-input', {
+        window.dispatchEvent(new CustomEvent('memwise:focus-input', {
           detail: { sessionId },
         }))
       })

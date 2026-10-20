@@ -2,8 +2,11 @@
  * Auto-update module using electron-updater
  *
  * Handles checking for updates, downloading, and installing via the standard
- * electron-updater library. Updates are served from https://thecraftagents.com/electron/latest
- * using the generic provider (YAML manifests + binaries on R2/S3).
+ * electron-updater library, using the generic provider (YAML manifests + binaries on R2/S3).
+ *
+ * MemWise has no update feed yet. The feed inherited from Craft Agents served
+ * Craft's own builds, so updates are off unless MEMWISE_UPDATE_URL names a feed;
+ * until then a check reports no update and never touches the network.
  *
  * Platform behavior:
  * - macOS: Downloads zip, extracts and swaps app bundle atomically
@@ -20,14 +23,14 @@ import { platform } from 'os'
 import * as path from 'path'
 import * as fs from 'fs'
 import { mainLog, autoUpdateLog } from './logger'
-import { getAppVersion } from '@craft-agent/shared/version'
+import { getAppVersion } from '@memwise/shared/version'
 import {
   getDismissedUpdateVersion,
   clearDismissedUpdateVersion,
-} from '@craft-agent/shared/config'
-import { readJsonFileSync } from '@craft-agent/shared/utils/files'
+} from '@memwise/shared/config'
+import { readJsonFileSync } from '@memwise/shared/utils/files'
 import { RPC_CHANNELS, type UpdateInfo } from '../shared/types'
-import type { EventSink } from '@craft-agent/server-core/transport'
+import type { EventSink } from '@memwise/server-core/transport'
 
 // Platform detection
 const PLATFORM = platform()
@@ -153,6 +156,13 @@ function broadcastDownloadProgress(progress: number): void {
 }
 
 // ─── Configure electron-updater ───────────────────────────────────────────────
+
+/** Update feed (generic provider). Unset = updates disabled. */
+const UPDATE_FEED_URL = process.env.MEMWISE_UPDATE_URL?.trim() || null
+
+if (UPDATE_FEED_URL) {
+  autoUpdater.setFeedURL({ provider: 'generic', url: UPDATE_FEED_URL })
+}
 
 // Auto-download updates in the background after detection
 autoUpdater.autoDownload = true
@@ -358,6 +368,11 @@ function checkForExistingDownload(): { exists: boolean; version?: string } {
  */
 export async function checkForUpdates(options: CheckOptions = {}): Promise<UpdateInfo> {
   const { autoDownload = true } = options
+
+  if (!UPDATE_FEED_URL) {
+    mainLog.info('[auto-update] No update feed configured (MEMWISE_UPDATE_URL); skipping check')
+    return getUpdateInfo()
+  }
 
   // Temporarily override autoDownload for this check if needed
   // (e.g., manual check from settings shouldn't auto-download on metered connections)

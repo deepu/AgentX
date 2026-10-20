@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
-import { TWEEN } from '@craft-agent/ui/motion'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@memwise/ui'
+import { TWEEN } from '@memwise/ui/motion'
 import type { FollowUpInputItem } from './FreeFormInput'
 
 function formatFollowUpChipText(text: string, fallback: string, maxLength = 50): string {

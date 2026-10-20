@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import type { DecisionResult } from '@craft-agent/shared/decisions'
+import type { DecisionResult } from '@memwise/shared/decisions'
 import {
   buildVerdictDecisionRequest,
   classifyVerdictWithDecision,

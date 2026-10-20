@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { PendingPrompt } from '@craft-agent/shared/automations'
+import type { PendingPrompt } from '@memwise/shared/automations'
 import { MAX_AUTOMATION_CHAIN_DEPTH, SessionManager, buildActivationRetryMessage, createManagedSession } from './SessionManager.ts'
 
 // Found in a decision-harness test run: an automation's own session got the label it listens to

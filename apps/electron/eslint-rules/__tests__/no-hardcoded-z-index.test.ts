@@ -7,7 +7,7 @@ const rule = require('../no-hardcoded-z-index.cjs')
 
 function runRule(code: string) {
   const linter = new Linter({ configType: 'eslintrc' })
-  linter.defineRule('craft-styles/no-hardcoded-z-index', rule)
+  linter.defineRule('memwise-styles/no-hardcoded-z-index', rule)
 
   return linter.verify(code, {
     parserOptions: {
@@ -15,7 +15,7 @@ function runRule(code: string) {
       sourceType: 'module',
     },
     rules: {
-      'craft-styles/no-hardcoded-z-index': 'error',
+      'memwise-styles/no-hardcoded-z-index': 'error',
     },
   })
 }

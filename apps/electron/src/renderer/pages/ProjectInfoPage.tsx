@@ -25,7 +25,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { PROJECT_COLOR_PALETTE } from '@/utils/project-colors'
 import { InlineColorPickerRow } from '@/components/ui/inline-color-picker-row'
-import type { LoadedProject, ProjectAsset } from '@craft-agent/shared/projects/types'
+import type { LoadedProject, ProjectAsset } from '@memwise/shared/projects/types'
 
 interface ProjectInfoPageProps {
   projectSlug: string

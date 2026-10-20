@@ -32,9 +32,9 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { MemoizedMarkdown, Spinner } from '@craft-agent/ui'
-import { SPRING } from '@craft-agent/ui/motion'
-import type { BackgroundTaskOutput, BackgroundTaskStep } from '@craft-agent/shared/protocol'
+import { MemoizedMarkdown, Spinner } from '@memwise/ui'
+import { SPRING } from '@memwise/ui/motion'
+import type { BackgroundTaskOutput, BackgroundTaskStep } from '@memwise/shared/protocol'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { BackgroundTask } from '@/atoms/sessions'
 import { cn } from '@/lib/utils'

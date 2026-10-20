@@ -1,5 +1,5 @@
 import * as React from 'react'
-import type { FlipTarget } from '@craft-agent/ui/motion'
+import type { FlipTarget } from '@memwise/ui/motion'
 
 export interface ListReorderFlipOptions {
   /** Attribute holding each row's stable id (rows that change group are new elements). */

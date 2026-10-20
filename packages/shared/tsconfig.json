@@ -23,10 +23,10 @@
     "noPropertyAccessFromIndexSignature": false,
     "baseUrl": ".",
     "paths": {
-      "@craft-agent/core": ["../core/src/index.ts"],
-      "@craft-agent/core/*": ["../core/src/*"],
-      "@craft-agent/shared": ["./src/index.ts"],
-      "@craft-agent/shared/*": ["./src/*"]
+      "@memwise/core": ["../core/src/index.ts"],
+      "@memwise/core/*": ["../core/src/*"],
+      "@memwise/shared": ["./src/index.ts"],
+      "@memwise/shared/*": ["./src/*"]
     }
   },
   "include": ["src/**/*"],

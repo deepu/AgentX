@@ -64,7 +64,7 @@ export const DECISION_PROVIDER_PRESETS: Record<DecisionProviderId, DecisionProvi
     keyPlaceholder: 'sk-or-v1-...',
     dashboardUrl: 'https://openrouter.ai/settings/keys',
     docsUrl: 'https://openrouter.ai/typesafe/jev-1.13',
-    extraHeaders: { 'X-Title': 'Craft Agents' },
+    extraHeaders: { 'X-Title': 'MemWise' },
     requiresKey: true,
     reusableConnectionProviders: ['openrouter'],
   },

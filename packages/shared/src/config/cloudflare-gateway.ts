@@ -3,7 +3,7 @@
  *
  * The Pi SDK needs an API token plus the account and gateway ids, which it
  * substitutes into every model URL (`gateway.ai.cloudflare.com/v1/{account}/{gateway}/…`)
- * from `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_GATEWAY_ID`. Craft's API-key form has a
+ * from `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_GATEWAY_ID`. MemWise's API-key form has a
  * key and a base URL, so the user pastes the gateway URL from the Cloudflare
  * dashboard and both ids are read from it.
  *

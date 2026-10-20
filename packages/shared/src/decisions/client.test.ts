@@ -96,11 +96,11 @@ describe('SystemOneClient.decide', () => {
 
   it('sends object state as JSON, adds preset headers, and honours a per-call model override', async () => {
     const { fetch, calls } = fetchStub(() => jsonResponse({ ...RESPONSE, model: 'typesafe/jev-1.13' }));
-    const c = client(fetch, { baseUrl: 'https://openrouter.ai/api/', model: 'typesafe/jev-1.13', extraHeaders: { 'X-Title': 'Craft Agents' } });
+    const c = client(fetch, { baseUrl: 'https://openrouter.ai/api/', model: 'typesafe/jev-1.13', extraHeaders: { 'X-Title': 'MemWise' } });
     const result = await c.decide({ ...REQUEST, state: { message: 'hi', order: { id: 'A-1' } }, model: 'typesafe/jev-1.13' });
 
     expect(calls[0]!.url).toBe('https://openrouter.ai/api/v1/systemone');
-    expect((calls[0]!.init.headers as Record<string, string>)['X-Title']).toBe('Craft Agents');
+    expect((calls[0]!.init.headers as Record<string, string>)['X-Title']).toBe('MemWise');
     const body = JSON.parse(String(calls[0]!.init.body));
     expect(body.state).toEqual({ message: 'hi', order: { id: 'A-1' } });
     expect(result.model).toBe('typesafe/jev-1.13');
@@ -213,7 +213,7 @@ describe('prepareDecisionState', () => {
     expect(prepared.digest.originalBytes).toBe(10_000);
     expect(prepared.digest.bytes).toBeLessThanOrEqual(1_000);
     expect(typeof prepared.state).toBe('string');
-    expect(prepared.state as string).toContain('[state truncated by Craft Agents]');
+    expect(prepared.state as string).toContain('[state truncated by MemWise]');
     expect(prepared.state as string).not.toContain('�');
 
     const object = prepareDecisionState({ text: 'x'.repeat(5_000) }, 500);

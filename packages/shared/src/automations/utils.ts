@@ -223,38 +223,38 @@ export function cleanEnv(): Record<string, string> {
 const PAYLOAD_SKIP_KEYS = new Set(['sessionId', 'sessionName', 'workspaceId', 'timestamp']);
 
 /**
- * Build the base CRAFT_* environment variables shared by both prompt and webhook actions.
+ * Build the base MEMWISE_* environment variables shared by both prompt and webhook actions.
  * Contains event info, session metadata, scheduler time, and payload fields (unsanitized).
  */
 function buildBaseEventEnv(event: AutomationEvent, payload: BaseEventPayload): Record<string, string> {
   const env: Record<string, string> = {
-    CRAFT_EVENT: event,
-    CRAFT_EVENT_DATA: JSON.stringify(payload),
+    MEMWISE_EVENT: event,
+    MEMWISE_EVENT_DATA: JSON.stringify(payload),
   };
 
-  if (payload.sessionId) env.CRAFT_SESSION_ID = payload.sessionId;
-  if (payload.sessionName) env.CRAFT_SESSION_NAME = payload.sessionName;
-  if (payload.workspaceId) env.CRAFT_WORKSPACE_ID = payload.workspaceId;
+  if (payload.sessionId) env.MEMWISE_SESSION_ID = payload.sessionId;
+  if (payload.sessionName) env.MEMWISE_SESSION_NAME = payload.sessionName;
+  if (payload.workspaceId) env.MEMWISE_WORKSPACE_ID = payload.workspaceId;
 
   // Session metadata as JSON
   const sessionMetadata: Record<string, string> = {};
   if (payload.sessionId) sessionMetadata.id = payload.sessionId;
   if (payload.sessionName) sessionMetadata.name = payload.sessionName;
   if (Object.keys(sessionMetadata).length > 0) {
-    env.CRAFT_SESSION_METADATA = JSON.stringify(sessionMetadata);
+    env.MEMWISE_SESSION_METADATA = JSON.stringify(sessionMetadata);
   }
 
   // Local time for scheduler events
   if (event === 'SchedulerTick') {
     const now = new Date();
-    env.CRAFT_LOCAL_TIME = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
-    env.CRAFT_LOCAL_DATE = now.toISOString().split('T')[0]!;
+    env.MEMWISE_LOCAL_TIME = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    env.MEMWISE_LOCAL_DATE = now.toISOString().split('T')[0]!;
   }
 
-  // Payload fields as CRAFT_ vars (raw — callers apply sanitization if needed)
+  // Payload fields as MEMWISE_ vars (raw — callers apply sanitization if needed)
   for (const [key, value] of Object.entries(payload)) {
     if (PAYLOAD_SKIP_KEYS.has(key)) continue;
-    const envKey = `CRAFT_${toSnakeCase(key).toUpperCase()}`;
+    const envKey = `MEMWISE_${toSnakeCase(key).toUpperCase()}`;
     env[envKey] = typeof value === 'string' ? value : String(value);
   }
 
@@ -270,12 +270,12 @@ export function buildEnvFromPayload(event: AutomationEvent, payload: BaseEventPa
   const env: Record<string, string> = { ...cleanEnv(), ...base };
 
   // Sanitize session name for shell context
-  if (payload.sessionName) env.CRAFT_SESSION_NAME = sanitizeForShell(payload.sessionName);
+  if (payload.sessionName) env.MEMWISE_SESSION_NAME = sanitizeForShell(payload.sessionName);
 
   // Sanitize payload field values for shell context
   for (const [key, value] of Object.entries(payload)) {
     if (PAYLOAD_SKIP_KEYS.has(key)) continue;
-    const envKey = `CRAFT_${toSnakeCase(key).toUpperCase()}`;
+    const envKey = `MEMWISE_${toSnakeCase(key).toUpperCase()}`;
     env[envKey] = typeof value === 'string' ? sanitizeForShell(value) : String(value);
   }
 
@@ -288,23 +288,23 @@ export function buildEnvFromPayload(event: AutomationEvent, payload: BaseEventPa
  * Unlike buildEnvFromPayload (used by prompt actions), this:
  * - Does NOT spread process.env (no secret leakage)
  * - Does NOT apply shell sanitization (irrelevant for HTTP context)
- * - Only injects CRAFT_WH_* user-defined vars from process.env (webhook secrets)
- * - Includes CRAFT_* system vars derived from the event payload
+ * - Only injects MEMWISE_WH_* user-defined vars from process.env (webhook secrets)
+ * - Includes MEMWISE_* system vars derived from the event payload
  *
  * Users set webhook secrets in their shell profile:
- *   export CRAFT_WH_SLACK_URL="https://hooks.slack.com/services/T.../B.../xxx"
- *   export CRAFT_WH_DISCORD_TOKEN="abc123"
+ *   export MEMWISE_WH_SLACK_URL="https://hooks.slack.com/services/T.../B.../xxx"
+ *   export MEMWISE_WH_DISCORD_TOKEN="abc123"
  *
  * Then reference them in automations.json:
- *   "url": "${CRAFT_WH_SLACK_URL}"
- *   "headers": { "Authorization": "Bearer ${CRAFT_WH_DISCORD_TOKEN}" }
+ *   "url": "${MEMWISE_WH_SLACK_URL}"
+ *   "headers": { "Authorization": "Bearer ${MEMWISE_WH_DISCORD_TOKEN}" }
  */
 export function buildWebhookEnv(event: AutomationEvent, payload: BaseEventPayload): Record<string, string> {
   const env = buildBaseEventEnv(event, payload);
 
-  // User-defined webhook secrets: only CRAFT_WH_* from process.env
+  // User-defined webhook secrets: only MEMWISE_WH_* from process.env
   for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith('CRAFT_WH_') && value !== undefined) {
+    if (key.startsWith('MEMWISE_WH_') && value !== undefined) {
       env[key] = value;
     }
   }
@@ -313,7 +313,7 @@ export function buildWebhookEnv(event: AutomationEvent, payload: BaseEventPayloa
 }
 
 /**
- * Env vars that are not CRAFT_* but that script runtimes cannot function
+ * Env vars that are not MEMWISE_* but that script runtimes cannot function
  * without. Paths and OS plumbing only — never credentials.
  * - HOME/USERPROFILE: bun/uv cache + python interpreter installs
  * - SYSTEMROOT/WINDIR/SYSTEMDRIVE/COMSPEC/PATHEXT/TEMP/TMP: Windows can't
@@ -324,63 +324,63 @@ const SCRIPT_ENV_PLATFORM_ESSENTIALS = process.platform === 'win32'
   : ['HOME'];
 
 export interface ScriptEnvOptions {
-  /** Workspace root, exposed as CRAFT_WORKSPACE_PATH */
+  /** Workspace root, exposed as MEMWISE_WORKSPACE_PATH */
   workspaceRootPath: string;
-  /** Page slug when the script refreshes a page (adds CRAFT_PAGE_* vars) */
+  /** Page slug when the script refreshes a page (adds MEMWISE_PAGE_* vars) */
   page?: string;
 }
 
 /**
- * Build environment variables for script actions: CRAFT_*-only by design.
+ * Build environment variables for script actions: MEMWISE_*-only by design.
  *
  * Unlike buildEnvFromPayload (prompt actions), process.env is NOT spread —
  * a script's env is exactly:
- * - every CRAFT_* var from process.env (runtime hints like CRAFT_BUN/CRAFT_UV,
- *   user-defined CRAFT_* secrets, CRAFT_CONFIG_DIR, ...)
- * - CRAFT_* event context (same base as webhooks; no shell sanitization —
+ * - every MEMWISE_* var from process.env (runtime hints like MEMWISE_BUN/MEMWISE_UV,
+ *   user-defined MEMWISE_* secrets, MEMWISE_CONFIG_DIR, ...)
+ * - MEMWISE_* event context (same base as webhooks; no shell sanitization —
  *   values are argv/env payloads, never interpreted by a shell)
- * - CRAFT_WORKSPACE_PATH and, for page refreshes, CRAFT_PAGE_SLUG /
- *   CRAFT_PAGE_DIR / CRAFT_PAGE_DATA_DIR
+ * - MEMWISE_WORKSPACE_PATH and, for page refreshes, MEMWISE_PAGE_SLUG /
+ *   MEMWISE_PAGE_DIR / MEMWISE_PAGE_DATA_DIR
  * - a documented minimal set of non-secret platform essentials (HOME etc.)
  *
  * Notably absent: PATH (runtimes are spawned by absolute path) and every
  * non-CRAFT credential (ANTHROPIC_API_KEY, GITHUB_TOKEN, ...).
  */
-function applyPlatformAndCraftEnv(env: Record<string, string>): void {
+function applyPlatformAndMemWiseEnv(env: Record<string, string>): void {
   for (const key of SCRIPT_ENV_PLATFORM_ESSENTIALS) {
     const value = process.env[key];
     if (value !== undefined) env[key] = value;
   }
 
   for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith('CRAFT_') && value !== undefined) {
+    if (key.startsWith('MEMWISE_') && value !== undefined) {
       env[key] = value;
     }
   }
 }
 
 function applyWorkspaceAndPageEnv(env: Record<string, string>, options: ScriptEnvOptions): void {
-  env.CRAFT_WORKSPACE_PATH = options.workspaceRootPath;
+  env.MEMWISE_WORKSPACE_PATH = options.workspaceRootPath;
 
   if (options.page) {
     const pageDir = join(options.workspaceRootPath, 'pages', options.page);
-    env.CRAFT_PAGE_SLUG = options.page;
-    env.CRAFT_PAGE_DIR = pageDir;
-    env.CRAFT_PAGE_DATA_DIR = join(pageDir, 'data');
+    env.MEMWISE_PAGE_SLUG = options.page;
+    env.MEMWISE_PAGE_DIR = pageDir;
+    env.MEMWISE_PAGE_DATA_DIR = join(pageDir, 'data');
   }
 }
 
 /**
- * Event-independent script env: the CRAFT_*-only base without any automation
+ * Event-independent script env: the MEMWISE_*-only base without any automation
  * event context. Used by callers that run a script outside the automations
  * pipeline (e.g. a page action a user triggers by hand) — there is no event to
- * describe, so injecting a synthetic CRAFT_EVENT would be a lie.
+ * describe, so injecting a synthetic MEMWISE_EVENT would be a lie.
  *
  * See buildScriptEnv for the full contract; this is that minus buildBaseEventEnv.
  */
 export function buildBaseScriptEnv(options: ScriptEnvOptions): Record<string, string> {
   const env: Record<string, string> = {};
-  applyPlatformAndCraftEnv(env);
+  applyPlatformAndMemWiseEnv(env);
   applyWorkspaceAndPageEnv(env, options);
   return env;
 }
@@ -392,13 +392,13 @@ export function buildScriptEnv(
 ): Record<string, string> {
   const env: Record<string, string> = {};
 
-  applyPlatformAndCraftEnv(env);
+  applyPlatformAndMemWiseEnv(env);
 
   // Event context wins over any same-named pass-through
   Object.assign(env, buildBaseEventEnv(event, payload));
 
   // Workspace/page context is applied last so an event payload can never
-  // clobber CRAFT_WORKSPACE_PATH / CRAFT_PAGE_* (unchanged ordering).
+  // clobber MEMWISE_WORKSPACE_PATH / MEMWISE_PAGE_* (unchanged ordering).
   applyWorkspaceAndPageEnv(env, options);
 
   return env;

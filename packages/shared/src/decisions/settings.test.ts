@@ -76,7 +76,7 @@ describe('resolveDecisionEndpoint', () => {
     const openrouter = resolveDecisionEndpoint(normalizeDecisionLayerSettings({ provider: 'openrouter' }));
     expect(openrouter.endpoint).toBe('https://openrouter.ai/api/v1/systemone');
     expect(openrouter.model).toBe('typesafe/jev-1.13');
-    expect(openrouter.extraHeaders['X-Title']).toBe('Craft Agents');
+    expect(openrouter.extraHeaders['X-Title']).toBe('MemWise');
 
     const vercel = resolveDecisionEndpoint(normalizeDecisionLayerSettings({ provider: 'vercel-ai-gateway' }));
     expect(vercel.endpoint).toBe('https://ai-gateway.vercel.sh/typesafe/v1/systemone');

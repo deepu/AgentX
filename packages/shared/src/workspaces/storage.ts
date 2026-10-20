@@ -3,7 +3,7 @@
  *
  * CRUD operations for workspaces.
  * Workspaces can be stored anywhere on disk via rootPath.
- * Default location: ~/.craft-agent/workspaces/
+ * Default location: ~/.memwise/workspaces/
  */
 
 import {
@@ -36,8 +36,8 @@ import type {
 
 const DEFAULT_WORKSPACES_DIR = join(CONFIG_DIR, 'workspaces');
 
-// One-time migration: v0.13.5 always stored workspaces in ~/.craft-agent/workspaces
-// even when CRAFT_CONFIG_DIR was set. Copy on first access so the workspace list survives.
+// One-time migration: v0.13.5 always stored workspaces in ~/.memwise/workspaces
+// even when MEMWISE_CONFIG_DIR was set. Copy on first access so the workspace list survives.
 const LEGACY_WORKSPACES_DIR = join(homedir(), DEFAULT_CONFIG_DIR_NAME, 'workspaces');
 function migrateWorkspacesIfNeeded(): void {
   if (DEFAULT_WORKSPACES_DIR === LEGACY_WORKSPACES_DIR) return;
@@ -54,7 +54,7 @@ function migrateWorkspacesIfNeeded(): void {
 // ============================================================
 
 /**
- * Get the default workspaces directory (~/.craft-agent/workspaces/)
+ * Get the default workspaces directory (~/.memwise/workspaces/)
  */
 export function getDefaultWorkspacesDir(): string {
   return DEFAULT_WORKSPACES_DIR;
@@ -277,7 +277,7 @@ export function generateSlug(name: string): string {
  * E.g., "my-workspace", "my-workspace-2", "my-workspace-3", ...
  *
  * @param name - Display name to derive the slug from
- * @param baseDir - Parent directory where workspace folders live (e.g., ~/.craft-agent/workspaces/)
+ * @param baseDir - Parent directory where workspace folders live (e.g., ~/.memwise/workspaces/)
  * @returns Full path to a unique, non-existing folder
  */
 export function generateUniqueWorkspacePath(name: string, baseDir: string): string {
@@ -404,7 +404,7 @@ export function renameWorkspaceFolder(rootPath: string, newName: string): boolea
 
 /**
  * Discover workspace folders in the default location that have valid config.json
- * Returns paths to valid workspaces found in ~/.craft-agent/workspaces/
+ * Returns paths to valid workspaces found in ~/.memwise/workspaces/
  */
 export function discoverWorkspacesInDefaultLocation(): string[] {
   const discovered: string[] = [];
@@ -486,14 +486,14 @@ export function setWorkspaceColorTheme(rootPath: string, themeId: string | undef
 
 /**
  * Check if local (stdio) MCP servers are enabled for a workspace.
- * Resolution order: ENV (CRAFT_LOCAL_MCP_ENABLED) > workspace config > default (true)
+ * Resolution order: ENV (MEMWISE_LOCAL_MCP_ENABLED) > workspace config > default (true)
  *
  * @param rootPath - Absolute path to workspace root folder
  * @returns true if local MCP servers should be enabled
  */
 export function isLocalMcpEnabled(rootPath: string): boolean {
   // 1. Environment variable override (highest priority)
-  const envValue = process.env.CRAFT_LOCAL_MCP_ENABLED;
+  const envValue = process.env.MEMWISE_LOCAL_MCP_ENABLED;
   if (envValue !== undefined) {
     return envValue.toLowerCase() === 'true';
   }
@@ -537,7 +537,7 @@ export function ensurePluginManifest(rootPath: string, workspaceName: string): v
 
   // Create minimal plugin manifest
   const manifest = {
-    name: `craft-workspace-${workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    name: `memwise-workspace-${workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
     version: '1.0.0',
   };
 

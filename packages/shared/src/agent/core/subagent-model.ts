@@ -2,7 +2,7 @@
  * Model choice for Claude subagents.
  *
  * Subagents re-read their whole context on every step, and without a `model` on the Agent call
- * they run on the session's model (often Opus with a 1M window). Craft fills in the call's `model`
+ * they run on the session's model (often Opus with a 1M window). MemWise fills in the call's `model`
  * from the decision model's pick for that task (toggle `subagentModels`) or, without an answer,
  * from the user's Settings default — and only ever with a model cheaper than the session's.
  */

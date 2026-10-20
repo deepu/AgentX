@@ -8,7 +8,7 @@
 
 import * as React from 'react'
 import { forwardRef } from 'react'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 
 interface HeaderIconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

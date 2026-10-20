@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react'
-import { MotionPreferenceProvider, isMotionPreference, type MotionPreference } from '@craft-agent/ui/motion'
+import { MotionPreferenceProvider, isMotionPreference, type MotionPreference } from '@memwise/ui/motion'
 import * as storage from '@/lib/local-storage'
 import {
   resolveTheme,
@@ -55,7 +55,7 @@ interface ThemeContextType {
   // Theme resolution (singleton - loaded once)
   /** Loaded preset theme file, null if default or loading */
   presetTheme: ThemeFile | null
-  /** Color overrides from ~/.craft-agent/theme.json (null when absent) */
+  /** Color overrides from ~/.memwise/theme.json (null when absent) */
   appThemeOverrides: ThemeOverrides | null
   /** Fully resolved theme (preset merged with theme.json overrides) */
   resolvedTheme: ThemeOverrides
@@ -169,7 +169,7 @@ export function ThemeProvider({
   const [themeResolvedFrom, setThemeResolvedFrom] = useState<'none' | 'ipc' | 'fallback'>('none')
   const [themeLoadError, setThemeLoadError] = useState<string | null>(null)
 
-  // ~/.craft-agent/theme.json color overrides layer on top of the preset (or the default theme)
+  // ~/.memwise/theme.json color overrides layer on top of the preset (or the default theme)
   const [appThemeOverrides, setAppThemeOverrides] = useState<ThemeOverrides | null>(null)
   useEffect(() => {
     window.electronAPI?.getAppTheme?.().then(setAppThemeOverrides).catch(() => {

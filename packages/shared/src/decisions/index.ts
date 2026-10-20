@@ -2,7 +2,7 @@
  * Decision layer (Jev / TypeSafe System One) — public barrel.
  *
  * Node-only modules (client, records, resolve, status) live here too; the
- * renderer must import types only (`import type ... from '@craft-agent/shared/decisions'`)
+ * renderer must import types only (`import type ... from '@memwise/shared/decisions'`)
  * or use the browser-safe subpaths `./decisions/types` and `./decisions/settings`.
  */
 
