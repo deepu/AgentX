@@ -369,10 +369,16 @@ export class InstallHub {
       return refusal(req.path, req.method, 429, 'busy', 'Too many requests', 'The app is busy; please try again in a moment.', [['retry-after', '1']]);
     }
     const declared = Number(req.headers.find(([n]) => n === 'content-length')?.[1] ?? NaN);
-    const inlineBody = req.body instanceof Uint8Array ? req.body : null;
-    if (declared > this.limits.requestBodyBytes || (inlineBody && inlineBody.length > this.limits.requestBodyBytes)) {
-      return refusal(req.path, req.method, 413, 'too_large', 'Too large', 'What you sent is too large.');
+    const tooLarge = () => refusal(req.path, req.method, 413, 'too_large', 'Too large', 'What you sent is too large.');
+    if (declared > this.limits.requestBodyBytes) return tooLarge();
+    // A small body goes over in the `req` frame itself; a larger one streams.
+    let inlineBody = req.body instanceof Uint8Array ? req.body : null;
+    if (req.body instanceof ReadableStream && declared <= CHUNK_BYTES) {
+      inlineBody = await readLimited(req.body, CHUNK_BYTES);
+      if (!inlineBody) return tooLarge();
+      req = { ...req, body: inlineBody };
     }
+    if (inlineBody && inlineBody.length > this.limits.requestBodyBytes) return tooLarge();
 
     const id = `${(++this.seq).toString(36)}.${toBase64Url(randomBytes(6))}`;
     return new Promise<Response>((resolve) => {
@@ -609,26 +615,32 @@ export async function handleRelayRequest(req: Request, host: RelayHost, clientIp
 
 const FORWARD_HEADER = 'x-memwise-relay-forward';
 
-/** Packs a ForwardRequest into a Request for a Durable Object's fetch. */
-export function encodeForwardRequest(req: ForwardRequest, origin = 'https://install.internal'): Request {
-  const head = { method: req.method, path: req.path, query: req.query, headers: req.headers, clientIp: req.clientIp };
-  return new Request(`${origin}/__forward`, {
+/** Packs a ForwardRequest for an install into a Request for its Durable Object. */
+export function encodeForwardRequest(installId: string, req: ForwardRequest, origin = 'https://install.internal'): Request {
+  const head = { installId, method: req.method, path: req.path, query: req.query, headers: req.headers, clientIp: req.clientIp };
+  const init: RequestInit & { duplex?: 'half' } = {
     method: 'POST',
     headers: { [FORWARD_HEADER]: toBase64Url(new TextEncoder().encode(JSON.stringify(head))) },
     body: req.body as BodyInit | null,
     signal: req.signal,
-    // @ts-expect-error: streaming request bodies need `duplex` outside Workers
-    duplex: 'half',
-  });
+  };
+  // Streaming request bodies need `duplex` in Node and Bun; Workers ignore it.
+  if (req.body instanceof ReadableStream) init.duplex = 'half';
+  return new Request(`${origin}/__forward`, init);
 }
 
-/** The ForwardRequest a Durable Object received, or null when the request is not one. */
-export function decodeForwardRequest(req: Request): ForwardRequest | null {
+/** The install and ForwardRequest a Durable Object received, or null when the request is not one. */
+export function decodeForwardRequest(req: Request): { installId: string; forward: ForwardRequest } | null {
   const packed = req.headers.get(FORWARD_HEADER);
   if (!packed) return null;
   try {
-    const head = JSON.parse(new TextDecoder().decode(fromBase64Url(packed))) as Omit<ForwardRequest, 'body' | 'signal'>;
-    return { ...head, body: head.method === 'GET' || head.method === 'HEAD' ? null : req.body, signal: req.signal };
+    const head = JSON.parse(new TextDecoder().decode(fromBase64Url(packed))) as Omit<ForwardRequest, 'body' | 'signal'> & { installId: string };
+    if (!isInstallId(head.installId) || typeof head.path !== 'string' || !Array.isArray(head.headers)) return null;
+    const { installId, ...rest } = head;
+    return {
+      installId,
+      forward: { ...rest, body: head.method === 'GET' || head.method === 'HEAD' ? null : req.body, signal: req.signal },
+    };
   } catch {
     return null;
   }

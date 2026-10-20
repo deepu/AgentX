@@ -22,6 +22,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "miniflare": "4.20260730.0",
     "typescript": "^5.8.2",
     "@types/bun": "^1.4.2"
   }

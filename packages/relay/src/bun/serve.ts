@@ -8,8 +8,6 @@ import {
   handleRelayRequest,
   installPublicUrl,
   InstallHub,
-  readLimited,
-  type ForwardRequest,
   type Limits,
   type RelayConfig,
   type RelayLog,
@@ -17,7 +15,6 @@ import {
   type TunnelSocket,
 } from '../hub.ts';
 import { MemoryPageStore, type PageStore } from '../pages.ts';
-import { CHUNK_BYTES } from '../protocol.ts';
 
 /** Pages as files under one folder (keys are `pages/<id>/<name>`). */
 export class DirectoryPageStore implements PageStore {
@@ -118,15 +115,7 @@ export function startBunRelay(opts: BunRelayOptions = {}): BunRelay {
         config,
         pages,
         log,
-        forward: async (installId, fwd) => {
-          // Small bodies go over in one frame; larger ones stream.
-          const declared = Number(fwd.headers.find(([n]) => n === 'content-length')?.[1] ?? NaN);
-          if (fwd.body instanceof ReadableStream && declared <= CHUNK_BYTES) {
-            const bytes = await readLimited(fwd.body, CHUNK_BYTES);
-            if (bytes) fwd = { ...fwd, body: bytes } satisfies ForwardRequest;
-          }
-          return hubFor(installId).forward(fwd);
-        },
+        forward: (installId, fwd) => hubFor(installId).forward(fwd),
         upgrade: (installId, r) => {
           if (srv.upgrade(r, { data: { installId, meta: null } })) return undefined; // Bun answers the upgrade
           return new Response('WebSocket upgrade failed', { status: 400 });
