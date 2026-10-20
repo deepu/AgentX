@@ -29,3 +29,10 @@ export function runChild(script: string, args: string[], env: Record<string, str
     child.on('exit', (code, signal) => { clearTimeout(timer); resolve({ code, signal, output }); });
   });
 }
+
+/** The worker's `RESULT {...}` line. */
+export function workerResult(output: string): unknown {
+  const line = output.split('\n').find((l) => l.startsWith('RESULT '));
+  if (!line) throw new Error(`no RESULT line in worker output:\n${output}`);
+  return JSON.parse(line.slice('RESULT '.length));
+}

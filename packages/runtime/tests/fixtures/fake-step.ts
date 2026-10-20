@@ -1,7 +1,8 @@
 // A fake agent step for driver tests: one journaled unit of "work" (counted in a table, so a
 // test can prove it ran once), then a scripted result. The real step engine is used by exit.test.ts.
 import { DBOS } from '@dbos-inc/dbos-sdk';
-import type { CaseValue } from '@memwise/defs';
+import { PgStepRecorder } from '@memwise/db';
+import type { CaseValue, StepRecord } from '@memwise/defs';
 import type { StepResult, StepRunInput } from '@memwise/step-engine';
 import pg from 'pg';
 import type { StepExecutor } from '../../src/types.ts';
@@ -18,8 +19,15 @@ export const WORK_TABLE_SQL = `create table if not exists public.fake_step_work 
 export function fakeStep(databaseUrl: string, script: Script = needsInfoThenChecked, seen?: StepRunInput[]): StepExecutor {
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 2, allowExitOnIdle: true });
   pool.on('error', () => {});
+  const recorder = new PgStepRecorder(pool);
   return async (input) => {
     seen?.push(input);
+    const base = {
+      stepRunId: input.stepRunId, runId: input.runId, caseId: input.case.id, stepId: input.step.id, attempt: input.attempt,
+      workflowId: input.workflow.id, workflowVersion: input.workflow.version, workflowHash: input.workflow.hash,
+      stepHash: input.step.hash, performer: input.step.performer, token: input.token, startedAt: new Date(input.startedAt).toISOString(),
+    };
+    await DBOS.runStep(() => recorder.start(base), { name: 'record.start' });
     await DBOS.runStep(async () => {
       await pool.query(WORK_TABLE_SQL);
       await pool.query('insert into public.fake_step_work (step_run_id, attempt, pid) values ($1, $2, $3)', [input.stepRunId, input.attempt, process.pid]);
@@ -28,9 +36,16 @@ export function fakeStep(databaseUrl: string, script: Script = needsInfoThenChec
     const at = new Date(input.startedAt).toISOString();
     const writes: Record<string, CaseValue> = {};
     for (const [k, v] of Object.entries(r.writes ?? {})) writes[k] = { value: v, provenance: { kind: 'judgement', at, stepRunId: input.stepRunId } };
-    return {
+    const result: StepResult = {
       stepRunId: input.stepRunId, status: r.status ?? 'completed', outcome: r.outcome, writes, checkpoint: [],
       usage: { tokens: 0, modelCalls: 0, toolCalls: 0, durationMs: 0 }, tainted: false, ...(r.reason ? { reason: r.reason } : {}),
+      rationale: `scripted ${r.outcome}`,
     };
+    const record: StepRecord = {
+      ...base, status: result.status, outcome: result.outcome, outputs: writes, checkpoint: [], rationale: result.rationale,
+      usage: result.usage, tainted: false, finishedAt: at,
+    };
+    await DBOS.runStep(() => recorder.finish(record), { name: 'record.finish' });
+    return result;
   };
 }

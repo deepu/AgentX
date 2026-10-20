@@ -101,7 +101,14 @@ export function registerRunDriver({ pool, dataSource, stepWorkflow }: DriverDeps
     if ('stop' in prepared) return { event: STOP_EVENT, source: 'step' as const, stop: prepared.stop, stepRunId };
     // Deterministic id: after a crash we get the same child back, finished or recovered, never a new one.
     const handle = await DBOS.startWorkflow(stepWorkflow, { workflowID: stepRunId })(prepared.input);
-    const result = await handle.getResult();
+    let result: StepResult;
+    try {
+      result = await handle.getResult();
+    } catch (e) {
+      // A step workflow that throws is an engine fault, not an outcome: the run stops for a person.
+      // DBOS journals the failure, so a replay takes the same path.
+      return { event: STOP_EVENT, source: 'step' as const, stop: `step workflow failed: ${e instanceof Error ? e.message : String(e)}`, stepRunId };
+    }
     crashPoint('after-step-before-commit', run.state);
     const completed = result.status === 'completed';
     return {
