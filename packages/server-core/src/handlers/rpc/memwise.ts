@@ -360,9 +360,11 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           }
           const binding = bindingOfItem(item.workflowId, item.stepId, values)
           const stepTitleOf = (id: string) => d.stateTitle(wf, id)
-          // The binding's `fix` step is often reached for the first time by a reviewer's "Ask for changes".
+          // The binding's `fix` step is often reached for the first time by a reviewer's "Ask for changes",
+          // and intake's form is reached through the invite after a send-back (Phase 5): both take the
+          // comments made since the step last ran.
           const returned = (item.kind === 'input' ? returnedNote(v, item.stepRunId, item.stepId, stepTitleOf) : undefined)
-            ?? (binding?.mode === 'edit' ? await sentBackNote(svc, item.stepRunId, stepTitleOf) : undefined)
+            ?? (binding?.mode === 'edit' || step?.performer === 'external' ? await sentBackNote(svc, item.stepRunId, stepTitleOf) : undefined)
           if (item.kind === 'input' && wf && step) {
             const fields = d.stepWriteFields(c, wf, step)
             const extract = d.toInboxExtract(step)
@@ -849,6 +851,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const r = await svc.kernel.submitStep({
         stepRunId: input.stepRunId, outcome: input.outcome,
         ...(input.values ? { values: input.values } : {}), ...(input.comment ? { comment: input.comment } : {}),
+        ...(input.sources && Object.keys(input.sources).length ? { sources: input.sources } : {}),
         by: actor,
       })
       const message = r.message ?? (r.applied ? undefined : SUBMIT_MESSAGES[r.status])

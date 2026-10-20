@@ -249,11 +249,9 @@ describe.skipIf(!postgresAvailable())('Phase 2 exit: intake through the app API'
     expect(form?.kind).toBe('input')
     if (form?.kind === 'input') {
       expect(form.prefill.client_name?.value).toBe('Asha Rao')
-      // The form says who sent it back and why: the comment returns to this fill step run (the
-      // client's form shows the same). Since v2 the step run just before is `invite`, not
-      // `verify`, so it is read from the kernel's returned comments rather than `form.returned`.
-      const { returnedComments } = await import('@memwise/runtime')
-      expect((await returnedComments(svc.kernel.pool, form.stepRunId)).at(-1)).toMatchObject({ stepId: 'verify', outcome: 'sent_back', comment, who: 'Ravi' })
+      // The form says who sent it back and why (the client's form shows the same), though since v2
+      // the step run just before it is `invite`, not `verify`.
+      expect(form.returned).toMatchObject({ outcome: 'sent_back', text: comment })
     }
 
     const summaries = await api.call(staff, ch.CASES_LIST, { workflowId: 'client-intake' })
