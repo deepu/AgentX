@@ -58,12 +58,15 @@ export const mayApprove = (actor: Actor, roles: string[] | undefined) =>
   actor.kind === 'system' || (isPerson(actor) && (!roles || roles.some((r) => actor.roles.includes(r))));
 
 function summary(r: any, values: Record<string, CaseValue>, workflow?: WorkflowDef, actor?: Actor): CaseSummary {
-  // A few leading values for a title, never a hidden one.
+  // A few leading values for a title, never a hidden one. Names and text first: jsonb sorts keys
+  // by length, which would otherwise drop `client_name` behind `pan` and `flags`.
   const shown: Record<string, unknown> = {};
   const fields = workflow?.caseType.fields ?? {};
-  for (const [k, v] of Object.entries(values)) {
+  const texty = (k: string) => { const t = fields[k]?.type; return t?.kind === 'scalar' && (t.name === 'PersonName' || t.name === 'Text'); };
+  const keys = Object.keys(values).sort((a, b) => Number(texty(b)) - Number(texty(a)));
+  for (const k of keys) {
     if (Object.keys(shown).length >= 4) break;
-    if (!actor || maySee(actor, fields[k])) shown[k] = v.value;
+    if (!actor || maySee(actor, fields[k])) shown[k] = values[k]!.value;
   }
   return {
     caseId: r.case_id, runId: r.id, workflowId: r.workflow_id, workflowVersion: r.workflow_version, workflowHash: r.workflow_hash,
