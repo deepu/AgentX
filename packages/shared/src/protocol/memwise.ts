@@ -72,6 +72,8 @@ export interface MwPlaybookSummary {
   done: number
   /** Phase 4: a plugin's workflow (referenced through its binding) or a fork of one. */
   origin?: MwWorkflowOrigin
+  /** Phase 6: the domain it belongs to (for the sidebar's domain filter). */
+  domain?: string
 }
 
 export interface MwField {
@@ -213,6 +215,8 @@ export interface MwCaseSummary {
   waitingOn?: { kind: 'role' | 'agent' | 'system'; role?: string }
   createdAt: string
   updatedAt: string
+  /** Phase 6: the playbook's domain (for the domain filter). */
+  domain?: string
 }
 
 export interface MwStepRunSummary {
@@ -524,6 +528,8 @@ export interface MwSubmitResult {
   message?: string
   /** Why it was refused, e.g. `submit.stale`, `approval.forbidden`, `event.use_submit` (screens translate `memwise.result.<code>`). */
   code?: string
+  /** Phase 6 (app addition): `submit.locked`: when the person may try signing again. */
+  retryAfter?: string
 }
 
 /** `memwise:cases:start` refused the starting values: field -> problems, as MwSubmitResult. */
@@ -576,6 +582,10 @@ export interface MwEntityType {
   name: string
   fields: MwField[]
   lifecycle?: string[]
+  /** Phase 6 (the Entities page's Definition tab): the entity key, its domain and definition in display form. */
+  key?: string
+  domain?: string
+  definition?: MwEntityDefinition
 }
 
 export interface MwEntityRow {
@@ -1386,6 +1396,8 @@ export interface MwDomain {
   pages: { id: string; title: string; under?: { entity: string } }[]
   views: { id: string; title: string; entity: string }[]
   flags: number
+  /** App addition: house rules and hand-off settings, for the domain page. */
+  detail?: MwDomainDetail
 }
 
 export type MwRecordFieldSource =
@@ -1661,4 +1673,43 @@ export interface MwInboxReview {
   domain?: string
   review?: { kind: 'document'; entity: string; recordId?: string } | { kind: 'table'; items: string } | { kind: 'diff' } | { kind: 'form' }
   sign?: { meaning: string }
+}
+
+// ---------------------------------------------------------------- Phase 6 app additions
+// Additive to the contract above, made while building the screens (24 §17 "As built").
+
+// memwise:files:read            (workspaceId, fileId)                  → MwFileData   (the record page's viewer)
+
+/** A stored file's bytes, for the record page's document viewer. */
+export interface MwFileData { id: string; name: string; mime: string; dataBase64: string }
+
+/** An entity's definition as the Entities page shows it (`MwEntityType.definition`). */
+export interface MwEntityDefinition {
+  /** How a record is named: `{site_number} · {name}`. */
+  title?: string
+  /** The page-tree parent relationship and the entity it points at. */
+  parent?: { relationship: string; entity: string }
+  /** Where each field's value comes from (fields, calculated and followed ones). */
+  sources: Record<string, MwRecordFieldSource>
+  relationships: { name: string; cardinality: 'one' | 'many'; target: string; via?: string }[]
+  calculated: { name: string; kind: 'rollup' | 'formula'; summary: string; description?: string }[]
+  links: { target: string; match: Record<string, string>; follow: string[] }[]
+  lifecycle?: {
+    initial: string
+    states: { name: string; label: string; on: { transition: string; to: string }[]; timers: string[] }[]
+    transitions: { name: string; label: string; by: string[]; guard?: string; signed?: boolean }[]
+    fromList?: boolean
+  }
+  invariants: string[]
+  /** Playbooks that read, write or start from this entity. */
+  usedBy: { workflowId: string; title: string }[]
+}
+
+/** Phase 6 domain additions the sidebar and the domain page use (`MwDomain` stays as agreed). */
+export interface MwDomainDetail {
+  /** The domain's house rules in plain words (policy.yaml), and the workspace's above them. */
+  houseRules: MwPolicyLine[]
+  workspaceRules: MwPolicyLine[]
+  acceptsFrom: string[]
+  intake?: string
 }

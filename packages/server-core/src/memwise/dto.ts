@@ -28,6 +28,9 @@ import type {
 import type { Provenance } from '@memwise/defs'
 import type { Delivery, ExternalLinkSummary, ExtractResult, ExtractSuggestion } from '@memwise/defs/external'
 import { isConversationStep } from './conversation'
+import { toCaseLink, toEntityDefinition, toWaiting } from './dto-records'
+
+export * from './dto-records'
 
 type JsonSchemaFn = (type: FieldDef['type'], recordTypes?: Record<string, { fields: Record<string, FieldDef> }>) => Record<string, unknown>
 
@@ -405,6 +408,7 @@ export function toCaseSummary(project: ProjectDefs, s: CaseSummary): MwCaseSumma
     ...(wait ? { waitingOn: wait } : {}),
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
+    ...(wf?.domain ? { domain: wf.domain } : {}),
   }
 }
 
@@ -487,6 +491,10 @@ export function toCase(ctx: DtoContext, view: CaseView, extra: { links?: Externa
     path: [...view.path],
     ...(extra.links ? { links: [...extra.links].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(toExternalLink) } : {}),
     ...(extra.deliveries ? { deliveries: [...extra.deliveries].sort((a, b) => b.at.localeCompare(a.at)).map(toDelivery) } : {}),
+    // Phase 6: hand-offs, the `wait_until` condition, the domain
+    ...(view.links?.length ? { caseLinks: view.links.map((l) => toCaseLink(ctx.project, l)) } : {}),
+    ...(view.waiting ? { waiting: toWaiting(view.waiting) } : {}),
+    ...(view.domain ?? wf?.domain ? { domain: view.domain ?? wf?.domain } : {}),
   }
 }
 
@@ -609,11 +617,15 @@ export function toStepRecord(project: ProjectDefs, r: StepRecord & { journal: Jo
 
 // ---------------------------------------------------------------- domain
 
-export function toEntityType(ctx: DtoContext, e: EntityTypeDef): MwEntityType {
+export function toEntityType(ctx: DtoContext, e: EntityTypeDef, key?: string): MwEntityType {
   return {
     name: e.entity,
     fields: Object.entries(e.fields).map(([name, def]) => toField(ctx, name, def)),
     ...(e.lifecycle ? { lifecycle: [...e.lifecycle] } : {}),
+    // Phase 6: the entity key, its domain, and its definition for the Entities page
+    ...(key ? { key } : {}),
+    ...(e.domain ? { domain: e.domain } : {}),
+    ...(key ? { definition: toEntityDefinition(ctx.project, key, e) } : {}),
   }
 }
 
