@@ -23,6 +23,8 @@ export { parseCaseFile, parseEntityFile, parseRolesFile } from './parse-types.ts
 export { parseWorkspaceFile, parseDomainFile, parsePageFile, parseViewFile, defaultDomainName } from './parse-domain.ts';
 export { defaultPageLayout, listTransition, PAGE_BLOCK_KINDS, LAYOUT_AREAS } from './parse-records.ts';
 export { parseTriggers, handoffArg } from './parse-handoffs.ts';
+export { checkCondition, entityConditionScope, kindOfType, type ConditionKind, type ConditionName, type ConditionScope, type ConditionCheckOptions, type ConditionProblem } from './condition-check.ts';
+export { relationshipInverse, handoffFields, callOutcomes, blockEvents, MESSAGE_FIELDS } from './check-domains.ts';
 export { entityToolNames, entityTools, ENTITY_TOOL_VERBS, ENTITY_TOOL_EFFECTS, type EntityToolVerb } from './entity-tools.ts';
 export { parsePolicyFile, policyToRaw, formatDuration } from './parse-policy.ts';
 export { sha256, type ParseResult } from './source.ts';
@@ -31,7 +33,7 @@ export { pinnedPlugin, type LoadProjectOptions } from './project-plugins.ts';
 export { checkWorkflow, checkProject, systemOutcome, isConversationStep, BUILTIN_OUTCOMES, ENGINE_TOOLS, type CheckOptions } from './check.ts';
 export { validateValue, valueTypeToJsonSchema, IDENTIFIER_PATTERNS, type RecordTypes } from './values.ts';
 export { jsonSchemas, formats, type FormatName } from './formats.ts';
-export { indexProject, DOMAIN_POLICY_ID } from './index-project.ts';
+export { indexProject, DOMAIN_POLICY_ID, WORKSPACE_POLICY_ID, domainPolicyId } from './index-project.ts';
 export { lineDiff, structuralDiff, describeStructuralDiff, stepParts, splitLines, type DiffNameKind } from './diff.ts';
 export {
   createDraft, listDrafts, readDraft, updateDraftMeta, writeDraftFiles, setDraftEditStatus, discardDraftEdit,

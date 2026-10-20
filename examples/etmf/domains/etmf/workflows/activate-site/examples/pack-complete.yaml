@@ -1,0 +1,22 @@
+name: pack-complete
+description: >
+  Every start-up document of DE-104 is filed, so the case moves straight on to the study manager, who
+  approves the activation, and the site opens.
+records:
+  Sponsor:
+    - { id: spon_aster, name: Aster Bio }
+  Study:
+    - { id: stud_ast301, code: AST-301, sponsor: spon_aster }
+  Site:
+    - { id: site_de104, site_number: DE-104, study: stud_ast301, sponsor_approved: true, status: activating }
+  ExpectedDocument:
+    - { id: expe_de104_protocol, site: site_de104, study: stud_ast301, artifact: Protocol signature page, phase: start_up, status: filed }
+    - { id: expe_de104_pi_cv, site: site_de104, study: stud_ast301, artifact: Investigator CV, phase: start_up, status: filed }
+    - { id: expe_de104_ethics, site: site_de104, study: stud_ast301, artifact: Ethics approval, phase: start_up, status: filed }
+case:
+  site: site_de104
+submit:
+  approve_activation: { outcome: approved }
+expect:
+  state: end
+  effects: { etmf.site.transition: 1 }

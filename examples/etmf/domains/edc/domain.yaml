@@ -1,0 +1,4 @@
+domain: edc
+name: EDC
+description: The study's electronic data capture system, the source of truth for sites and their staff.
+owner: study_manager

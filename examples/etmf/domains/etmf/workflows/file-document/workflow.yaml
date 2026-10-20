@@ -1,0 +1,31 @@
+workflow: file-document
+version: 1
+title: File a TMF document
+owner: study_manager
+# One case per document. Started by "Sort an incoming message" for every attachment it receives;
+# ends when the document is filed in the TMF, or sent back to the site.
+start: receive
+steps:
+  receive:     { on: { done: classify } }            # the Document record exists from here on
+  classify:
+    on:
+      classified:   index
+      unsure:       needs_person
+      needs_person: needs_person
+      failed:       needs_person
+  index:       { on: { done: send_to_qc } }          # the index values go onto the record
+  send_to_qc:  { on: { done: qc } }
+  qc:                                                # the TMF specialist checks it and signs
+    on: { approved: file, sent_back: send_back }
+    wait: { remind: 2d, timeout: 4d → needs_person }
+  file:        { on: { filed: end } }
+  send_back:   { on: { done: start_fix } }
+  start_fix:                                         # the site gets the document back with the note
+    start:
+      workflow: fix-rejected-document
+      with: { document: case.document, note: case.qc_comment }
+    on: { started: end }
+  needs_person:                                      # the agent couldn't tell, or QC is overdue
+    assignee: tmf_specialist
+    on: { resolved: qc, discarded: end }
+    wait: { timeout: 7d → end }
