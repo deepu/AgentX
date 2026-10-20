@@ -8,6 +8,9 @@ import type { PolicyLayer } from './types.ts';
 /** Tools the step engine provides to every step; never listed, never denied. */
 export const BUILTIN_TOOLS: readonly string[] = ['step.finish', 'checkpoint.verdict'];
 
+/** The model role that judges a step's prose checkpoint rules (the step engine's default). */
+export const VERIFIER_ROLE = 'verifier';
+
 /** The built-in defaults (06 §3): nothing that leaves or can't be undone runs without a person. */
 export const PLATFORM_DEFAULTS: PolicyLayer = {
   kind: 'platform',
@@ -19,7 +22,7 @@ export const PLATFORM_DEFAULTS: PolicyLayer = {
   },
 };
 
-/** The step's own layer: its tool list, budget and model role, merged with its `policy:` block. */
+/** The step's own layer: its tool list, budget and model roles, merged with its `policy:` block. */
 export function stepLayer(step: StepDef, workflowId: string): PolicyLayer {
   const budgets: NonNullable<PolicyDoc['budgets']> = {};
   if (step.budget?.tokens !== undefined) budgets.tokens = step.budget.tokens;
@@ -30,7 +33,8 @@ export function stepLayer(step: StepDef, workflowId: string): PolicyLayer {
   const derived: PolicyDoc = {
     tools: { allow: [...step.tools.allowed], require: [...step.tools.required] },
     ...(Object.keys(budgets).length ? { budgets } : {}),
-    ...(step.model ? { modelRoles: [step.model] } : {}),
+    // Prose checkpoint rules are judged by the verifier role, so the step permits it too.
+    ...(step.model ? { modelRoles: step.checkpoint.length ? [...new Set([step.model, VERIFIER_ROLE])] : [step.model] } : {}),
   };
   return {
     kind: 'step',

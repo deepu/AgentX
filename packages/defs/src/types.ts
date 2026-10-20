@@ -124,8 +124,9 @@ export interface PolicyDoc {
 export type WriteSource =
   /**
    * `from: tool gst.validate_gstin` - the written value must deep-equal a value found in a
-   * result of that tool in this step run (the whole result or any field at any depth), or,
-   * with the object form `{ tool, field }`, the value at that dotted path of a result.
+   * result of that tool in this step run (the whole result or any field at any depth; a
+   * boolean or number must be the whole result or the top-level key named like the write),
+   * or, with the object form `{ tool, field }`, the value at that dotted path of a result.
    */
   | { kind: 'tool'; tool: string; field?: string }
   /** The agent's judgement (default for agent steps). */

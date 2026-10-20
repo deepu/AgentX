@@ -61,12 +61,23 @@ function atPath(v: unknown, path: string): unknown {
   return cur;
 }
 
-/** The latest call of `tool` whose result holds `value` (at `field`, or anywhere). */
-export function findInResults(evidence: Evidence[], tool: string, value: unknown, field?: string): Evidence | undefined {
+const isScalar = (v: unknown) => typeof v === 'boolean' || typeof v === 'number';
+
+/**
+ * The latest call of `tool` whose result holds `value`: at `field` when given, else anywhere in
+ * the result. A boolean or number without `field` is too common to be evidence anywhere (any
+ * `true` would match), so it must be the whole result or the result's top-level key named
+ * `name` (the write's field name).
+ */
+export function findInResults(evidence: Evidence[], tool: string, value: unknown, field?: string, name?: string): Evidence | undefined {
+  const holds = (result: unknown) => {
+    if (field !== undefined) return deepEqual(atPath(result, field), value);
+    if (!isScalar(value)) return [...walk(result)].some((x) => deepEqual(x, value));
+    return deepEqual(parsed(result) ?? result, value) || (name !== undefined && deepEqual(atPath(result, name), value));
+  };
   for (let i = evidence.length - 1; i >= 0; i--) {
     const e = evidence[i]!;
-    if (e.tool !== tool) continue;
-    if (field !== undefined ? deepEqual(atPath(e.result, field), value) : [...walk(e.result)].some((x) => deepEqual(x, value))) return e;
+    if (e.tool === tool && holds(e.result)) return e;
   }
   return undefined;
 }
@@ -111,10 +122,12 @@ export function structuralChecks(
 
     if (w.from.kind === 'tool') {
       const rule = `writes.${field}: from tool ${w.from.tool}${w.from.field ? ` (${w.from.field})` : ''}`;
-      const hit = findInResults(evidence, w.from.tool, value, w.from.field);
+      const hit = findInResults(evidence, w.from.tool, value, w.from.field, field);
       if (!hit) {
+        const where = w.from.field ? ` at ${w.from.field}`
+          : isScalar(value) ? ` as its whole result or its \`${field}\` field (name the field with \`from: { tool, field }\`)` : '';
         checks.push(fail(rule, called.has(w.from.tool)
-          ? `${JSON.stringify(value)} does not equal any value ${w.from.tool} returned${w.from.field ? ` at ${w.from.field}` : ''}`
+          ? `${JSON.stringify(value)} does not equal any value ${w.from.tool} returned${where}`
           : `${w.from.tool} was not called successfully, so ${field} has no tool result to come from`));
         continue;
       }

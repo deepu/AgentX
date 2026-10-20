@@ -22,6 +22,12 @@ export async function prepareAgentStep(db: Queryable, run: RunRow, workflow: Wor
   const prev = await db.query(
     `select attempt, status, outcome, rationale from mw.step_runs
       where run_id = $1 and step_id = $2 and id <> $3 order by started_at, id`, [run.id, run.state, stepRunId]);
+  // What earlier step runs of this run used, so run budgets cover the whole run (StepRunInput.runSpent).
+  const spent = await db.query(
+    `select coalesce(sum((usage->>'tokens')::float8), 0) as tokens, coalesce(sum((usage->>'modelCalls')::float8), 0) as model_calls,
+            coalesce(sum((usage->>'durationMs')::float8), 0) as duration_ms
+       from mw.step_runs where run_id = $1 and id <> $2`, [run.id, stepRunId]);
+  const s = spent.rows[0];
   const now = Date.now();
   const ttl = step.budget?.timeMs ?? effective.budgets.timeMs?.value ?? DEFAULT_TOKEN_TTL_MS;
   return {
@@ -35,6 +41,7 @@ export async function prepareAgentStep(db: Queryable, run: RunRow, workflow: Wor
         attempt: p.attempt ?? i + 1, ...(p.outcome ? { outcome: p.outcome } : {}), reason: p.rationale ?? `ended ${p.status}`,
       })),
       startedAt: now,
+      runSpent: { tokens: Number(s.tokens), modelCalls: Number(s.model_calls), elapsedMs: Number(s.duration_ms) },
     },
   };
 }

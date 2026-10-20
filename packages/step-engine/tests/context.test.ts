@@ -41,7 +41,7 @@ describe('assembleContext', () => {
     const params = finishToolParameters(input.step, input.recordTypes) as any;
     expect(params.properties.outcome.enum).toEqual(['checked', 'needs_info', 'failed']);
     expect(Object.keys(params.properties.writes.properties)).toEqual(['flags', 'gstin_ok', 'legal_name']);
-    expect(params.properties.writes.properties.gstin_ok.description).toBe('Boolean; must equal a value returned by gst.validate_gstin');
+    expect(params.properties.writes.properties.gstin_ok.description).toBe('Boolean; must equal `valid` of a result of gst.validate_gstin');
     expect(params.properties.writes.properties.flags.type).toBe('array');
     expect(params.required).toEqual(['outcome', 'writes', 'rationale']);
   });
@@ -64,6 +64,18 @@ describe('checkpoint', () => {
     expect(findInResults(evidence, 'intake.extract_fields', 'Acme')).toBeUndefined();
   });
 
+  test('findInResults: a boolean or number without a field matches only the whole result or the key named like the write', () => {
+    // Any nested `true` would do otherwise: `valid` is not `gstin_ok`.
+    expect(findInResults(evidence, 'gst.validate_gstin', true)).toBeUndefined();
+    expect(findInResults(evidence, 'gst.validate_gstin', true, undefined, 'gstin_ok')).toBeUndefined();
+    expect(findInResults(evidence, 'gst.validate_gstin', true, undefined, 'valid')?.callId).toBe('c2');
+    expect(findInResults(evidence, 'gst.validate_gstin', false, undefined, 'valid')?.callId).toBe('c1');
+    const scalar: Evidence[] = [{ tool: 'risk.score', callId: 's1', args: {}, result: 7 }, { tool: 'risk.score', callId: 's2', args: {}, result: { nested: { score: 9 } } }];
+    expect(findInResults(scalar, 'risk.score', 7)?.callId).toBe('s1');
+    expect(findInResults(scalar, 'risk.score', 9, undefined, 'score')).toBeUndefined();
+    expect(findInResults(scalar, 'risk.score', 9, 'nested.score')?.callId).toBe('s2');
+  });
+
   test('structural checks: undeclared and person writes, types, required, provenance', () => {
     const input = stepInput('chk', clean, (s) => ({
       ...s,
@@ -74,9 +86,15 @@ describe('checkpoint', () => {
     expect(res.passed).toBe(false);
     expect(Object.keys(failed).sort()).toEqual([
       'outcome is declared', 'writes.extra: declared', 'writes.flags: required', 'writes.gstin_ok: Boolean',
-      'writes.gstin_ok: from tool gst.validate_gstin', 'writes.status: declared',
+      'writes.gstin_ok: from tool gst.validate_gstin (valid)', 'writes.status: declared',
     ]);
     expect(failed['writes.status: declared']).toContain('entered by a person');
+    // Without `field`, a boolean must sit at the key named like the write: `valid` is not `gstin_ok`.
+    const anywhere = stepInput('chk-any', clean, (s) => ({ ...s, writes: { ...s.writes, gstin_ok: { ...s.writes.gstin_ok!, from: { kind: 'tool', tool: 'gst.validate_gstin' } } } }));
+    const scalar = structuralChecks(anywhere, { outcome: 'checked', writes: { gstin_ok: true, legal_name: 'Acme' } }, evidence, [], 'T');
+    expect(scalar.checks.find((c) => c.rule === 'writes.gstin_ok: from tool gst.validate_gstin')).toMatchObject({
+      passed: false, reason: expect.stringContaining('as its whole result or its `gstin_ok` field'),
+    });
     expect(res.writes.legal_name).toEqual({ value: 'Acme', provenance: { kind: 'tool', at: 'T', stepRunId: input.stepRunId, tool: 'gst.validate_gstin', callId: 'c2' } });
   });
 

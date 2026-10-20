@@ -5,7 +5,7 @@
 
 export * from './types.ts';
 export { configureStepEngine } from './deps.ts';
-export { AGENT_STEP_WORKFLOW, agentStepWorkflow, registerAgentStep, runAgentStep, stepBudget } from './loop.ts';
+export { AGENT_STEP_WORKFLOW, agentStepWorkflow, registerAgentStep, runAgentStep, runBudget, stepBudget } from './loop.ts';
 export { agentWrites, assembleContext, finishToolParameters, requiredTools } from './context.ts';
 export {
   VERDICT_TOOL, deepEqual, findInResults, parseVerdict, structuralChecks, verifierRequest,

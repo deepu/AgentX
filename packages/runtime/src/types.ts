@@ -79,15 +79,22 @@ export interface Kernel {
   /** Load the project folder and index it; returns the loader's diagnostics. */
   index(): Promise<Diagnostic[]>;
   startRun(input: StartRunInput): Promise<{ runId: string; caseId: string }>;
-  /** An outside event. A repeated `idemKey` sends nothing; `forSeq` names the state entry it answers. */
+  /**
+   * An outside event. A repeated `idemKey` sends nothing; `forSeq` names the state entry it
+   * answers, by default the run's current one, so an answer never applies to a later state.
+   */
   sendEvent(runId: string, event: string | RunEvent, opts: { idemKey: string; forSeq?: number }): Promise<{ sent: boolean }>;
-  /** Decide a pending approval and wake the waiting step. Deciding twice changes nothing. */
-  decideApproval(decision: ApprovalDecision): Promise<{ applied: boolean; status: ApprovalStatus | 'missing' }>;
+  /**
+   * Decide a pending approval and wake the waiting step. Deciding twice changes nothing; an
+   * approval whose step run is no longer waiting is refused with status `expired`.
+   */
+  decideApproval(decision: ApprovalDecision): Promise<{ applied: boolean; status: ApprovalStatus | 'expired' | 'missing' }>;
   waitForRun(runId: string, opts: { until: (run: RunRecord) => boolean; timeoutMs: number }): Promise<RunRecord>;
   getRun(runId: string): Promise<RunRecord | undefined>;
   getTransitions(runId: string): Promise<TransitionRecord[]>;
   getCase(caseId: string): Promise<CaseSnapshot | undefined>;
   getStepRecord(stepRunId: string): Promise<(StepRecord & { journal: JournalEntry[] }) | undefined>;
+  /** Pending approvals whose step run is waiting for the answer. */
   pendingApprovals(): Promise<ApprovalRequest[]>;
   /** The kernel's own pool on the database, for queries the API doesn't cover. */
   readonly pool: pg.Pool;

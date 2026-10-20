@@ -3,10 +3,11 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { ApprovalDecision, StepRecord, StepRecordReader } from '@memwise/defs';
 import type { ToolDefinition } from '@memwise/gateway';
 import {
-  approvalTopic, configureStepEngine, recallTools, registerAgentStep, type StepEngineDeps, type StepResult, type StepRunInput,
+  approvalTopic, configureStepEngine, recallTools, registerAgentStep, runBudget, stepBudget, type StepEngineDeps, type StepResult,
+  type StepRunInput,
 } from '../src/index.ts';
 import {
-  FakeTools, MemoryRecorder, ScriptedModels, createDatabase, example, intakeTools, launchDbos, realGateways, stepInput, until,
+  FakeTools, FlakyRecorder, MemoryRecorder, ScriptedModels, createDatabase, example, intakeTools, launchDbos, realGateways, stepInput, until,
 } from './helpers.ts';
 
 const agentStep = registerAgentStep();
@@ -54,18 +55,23 @@ describe('agent step on the real gateways', () => {
     expect(result.usage).toMatchObject({ modelCalls: 3, toolCalls: 2, tokens: 300 });
     expect(result.tainted).toBe(false);
 
+    // Each model attempt is recorded before it is sent (`#<attempt>`), the call itself after.
     expect(recorder.keys(input.stepRunId)).toEqual([
-      'model:1',
+      'model:1#1', 'model:1',
       'policy:call_checker_0_0', 'tool:gst.validate_gstin:call_checker_0_0',
       'policy:call_checker_0_1', 'tool:intake.extract_fields:call_checker_0_1',
-      'model:2', 'checkpoint:1:structural', 'verify:1', 'checkpoint:1:verifier',
+      'model:2#1', 'model:2', 'checkpoint:1:structural', 'verify:1#1', 'verify:1', 'checkpoint:1:verifier',
     ]);
+    expect(recorder.entry(input.stepRunId, 'model:1#1')).toMatchObject({ kind: 'model', name: 'checker', attempt: 1 });
+    expect(recorder.entry(input.stepRunId, 'model:1#1')!.response).toBeUndefined();
+    expect(recorder.entry(input.stepRunId, 'model:1')).toMatchObject({ kind: 'model', name: 'checker', attempt: 1, response: { stopReason: 'toolUse' } });
     const steps = (await DBOS.listWorkflowSteps(input.stepRunId))!.map((s) => s.name);
     expect(steps).toEqual([
-      'record.start', 'context', 'model:1',
-      'policy:call_checker_0_0', 'tool:gst.validate_gstin:call_checker_0_0',
-      'policy:call_checker_0_1', 'tool:intake.extract_fields:call_checker_0_1',
-      'model:2', 'checkpoint:1:structural', 'verify:1', 'record.finish',
+      'record.start', 'context', 'model:1', 'journal:model:1',
+      'policy:call_checker_0_0', 'tool:gst.validate_gstin:call_checker_0_0', 'journal:tool:gst.validate_gstin:call_checker_0_0',
+      'policy:call_checker_0_1', 'tool:intake.extract_fields:call_checker_0_1', 'journal:tool:intake.extract_fields:call_checker_0_1',
+      'model:2', 'journal:model:2', 'checkpoint:1:structural', 'verify:1', 'journal:verify:1', 'journal:checkpoint:1:verifier',
+      'record.finish',
     ]);
     // D38: the idempotency key is the DBOS workflow id and the id of the step that ran the tool.
     const toolStep = (await DBOS.listWorkflowSteps(input.stepRunId))!.find((s) => s.name.startsWith('tool:gst'))!;
@@ -87,7 +93,7 @@ describe('agent step on the real gateways', () => {
     expect(result.status).toBe('completed');
     expect(result.writes.legal_name!.value).toBe('Acme Traders Private Limited');
     const first = recorder.entry(input.stepRunId, 'checkpoint:1:structural')!.response as { rule: string; passed: boolean; reason?: string }[];
-    expect(first.find((c) => !c.passed)).toMatchObject({ rule: 'writes.legal_name: from tool gst.validate_gstin', reason: expect.stringContaining('"Acme Traders"') });
+    expect(first.find((c) => !c.passed)).toMatchObject({ rule: 'writes.legal_name: from tool gst.validate_gstin (legal_name)', reason: expect.stringContaining('"Acme Traders"') });
     expect(recorder.keys(input.stepRunId)).toContain('checkpoint:2:structural');
     expect(recorder.keys(input.stepRunId)).not.toContain('verify:1');
 
@@ -160,6 +166,43 @@ describe('agent step on the real gateways', () => {
     expect(recorder.statuses.at(-1)!.status).toBe('running');
   });
 
+  test('a recorder that fails never repeats a model call or a tool effect, and the step completes', async () => {
+    const recorder = new FlakyRecorder(['model:1#1', 'model:1', 'tool:gst.validate_gstin:call_checker_0_0', 'checkpoint:1:verifier']);
+    const turns: string[] = [];
+    const g = realGateways(clean, { onCall: (role, turn) => turns.push(`${role} ${turn}`) });
+    const input = stepInput('flaky-recorder', clean);
+    const result = await run(input, { tools: g.tools, models: g.models, recorder });
+    expect(result).toMatchObject({ status: 'completed', outcome: 'checked' });
+    expect(turns).toEqual(['checker 0', 'checker 1', 'verifier 0']);
+    expect(g.calls).toEqual({ 'gst.validate_gstin': 1, 'intake.extract_fields': 1 });
+    // The entries written after a call were retried; the best-effort one before sending was not.
+    expect(recorder.failed).toEqual(['model:1#1', 'model:1', 'tool:gst.validate_gstin:call_checker_0_0', 'checkpoint:1:verifier']);
+    expect(recorder.keys(input.stepRunId)).toEqual(expect.arrayContaining(['model:1', 'tool:gst.validate_gstin:call_checker_0_0', 'checkpoint:1:verifier']));
+    expect(recorder.keys(input.stepRunId)).not.toContain('model:1#1');
+  }, 30_000);
+
+  test('a recorder that never recovers leaves gaps in the record, not a failed step', async () => {
+    const recorder = new FlakyRecorder(['tool:gst.validate_gstin:call_checker_0_0'], Infinity);
+    const g = realGateways(clean);
+    const input = stepInput('broken-recorder', clean);
+    const result = await run(input, { tools: g.tools, models: g.models, recorder });
+    expect(result.status).toBe('completed');
+    expect(g.calls['gst.validate_gstin']).toBe(1);
+    expect(recorder.keys(input.stepRunId)).not.toContain('tool:gst.validate_gstin:call_checker_0_0');
+  }, 60_000);
+
+  test('approval with no answer in time: the request expires in the record and the step goes to a person', async () => {
+    const recorder = new MemoryRecorder();
+    const g = realGateways(mismatch);
+    const input = stepInput('approval-expired', mismatch);
+    const result = await run(input, { tools: g.tools, models: g.models, recorder, approvalTimeoutSeconds: 1 });
+    expect(result).toMatchObject({ status: 'needs_person', reason: 'the approval for email.send got no answer within 1 seconds' });
+    expect(g.calls['email.send']).toBe(0);
+    expect(recorder.entry(input.stepRunId, 'approval.expired:call_checker_1_0')).toMatchObject({
+      kind: 'approval', name: 'email.send', callId: 'call_checker_1_0', request: { id: `${input.stepRunId}:call_checker_1_0` }, error: 'expired',
+    });
+  }, 30_000);
+
   test('approval rejected: the call is not made and the agent is told who rejected it', async () => {
     const recorder = new MemoryRecorder();
     const g = realGateways(mismatch);
@@ -228,6 +271,55 @@ describe('agent step on test doubles', () => {
     expect(first).toEqual([{ rule: 'every flag names the document it came from', kind: 'verifier', passed: false, reason: 'the verifier gave no verdict' }]);
     expect(models.calls.map((c) => c.role)).toEqual(['checker', 'checker', 'verifier', 'checker', 'verifier']);
   });
+  test("verifier calls don't use up the step's model calls: a step that finishes on its last turn is still verified", async () => {
+    const models = new ScriptedModels({ checker: [lookup, goodFinish], verifier: verifierPass });
+    const recorder = new MemoryRecorder();
+    const input = stepInput('verifier-budget', clean, (s) => ({ ...s, budget: { ...s.budget, modelCalls: 2 } }));
+    expect(stepBudget(input).modelCalls).toBe(2);
+    const result = await run(input, { tools: new FakeTools(intakeTools(clean)), models, recorder });
+    expect(result).toMatchObject({ status: 'completed', outcome: 'checked' });
+    expect(result.usage.modelCalls).toBe(3);
+  });
+
+  test('a model role the policy does not permit stops the step for a person before the call', async () => {
+    const models = new ScriptedModels({ checker: [lookup, goodFinish], verifier: verifierPass });
+    const recorder = new MemoryRecorder();
+    const input = stepInput('role-verifier', clean);
+    expect(input.policy.modelRoles!.value).toEqual(['checker', 'verifier']);
+    input.policy = { ...input.policy, modelRoles: { value: ['checker'], origin: { layer: 'domain', name: 'domain' } } };
+    const result = await run(input, { tools: new FakeTools(intakeTools(clean)), models, recorder });
+    expect(result).toMatchObject({ status: 'needs_person', reason: 'model role verifier is not permitted by the policy (domain domain permits checker)' });
+    expect(models.calls.map((c) => c.role)).toEqual(['checker', 'checker']);
+
+    const models2 = new ScriptedModels({ checker: [lookup, goodFinish] });
+    const input2 = stepInput('role-checker', clean);
+    input2.policy = { ...input2.policy, modelRoles: { value: ['extractor'], origin: { layer: 'step', name: 'client-intake/check' } } };
+    const stopped = await run(input2, { tools: new FakeTools(intakeTools(clean)), models: models2, recorder });
+    expect(stopped).toMatchObject({ status: 'needs_person', reason: expect.stringContaining('model role checker is not permitted') });
+    expect(models2.calls).toHaveLength(0);
+  });
+
+  test('run budgets count what earlier steps spent; step budgets count this step alone', async () => {
+    const input = stepInput('run-budget', clean);
+    // Domain modelCalls 60 and workflow tokens 100000 are run budgets; the step file's are the step's.
+    expect(stepBudget(input)).toEqual({ tokens: 40000, modelCalls: 12, timeMs: 600000 });
+    expect(runBudget(input)).toEqual({ tokens: 100000, modelCalls: 60 });
+
+    const models = new ScriptedModels({ checker: [lookup, goodFinish], verifier: verifierPass });
+    const recorder = new MemoryRecorder();
+    input.runSpent = { tokens: 99_950, modelCalls: 3, elapsedMs: 0 };
+    const result = await run(input, { tools: new FakeTools(intakeTools(clean)), models, recorder });
+    expect(result).toMatchObject({ status: 'needs_person' });
+    expect(result.reason).toContain('budget exceeded: tokens (limit 100000 for the run');
+    expect(models.calls).toHaveLength(1);
+
+    // The same spending in earlier steps leaves this step's own budget alone.
+    const fresh = stepInput('run-budget-ok', clean);
+    fresh.runSpent = { tokens: 50_000, modelCalls: 50, elapsedMs: 0 };
+    const ok = await run(fresh, { tools: new FakeTools(intakeTools(clean)), models: new ScriptedModels({ checker: [lookup, goodFinish], verifier: verifierPass }), recorder });
+    expect(ok.status).toBe('completed');
+  });
+
   test('a model call that fails on every attempt stops the step as failed, after DBOS retries', async () => {
     let attempts = 0;
     const models = new ScriptedModels({ checker: () => { attempts++; throw new Error('provider down'); } });
@@ -237,7 +329,10 @@ describe('agent step on test doubles', () => {
     expect(result).toMatchObject({ status: 'failed', outcome: 'failed' });
     expect(result.reason).toContain('provider down');
     expect(attempts).toBe(3);
-    expect(recorder.keys(input.stepRunId)).toEqual(['model:1#1', 'model:1#2', 'model:1#3', 'record.finish']);
+    expect(recorder.keys(input.stepRunId)).toEqual([
+      'model:1#1', 'model:1#1:failed', 'model:1#2', 'model:1#2:failed', 'model:1#3', 'model:1#3:failed', 'record.finish',
+    ]);
+    expect(recorder.entry(input.stepRunId, 'model:1#2:failed')).toMatchObject({ attempt: 2, error: expect.stringContaining('provider down') });
   }, 15_000);
 });
 

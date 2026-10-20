@@ -61,6 +61,25 @@ export class MemoryRecorder implements StepRecorder {
   entry(id: string, key: string) { return this.journals.get(id)?.find((e) => e.journalKey === key); }
 }
 
+/** A recorder whose journal write fails for the given keys, `times` times each (a Postgres hiccup). */
+export class FlakyRecorder extends MemoryRecorder {
+  failed: string[] = [];
+  private readonly left: Map<string, number>;
+  constructor(keys: string[], times = 1) {
+    super();
+    this.left = new Map(keys.map((k) => [k, times]));
+  }
+  override async journal(e: JournalEntry) {
+    const n = this.left.get(e.journalKey) ?? 0;
+    if (n > 0) {
+      this.left.set(e.journalKey, n - 1);
+      if (!this.failed.includes(e.journalKey)) this.failed.push(e.journalKey);
+      throw new Error(`recorder down: ${e.journalKey}`);
+    }
+    await super.journal(e);
+  }
+}
+
 export class MemoryLedger implements EffectLedger {
   rows = new Map<string, LedgerState>();
   async begin(key: string): Promise<LedgerState> {

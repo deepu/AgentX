@@ -4,8 +4,8 @@ performer: agent
 strictness: guided
 reads:  [case.client_name, case.client_email, case.pan, case.gstin, case.annual_turnover, case.documents]
 writes:
-  gstin_ok:   { type: Boolean, from: tool gst.validate_gstin }
-  legal_name: { type: Text, from: tool gst.validate_gstin }
+  gstin_ok:   { type: Boolean, from: { tool: gst.validate_gstin, field: valid } }
+  legal_name: { type: Text, from: { tool: gst.validate_gstin, field: legal_name } }
   flags:      List<Flag>
 tools:
   allowed:  [gst.validate_gstin, intake.extract_fields, email.send, recall.step_record, recall.similar_cases]

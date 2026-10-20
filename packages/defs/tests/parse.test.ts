@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import {
   loadProject, loadWorkflow, parseCaseFile, parseEntityFile, parseExampleFile, parsePolicyFile, parseStepFile, parseWorkflowFile,
 } from '../src/index.ts';
+import { rmSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { makeProject, SAMPLE } from './fixture.ts';
 
 describe('the sample project (examples/intake)', () => {
@@ -25,7 +27,7 @@ describe('the sample project (examples/intake)', () => {
 
     const check = wf.steps.check!;
     expect(check.budget).toEqual({ tokens: 40_000, timeMs: 600_000, modelCalls: 12 });
-    expect(check.writes.gstin_ok!.from).toEqual({ kind: 'tool', tool: 'gst.validate_gstin' });
+    expect(check.writes.gstin_ok!.from).toEqual({ kind: 'tool', tool: 'gst.validate_gstin', field: 'valid' });
     expect(check.writes.flags).toEqual({ field: 'flags', type: { kind: 'list', of: { kind: 'named', name: 'Flag' } }, typeSource: 'List<Flag>', from: { kind: 'judgement' } });
     expect(check.tools.required).toEqual(['gst.validate_gstin']);
     expect(check.instructions.startsWith('## What to do')).toBe(true);
@@ -239,6 +241,21 @@ describe('loadWorkflow and loadProject', () => {
     const { workflow, diagnostics } = await loadWorkflow(`${root}/workflows/demo`, root);
     expect(diagnostics).toEqual([]);
     expect(workflow!.caseType).toMatchObject({ id: 'shared', file: 'shared/case.yaml' });
+  });
+
+  test('case and policy paths outside the project folder are errors and are never read', async () => {
+    const root = makeProject({ 'workflows/demo/case.yaml': null });
+    // A real file just outside the root: it must not be loaded even though it exists.
+    const outside = `${basename(root)}-case.yaml`;
+    writeFileSync(join(root, '..', outside), 'case: leaked\nfields: {}\n');
+    writeFileSync(join(root, 'workflows/demo/workflow.yaml'),
+      BASE_SHAPE.replace('start:', `case: ../../../${outside}\npolicy: /etc/hostname\nstart:`));
+    try {
+      const { workflow, diagnostics } = await loadWorkflow(`${root}/workflows/demo`, root);
+      expect(diagnostics.map((d) => `${d.code}@${d.line}`).sort()).toEqual(['path-outside-project@3', 'path-outside-project@4']);
+      expect(workflow!.caseType.id).toBe('');
+      expect(workflow!.policy).toBeUndefined();
+    } finally { rmSync(join(root, '..', outside), { force: true }); }
   });
 
   test('a missing project folder', async () => {

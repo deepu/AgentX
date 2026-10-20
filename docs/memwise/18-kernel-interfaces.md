@@ -21,7 +21,7 @@ Contracts change only additively (new optional fields). Dependencies run one way
 runtime: run driver (one DBOS workflow per run, D39)
   state has a step file and performer agent
     → policy: layersFor(domain, workflow, step) → compilePolicy → EffectivePolicy
-    → step-engine: runAgentStep(StepRunInput) as DBOS workflow `${runId}/${enteredSeq}/${state}`
+    → step-engine: agentStepWorkflow(StepRunInput) as DBOS workflow `${runId}/${enteredSeq}/${state}`
          journaled: context → [model → (policy check → [approval wait] → tool)*]* → checkpoint
          every model call through ModelGateway, every tool call through ToolGateway
          StepRecorder writes the step record as it goes
@@ -61,7 +61,7 @@ runtime: run driver (one DBOS workflow per run, D39)
 - The open engine's chokepoints in `@memwise/shared` (`mcp-pool.ts`, `pre-tool-use.ts`) classify MCP tools by effect class and accept an optional effect journal; off unless configured.
 
 ### `@memwise/step-engine`
-- `configureStepEngine(deps)`, then `runAgentStep(input)`: a DBOS workflow named `memwise.step.agent`.
+- `configureStepEngine(deps)`, and `agentStepWorkflow(input)`: the plain step body. The runtime registers it itself as the DBOS workflow `memwise.step.agent` (`AGENT_STEP_WORKFLOW`), or a test's fake in its place. For standalone use without the runtime, `registerAgentStep()` registers the same body under that name (before `DBOS.launch()`) and `runAgentStep(input)` starts it with `workflowID: input.stepRunId`, returning the handle.
 - Built-in tools: `step.finish` (outcome, writes, rationale; schema generated from the step's writes and outcomes) and, for the verifier role, `checkpoint.verdict`.
 - `recallTools(reader)`: `recall.step_record`, `recall.similar_cases` (ordinary `read` tools).
 
@@ -76,4 +76,7 @@ runtime: run driver (one DBOS workflow per run, D39)
 - **Tool names** are dotted (`gst.validate_gstin`); the model sees `gst__validate_gstin`.
 - **Outcomes `needs_person` and `failed`** go to the state's transition of that name when the shape has one; otherwise the run stops and needs a person.
 - **States without a step file** wait for an outside event (`sendEvent`). Person and external steps also wait; their forms and inbox items come in Phase 2. System (mechanical) steps run in Phase 2.
+- **Outside events always name the state entry they answer** (`for`, D39). `sendEvent` defaults `forSeq` to the run's current `entered_seq`, read in its own transaction, so an event queued while the driver is busy is stale at a later state instead of moving it too.
+- **Runs left without a driver are restarted at kernel start.** `startRun` commits the run before it starts the driver; `createKernel` starts the driver (fixed id `run:<runId>`, so an existing one is returned, never run twice) for every `active` run.
+- **Approval statuses** are `pending`, `approved`, `rejected` and `expired`. When a step run ends, the commit of its result marks its still-pending approvals `expired`. `decideApproval` refuses (`applied: false`, status `expired`) an approval whose step run is no longer `waiting`, and `pendingApprovals` lists only approvals whose step run is waiting.
 - **Crash points**: `MEMWISE_CRASH_AT=<point>[@<detail>]`, listed in `packages/defs/src/testing.ts`.

@@ -7,6 +7,8 @@ import { originLabel } from './order.ts';
 import type { EffectivePolicy, PolicyViolation, Sourced } from './types.ts';
 
 const line = (label: string, s: Sourced<unknown>, text: string) => `  ${label}: ${text}  (${originLabel(s.origin)})`;
+/** Rules that are compiled but not yet enforced, so the view does not claim they are in force. */
+const NOT_ENFORCED = '  (not enforced until Phase 2)';
 
 export function describePolicy(effective: EffectivePolicy): string {
   const out: string[] = ['effects'];
@@ -24,7 +26,7 @@ export function describePolicy(effective: EffectivePolicy): string {
     if (rule.treatment) out.push(line(tool, rule.treatment, rule.treatment.value));
     if (rule.rateLimit) {
       const { count, perMs } = rule.rateLimit.value;
-      out.push(line(`${tool} rate limit`, rule.rateLimit, `${count} per ${duration(perMs)}`));
+      out.push(line(`${tool} rate limit`, rule.rateLimit, `${count} per ${duration(perMs)}`) + NOT_ENFORCED);
     }
   }
 
@@ -33,8 +35,15 @@ export function describePolicy(effective: EffectivePolicy): string {
   if (b.tokens) out.push(line('tokens', b.tokens, String(b.tokens.value)));
   if (b.timeMs) out.push(line('time', b.timeMs, duration(b.timeMs.value)));
   if (b.modelCalls) out.push(line('model calls', b.modelCalls, String(b.modelCalls.value)));
-  if (b.money) out.push(line('money', b.money, `${b.money.value.amount} ${b.money.value.currency}`));
+  if (b.money) out.push(line('money', b.money, `${b.money.value.amount} ${b.money.value.currency}`) + NOT_ENFORCED);
   if (!b.tokens && !b.timeMs && !b.modelCalls && !b.money) out.push('  none');
+  // A step that tightens a run budget hides it above; it still applies to the whole run.
+  const run = effective.runBudgets ?? {};
+  const byStep = (s?: Sourced<unknown>) => s?.origin.layer === 'step';
+  if (run.tokens && byStep(b.tokens)) out.push(line('run tokens', run.tokens, String(run.tokens.value)));
+  if (run.timeMs && byStep(b.timeMs)) out.push(line('run time', run.timeMs, duration(run.timeMs.value)));
+  if (run.modelCalls && byStep(b.modelCalls)) out.push(line('run model calls', run.modelCalls, String(run.modelCalls.value)));
+  if (run.money && byStep(b.money)) out.push(line('run money', run.money, `${run.money.value.amount} ${run.money.value.currency}`) + NOT_ENFORCED);
 
   out.push('model roles');
   const roles = effective.modelRoles;

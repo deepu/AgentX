@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  PLATFORM_DEFAULTS, compilePolicy, describePolicy, layersFor, stepLayer, violationsToDiagnostics, type RuleOrigin,
+  PLATFORM_DEFAULTS, VERIFIER_ROLE, compilePolicy, describePolicy, layersFor, stepLayer, violationsToDiagnostics, type RuleOrigin,
 } from '../src/index.ts';
 import { layer, makeStep, makeWorkflow } from './fixtures.ts';
 
@@ -164,6 +164,22 @@ describe('budgets', () => {
     expect(effective.budgets.timeMs).toEqual({ value: 600000, origin: D });
     expect(effective.budgets.modelCalls).toEqual({ value: 20, origin: W });
     expect(violations).toEqual([expect.objectContaining({ ...S, path: 'budgets.tokens', loosens: W })]);
+    // Run budgets: only the layers above the step.
+    expect(effective.runBudgets).toEqual({ tokens: { value: 100000, origin: W }, timeMs: { value: 600000, origin: D }, modelCalls: { value: 20, origin: W } });
+  });
+
+  test('a step that tightens a budget keeps the run budget above it apart', () => {
+    const { effective, violations } = compilePolicy([
+      domain({ budgets: { tokens: 200000, modelCalls: 60 } }),
+      step({ budgets: { tokens: 40000 } }),
+    ]);
+    expect(violations).toEqual([]);
+    expect(effective.budgets.tokens).toEqual({ value: 40000, origin: S });
+    expect(effective.runBudgets).toEqual({ tokens: { value: 200000, origin: D }, modelCalls: { value: 60, origin: D } });
+    const text = describePolicy(effective);
+    expect(text).toContain('tokens: 40000  (step wf/check');
+    expect(text).toContain('run tokens: 200000  (domain, domain/policy.yaml)');
+    expect(text).not.toContain('run model calls');
   });
 
   test('money compares within one currency; another currency is a violation', () => {
@@ -227,6 +243,12 @@ describe('stepLayer and layersFor', () => {
         modelRoles: ['checker'],
       },
     });
+  });
+
+  test('a step with prose checkpoint rules also permits the verifier role', () => {
+    expect(stepLayer(makeStep({ model: 'checker', checkpoint: ['every flag names its document'] }), 'wf').doc.modelRoles)
+      .toEqual(['checker', VERIFIER_ROLE]);
+    expect(VERIFIER_ROLE).toBe('verifier');
   });
 
   test('an agent step with no tools may call none', () => {
@@ -293,7 +315,7 @@ test('describePolicy shows open lists, rate limits and money with their layers',
   expect(text).toContain('allowed: any tool bound in the domain');
   expect(text).toContain('roles: any');
   expect(text).toContain('gst.validate_gstin: preview  (domain, domain/policy.yaml)');
-  expect(text).toContain('gst.validate_gstin rate limit: 10 per 1m  (domain, domain/policy.yaml)');
-  expect(text).toContain('money: 50 INR  (workflow wf, workflows/wf/policy.yaml)');
+  expect(text).toContain('gst.validate_gstin rate limit: 10 per 1m  (domain, domain/policy.yaml)  (not enforced until Phase 2)');
+  expect(text).toContain('money: 50 INR  (workflow wf, workflows/wf/policy.yaml)  (not enforced until Phase 2)');
   expect(text).toContain('time: 1h30m  (workflow wf');
 });

@@ -21,11 +21,18 @@ test('effects: outbound approve and irreversible deny, both from the domain', ()
   expect(effective.effects.read.value).toBe('allow');
 });
 
-test('budgets and model role come from the step', () => {
+test('budgets and model roles come from the step; the verifier role is permitted for its checkpoint rules', () => {
   expect(effective.budgets.tokens).toEqual({ value: 40000, origin: S });
   expect(effective.budgets.modelCalls).toEqual({ value: 12, origin: S });
   expect(effective.budgets.timeMs).toEqual({ value: 600000, origin: S });
-  expect(effective.modelRoles).toEqual({ value: ['checker'], origin: S });
+  expect(effective.modelRoles).toEqual({ value: ['checker', 'verifier'], origin: S });
+});
+
+test('the run budgets above the step are kept apart from the step budgets that hide them', () => {
+  expect(effective.runBudgets).toEqual({
+    tokens: { value: 100000, origin: { layer: 'workflow', name: 'client-intake', source: 'workflows/client-intake/policy.yaml' } },
+    modelCalls: { value: 60, origin: D },
+  });
 });
 
 test("the allowed tools are the step's list", () => {
@@ -52,7 +59,9 @@ test('the effective-policy view names the layer of every rule', () => {
   expect(text).toContain('denied: payments.transfer  (domain, domain/policy.yaml)');
   expect(text).toContain('tokens: 40000  (step client-intake/check, workflows/client-intake/steps/check.md)');
   expect(text).toContain('time: 10m  (step client-intake/check');
-  expect(text).toContain('roles: checker  (step client-intake/check');
+  expect(text).toContain('roles: checker, verifier  (step client-intake/check');
+  expect(text).toContain('run tokens: 100000  (workflow client-intake, workflows/client-intake/policy.yaml)');
+  expect(text).toContain('run model calls: 60  (domain, domain/policy.yaml)');
   expect(text).toContain('enabled: on  (platform)');
   expect(text).toContain('layers: platform → domain, domain/policy.yaml → workflow client-intake, workflows/client-intake/policy.yaml → step client-intake/check');
 });

@@ -81,6 +81,10 @@ export async function startCluster(opts: ClusterOptions): Promise<Cluster> {
   }
 
   const port = opts.port ?? (await freePort());
+  // pg_ctl hands `-o` to a shell, where the socket folder sits in single quotes.
+  if (!isWin && os.tmpdir().includes("'")) {
+    throw new Error(`the temp folder ${os.tmpdir()} contains a single quote, which the Postgres socket path cannot take; set TMPDIR to a folder without one`);
+  }
   const socketDir = isWin ? undefined : fs.mkdtempSync(path.join(os.tmpdir(), SOCKET_PREFIX));
   if (socketDir && owner) fs.chownSync(socketDir, owner.uid, owner.gid);
   const serverOpts = [`-p ${port}`, ...(socketDir ? [`-k '${socketDir}'`] : [])].join(' ');

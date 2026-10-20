@@ -66,6 +66,11 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const stepWorkflow = DBOS.registerWorkflow(options.stepExecutor ?? agentStepWorkflow, { name: AGENT_STEP_WORKFLOW });
   const { driver } = registerRunDriver({ pool, dataSource, stepWorkflow });
   await DBOS.launch(); // also recovers this executor's pending drivers and steps
+  // startRun commits the run before it starts the driver; a crash in between leaves an active run
+  // with no driver. Start one for every active run: the id is fixed, so an existing driver
+  // (recovered above, or owned by another executor) is returned, never run twice.
+  const active = await pool.query(`select id from mw.runs where status = 'active' order by created_at, id`);
+  for (const { id } of active.rows) await DBOS.startWorkflow(driver, { workflowID: driverIdOf(id) })(id);
   const client = await DBOSClient.create({ systemDatabaseUrl: url });
 
   const getRun = (runId: string) => getRunRecord(pool, runId);
@@ -114,11 +119,15 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
 
     async sendEvent(runId, event, { idemKey, forSeq }) {
       const ev: RunEvent = typeof event === 'string' ? { type: event } : { ...event };
-      if (forSeq !== undefined) ev.for = forSeq;
       return withTransaction(pool, async (db) => {
+        // Every outside event names the state entry it answers; by default the one current now,
+        // so an event queued while the driver is busy can never move a later state too.
+        const run = await db.query('select entered_seq from mw.runs where id = $1 for update', [runId]);
+        if (!run.rows[0]) throw new Error(`no run ${runId}`);
+        ev.for = forSeq ?? (run.rows[0].entered_seq as number);
         const ins = await db.query(
           `insert into mw.inbox (run_id, idem_key, event, for_seq) values ($1, $2, $3, $4) on conflict do nothing`,
-          [runId, idemKey, JSON.stringify(ev), forSeq ?? null]);
+          [runId, idemKey, JSON.stringify(ev), ev.for]);
         // Same database as DBOS's system schema: the message commits with the inbox row.
         if (ins.rowCount) await client.sendInTransaction(db, driverIdOf(runId), ev, 'events', `${runId}:${idemKey}`);
         return { sent: !!ins.rowCount };
@@ -130,6 +139,11 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         const store = new PgApprovalStore(db);
         const current = await store.get(decision.id);
         if (!current) return { applied: false, status: 'missing' as const };
+        if (current.status !== 'pending') return { applied: false, status: current.status };
+        // Only a step still waiting can take the answer; one that timed out or stopped has moved
+        // on (the driver marks its approvals expired when it commits the step's result).
+        const step = await db.query('select status from mw.step_runs where id = $1 for update', [current.stepRunId]);
+        if (step.rows[0]?.status !== 'waiting') return { applied: false, status: 'expired' as const };
         if (!(await store.decide(db, decision))) return { applied: false, status: current.status };
         await client.sendInTransaction(db, current.stepRunId, decision, approvalTopic(decision.id), `approval:${decision.id}`);
         return { applied: true, status: decision.status };
@@ -154,7 +168,12 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     getStepRecord: (stepRunId) => reader.get(stepRunId),
 
     async pendingApprovals(): Promise<ApprovalRequest[]> {
-      return (await approvals.pending()).map(({ status, decidedBy, comment, decidedAt, ...request }) => request);
+      const pending = await approvals.pending();
+      // Only approvals a waiting step can still act on.
+      const { rows } = await pool.query(`select id from mw.step_runs where status = 'waiting' and id = any($1)`,
+        [pending.map((a) => a.stepRunId)]);
+      const waiting = new Set(rows.map((r) => r.id as string));
+      return pending.filter((a) => waiting.has(a.stepRunId)).map(({ status, decidedBy, comment, decidedAt, ...request }) => request);
     },
 
     async shutdown() {

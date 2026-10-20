@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { basename, join, relative, resolve, sep } from 'node:path';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseExampleFile, parseWorkflowFile } from './parse-workflow.ts';
 import { parsePolicyFile } from './parse-policy.ts';
 import { parseStepFile } from './parse-step.ts';
@@ -68,6 +68,12 @@ export async function loadWorkflow(dir: string, projectRoot: string): Promise<{ 
     const target = resolve(abs, path);
     const inFolder = posix(relative(abs, target));
     if (contents.has(inFolder)) return { text: text(inFolder), file: rel(target) };
+    // Only files inside the project belong to it; anything else is never read.
+    const fromRoot = relative(root, target);
+    if (fromRoot === '..' || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot)) {
+      report.error('path-outside-project', `the ${what} \`${path}\` is outside the project folder`, [key]);
+      return undefined;
+    }
     if (!inFolder.startsWith('..') || !existsSync(target)) {
       report.error(`missing-${key}-file`, `the ${what} \`${path}\` was not found`, [key]);
       return undefined;

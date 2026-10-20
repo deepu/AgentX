@@ -34,20 +34,31 @@ export interface EffectivePolicy {
     required: Sourced<string>[];
     perTool: Record<string, {
       treatment?: Sourced<Treatment>;
+      /** Compiled and shown, not enforced until Phase 2. */
       rateLimit?: Sourced<{ count: number; perMs: number }>;
     }>;
   };
-  budgets: {
-    tokens?: Sourced<number>;
-    timeMs?: Sourced<number>;
-    modelCalls?: Sourced<number>;
-    money?: Sourced<Money>;
-  };
+  /** The tightest budget of every layer. A step-layer budget applies to one step run, any other to the whole run. */
+  budgets: PolicyBudgets;
+  /**
+   * The budgets set above the step layer (platform, plugin, domain, workflow): run budgets,
+   * checked against what the whole run spent. Kept apart because a step that tightens a budget
+   * hides the run's in `budgets`. Absent in a policy compiled before this field existed.
+   */
+  runBudgets?: PolicyBudgets;
   /** null: any role. */
   modelRoles: Sourced<string[]> | null;
   taint: { enabled: Sourced<boolean>; outboundWhenTainted: Sourced<Treatment> };
   /** The layers this was compiled from, top to bottom. */
   layers: { kind: LayerKind; name: string; source?: string }[];
+}
+
+export interface PolicyBudgets {
+  tokens?: Sourced<number>;
+  timeMs?: Sourced<number>;
+  modelCalls?: Sourced<number>;
+  /** Compiled and shown, not enforced until Phase 2. */
+  money?: Sourced<Money>;
 }
 
 /** A lower layer tried to loosen a rule set above it (D30). */

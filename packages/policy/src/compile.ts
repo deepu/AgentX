@@ -6,11 +6,11 @@
  * that tightens it takes over, and one that tries to loosen it is recorded as a violation and
  * ignored.
  */
-import { EFFECT_CLASSES, type EffectClass, type Treatment } from '@memwise/defs';
+import { EFFECT_CLASSES, type EffectClass, type PolicyDoc, type Treatment } from '@memwise/defs';
 import { BUILTIN_TOOLS, PLATFORM_DEFAULTS } from './layers.ts';
 import { compareRate, lowerMoney, originLabel, originOf, rank } from './order.ts';
 import type {
-  CompiledPolicy, EffectivePolicy, PolicyLayer, PolicyViolation, RuleOrigin, Sourced,
+  CompiledPolicy, EffectivePolicy, PolicyBudgets, PolicyLayer, PolicyViolation, RuleOrigin, Sourced,
 } from './types.ts';
 
 export function compilePolicy(layers: PolicyLayer[]): CompiledPolicy {
@@ -20,7 +20,8 @@ export function compilePolicy(layers: PolicyLayer[]): CompiledPolicy {
   const denied: Sourced<string>[] = [];
   const required: Sourced<string>[] = [];
   const perTool: EffectivePolicy['tools']['perTool'] = {};
-  const budgets: EffectivePolicy['budgets'] = {};
+  const budgets: PolicyBudgets = {};
+  const runBudgets: PolicyBudgets = {};
   let modelRoles: Sourced<string[]> | null = null;
   let taintEnabled: Sourced<boolean> | undefined;
   let taintOutbound: Sourced<Treatment> | undefined;
@@ -98,30 +99,9 @@ export function compilePolicy(layers: PolicyLayer[]): CompiledPolicy {
       }
     }
 
-    // Budgets: the lowest wins.
-    for (const key of ['tokens', 'timeMs', 'modelCalls'] as const) {
-      const v = doc.budgets?.[key];
-      if (v === undefined) continue;
-      const cur = budgets[key];
-      if (!cur || v < cur.value) budgets[key] = { value: v, origin };
-      else if (v > cur.value) {
-        violate(`budgets.${key}`, `sets budgets.${key} to ${v}, above ${cur.value} from ${originLabel(cur.origin)}`, cur.origin);
-      }
-    }
-    const money = doc.budgets?.money;
-    if (money) {
-      const cur = budgets.money;
-      if (!cur) budgets.money = { value: money, origin };
-      else {
-        const lower = lowerMoney(cur.value, money);
-        if (!lower) {
-          violate('budgets.money', `currency mismatch: ${money.currency} against ${cur.value.currency} from ${originLabel(cur.origin)}`, cur.origin);
-        } else if (money.amount < cur.value.amount) budgets.money = { value: money, origin };
-        else if (money.amount > cur.value.amount) {
-          violate('budgets.money', `sets budgets.money to ${money.amount} ${money.currency}, above ${cur.value.amount} from ${originLabel(cur.origin)}`, cur.origin);
-        }
-      }
-    }
+    // Budgets: the lowest wins. Those above the step layer are also the run's budgets.
+    tightenBudgets(budgets, doc.budgets, origin, violate);
+    if (layer.kind !== 'step') tightenBudgets(runBudgets, doc.budgets, origin, () => {});
 
     if (doc.modelRoles) {
       const kept: string[] = [];
@@ -168,6 +148,7 @@ export function compilePolicy(layers: PolicyLayer[]): CompiledPolicy {
       effects: fullEffects,
       tools: { allowed, denied, required: keptRequired, perTool },
       budgets,
+      runBudgets,
       modelRoles,
       taint: {
         enabled: taintEnabled ?? { value: defaults.taint!.enabled!, origin: platform },
@@ -180,4 +161,34 @@ export function compilePolicy(layers: PolicyLayer[]): CompiledPolicy {
     },
     violations,
   };
+}
+
+/** Lowers `budgets` to `doc`'s where they are lower; a higher one is a violation and ignored. */
+function tightenBudgets(
+  budgets: PolicyBudgets, doc: PolicyDoc['budgets'], origin: RuleOrigin,
+  violate: (path: string, message: string, loosens: RuleOrigin) => void,
+): void {
+  for (const key of ['tokens', 'timeMs', 'modelCalls'] as const) {
+    const v = doc?.[key];
+    if (v === undefined) continue;
+    const cur = budgets[key];
+    if (!cur || v < cur.value) budgets[key] = { value: v, origin };
+    else if (v > cur.value) {
+      violate(`budgets.${key}`, `sets budgets.${key} to ${v}, above ${cur.value} from ${originLabel(cur.origin)}`, cur.origin);
+    }
+  }
+  const money = doc?.money;
+  if (money) {
+    const cur = budgets.money;
+    if (!cur) budgets.money = { value: money, origin };
+    else {
+      const lower = lowerMoney(cur.value, money);
+      if (!lower) {
+        violate('budgets.money', `currency mismatch: ${money.currency} against ${cur.value.currency} from ${originLabel(cur.origin)}`, cur.origin);
+      } else if (money.amount < cur.value.amount) budgets.money = { value: money, origin };
+      else if (money.amount > cur.value.amount) {
+        violate('budgets.money', `sets budgets.money to ${money.amount} ${money.currency}, above ${cur.value.amount} from ${originLabel(cur.origin)}`, cur.origin);
+      }
+    }
+  }
 }

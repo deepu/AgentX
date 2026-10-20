@@ -7,8 +7,10 @@
  *   step.finish → checkpoint:<n>:structural → verify:<n>,
  *   record.finish
  *
- * On resume DBOS replays the body: finished steps return their journaled output without
- * running, so the message list is rebuilt from the journal and no finished call repeats.
+ * plus a `journal:<key>` step after each model, verifier and tool call that writes its entry in
+ * the step record. On resume DBOS replays the body: finished steps return their journaled output
+ * without running, so the message list is rebuilt from DBOS's journal and no finished call
+ * repeats. The step record is written alongside and never decides whether a call succeeded.
  * The body itself is deterministic: clocks and ids are read only inside steps or from the input.
  */
 import { DBOS, type StepConfig } from '@dbos-inc/dbos-sdk';
@@ -18,9 +20,10 @@ import {
   type JournalEntry, type StepRecord,
 } from '@memwise/defs';
 import {
-  BudgetExceededError, toolNameFromModel, type Budget, type GatewayCallResult, type GatewayDecision, type ModelCallResult,
-  type ModelRequest,
+  exceededLimit, toolNameFromModel, type Budget, type GatewayCallResult, type GatewayDecision, type ModelCallResult,
+  type ModelRequest, type Spent,
 } from '@memwise/gateway';
+import { VERIFIER_ROLE, type Sourced } from '@memwise/policy';
 import { parseVerdict, repairMessage, structuralChecks, verifierRequest, type Evidence, type FinishArgs } from './checkpoint.ts';
 import { assembleContext, requiredTools } from './context.ts';
 import { engineDeps } from './deps.ts';
@@ -34,17 +37,21 @@ export const AGENT_STEP_WORKFLOW = 'memwise.step.agent';
 const APPROVAL_WAIT_SECONDS = 7 * 24 * 3600;
 /** pi-ai retries are off (D38): a failed model attempt is retried here, as a DBOS step retry. */
 const MODEL_STEP: StepConfig = { retriesAllowed: true, maxAttempts: 3, intervalSeconds: 1, backoffRate: 2, timeoutMS: 300_000 };
+/** Step-record writes after a call are idempotent on their key, so they retry on their own. */
+const JOURNAL_STEP: StepConfig = { retriesAllowed: true, maxAttempts: 4, intervalSeconds: 1, backoffRate: 2 };
 const DEFAULT_MAX_TURNS = 24;
+const waitTime = (seconds: number) => (seconds % 86_400 === 0 ? `${seconds / 86_400} days` : `${seconds} seconds`);
 const DEFAULT_MAX_REPAIRS = 2;
 
 type ModelOutcome =
   | { kind: 'ok'; call: ModelCallResult }
-  | { kind: 'budget'; limit: keyof Budget; message: string }
+  /** A budget is spent or the policy does not permit the role: nothing was sent, the step goes to a person. */
+  | { kind: 'stop'; message: string }
   /** Every attempt failed (provider down, bad key): the step stops as `failed`. */
   | { kind: 'error'; message: string };
 
-const isBudgetError = (e: unknown): e is BudgetExceededError =>
-  e instanceof BudgetExceededError || (e instanceof Error && e.name === 'BudgetExceededError');
+type Entry = Omit<JournalEntry, 'stepRunId' | 'journalKey'>;
+const isCancel = (e: unknown) => e instanceof Error && /cancel/i.test(e.name);
 
 /** Aborts the provider request when DBOS cancels the workflow or the attempt times out. */
 function stepSignal(): AbortSignal | undefined {
@@ -55,18 +62,33 @@ function stepSignal(): AbortSignal | undefined {
 
 const minDefined = (a?: number, b?: number) => (a === undefined ? b : b === undefined ? a : Math.min(a, b));
 
-/** The step's budget: the tighter of the effective policy and the step file. */
+function budgetOf(pick: (key: keyof Budget) => number | undefined): Budget {
+  const budget: Budget = {};
+  for (const key of ['tokens', 'modelCalls', 'timeMs'] as const) {
+    const v = pick(key);
+    if (v !== undefined) budget[key] = v;
+  }
+  return budget;
+}
+
+/**
+ * The step's own budget, for this step run alone: the policy's budgets set by the step layer,
+ * and the step file's.
+ */
 export function stepBudget(input: StepRunInput): Budget {
   const p = input.policy.budgets;
   const s = input.step.budget ?? {};
-  const budget: Budget = {};
-  const tokens = minDefined(p.tokens?.value, s.tokens);
-  const modelCalls = minDefined(p.modelCalls?.value, s.modelCalls);
-  const timeMs = minDefined(p.timeMs?.value, s.timeMs);
-  if (tokens !== undefined) budget.tokens = tokens;
-  if (modelCalls !== undefined) budget.modelCalls = modelCalls;
-  if (timeMs !== undefined) budget.timeMs = timeMs;
-  return budget;
+  return budgetOf((key) => minDefined(p[key]?.origin.layer === 'step' ? p[key].value : undefined, s[key]));
+}
+
+/**
+ * The run's budget: the policy's budgets set above the step layer, checked against
+ * `input.runSpent` plus this step run.
+ */
+export function runBudget(input: StepRunInput): Budget {
+  const p = input.policy.runBudgets ?? input.policy.budgets;
+  const above = (b?: Sourced<number>) => (b && b.origin.layer !== 'step' ? b.value : undefined);
+  return budgetOf((key) => above(p[key]));
 }
 
 function toolResult(call: ToolCall, text: string, isError: boolean, timestamp: number, durationMs?: number): ToolResultMessage {
@@ -100,7 +122,10 @@ class StepRun {
   tainted = false;
   tokens = 0;
   costUsd = 0;
+  /** Every model call, verifier calls included (usage and crash points). */
   modelCalls = 0;
+  /** The agent's own calls: what model-call budgets count. A verifier call does not use up a turn. */
+  agentCalls = 0;
   toolCalls = 0;
   /** Model and tool time only, so a long approval wait does not eat the time budget. */
   activeMs = 0;
@@ -110,11 +135,13 @@ class StepRun {
   ctx?: AssembledContext;
   rationale?: string;
   private readonly budget: Budget;
+  private readonly runBudget: Budget;
   private readonly required: string[];
 
   constructor(readonly input: StepRunInput, readonly deps: StepEngineDeps) {
     this.messages = [{ role: 'user', content: `Begin the step: ${input.step.title}.`, timestamp: input.startedAt }];
     this.budget = stepBudget(input);
+    this.runBudget = runBudget(input);
     this.required = requiredTools(input);
   }
 
@@ -128,6 +155,48 @@ class StepRun {
 
   private journal(entry: Omit<JournalEntry, 'stepRunId'>) {
     return this.deps.recorder.journal({ stepRunId: this.input.stepRunId, ...entry });
+  }
+
+  /**
+   * A step-record entry for a call that already ran, written as its own retried DBOS step
+   * `journal:<key>` after the call's step. The record never decides whether a call succeeded
+   * (DBOS's journal is what a replay reads), so a write that keeps failing is logged and the
+   * step run goes on.
+   */
+  private async record(journalKey: string, entry: () => Entry): Promise<void> {
+    try {
+      await this.step(`journal:${journalKey}`, () => this.journal({ journalKey, ...entry() }), JOURNAL_STEP);
+    } catch (e) {
+      if (isCancel(e)) throw e;
+      DBOS.logger.warn(`step ${this.input.stepRunId}: journal entry ${journalKey} not recorded: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /** A step-record write inside a call's step, which must not fail the call: errors are logged. */
+  private async bestEffort(journalKey: string, entry: Entry): Promise<void> {
+    try {
+      await this.journal({ journalKey, ...entry });
+    } catch (e) {
+      DBOS.logger.warn(`step ${this.input.stepRunId}: journal entry ${journalKey} not recorded: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /** Why a model call for `role` may not be made: a role the policy does not permit, or a spent budget. */
+  private refusal(role: string, verifier: boolean): string | undefined {
+    const roles = this.input.policy.modelRoles;
+    if (roles && !roles.value.includes(role)) {
+      return `model role ${role} is not permitted by the policy (${roles.origin.layer} ${roles.origin.name} permits ${roles.value.join(', ') || 'no role'})`;
+    }
+    // Verifier calls count tokens and time, not model calls: checking the last turn's result must not break the turn limit.
+    const calls = (b: Budget): Budget => { if (!verifier) return b; const { modelCalls: _, ...rest } = b; return rest; };
+    const own: Spent = { tokens: this.tokens, modelCalls: this.agentCalls, elapsedMs: this.activeMs };
+    const before = this.input.runSpent ?? { tokens: 0, modelCalls: 0, elapsedMs: 0 };
+    const run: Spent = { tokens: before.tokens + own.tokens, modelCalls: before.modelCalls + own.modelCalls, elapsedMs: before.elapsedMs + own.elapsedMs };
+    for (const [scope, budget, spent] of [['the step', this.budget, own], ['the run', this.runBudget, run]] as const) {
+      const limit = exceededLimit(calls(budget), spent);
+      if (limit) return `budget exceeded: ${limit} (limit ${budget[limit]} for ${scope}, spent ${JSON.stringify(spent)})`;
+    }
+    return undefined;
   }
 
   async run(): Promise<StepResult> {
@@ -153,7 +222,7 @@ class StepRun {
       if (turn > this.turnLimit) return this.stop('needs_person', `no ${FINISH_TOOL} within the limit of ${this.turnLimit} model calls`);
       const out = await this.model(`model:${turn}`, step.model, { systemPrompt: ctx.systemPrompt, messages: [...this.messages], tools },
         { turn, contextHash: ctx.hash, messages: this.messages.length });
-      if (out.kind === 'budget') return this.stop('needs_person', out.message);
+      if (out.kind === 'stop') return this.stop('needs_person', out.message);
       if (out.kind === 'error') return this.stop('failed', out.message);
       const assistant = out.call.message;
       this.messages.push(assistant);
@@ -179,59 +248,62 @@ class StepRun {
     }
   }
 
-  /** One model call as a DBOS step. A budget stop is a designed outcome, returned rather than thrown. */
-  private async model(
-    name: string, role: string, request: ModelRequest, journalRequest: unknown,
-    after?: (call: ModelCallResult) => Promise<void>,
-  ): Promise<ModelOutcome> {
+  /**
+   * One model call as a DBOS step. A refused role or a spent budget is a designed outcome,
+   * returned rather than thrown, and nothing is sent.
+   */
+  private async model(name: string, role: string, request: ModelRequest, journalRequest: unknown, verifier = false): Promise<ModelOutcome> {
     const { deps, input } = this;
-    const spent = { tokens: this.tokens, modelCalls: this.modelCalls, elapsedMs: this.activeMs };
-    let ran: { value: ModelOutcome; executed: boolean };
+    // Checked here, not by the gateway: the step's budget and the run's count different spending.
+    const refused = this.refusal(role, verifier);
+    if (refused) {
+      await this.record(name, () => ({ kind: 'model', name: role, request: journalRequest, error: refused, startedAt: new Date().toISOString() }));
+      return { kind: 'stop', message: refused };
+    }
+    let ran: { value: { call: ModelCallResult; attempt: number; startedAt: string }; executed: boolean };
     try {
-      ran = await this.step(name, async (): Promise<ModelOutcome> => {
+      ran = await this.step(name, async () => {
         const startedAt = new Date().toISOString();
-        const attempt = DBOS.stepStatus?.currentAttempt;
+        const attempt = DBOS.stepStatus?.currentAttempt ?? 1;
+        // D38: each attempt is recorded before it is sent, so a kill mid-request leaves a trace.
+        await this.bestEffort(`${name}#${attempt}`, { kind: 'model', name: role, request: journalRequest, attempt, startedAt });
+        const t0 = Date.now();
         try {
-          const call = await deps.models.call(request, { role, sessionId: input.stepRunId, signal: stepSignal(), budget: this.budget, spent });
+          const call = await deps.models.call(request, { role, sessionId: input.stepRunId, signal: stepSignal() });
           const { message } = call;
           if (message.stopReason === 'error' || message.stopReason === 'aborted') {
             throw new Error(`model call ${message.stopReason}: ${message.errorMessage ?? 'no message'}`);
           }
-          await this.journal({
-            journalKey: name, kind: 'model', name: role, request: journalRequest,
-            response: { content: message.content, stopReason: message.stopReason },
-            model: { provider: call.provider, model: call.model, usage: call.usage, stopReason: message.stopReason },
-            attempt, startedAt, durationMs: call.durationMs,
-          });
-          await after?.(call);
-          return { kind: 'ok', call };
+          return { call, attempt, startedAt };
         } catch (e) {
-          const error = e instanceof Error ? e.message : String(e);
-          if (isBudgetError(e)) {
-            await this.journal({ journalKey: name, kind: 'model', name: role, request: journalRequest, error, attempt, startedAt });
-            return { kind: 'budget', limit: e.limit, message: `budget exceeded: ${e.limit} (limit ${e.budget[e.limit]}, spent ${JSON.stringify(e.spent)})` };
-          }
           // Each failed attempt is kept in the record (D38), so lost calls are visible in metering.
-          await this.journal({ journalKey: `${name}#${attempt ?? 1}`, kind: 'model', name: role, request: journalRequest, error, attempt, startedAt });
+          const error = e instanceof Error ? e.message : String(e);
+          await this.bestEffort(`${name}#${attempt}:failed`, { kind: 'model', name: role, request: journalRequest, error, attempt, startedAt, durationMs: Date.now() - t0 });
           throw e;
         }
       }, MODEL_STEP);
     } catch (e) {
       // DBOS replays a recorded failure as the same throw, so this path is deterministic too.
       // Cancellation is not a step outcome: let DBOS handle it.
-      if (e instanceof Error && /cancel/i.test(e.name)) throw e;
+      if (isCancel(e)) throw e;
       return { kind: 'error', message: `model call failed: ${e instanceof Error ? e.message : String(e)}` };
     }
-    const { value, executed } = ran;
-    if (value.kind === 'ok') {
-      this.modelCalls += 1;
-      this.tokens += value.call.usage.totalTokens;
-      this.costUsd += value.call.usage.costUsd ?? 0;
-      this.activeMs += value.call.durationMs;
-      // After DBOS recorded the call: a kill here must not repeat it on resume.
-      if (executed) crashPoint('after-model-call', this.modelCalls);
-    }
-    return value;
+    const { value: { call, attempt, startedAt }, executed } = ran;
+    this.modelCalls += 1;
+    if (!verifier) this.agentCalls += 1;
+    this.tokens += call.usage.totalTokens;
+    this.costUsd += call.usage.costUsd ?? 0;
+    this.activeMs += call.durationMs;
+    // After DBOS recorded the call, in its own step: a recorder failure can't make the call run again.
+    const { message } = call;
+    await this.record(name, () => ({
+      kind: 'model', name: role, request: journalRequest, response: { content: message.content, stopReason: message.stopReason },
+      model: { provider: call.provider, model: call.model, usage: call.usage, stopReason: message.stopReason },
+      attempt, startedAt, durationMs: call.durationMs,
+    }));
+    // A kill here must not repeat the call on resume.
+    if (executed) crashPoint('after-model-call', this.modelCalls);
+    return { kind: 'ok', call };
   }
 
   /** Policy check, approval wait if needed, then the call through the gateway. Returns a StepResult only to stop. */
@@ -269,7 +341,8 @@ class StepRun {
       });
       if (executed) crashPoint('waiting-approval', tool);
       // Hibernates: no worker or model is held, and the wait survives restarts.
-      const answer = await DBOS.recv<ApprovalDecision>(approvalTopic(id), { timeoutSeconds: APPROVAL_WAIT_SECONDS });
+      const waitSeconds = deps.approvalTimeoutSeconds ?? APPROVAL_WAIT_SECONDS;
+      const answer = await DBOS.recv<ApprovalDecision>(approvalTopic(id), { timeoutSeconds: waitSeconds });
       const answeredAt = (await this.step(`approval.answer:${call.id}`, async () => {
         await deps.recorder.status(input.stepRunId, 'running');
         await this.journal({
@@ -278,7 +351,13 @@ class StepRun {
         });
         return Date.now();
       })).value;
-      if (!answer) return this.stop('needs_person', `the approval for ${tool} got no answer within ${APPROVAL_WAIT_SECONDS / 86400} days`);
+      if (!answer) {
+        // The request lapses: the record shows it, and a late decision is refused (the step run is no longer waiting).
+        await this.record(`approval.expired:${call.id}`, () => ({
+          kind: 'approval', name: tool, callId: call.id, request: { id }, error: 'expired', startedAt: new Date().toISOString(),
+        }));
+        return this.stop('needs_person', `the approval for ${tool} got no answer within ${waitTime(waitSeconds)}`);
+      }
       if (answer.status === 'rejected') {
         const text = `Rejected by ${answer.by}${answer.comment ? `: ${answer.comment}` : ''}. The call was not made.`;
         this.messages.push(toolResult(call, text, true, answeredAt));
@@ -292,13 +371,14 @@ class StepRun {
       const idempotencyKey = `${DBOS.workflowID}:${DBOS.stepID}`;
       const result = await deps.tools.execute({ tool, args, callId: call.id, idempotencyKey, token: input.token }, decision);
       const durationMs = Date.now() - startedAt.getTime();
-      await this.journal({
-        journalKey: `tool:${tool}:${call.id}`, kind: 'tool', name: tool, callId: call.id, request: { args, idempotencyKey },
-        response: result, ...(result.status !== 'ok' ? { error: 'error' in result ? result.error : result.reason } : {}),
-        effect: decision.effect, startedAt: startedAt.toISOString(), durationMs,
-      });
-      return { result, at: Date.now(), durationMs, quarantine: deps.tools.get(tool)?.quarantine === true };
+      return { result, idempotencyKey, startedAt: startedAt.toISOString(), at: Date.now(), durationMs, quarantine: deps.tools.get(tool)?.quarantine === true };
     })).value;
+    // After DBOS recorded the call, in its own step: a recorder failure can't fail a call whose effect is done.
+    await this.record(`tool:${tool}:${call.id}`, () => ({
+      kind: 'tool', name: tool, callId: call.id, request: { args, idempotencyKey: out.idempotencyKey },
+      response: out.result, ...(out.result.status !== 'ok' ? { error: 'error' in out.result ? out.result.error : out.result.reason } : {}),
+      effect: decision.effect, startedAt: out.startedAt, durationMs: out.durationMs,
+    }));
     this.toolCalls += 1;
     this.activeMs += out.durationMs;
     if (out.result.status === 'ok') {
@@ -328,17 +408,16 @@ class StepRun {
     let at = structural.at;
 
     if (structural.passed && step.checkpoint.length) {
-      const role = deps.verifierRole ?? 'verifier';
+      const role = deps.verifierRole ?? VERIFIER_ROLE;
       const request = verifierRequest(step.checkpoint, args, this.evidence, assistant.timestamp);
-      const out = await this.model(`verify:${n}`, role, request, { round: n, rules: step.checkpoint }, async (v) => {
-        await this.journal({
-          journalKey: `checkpoint:${n}:verifier`, kind: 'checkpoint', name: 'verifier', callId: call.id,
-          request: { rules: step.checkpoint }, response: parseVerdict(v.message, step.checkpoint), startedAt: new Date().toISOString(),
-        });
-      });
-      if (out.kind === 'budget') return this.stop('needs_person', out.message);
+      const out = await this.model(`verify:${n}`, role, request, { round: n, rules: step.checkpoint }, true);
+      if (out.kind === 'stop') return this.stop('needs_person', out.message);
       if (out.kind === 'error') return this.stop('failed', out.message);
-      checks = [...checks, ...parseVerdict(out.call.message, step.checkpoint)];
+      const verdict = parseVerdict(out.call.message, step.checkpoint);
+      await this.record(`checkpoint:${n}:verifier`, () => ({
+        kind: 'checkpoint', name: 'verifier', callId: call.id, request: { rules: step.checkpoint }, response: verdict, startedAt: new Date().toISOString(),
+      }));
+      checks = [...checks, ...verdict];
       at = out.call.message.timestamp;
     }
     this.checkpoint = checks;
@@ -389,8 +468,8 @@ class StepRun {
 }
 
 /**
- * The step run's DBOS workflow body, unregistered. The runtime registers it itself (so it can
- * deregister between kernels in tests); everyone else uses `registerAgentStep()`.
+ * The step run's DBOS workflow body, unregistered. A kernel process (`@memwise/runtime`) registers
+ * it itself under `AGENT_STEP_WORKFLOW`, so it can deregister between kernels in tests.
  * Start it with `workflowID: input.stepRunId`.
  */
 export async function agentStepWorkflow(input: StepRunInput): Promise<StepResult> {
@@ -399,12 +478,19 @@ export async function agentStepWorkflow(input: StepRunInput): Promise<StepResult
 
 let registered: ((input: StepRunInput) => Promise<StepResult>) | undefined;
 
-/** Registers `memwise.step.agent` once per process (before DBOS.launch()) and returns the workflow. */
+/**
+ * For using the step engine standalone (tests, scripts), not inside a kernel process, which
+ * registers `agentStepWorkflow` itself: registers `memwise.step.agent` once per process (before
+ * DBOS.launch()) and returns the workflow.
+ */
 export function registerAgentStep(): (input: StepRunInput) => Promise<StepResult> {
   return (registered ??= DBOS.registerWorkflow(agentStepWorkflow, { name: AGENT_STEP_WORKFLOW }));
 }
 
-/** Starts a step run as its own DBOS workflow (id = step run id) and returns the handle. */
+/**
+ * For using the step engine standalone, not inside a kernel process (see `registerAgentStep`):
+ * starts a step run as its own DBOS workflow (id = step run id) and returns the handle.
+ */
 export function runAgentStep(input: StepRunInput) {
   return DBOS.startWorkflow(registerAgentStep(), { workflowID: input.stepRunId })(input);
 }

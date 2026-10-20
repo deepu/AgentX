@@ -76,4 +76,17 @@ describe.skipIf(!bins)('bundled cluster (embedded binaries)', () => {
     await cluster.dropDatabase('app');
     expect(await query(cluster.url(), `select count(*)::int as n from pg_database where datname = 'app'`)).toEqual([{ n: 0 }]);
   }, 60_000);
+
+  test('a temp folder with a single quote is refused before pg_ctl runs', async () => {
+    await cluster!.stop();
+    const saved = process.env.TMPDIR;
+    process.env.TMPDIR = path.join(base, "it's");
+    try {
+      await expect(startCluster({ dataDir })).rejects.toThrow(/contains a single quote/);
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = saved;
+    }
+    expect(fs.existsSync(path.join(dataDir, 'postmaster.pid'))).toBe(false);
+  }, 30_000);
 });

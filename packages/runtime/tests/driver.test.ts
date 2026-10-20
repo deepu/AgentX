@@ -19,8 +19,29 @@ const loosening = workflow('loosening', 'act', { act: { on: { done: 'end' }, ste
 ]);
 
 const boom = workflow('boom', 'boom', { boom: { on: { done: 'end' }, step: 'boom' } }, [step('boom', 'agent', { outcomes: ['done'], model: 'checker' })]);
+
+// Two person states in a row that both take `approved`: one answer must move only one of them.
+const twice = workflow('twice', 'a', { a: { on: { approved: 'b' }, step: 'a' }, b: { on: { approved: 'end' }, step: 'b' } }, [
+  step('a', 'person', { outcomes: ['approved'] }), step('b', 'person', { outcomes: ['approved'] }),
+]);
+
+// An agent step that ends needs_person (as when its approval wait times out), then a person step.
+const expiry = workflow('expiry', 'ask', {
+  ask: { on: { done: 'end', needs_person: 'held' }, step: 'ask' },
+  held: { on: { resolved: 'end' }, step: 'held' },
+}, [step('ask', 'agent', { outcomes: ['done'], model: 'checker' }), step('held', 'person', { outcomes: ['resolved'] })]);
+
+// Two agent steps in a row: the second sees what the first used (run budgets).
+const spend = workflow('spend', 'first', {
+  first: { on: { done: 'second' }, step: 'first' },
+  second: { on: { done: 'end' }, step: 'second' },
+}, [step('first', 'agent', { outcomes: ['done'], model: 'checker' }), step('second', 'agent', { outcomes: ['done'], model: 'checker' })]);
+
 const script: Script = (input) => {
   if (input.step.id === 'boom') throw new Error('kaput');
+  if (input.step.id === 'ask') return { status: 'needs_person', outcome: 'needs_person', reason: 'no answer in time' };
+  if (input.step.id === 'first') return { outcome: 'done', usage: { tokens: 120, modelCalls: 3, toolCalls: 1, durationMs: 40 } };
+  if (input.step.id === 'second') return { outcome: 'done' };
   return needsInfoThenChecked(input);
 };
 
@@ -31,6 +52,9 @@ describe.skipIf(!pgAvailable)('run driver', () => {
     await putWorkflow(db, timerShape);
     await putWorkflow(db, loosening, { effects: { outbound: 'approve' } });
     await putWorkflow(db, boom);
+    await putWorkflow(db, twice);
+    await putWorkflow(db, expiry);
+    await putWorkflow(db, spend);
     kernel = await createKernel({ databaseUrl: db.url, tools: [], modelRoles: {}, providers: [], stepExecutor: fakeStep(db.url, script, seen) });
   });
 
@@ -153,6 +177,70 @@ describe.skipIf(!pgAvailable)('run driver', () => {
       const run = await kernel.waitForRun(runId, { until: (r) => r.status !== 'active', timeoutMs: 15_000 });
       expect(run.status).toBe('stopped');
       expect(run.stopReason).toBe('step workflow failed: kaput');
+      // The step run is closed too, not left `running`.
+      const sr = await db.pool.query('select status, rationale, finished_at from mw.step_runs where id = $1', [`${runId}/0/boom`]);
+      expect(sr.rows[0]).toMatchObject({ status: 'failed', rationale: 'step workflow failed: kaput' });
+      expect(sr.rows[0].finished_at).not.toBeNull();
+    }, 30_000);
+
+    test('an event without `for` answers the state entry current when it was sent, never a later one', async () => {
+      const { runId } = await kernel.startRun({ workflowId: 'twice', case: {} });
+      await kernel.waitForRun(runId, { until: waiting('a'), timeoutMs: 15_000 });
+      // Hold the driver's commit (it reads mw.timers first; sendEvent never does) so both
+      // answers are sent while the run is still in `a`, as when the driver is busy elsewhere.
+      const hold = await db.pool.connect();
+      try {
+        await hold.query('begin');
+        await hold.query('lock table mw.timers in access exclusive mode');
+        expect(await kernel.sendEvent(runId, 'approved', { idemKey: 'ap-1' })).toEqual({ sent: true });
+        expect(await kernel.sendEvent(runId, 'approved', { idemKey: 'ap-2' })).toEqual({ sent: true });
+        await hold.query('commit');
+      } finally { hold.release(); }
+      const run = await kernel.waitForRun(runId, { until: (r) => r.seq === 2, timeoutMs: 15_000 });
+      expect(run.state).toBe('b');
+      const t = await kernel.getTransitions(runId);
+      expect(t.map((x) => [x.from, x.to, x.event, x.accepted])).toEqual([
+        ['a', 'b', { type: 'approved', for: 0 }, true],
+        ['b', 'b', { type: 'approved', for: 0 }, false],
+      ]);
+      expect(t[1]!.note).toBe('stale: for entry 0, current entry 1');
+    }, 30_000);
+
+    test('approvals of a step run that is no longer waiting expire and cannot be decided', async () => {
+      const runId = 'run_expiry_test';
+      const approval = (id: string, stepRunId: string) => db.pool.query(
+        `insert into mw.approvals (id, step_run_id, tool, effect, treatment, args, preview, status, requested_at)
+         values ($1, $2, 'mail.send', 'outbound', 'approve', '{}', '{"summary":"send"}', 'pending', now())`, [id, stepRunId]);
+      // The step asked for an approval, then gave up waiting and ended needs_person.
+      await approval(`${runId}/0/ask:call-1`, `${runId}/0/ask`);
+      await kernel.startRun({ workflowId: 'expiry', case: {}, runId });
+      await kernel.waitForRun(runId, { until: waiting('held'), timeoutMs: 15_000 });
+      // The driver opens the person step's waiting step run right after entering `held`.
+      for (let i = 0; i < 100; i++) {
+        const r = await db.pool.query('select status from mw.step_runs where id = $1', [`${runId}/1/held`]);
+        if (r.rows[0]?.status === 'waiting') break;
+        await new Promise((res) => setTimeout(res, 100));
+      }
+      const status = async (id: string) => (await db.pool.query('select status from mw.approvals where id = $1', [id])).rows[0].status;
+      expect(await status(`${runId}/0/ask:call-1`)).toBe('expired');
+      const decision = { id: `${runId}/0/ask:call-1`, status: 'approved' as const, by: 'me', at: new Date().toISOString() };
+      expect(await kernel.decideApproval(decision)).toEqual({ applied: false, status: 'expired' });
+
+      // Still pending, but its step run is not waiting (it finished without the driver committing yet).
+      await approval(`${runId}/0/ask:call-2`, `${runId}/0/ask`);
+      expect(await kernel.decideApproval({ ...decision, id: `${runId}/0/ask:call-2` })).toEqual({ applied: false, status: 'expired' });
+      expect(await status(`${runId}/0/ask:call-2`)).toBe('pending');
+      // A pending approval of a waiting step run is listed; the other is not.
+      await approval(`${runId}/1/held:call-3`, `${runId}/1/held`);
+      const listed = (await kernel.pendingApprovals()).map((a) => a.id).filter((id) => id.startsWith(runId));
+      expect(listed).toEqual([`${runId}/1/held:call-3`]);
+    }, 30_000);
+
+    test('a step run gets what earlier step runs of the run used', async () => {
+      const { runId } = await kernel.startRun({ workflowId: 'spend', case: {} });
+      await kernel.waitForRun(runId, { until: (r) => r.status === 'done', timeoutMs: 15_000 });
+      expect(seen.find((s) => s.stepRunId === `${runId}/0/first`)!.runSpent).toEqual({ tokens: 0, modelCalls: 0, elapsedMs: 0 });
+      expect(seen.find((s) => s.stepRunId === `${runId}/1/second`)!.runSpent).toEqual({ tokens: 120, modelCalls: 3, elapsedMs: 40 });
     }, 30_000);
   });
 });

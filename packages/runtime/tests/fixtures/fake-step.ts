@@ -7,7 +7,9 @@ import type { StepResult, StepRunInput } from '@memwise/step-engine';
 import pg from 'pg';
 import type { StepExecutor } from '../../src/types.ts';
 
-export type Script = (input: StepRunInput) => { status?: StepResult['status']; outcome: string; writes?: Record<string, unknown>; reason?: string };
+export type Script = (input: StepRunInput) => {
+  status?: StepResult['status']; outcome: string; writes?: Record<string, unknown>; reason?: string; usage?: StepResult['usage'];
+};
 
 /** Default script: the first attempt asks for more information, the next one passes. */
 export const needsInfoThenChecked: Script = (input) => input.attempt === 1
@@ -38,7 +40,7 @@ export function fakeStep(databaseUrl: string, script: Script = needsInfoThenChec
     for (const [k, v] of Object.entries(r.writes ?? {})) writes[k] = { value: v, provenance: { kind: 'judgement', at, stepRunId: input.stepRunId } };
     const result: StepResult = {
       stepRunId: input.stepRunId, status: r.status ?? 'completed', outcome: r.outcome, writes, checkpoint: [],
-      usage: { tokens: 0, modelCalls: 0, toolCalls: 0, durationMs: 0 }, tainted: false, ...(r.reason ? { reason: r.reason } : {}),
+      usage: r.usage ?? { tokens: 0, modelCalls: 0, toolCalls: 0, durationMs: 0 }, tainted: false, ...(r.reason ? { reason: r.reason } : {}),
       rationale: `scripted ${r.outcome}`,
     };
     const record: StepRecord = {

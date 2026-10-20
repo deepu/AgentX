@@ -36,6 +36,8 @@ export interface Commit {
   stop?: string;
   /** For step outcomes: stop with this reason when the state has no transition for the event. */
   stopIfUnhandled?: string;
+  /** The step workflow threw: its step run is marked `failed` with this as the rationale. */
+  stepError?: string;
 }
 
 const STOP_EVENT: RunEvent = { type: 'stop' };
@@ -64,8 +66,8 @@ export function registerRunDriver({ pool, dataSource, stepWorkflow }: DriverDeps
 
   const commit = dataSource.registerTransaction(async (c: Commit) => {
     const db = NodePostgresDataSource.client;
-    const { machine } = await machineFor(db, c.workflowId, c.workflowHash);
-    return applyTransition(db, machine, c);
+    const { workflow, machine } = await machineFor(db, c.workflowId, c.workflowHash);
+    return applyTransition(db, machine, c, workflow);
   }, { name: 'memwise.run.commit' });
 
   const driver = DBOS.registerWorkflow(async (runId: string) => {
@@ -107,7 +109,8 @@ export function registerRunDriver({ pool, dataSource, stepWorkflow }: DriverDeps
     } catch (e) {
       // A step workflow that throws is an engine fault, not an outcome: the run stops for a person.
       // DBOS journals the failure, so a replay takes the same path.
-      return { event: STOP_EVENT, source: 'step' as const, stop: `step workflow failed: ${e instanceof Error ? e.message : String(e)}`, stepRunId };
+      const stop = `step workflow failed: ${e instanceof Error ? e.message : String(e)}`;
+      return { event: STOP_EVENT, source: 'step' as const, stop, stepRunId, stepError: stop };
     }
     crashPoint('after-step-before-commit', run.state);
     const completed = result.status === 'completed';
@@ -136,7 +139,7 @@ export function registerRunDriver({ pool, dataSource, stepWorkflow }: DriverDeps
 }
 
 /** Apply one event to the run inside the caller's transaction. */
-export async function applyTransition(db: Queryable, machine: AnyStateMachine, c: Commit): Promise<RunRow> {
+export async function applyTransition(db: Queryable, machine: AnyStateMachine, c: Commit, workflow?: WorkflowDef): Promise<RunRow> {
   const run = await loadRunRow(db, c.runId);
   const newSeq = c.expectedSeq + 1;
   if (run.seq !== c.expectedSeq) {
@@ -190,12 +193,33 @@ export async function applyTransition(db: Queryable, machine: AnyStateMachine, c
         where id = $1 and status = 'waiting' and run_id = $2`,
       [stepRunIdOf(c.runId, run.enteredSeq, run.state), c.runId, c.event.type]);
   }
+  if (c.stepError && c.stepRunId) {
+    // The step never reported back, so its record would stay `running`: close it here.
+    await db.query(
+      `update mw.step_runs set status = 'failed', rationale = $2, finished_at = now() where id = $1 and finished_at is null`,
+      [c.stepRunId, c.stepError]);
+  }
+  if (c.source === 'step' && c.stepRunId) {
+    // The step run is over: approvals it still waits on can no longer be answered. `expired`
+    // is a fourth value of the free-text mw.approvals.status (pending | approved | rejected | expired).
+    await db.query(`update mw.approvals set status = 'expired' where step_run_id = $1 and status = 'pending'`, [c.stepRunId]);
+  }
   await applyTimerActions(db, c.runId, newSeq, actions);
   if (status !== 'active') {
     await db.query(`update mw.timers set status = 'cancelled' where run_id = $1 and status = 'pending'`, [c.runId]);
   }
   crashPoint('in-commit', run.state);
-  return loadRunRow(db, c.runId);
+  const after = await loadRunRow(db, c.runId);
+  if (moved && workflow && status === 'active') {
+    // Open the person or external step in the same transaction that enters its state, so the
+    // run is never seen in that state without its waiting step run. The driver's own
+    // openWaitingStep stays as the path for a run that starts in such a state (idempotent).
+    const kind = stateKind(workflow, to);
+    if (kind === 'person-step' || kind === 'external-step') {
+      await openWaitingStep(db, after, workflow, stepRunIdOf(c.runId, after.enteredSeq, to));
+    }
+  }
+  return after;
 }
 
 /** XState returns delayed events as data: arm on a delayed `xstate.raise`, disarm on `xstate.cancel`. */

@@ -62,12 +62,17 @@ export interface StepEngineDeps {
   recorder: StepRecorder;
   /** For the recall tools' read side; optional so the engine runs without a database in unit tests. */
   records?: StepRecordReader;
-  /** Model role used to judge prose checkpoint rules. Default `verifier`. */
+  /**
+   * Model role used to judge prose checkpoint rules. Default `verifier` (`VERIFIER_ROLE` from
+   * `@memwise/policy`, which the step layer permits); another role must be permitted by the policy.
+   */
   verifierRole?: string;
   /** Repair rounds after a failed checkpoint before the step stops with `needs_person`. Default 2. */
   maxRepairs?: number;
   /** Turn limit per step run when the step sets no model-call budget. Default 24. */
   maxTurns?: number;
+  /** How long an approval request waits for a decision before it expires and the step goes to a person. Default 7 days. */
+  approvalTimeoutSeconds?: number;
 }
 
 /** The DBOS topic a step waits on for the answer to an approval request. */
