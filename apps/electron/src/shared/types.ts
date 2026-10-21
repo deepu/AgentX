@@ -826,6 +826,25 @@ export interface ElectronAPI {
   memwiseGetAuditTrail(workspaceId: string, input: { entity: string; id: string }): Promise<import('@memwise/shared/protocol').MwAuditTrail | null>
   memwiseExportAuditTrail(workspaceId: string, input: import('@memwise/shared/protocol').MwAuditExportInput): Promise<import('@memwise/shared/protocol').MwAuditExport>
   memwiseReadFile(workspaceId: string, fileId: string): Promise<import('@memwise/shared/protocol').MwFileData>
+  // Stage 5 of Projects and pages: regulated projects (docs/memwise/26-projects-and-pages.md §7, §8)
+  memwiseListChangeRequests(workspaceId: string, filter: { project?: string; workflowId?: string; status?: import('@memwise/shared/protocol').MwChangeRequestStatus | import('@memwise/shared/protocol').MwChangeRequestStatus[] }): Promise<import('@memwise/shared/protocol').MwChangeRequestSummary[]>
+  memwiseGetChangeRequest(workspaceId: string, input: { crId: string; project?: string }): Promise<import('@memwise/shared/protocol').MwChangeRequest | null>
+  memwiseOpenChangeRequest(workspaceId: string, input: import('@memwise/shared/protocol').MwOpenChangeInput): Promise<import('@memwise/shared/protocol').MwOpenChangeResult>
+  memwiseUpdateChangeRequest(workspaceId: string, input: { crId: string; title?: string; reason?: string; validationSet?: import('@memwise/shared/protocol').MwValidationSet }): Promise<import('@memwise/shared/protocol').MwChangeRequest>
+  memwiseValidateChangeRequest(workspaceId: string, input: { crId: string; set?: import('@memwise/shared/protocol').MwValidationSet }): Promise<import('@memwise/shared/protocol').MwChangeValidation>
+  memwiseSignChangeRequest(workspaceId: string, input: { crId: string; password: string }): Promise<import('@memwise/shared/protocol').MwChangeSignResult>
+  memwiseWithdrawChangeRequest(workspaceId: string, input: { crId: string; reason?: string }): Promise<import('@memwise/shared/protocol').MwChangeRequest>
+  memwiseOpenChangeChat(workspaceId: string, input: { crId: string }): Promise<{ sessionId: string }>
+  memwiseGetAuditLog(workspaceId: string, query: import('@memwise/shared/protocol').MwAuditQuery): Promise<import('@memwise/shared/protocol').MwAuditLog>
+  memwiseExportAuditLog(workspaceId: string, query: import('@memwise/shared/protocol').MwAuditQuery): Promise<import('@memwise/shared/protocol').MwAuditExport>
+  memwiseVerifyAuditLog(workspaceId: string, input: { project: string } | { exportJson: string }): Promise<import('@memwise/shared/protocol').MwAuditVerifyResult>
+  memwiseListInspectorLinks(workspaceId: string, input: { project: string }): Promise<import('@memwise/shared/protocol').MwInspectorLink[]>
+  memwiseCreateInspectorLink(workspaceId: string, input: import('@memwise/shared/protocol').MwInspectorLinkInput): Promise<import('@memwise/shared/protocol').MwInspectorLinkCreated>
+  memwiseRevokeInspectorLink(workspaceId: string, input: { linkId: string }): Promise<import('@memwise/shared/protocol').MwInspectorLink>
+  memwiseExtendInspectorLink(workspaceId: string, input: { linkId: string; expiresAt: string }): Promise<import('@memwise/shared/protocol').MwInspectorLink>
+  memwiseListInspectorQuestions(workspaceId: string, filter: { project?: string; linkId?: string; open?: boolean }): Promise<import('@memwise/shared/protocol').MwInspectorQuestion[]>
+  memwiseAnswerInspectorQuestion(workspaceId: string, input: { questionId: string; answer: string }): Promise<import('@memwise/shared/protocol').MwInspectorQuestion>
+  memwiseGetTmfIndex(workspaceId: string, input: { project: string; study?: string; zone?: string }): Promise<import('@memwise/shared/protocol').MwTmfIndex>
   onMemwiseChanged(callback: (change: import('@memwise/shared/protocol').MwChange) => void): () => void
 
   // Automations

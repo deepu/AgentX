@@ -91,6 +91,8 @@ export function affectedByChange(change: MwChange): AffectedLists {
     case 'records': return { ...NO_LISTS, inbox: true, domains: true }
     // Phase 6: a trigger fired, was held or released (held firings are inbox items; released ones start cases).
     case 'triggers': return { ...NO_LISTS, inbox: true, cases: true }
+    // Stage 5: a change request moved (a QA sign-off is an inbox item) or an inspector asked.
+    case 'regulated': return { ...NO_LISTS, inbox: true, playbooks: true, drafts: true }
     default: return { ...NO_LISTS }
   }
 }
