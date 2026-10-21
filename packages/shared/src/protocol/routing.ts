@@ -551,6 +551,10 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.memwise.AUDIT_GET,
   RPC_CHANNELS.memwise.AUDIT_EXPORT,
   RPC_CHANNELS.memwise.FILES_READ,
+  // Stage 6: EDC and a study across apps
+  RPC_CHANNELS.memwise.EDC_HOME,
+  RPC_CHANNELS.memwise.STUDY_APPS,
+  RPC_CHANNELS.memwise.RECORDS_LINKED,
 
   // git — workspace filesystem
   RPC_CHANNELS.git.GET_BRANCH,

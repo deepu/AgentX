@@ -34,6 +34,7 @@ import { getWorkspaceByNameOrId } from '@memwise/shared/config'
 import { loadSourceConfig, saveSourceConfig } from '@memwise/shared/sources'
 import { pushTyped, type RequestContext, type RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
+import { EDC_CHANNELS, registerEdcHandlers } from './memwise-edc'
 import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange } from '../../memwise/host'
 import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../memwise/service'
 import type { DraftFacts, DtoContext } from '../../memwise/dto'
@@ -123,6 +124,8 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.AUDIT_GET,
   RPC_CHANNELS.memwise.AUDIT_EXPORT,
   RPC_CHANNELS.memwise.FILES_READ,
+  // Stage 6 (memwise-edc.ts)
+  ...EDC_CHANNELS,
 ] as const
 
 /** Largest upload accepted through the API (base64 travels inside one WS message). */
@@ -2244,6 +2247,8 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.AUDIT_GET, (ctx, _ws: string, input) => api.auditTrail(ctx, input))
   server.handle(ch.AUDIT_EXPORT, (ctx, _ws: string, input) => api.auditExport(ctx, input))
   server.handle(ch.FILES_READ, (ctx, _ws: string, fileId: string) => api.readFile(ctx, fileId))
+  // Stage 6: EDC and a study across apps
+  registerEdcHandlers(server)
 
   onMemwiseChange((change) => {
     pushTyped(server, RPC_CHANNELS.memwise.CHANGED, { to: 'all' }, change)
