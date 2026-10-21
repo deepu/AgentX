@@ -4,7 +4,7 @@
  * fed back as repair context, a bounded number of times, instead of re-running the whole step.
  */
 import type { AssistantMessage } from '@earendil-works/pi-ai';
-import { validateValue, type CaseValue, type CheckResult } from '@memwise/defs';
+import { quoteInValue, validateValue, type CaseValue, type CheckResult } from '@memwise/defs';
 import { modelToolName, toolNameFromModel, type ModelRequest } from '@memwise/gateway';
 import { agentWrites } from './context.ts';
 import type { StepRunInput } from './types.ts';
@@ -16,7 +16,13 @@ export interface Evidence {
   tainted?: boolean;
 }
 
-export interface FinishArgs { outcome: string; writes: Record<string, unknown>; rationale?: string }
+export interface FinishArgs {
+  outcome: string;
+  writes: Record<string, unknown>;
+  rationale?: string;
+  /** Literature (25 §4, D81): by write, the exact words of a tool result the value was read from. */
+  quotes?: Record<string, string>;
+}
 
 export interface StructuralResult {
   passed: boolean;
@@ -106,6 +112,26 @@ export function readAt(result: unknown, field: string, value: unknown): { docume
   };
 }
 
+// ---------------------------------------------------------------- quotes (25 §4, D81)
+
+/** The rule a quote is checked under; a failure sends the agent its repair round like any structural check. */
+export const quoteRule = (field: string) => `writes.${field}: the quote is in a source`;
+
+/** A value with nothing to quote for: absent, null or empty text. */
+const blank = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && !v.trim());
+
+/**
+ * Whether a quote holds: its words (normalised, `quoteIn` in @memwise/defs) are in the text of a
+ * successful tool result this step saw. Returns the failure reason, or nothing when it holds.
+ */
+export function quoteProblem(quote: unknown, evidence: Evidence[]): string | undefined {
+  if (typeof quote !== 'string' || !quote.trim()) return 'the quote is empty: copy the exact words the value was read from';
+  if (evidence.some((e) => quoteInValue(quote, e.result))) return undefined;
+  return evidence.length
+    ? `${JSON.stringify(quote)} is not in any tool result this step saw: copy the words exactly as the source has them`
+    : `${JSON.stringify(quote)} can't be checked: this step saw no tool results to quote from`;
+}
+
 // ---------------------------------------------------------------- structural checks
 
 export function structuralChecks(
@@ -163,8 +189,24 @@ export function structuralChecks(
         provenance: { kind: 'tool', at, stepRunId: input.stepRunId, tool: hit.tool, callId: hit.callId, ...(hit.tainted ? { tainted: true } : {}), ...readAt(hit.result, w.from.field ?? field, value) },
       };
     } else {
-      writes[field] = { value, provenance: { kind: 'judgement', at, stepRunId: input.stepRunId, rationale: args.rationale, ...(sessionTainted ? { tainted: true } : {}) } };
+      // A quote is checked whenever one is given; `quotes: required` wants one for every value.
+      const quote = args.quotes?.[field];
+      let quoted: string | undefined;
+      if (quote !== undefined) {
+        const problem = quoteProblem(quote, evidence);
+        checks.push(problem ? fail(quoteRule(field), problem) : pass(quoteRule(field)));
+        if (!problem) quoted = quote;
+      } else if (step.quotes === 'required' && !blank(value)) {
+        checks.push(fail(quoteRule(field), `this step quotes its sources: add quotes.${field} with the exact words ${field} was read from`));
+      }
+      writes[field] = {
+        value,
+        provenance: { kind: 'judgement', at, stepRunId: input.stepRunId, rationale: args.rationale, ...(sessionTainted ? { tainted: true } : {}), ...(quoted ? { quote: quoted } : {}) },
+      };
     }
+  }
+  for (const field of Object.keys(args.quotes ?? {}).sort()) {
+    if (!(field in args.writes)) checks.push(fail(quoteRule(field), `quotes.${field} quotes a value that isn't written; quote only the writes you make`));
   }
 
   return { passed: checks.every((c) => c.passed), checks, writes };

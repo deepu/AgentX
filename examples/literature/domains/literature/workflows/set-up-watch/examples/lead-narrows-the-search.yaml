@@ -1,0 +1,52 @@
+name: lead-narrows-the-search
+description: >
+  The searcher's draft finds reviews as well as trials. The lead narrows it to randomised trials
+  before approving it ("AND Randomized Controlled Trial[Publication Type]"); the topic is active
+  with the lead's search, not the draft.
+records:
+  Topic:
+    - id: topi_glp1_weight
+      name: Oral GLP-1s for weight in T2D
+      question: How much weight do adults with type 2 diabetes lose on oral GLP-1 receptor agonists, compared with placebo?
+      status: draft
+case:
+  topic: topi_glp1_weight
+tools:
+  PubMed.search_articles:
+    pmids: ["99000002", "41275875", "99000001"]
+    total_count: 3
+    returned_count: 3
+    query: '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND "type 2 diabetes" AND weight'
+    query_translation: '(orforglipron OR "oral semaglutide"[All Fields] OR "oral GLP-1"[All Fields]) AND "type 2 diabetes"[All Fields] AND weight'
+    has_more: false
+model:
+  searcher:
+    - toolCalls:
+        - { name: literature.topic.get, args: { id: topi_glp1_weight } }
+    - toolCalls:
+        - { name: PubMed.search_articles, args: { query: '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND "type 2 diabetes" AND weight', max_results: 20 } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: drafted
+            writes:
+              query: '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND "type 2 diabetes" AND weight'
+              inclusion: Randomised trials of oral GLP-1 receptor agonists in adults with type 2 diabetes that report bodyweight.
+              found_count: 3
+              sample:
+                - { pmid: "99000002", title: "Example Review B: oral GLP-1 receptor agonists for obesity in people with type 2 diabetes, a narrative review.", year: 2026 }
+                - { pmid: "41275875", title: "Orforglipron, an oral small-molecule GLP-1 receptor agonist, for the treatment of obesity in people with type 2 diabetes (ATTAIN-2): a phase 3, double-blind, randomised, multicentre, placebo-controlled trial.", year: 2025 }
+                - { pmid: "99000001", title: "Example Trial A: once-daily oral semaglutide 50 mg for weight management in adults with type 2 diabetes and overweight or obesity: a randomised, double-blind, placebo-controlled, phase 3 trial.", year: 2025 }
+            rationale: The oral GLP-1 receptor agonists, type 2 diabetes and weight; three papers today.
+submit:
+  approve_query:
+    outcome: approved
+    values:
+      query: '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND "type 2 diabetes" AND weight AND Randomized Controlled Trial[Publication Type]'
+      inclusion: Randomised trials of oral GLP-1 receptor agonists in adults with type 2 diabetes that report bodyweight. No reviews.
+expect:
+  state: end
+  effects: { literature.topic.update: 1, literature.topic.transition: 1 }
+  entities:
+    Topic:
+      - { name: Oral GLP-1s for weight in T2D, query: '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND "type 2 diabetes" AND weight AND Randomized Controlled Trial[Publication Type]' }

@@ -68,6 +68,12 @@ export interface FieldDef {
   access?: string[];
   /** Phase 6 (24 §4): false exempts the field from the regulated reason rule. Default true in a regulated domain. */
   controlled?: boolean;
+  /**
+   * Literature (25 §4, D82): a Text field whose value must be words of another record's Text
+   * field: `quote_of: article.abstract` is `{ ref: 'article', field: 'abstract' }`. Checked on
+   * every write; a value not found there raises a flag on the record.
+   */
+  quoteOf?: { ref: string; field: string };
 }
 
 export interface RecordTypeDef { name: string; fields: Record<string, FieldDef> }
@@ -112,6 +118,15 @@ export interface EntityTypeDef {
   invariants?: string[];
   /** The record page layout as written; absent: `defaultPageLayout`. */
   page?: import('./domain-types.ts').PageLayoutDef;
+
+  // ---- Literature (docs/memwise/25-literature-poc.md §3, §6)
+  /**
+   * D80: the fields that identify a record (`key: [pmid]`): unique in the store, and a create
+   * with a key that exists returns that record (`existed: true`) instead of making another.
+   */
+  key?: string[];
+  /** D83: a record chat may keep rows of this entity (`keep_from_chat: true`). */
+  keepFromChat?: boolean;
 }
 
 // ---------------------------------------------------------------- policy files (08 §2)
@@ -164,8 +179,11 @@ export type WriteSource =
 /**
  * Where a system step's tool argument comes from (`map:` in the front matter): `case.<path>`
  * reads the case (`{ case: 'client_name' }`, the path without `case.`); anything else is a literal.
+ * Literature (25 §3): `item.<path>` reads the item of a tool called once per item (`each:`;
+ * `{ item: '' }` is the whole item), `{ today: <days> }` is a Date (today plus that many days, in
+ * the local time zone, `YYYY-MM-DD`) and `{ now: true }` a DateTime, both as of the step's start.
  */
-export type ArgSource = { case: string } | { value: unknown };
+export type ArgSource = { case: string } | { value: unknown } | { item: string } | { today: number } | { now: true };
 
 export interface WriteDef {
   field: string;
@@ -214,6 +232,16 @@ export interface StepDef {
   sign?: string;
   /** Phase 6 (24 §11): how the step is reviewed; absent: chosen from what it reads and writes. */
   review?: import('./domain-types.ts').ReviewDef;
+  /**
+   * Literature (25 §3): system steps: tools called once per item of a List case field, by tool
+   * then the field's path without `case.` (front matter: `map: { <tool>: { each: case.<field>, … } }`).
+   */
+  each?: Record<string, string>;
+  /**
+   * Literature (25 §4, D81): agent steps: `required` makes every judgement write carry the exact
+   * words it was read from (`quotes` on `step.finish`). Quotes are always checked when given.
+   */
+  quotes?: 'required';
   /** The Markdown body: the instructions in the expert's own words. */
   instructions: string;
   file: string;

@@ -3,7 +3,7 @@
  * (`pages/*.yaml`, dashboards) and shared views (`views/*.yaml`).
  */
 import { basename } from 'node:path';
-import type { DashboardBlock, DashboardValue, DomainDef, FreePageDef, ViewDef, WorkspaceDef } from './domain-types.ts';
+import type { DashboardBlock, DashboardChartDef, DashboardValue, DomainDef, FreePageDef, ViewDef, WorkspaceDef } from './domain-types.ts';
 import { dashboardBlockFormats, domainFormat, pageFormat, viewFormat, workspaceFormat } from './formats.ts';
 import { toPolicyDoc } from './parse-policy.ts';
 import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, type ParseResult, type PathKey } from './source.ts';
@@ -180,6 +180,19 @@ function parseDashboardBlock(raw: unknown, report: Reporter, path: PathKey[]): D
     }
     case 'text':
       return { kind, markdown: typeof v === 'string' ? v : '' };
+    case 'chart': {
+      // Literature (25 §5): counts per `by`, or an interval per record.
+      const chart = b.kind as DashboardChartDef['chart'];
+      if (chart === 'interval' ? !(b.value && b.low && b.high) : !b.by) {
+        report.error('invalid-format', chart === 'interval'
+          ? '`chart`: an interval chart names its `value`, `low` and `high` fields (and a `label` template)'
+          : `\`chart\`: a ${chart} chart counts records per value of a field: name it with \`by\``, [...path, kind]);
+        return undefined;
+      }
+      const block: DashboardChartDef = { kind, chart, entity: asString(b.entity) ?? '' };
+      for (const k of ['where', 'by', 'title', 'label', 'value', 'low', 'high', 'unit'] as const) if (typeof b[k] === 'string') block[k] = b[k] as string;
+      return block;
+    }
   }
 }
 

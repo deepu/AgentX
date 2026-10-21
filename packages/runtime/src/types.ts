@@ -604,7 +604,7 @@ export interface KernelPhase5 {
 // PHASE 6 CONTRACT. `@memwise/server-core` codes against these; change only additively.
 
 import type {
-  CheckResult, DashboardBlock, EntityEvent, FreePageDef, Grant, InboundMessageBody, PageLayoutDef, TriggerDef, ViewDef,
+  ChartKind, CheckResult, DashboardBlock, EntityEvent, FreePageDef, Grant, InboundMessageBody, PageLayoutDef, TriggerDef, ViewDef,
 } from '@memwise/defs';
 
 /** Where a field's value on a record page comes from (24 §6). */
@@ -749,6 +749,84 @@ export interface RecordPage {
   documents: Record<string, DocumentValue | null>;
   history: RecordVersionSummary[];
   review?: RecordReview;
+  // ---- Literature (docs/memwise/25-literature-poc.md §4, §5); present when the layout has such blocks.
+  /** `kpis` blocks: each field's tile, by field name. */
+  kpis?: Record<string, RecordKpi>;
+  /** `chart` blocks: the rows each draws, by block key (`pageBlockKey(area, index)`, e.g. `main:1`). */
+  charts?: Record<string, ChartData>;
+  /** `viewer` blocks on a Text field: the text and the quotes to light up, by field name. */
+  texts?: Record<string, RecordTextView>;
+}
+
+// ---------------------------------------------------------------- Literature (docs/memwise/25-literature-poc.md)
+
+/** The key of a page block's data: its area and its index in that area (`main:1`). */
+export const pageBlockKey = (area: string, index: number): string => `${area}:${index}`;
+
+/** A KPI tile on a record page (25 §5): a calculated or Number field's value. */
+export interface RecordKpi { field: string; value: number | null; type: string; description?: string }
+
+/** One row of a chart (the same shape as a chat ```chart block's `data`, 25 §5). */
+export interface ChartDatum {
+  /** bar/line/donut: the `by` value in words ("Not set" for none); interval: the row's label. */
+  label: string;
+  /** bar/line/donut: how many records; interval: the record's value. */
+  value: number;
+  /** interval: the interval's ends, when the record has them. */
+  low?: number;
+  high?: number;
+  /** interval: the row's own unit, when it differs from the chart's. */
+  unit?: string;
+  /** bar/line/donut: the `by` value as stored (null: not set), for a filter. */
+  key?: string | null;
+  /** interval: the record the row is. */
+  record?: RecordRef;
+}
+
+/** A chart's data: a record page's `chart` block or a free page's (25 §5). */
+export interface ChartData {
+  kind: ChartKind;
+  title?: string;
+  /** interval: the unit every row shares (absent when they differ: each row has its own). */
+  unit?: string;
+  data: ChartDatum[];
+  /** bar/line/donut: records counted; interval: rows drawn. */
+  total: number;
+  /** interval: records left out because they have no value. */
+  skipped?: number;
+}
+
+/** A quote lit up in a text viewer (25 §4). `start`/`end`: where it is in the text (UTF-16 offsets), when found. */
+export interface RecordQuoteHighlight {
+  quote: string;
+  /** The field it is the quote for: the record's own field (`kind: value`), or the related record's quote field. */
+  field: string;
+  /** `value`: one of the record's values was read from these words; `related`: a related record quotes them. */
+  kind: 'value' | 'related';
+  /** value: the record's value read from the quote. */
+  value?: unknown;
+  /** related: the record quoting this text. */
+  record?: RecordRef;
+  found: boolean;
+  start?: number;
+  end?: number;
+}
+
+export interface RecordTextView { text: string | null; highlights: RecordQuoteHighlight[] }
+
+/** `kernel.records.keep` (25 §6): rows kept from a chat, each created in the entity's initial state. */
+export interface RecordKeepInput { entity: string; rows: Record<string, unknown>[]; chatId: string }
+export interface RecordKeepResult {
+  entity: string;
+  rows: {
+    /** The new record, when it was kept. */
+    id?: string;
+    /** With a `quote_of` field: whether the quote is in its source (false: kept, and flagged). */
+    quoteFound?: boolean;
+    /** Why the row wasn't kept. */
+    error?: string;
+    errors?: Record<string, string[]>;
+  }[];
 }
 
 export interface RecordWriteResult {
@@ -798,6 +876,7 @@ export interface DashboardData {
     | { kind: 'table' | 'list'; title?: string; result: RecordQueryResult }
     | { kind: 'heatmap'; title?: string; columns: string[]; rows: { record: RecordRef; values: (number | null)[] }[] }
     | { kind: 'text'; markdown: string }
+    | { kind: 'chart'; chart: ChartData }
   )[];
 }
 
@@ -840,6 +919,12 @@ export interface RecordsService {
   events(filter: { entity?: string; recordId?: string; afterSeq?: number; limit?: number }): Promise<EntityEvent[]>;
   /** Evaluate a condition on one record now (guards, wait_until, the app's "why"). */
   evaluate(entity: string, id: string, condition: string, actor: Actor): Promise<{ holds: boolean; values: Record<string, unknown> }>;
+  /**
+   * Literature (25 §6, D83): rows kept from a chat, as the person: each created in the entity's
+   * initial state with the reason "kept from chat <chatId>", its quotes checked. Refused for an
+   * entity without `keep_from_chat`.
+   */
+  keep(input: RecordKeepInput, actor: Actor): Promise<RecordKeepResult>;
 }
 
 export interface TriggerSummary {

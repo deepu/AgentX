@@ -193,6 +193,7 @@ export function resolveWorkflow(workflow: WorkflowDef, plugin: InstalledPlugin, 
       }
       s.map = map;
     }
+    if (step.each) s.each = Object.fromEntries(Object.entries(step.each).map(([tool, path]) => [r.tool(tool), casePath(path)]));
     if (step.outcomeFrom) s.outcomeFrom = { ...step.outcomeFrom, tool: r.tool(step.outcomeFrom.tool) };
     if (step.assignee !== undefined) s.assignee = r.role(step.assignee);
     if (step.policy) s.policy = renamePolicy(step.policy);

@@ -13,7 +13,7 @@ import type { Queryable } from '../pool.ts';
 import { iso, json } from '../rows.ts';
 import { recordColumns, linkColumn, targetOf, type RecordColumn } from './model.ts';
 import { viewContext } from './records-sql.ts';
-import { entityColumns, entityIdPrefix, snake, tableOf, viewOf, type EntityColumn } from './tables.ts';
+import { entityColumns, entityIdPrefix, keyColumns, keyIndexName, snake, tableOf, viewOf, type EntityColumn } from './tables.ts';
 
 /** Same shape as `EntityRow` in @memwise/runtime, plus the lifecycle state and the record's version. */
 export interface StoredEntityRow {
@@ -133,15 +133,75 @@ export class PgEntityStore {
     const table = tableOf(def);
     const placeholders = params.map((_, i) => `$${i + 1}`).join(', ');
     if (opts.idempotencyKey === undefined) {
-      await write(() => db.query(`insert into ${table} (${names.map(q).join(', ')}) values (${placeholders})`, params));
+      await write(() => db.query(`insert into ${table} (${names.map(q).join(', ')}) values (${placeholders})`, params), def);
       return id;
     }
     const r = await write(() => db.query(
-      `insert into ${table} (${names.map(q).join(', ')}) values (${placeholders}) on conflict (idempotency_key) do nothing`, params));
+      `insert into ${table} (${names.map(q).join(', ')}) values (${placeholders}) on conflict (idempotency_key) do nothing`, params), def);
     if (r.rowCount) return id;
     const { rows } = await db.query<{ id: string }>(`select id from ${table} where idempotency_key = $1`, [opts.idempotencyKey]);
     if (!rows[0]) throw new Error(`${def.entity}: idempotency key ${opts.idempotencyKey} conflicted but no row is visible`);
     return rows[0].id;
+  }
+
+  /**
+   * Creates a record of an entity with a `key` (25 §3), or finds the one with that key: returns
+   * its id and whether it `existed` (then nothing changed). Race-safe: the insert does nothing on
+   * a conflict, so two creates of the same key both get the one record. A repeat with the same
+   * idempotency key answers as the first did (`existed: false`). Without a key it is `create`.
+   */
+  async createKeyed(
+    db: Queryable, def: EntityTypeDef, values: Record<string, unknown>,
+    opts: CreateEntityOptions & { reason?: string; id?: string } = {},
+  ): Promise<{ id: string; existed: boolean }> {
+    const cols = keyColumns(def);
+    if (!cols.length) return { id: await this.create(db, def, values, opts), existed: false };
+    const empty = cols.filter((c) => values[c.field] === undefined || values[c.field] === null || values[c.field] === '');
+    if (empty.length) {
+      throw new RecordWriteError('invalid', `a ${def.entity} is known by its ${(def.key ?? []).join(', ')}: ${empty.map((c) => c.field).join(', ')} ${empty.length > 1 ? 'are' : 'is'} missing`, empty.map((c) => c.field));
+    }
+    const byField = writable(def, values);
+    const states = statesOf(def);
+    if (opts.lifecycle && states.length && !states.includes(opts.lifecycle)) {
+      throw new RecordWriteError('unknown-state', `${def.entity} has no lifecycle state "${opts.lifecycle}" (${states.join(', ')})`);
+    }
+    const id = opts.id ?? `${entityIdPrefix(def.entity)}_${ulid()}`;
+    const names = ['id', 'lifecycle', 'created_by_step', 'idempotency_key'];
+    const params: unknown[] = [id, opts.lifecycle ?? def.lifecycleChart?.initial ?? def.lifecycle?.[0] ?? null, opts.stepRunId ?? null, opts.idempotencyKey ?? null];
+    for (const [field, value] of Object.entries(values)) {
+      if (value === undefined) continue;
+      const c = byField.get(field)!;
+      names.push(c.column);
+      params.push(toParam(c, value));
+    }
+    if (opts.reason !== undefined) await withRecordContext(db, { reason: opts.reason });
+    const table = tableOf(def);
+    // No conflict target: a clash on the key or on the idempotency key both do nothing.
+    const r = await write(() => db.query(
+      `insert into ${table} (${names.map(q).join(', ')}) values (${params.map((_, i) => `$${i + 1}`).join(', ')}) on conflict do nothing`, params), def);
+    if (r.rowCount) return { id, existed: false };
+    if (opts.idempotencyKey !== undefined) {
+      const again = await db.query<{ id: string }>(`select id from ${table} where idempotency_key = $1`, [opts.idempotencyKey]);
+      if (again.rows[0]) return { id: again.rows[0].id, existed: false };
+    }
+    const found = await this.idByKey(db, def, values);
+    if (!found) throw new Error(`${def.entity}: the key ${keyText(def, values)} conflicted but no record with it is visible`);
+    return { id: found, existed: true };
+  }
+
+  /** The id of the record with this key (25 §3), from the table (so a field's access list doesn't hide the match). */
+  async idByKey(db: Queryable, def: EntityTypeDef, key: Record<string, unknown>): Promise<string | undefined> {
+    const cols = keyColumns(def);
+    if (!cols.length || cols.some((c) => key[c.field] === undefined || key[c.field] === null)) return undefined;
+    const { rows } = await db.query<{ id: string }>(
+      `select id from ${tableOf(def)} where ${cols.map((c, i) => `${q(c.column)} = $${i + 1}`).join(' and ')}`, cols.map((c) => toParam(c, key[c.field])));
+    return rows[0]?.id;
+  }
+
+  /** The record with this key (25 §3), read like `get`. */
+  async getByKey(db: Queryable, def: EntityTypeDef, key: Record<string, unknown>): Promise<StoredEntityRow | undefined> {
+    const id = await this.idByKey(db, def, key);
+    return id ? this.get(db, def, id) : undefined;
   }
 
   /**
@@ -171,7 +231,7 @@ export class PgEntityStore {
     if (opts.reason !== undefined) await withRecordContext(db, { reason: opts.reason });
     params.push(before.version);
     const r = await write(() => db.query<{ version: number }>(
-      `update ${tableOf(def)} set ${sets.join(', ')} where id = $1 and version = $${params.length} returning version`, params));
+      `update ${tableOf(def)} set ${sets.join(', ')} where id = $1 and version = $${params.length} returning version`, params), def);
     if (!r.rows[0]) throw new RecordWriteError('stale', `${def.entity} ${id} changed while it was being saved; try again`);
     return { version: r.rows[0].version, changed: await changedIn(db, def, id, before.version, r.rows[0].version) };
   }
@@ -316,16 +376,22 @@ function writable(def: EntityTypeDef, values: Record<string, unknown>): Map<stri
 
 const statesOf = (def: EntityTypeDef): string[] => def.lifecycle ?? Object.keys(def.lifecycleChart?.states ?? {});
 
-/** Runs a write, turning the row trigger's refusals into `RecordWriteError`s. */
-async function write<T>(fn: () => Promise<T>): Promise<T> {
+/** Runs a write, turning the row trigger's refusals (and a clash on the key, 25 §3) into `RecordWriteError`s. */
+async function write<T>(fn: () => Promise<T>, def?: EntityTypeDef): Promise<T> {
   try {
     return await fn();
   } catch (e) {
-    const err = e as { code?: string; message?: string };
+    const err = e as { code?: string; message?: string; constraint?: string };
     if (err.code === 'MW001') throw new RecordWriteError('reason-required', (err.message ?? '').replace(/^reason-required:\s*/, ''));
+    if (err.code === '23505' && def?.key?.length && err.constraint === keyIndexName(def)) {
+      throw new RecordWriteError('invalid', `there is already a ${def.entity} with this ${def.key.join(', ')}`, [...def.key]);
+    }
     throw e;
   }
 }
+
+/** `pmid "41234567"`, for messages. */
+const keyText = (def: EntityTypeDef, values: Record<string, unknown>) => (def.key ?? []).map((f) => `${f} ${JSON.stringify(values[f])}`).join(', ');
 
 function decodeRow(def: EntityTypeDef, r: Record<string, unknown>, unrestricted: boolean, entities?: Record<string, EntityTypeDef>): StoredEntityRow {
   const values: Record<string, unknown> = {};

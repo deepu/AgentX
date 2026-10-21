@@ -32,8 +32,10 @@ const field = z.union([
     description: z.string().optional(),
     access: names.optional().meta({ description: 'Roles allowed to see the field.' }),
     controlled: z.boolean().optional().meta({ description: 'Phase 6: false exempts the field from the regulated reason rule (default true in a regulated domain).' }),
+    quote_of: z.string().regex(/^\s*[A-Za-z_]\w*\.[A-Za-z_]\w*\s*$/, { error: 'expected <ref field>.<text field>, e.g. article.abstract' }).optional()
+      .meta({ description: 'A Text field whose value must be words of the referenced record\'s Text field, e.g. article.abstract; a value not found there raises a flag.' }),
   }),
-], { error: 'expected a type expression or { type, required, description, access, controlled }' });
+], { error: 'expected a type expression or { type, required, description, access, controlled, quote_of }' });
 
 const fields = z.record(z.string(), field);
 
@@ -92,7 +94,7 @@ const lifecycleChart = z.strictObject({
 
 /** A record page block, as written: `details`, or `{ fields: [...] }`, `{ viewer: file }`, ... (the parser checks which). */
 const pageBlock = z.union([z.string(), z.record(z.string(), z.unknown())])
-  .meta({ description: 'fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history.' });
+  .meta({ description: 'fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat.' });
 const pageArea = z.array(pageBlock);
 
 export const pageLayoutFormat = z.strictObject({
@@ -211,7 +213,7 @@ export const stepFormat = z.strictObject({
   policy: policyFormat.optional(),
   assignee: z.string().optional().meta({ description: 'Role that does (or decides) a person or external step.' }),
   map: z.record(z.string(), z.record(z.string(), z.unknown())).optional().meta({
-    description: 'System steps: arguments for each tool, in call order. `case.<field>` reads the case; anything else is a literal (or write { value: ... }).',
+    description: 'System steps: arguments for each tool, in call order. `case.<field>` reads the case; `each: case.<List field>` calls the tool once per item, with `item.<field>`; `{ today: 7 }` is a date, `{ now: true }` the time; anything else is a literal (or write { value: ... }).',
   }),
   engine: z.enum(['step', 'open']).optional().meta({
     description: 'Agent steps: `open` runs the step as a conversation in chat (needs strictness: open); default `step`.',
@@ -240,6 +242,8 @@ export const stepFormat = z.strictObject({
     }),
   ], { error: 'expected document, table, diff, form, or { kind, record | items }' }).optional()
     .meta({ description: 'Phase 6: how the person reviews it; default chosen from what the step reads and writes.' }),
+  quotes: z.enum(['required'], { error: 'expected required' }).optional()
+    .meta({ description: 'Agent steps: `required` makes every value the agent writes carry the exact words of a tool result it was read from.' }),
 }).meta({ title: 'MemWise step', description: 'The front matter of workflows/<id>/steps/<state>.md.' });
 
 export const caseFormat = z.strictObject({
@@ -260,6 +264,8 @@ export const entityFormat = z.strictObject({
   invariants: z.array(condition).optional().meta({ description: 'Conditions that should hold; a broken one raises a flag, never blocks a write.' }),
   ownership: z.record(z.string(), z.string()).optional().meta({ description: 'field → owner (a plugin id or domain).' }),
   page: pageLayoutFormat.optional().meta({ description: 'The record page layout.' }),
+  key: z.union([z.string(), names]).optional().meta({ description: 'Fields that identify a record (Text, Number or Ref, required): unique, and creating one that exists returns it.' }),
+  keep_from_chat: z.boolean().optional().meta({ description: 'A chat anchored to a record may keep rows of this entity (with the person\'s permission).' }),
 }).meta({ title: 'MemWise entity type', description: 'domain/entities/<name>.yaml or domains/<id>/entities/<name>.yaml.' });
 
 const scriptedTurn = z.strictObject({
@@ -356,7 +362,7 @@ const dashboardValue = z.union([
 
 /** A dashboard block, as written: `{ kpi }`, `{ table }`, `{ list }`, `{ heatmap }` or `{ text }` (the parser checks which). */
 const dashboardBlock = z.record(z.string(), z.unknown())
-  .meta({ description: 'kpi: { label, value: { count | percent | sum | avg: <Entity>, where, field, of }, target }, table: { title, view }, list: { title, view }, heatmap: { rows, columns }, text: markdown.' });
+  .meta({ description: 'kpi: { label, value: { count | percent | sum | avg: <Entity>, where, field, of }, target }, table: { title, view }, list: { title, view }, heatmap: { rows, columns }, chart: { kind, entity, where, by | label, value, low, high, unit, title }, text: markdown.' });
 
 export const pageFormat = z.strictObject({
   page: z.string().optional().meta({ description: 'The page id; default the file name.' }),
@@ -379,6 +385,18 @@ export const dashboardBlockFormats = {
     columns: z.array(z.strictObject({ label: z.string(), value: z.string() })),
   }),
   text: z.string(),
+  chart: z.strictObject({
+    kind: z.enum(['bar', 'line', 'donut', 'interval']),
+    entity: z.string(),
+    where: condition.optional(),
+    by: z.string().optional().meta({ description: 'bar, line, donut: count the records per value of this field.' }),
+    title: z.string().optional(),
+    label: z.string().optional().meta({ description: 'interval: each row\'s label, a template: "{intervention} vs {comparator}".' }),
+    value: z.string().optional().meta({ description: 'interval: the field with the value.' }),
+    low: z.string().optional().meta({ description: 'interval: the field with the interval\'s low end.' }),
+    high: z.string().optional().meta({ description: 'interval: the field with the interval\'s high end.' }),
+    unit: z.string().optional().meta({ description: 'interval: the field with the unit.' }),
+  }),
 } as const;
 
 // ---------------------------------------------------------------- plugins and bindings (Phase 4)

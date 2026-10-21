@@ -13,7 +13,13 @@ export function typeAt(src: unknown, report: Reporter, path: PathKey[]) {
   return type;
 }
 
-/** A `fields:` map. A field may be a type expression or `{ type, required, description, access, controlled }`. */
+/** `article.abstract` (a field's `quote_of`, 25 §4) → `{ ref, field }`. */
+function quoteOf(raw: unknown): FieldDef['quoteOf'] {
+  const m = typeof raw === 'string' ? /^\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*$/.exec(raw) : null;
+  return m ? { ref: m[1]!, field: m[2]! } : undefined;
+}
+
+/** A `fields:` map. A field may be a type expression or `{ type, required, description, access, controlled, quote_of }`. */
 export function parseFields(raw: unknown, report: Reporter, path: PathKey[]): Record<string, FieldDef> {
   const out: Record<string, FieldDef> = {};
   for (const [name, spec] of Object.entries(asRecord(raw))) {
@@ -28,6 +34,7 @@ export function parseFields(raw: unknown, report: Reporter, path: PathKey[]): Re
       description: obj ? asString(obj.description) : undefined,
       access: obj && Array.isArray(obj.access) ? asStrings(obj.access) : undefined,
       controlled: obj && typeof obj.controlled === 'boolean' ? obj.controlled : undefined,
+      quoteOf: obj ? quoteOf(obj.quote_of) : undefined,
     });
   }
   return out;
@@ -91,6 +98,9 @@ export function parseEntityFile(text: string, file: string): ParseResult<EntityT
     lifecycleChart: lifecycle.chart,
     invariants: Array.isArray(data.invariants) ? asStrings(data.invariants) : undefined,
     page: parsePageLayout(data.page, report),
+    // Literature (25 §3, §6).
+    key: Array.isArray(data.key) ? asStrings(data.key) : typeof data.key === 'string' ? [data.key.trim()] : undefined,
+    keepFromChat: data.keep_from_chat === true ? true : undefined,
   });
   rememberLocator(value, src.locate);
   return { value, diagnostics: report.diagnostics };

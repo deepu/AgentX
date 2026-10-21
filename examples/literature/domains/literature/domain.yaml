@@ -1,0 +1,4 @@
+domain: literature
+name: Literature
+description: "What the published literature says on the questions Meridian's medical team follows: a weekly PubMed search per topic, each paper read once, screened by a person, and the evidence kept from it."
+owner: lead                    # flags, held automations and triggered cases go to the medical affairs lead

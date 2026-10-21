@@ -107,12 +107,20 @@ function resultText(r: GatewayCallResult): { text: string; isError: boolean } {
   }
 }
 
-/** Models sometimes send `writes` as a JSON string; anything else that is not an object counts as no writes. */
+/** An object argument, which models sometimes send as a JSON string; anything else that is not an object is none. */
+function objectArg(v: unknown): Record<string, unknown> | undefined {
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch { return undefined; } }
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+}
+
+/** Models sometimes send `writes` (and `quotes`) as a JSON string; anything else that is not an object counts as none. */
 function finishArgs(raw: Record<string, unknown>): FinishArgs {
-  let writes = raw.writes;
-  if (typeof writes === 'string') { try { writes = JSON.parse(writes); } catch { /* checked below */ } }
-  const plain = writes && typeof writes === 'object' && !Array.isArray(writes) ? (writes as Record<string, unknown>) : {};
-  return { outcome: String(raw.outcome ?? ''), writes: plain, ...(typeof raw.rationale === 'string' ? { rationale: raw.rationale } : {}) };
+  const quotes = objectArg(raw.quotes);
+  return {
+    outcome: String(raw.outcome ?? ''), writes: objectArg(raw.writes) ?? {}, ...(typeof raw.rationale === 'string' ? { rationale: raw.rationale } : {}),
+    // A quote that isn't text is kept as it came, so the check says it is empty rather than losing it.
+    ...(quotes && Object.keys(quotes).length ? { quotes: quotes as Record<string, string> } : {}),
+  };
 }
 
 /** State of one step run, rebuilt identically on replay from journaled step outputs. */

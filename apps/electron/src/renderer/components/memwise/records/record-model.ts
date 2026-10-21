@@ -17,6 +17,7 @@ import type {
   MwTransitionOption,
   MwTreeNode,
 } from '@memwise/shared/protocol'
+import type { KpiTile } from '@memwise/ui'
 import { absoluteTime, formatMoney, formatValueInline, humanize, isDocumentValue, isMoney, isNegativeOutcome, sortInbox } from '../format'
 
 // ---------------------------------------------------------------- values
@@ -281,6 +282,56 @@ export function chartData(page: MwRecordPage, block: Extract<MwPageBlock, { kind
   const f = page.fields.find(x => x.name === block.of)
   if (f && typeof f.value === 'number') return [{ label: f.label, value: f.value }]
   return []
+}
+
+/**
+ * A chart's rows as the server computes them (25 §5, `MwChartData`): bar/line/donut count records
+ * per value; interval has one row per record with its value and interval. A row may carry its own
+ * unit when the chart's rows don't share one.
+ */
+export interface ChartView {
+  kind: 'bar' | 'line' | 'donut' | 'interval'
+  title?: string
+  unit?: string
+  data: { label: string; value: number; low?: number; high?: number; unit?: string; record?: { entity: string; id: string; title: string } }[]
+  total: number
+  skipped?: number
+}
+
+/** A KPI tile's value from the server (25 §5, `MwRecordKpi`). */
+export interface KpiView { field: string; value: number | null; type: string; description?: string }
+
+/** The kit's rows for a chart: a row with its own unit (the chart has none) says it in its label. */
+export function chartRows(chart: ChartView): { label: string; value: number; low?: number; high?: number }[] {
+  return chart.data.map(d => ({
+    label: d.unit && !chart.unit ? `${d.label} (${d.unit})` : d.label,
+    value: d.value,
+    ...(d.low !== undefined && d.low !== null ? { low: d.low } : {}),
+    ...(d.high !== undefined && d.high !== null ? { high: d.high } : {}),
+  }))
+}
+
+/** A record page `chart` block the server sent no rows for: its related rows counted by `by`. */
+export function fallbackChart(page: MwRecordPage, block: Extract<MwPageBlock, { kind: 'chart' }>): ChartView | null {
+  const kind = block.chart
+  if (kind !== 'bar' && kind !== 'line' && kind !== 'donut') return null
+  const data = chartData(page, block)
+  return { kind, data, total: data.reduce((s, d) => s + d.value, 0) }
+}
+
+/** The tiles of a `kpis` block: each field's label and value (the server's, else the page field's). */
+export function kpiTiles(page: MwRecordPage, fields: string[], kpis: Record<string, KpiView> | undefined, t: TFunction, locale?: string): KpiTile[] {
+  return fields.map(name => {
+    const field = page.fields.find(f => f.name === name)
+    const kpi = kpis?.[name]
+    const type = kpi?.type ?? field?.type ?? 'Number'
+    const raw = kpi ? kpi.value : field?.value
+    const label = field?.label ?? humanize(name)
+    if (field?.hidden) return { label, value: null, display: t('memwise.case.restrictedValue') }
+    if (typeof raw === 'number') return { label, value: raw, format: isPercentType(baseType(type)) ? 'percent' : 'number', detail: kpi?.description }
+    if (raw === null || raw === undefined || raw === '') return { label, value: null, detail: kpi?.description }
+    return { label, value: null, display: formatTypedValue(type, raw, t, locale), detail: kpi?.description }
+  })
 }
 
 // ---------------------------------------------------------------- review

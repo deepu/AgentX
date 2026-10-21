@@ -34,6 +34,7 @@ import type { HandlerDeps } from '../handler-deps'
 import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange } from '../../memwise/host'
 import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../memwise/service'
 import type { DraftFacts, DtoContext } from '../../memwise/dto'
+import { keepableEntities, recordDigest } from '../../memwise/chat-tools'
 import {
   authoringOf, conversationBlock, conversationState, draftForRun, isConversationStep, kickoffMessage, personName, plainValues,
   sendBackNote, sentBackMessage,
@@ -122,6 +123,9 @@ export const HANDLED_CHANNELS = [
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 /** Cap on the hidden case digest an anchored chat starts with. */
 const DIGEST_MAX_CHARS = 16_000
+
+/** A chat about a case, step or playbook (a record chat is opened by `openRecordChat`). */
+type ExplainAnchor = Exclude<MwOpenChatInput['anchor'], { kind: 'record' }>
 /** Of that, the share a step's journal may take. */
 const DIGEST_JOURNAL_CHARS = 9_000
 
@@ -609,7 +613,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     }
   }
 
-  async function caseDigest(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, anchor: MwOpenChatInput['anchor']): Promise<{ title: string; digest: string; caseId?: string }> {
+  async function caseDigest(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, anchor: ExplainAnchor): Promise<{ title: string; digest: string; caseId?: string }> {
     const clip = (v: unknown, n = 600) => {
       const s = typeof v === 'string' ? v : JSON.stringify(v)
       return s && s.length > n ? `${s.slice(0, n)}…` : s
@@ -668,7 +672,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
   }
 
   /** An ordinary chat about a case, step or playbook: its record goes into the chat's system prompt. */
-  async function openExplainChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, workspaceId: string, anchor: MwOpenChatInput['anchor']): Promise<string> {
+  async function openExplainChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, workspaceId: string, anchor: ExplainAnchor): Promise<string> {
     const { title, digest } = await caseDigest(svc, actor, c, d, anchor)
     const session = await deps.sessionManager.createSession(workspaceId, { name: `About ${title}` })
     const { PgChatAnchorStore } = await import('@memwise/db')
@@ -683,6 +687,37 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         digest,
         '',
         `This chat is about the ${kind} above. Answer only from this record; say "not recorded" when it does not say.`,
+      ].join('\n'),
+      personName: (await personName(svc, actor.personId)) ?? undefined,
+    })
+    kickoff(session.id, 'explain')
+    return session.id
+  }
+
+  /**
+   * A chat anchored to a record (doc 25 §6): its page as the person sees it goes into the
+   * chat's context, and the chat gets `record_get` / `record_query` (and `record_keep` when the
+   * record's domain has an entity with `keep_from_chat`), acting as the person.
+   */
+  async function openRecordChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, anchor: { entity: string; id: string }): Promise<string> {
+    if (!anchor.entity || !anchor.id) throw new Error(RECORD_MESSAGES.missing)
+    const page = await recordsOf(svc).page(anchor.entity, anchor.id, actor)
+    if (!page) throw new Error('That record was not found, or you may not see it.')
+    const keep = keepableEntities(c.project, page.domain)
+    // Keeping is always asked (the prompt showing the rows is the Keep button), so a chat that
+    // can keep opens in Ask mode whatever the workspace default: Explore would refuse to keep.
+    const session = await deps.sessionManager.createSession(workspaceId, { name: `About ${page.title}`, ...(keep.length ? { permissionMode: 'ask' as const } : {}) })
+    const { PgChatAnchorStore, recordAnchorId } = await import('@memwise/db')
+    await new PgChatAnchorStore().set(svc.kernel.pool, {
+      chatId: session.id, anchorKind: 'record', anchorId: recordAnchorId(page.entity, page.id), personId: actor.personId,
+    })
+    deps.sessionManager.setMemwiseContext(session.id, {
+      anchor: { kind: 'record', entity: page.entity, id: page.id },
+      ...(keep.length ? { keep } : {}),
+      block: [
+        recordDigest(page),
+        '',
+        `This chat is about the ${page.entityName.toLowerCase()} above, as it stands on its page. Look further with record_get and record_query; say "not recorded" when the records do not say.`,
       ].join('\n'),
       personName: (await personName(svc, actor.personId)) ?? undefined,
     })
@@ -1117,6 +1152,10 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           if (s.status === 'waiting') return { sessionId: await openConversationChat(svc, actor, c, workspaceId, s.stepRunId) }
         }
       }
+      if (input?.anchor?.kind === 'record') {
+        return { sessionId: await openRecordChat(svc, actor, c, workspaceId, input.anchor) }
+      }
+      if (!input?.anchor || !['case', 'step', 'workflow'].includes(input.anchor.kind)) throw new Error('Choose what the chat is about.')
       return { sessionId: await openExplainChat(svc, actor, c, d, workspaceId, input.anchor) }
     },
 

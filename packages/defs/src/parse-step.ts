@@ -31,12 +31,24 @@ function writeSource(raw: unknown, performer: Performer): WriteSource {
   return performer === 'person' || performer === 'external' ? { kind: 'person' } : { kind: 'judgement' };
 }
 
-/** `case.client_name` reads the case; `{ value: x }` or anything else is a literal. */
+/**
+ * `case.client_name` reads the case; `item.<path>` (or `item`) the item of an `each:` call;
+ * `{ today: 7 }` a date and `{ now: true }` the time (25 §3); `{ value: x }` or anything else
+ * is a literal.
+ */
 export function argSource(raw: unknown): ArgSource {
   if (typeof raw === 'string' && /^case\.[A-Za-z_][\w.]*$/.test(raw.trim())) return { case: raw.trim().slice(5) };
-  if (isRecord(raw) && Object.keys(raw).length === 1 && 'value' in raw) return { value: raw.value };
+  if (typeof raw === 'string' && /^item(\.[A-Za-z_][\w.]*)?$/.test(raw.trim())) return { item: raw.trim().slice(5) };
+  if (isRecord(raw) && Object.keys(raw).length === 1) {
+    if ('value' in raw) return { value: raw.value };
+    if (typeof raw.today === 'number' && Number.isInteger(raw.today)) return { today: raw.today };
+    if (raw.now === true) return { now: true };
+  }
   return { value: raw };
 }
+
+/** `each: case.<List field>` in a tool's `map` (25 §3). */
+const EACH_PATTERN = /^case\.([A-Za-z_][\w.]*)$/;
 
 /** Default `extract.min_confidence` (23 §5). */
 export const DEFAULT_MIN_CONFIDENCE = 0.8;
@@ -133,10 +145,17 @@ export function parseStepFile(text: string, file: string): ParseResult<StepDef> 
   }
 
   let map: StepDef['map'];
+  let each: StepDef['each'];
   if (isRecord(data.map)) {
     map = {};
     for (const [tool, args] of Object.entries(data.map)) {
-      map[tool] = Object.fromEntries(Object.entries(asRecord(args)).map(([arg, src]) => [arg, argSource(src)]));
+      const { each: over, ...rest } = asRecord(args);
+      if (over !== undefined) {
+        const m = typeof over === 'string' ? EACH_PATTERN.exec(over.trim()) : null;
+        if (m) (each ??= {})[tool] = m[1]!;
+        else report.error('invalid-format', `\`each\` names a List case field to call ${tool} once per item, e.g. \`each: case.screening\``, ['map', tool, 'each']);
+      }
+      map[tool] = Object.fromEntries(Object.entries(rest).map(([arg, src]) => [arg, argSource(src)]));
     }
   }
 
@@ -162,6 +181,8 @@ export function parseStepFile(text: string, file: string): ParseResult<StepDef> 
     extract: isRecord(data.extract) ? parseExtract(data.extract) : undefined,
     sign: asString(data.sign),
     review: parseReview(data.review),
+    each,
+    quotes: data.quotes === 'required' ? 'required' as const : undefined,
     instructions: parts.body.trim(),
     file,
     hash: sha256(text),

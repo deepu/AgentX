@@ -90,7 +90,7 @@ import { homedir } from 'os';
 
 // Session storage (plans folder path)
 import { getSessionDataPath, getSessionPath, getSessionPlansPath } from '../sessions/storage.ts';
-import { readSessionMemwiseContext, sessionHasPlaybookTools } from '../sessions/memwise-context.ts';
+import { memwiseSessionToolOptions, readSessionMemwiseContext } from '../sessions/memwise-context.ts';
 import type { SessionMemwiseContext } from '../sessions/memwise-context.ts';
 
 // Error typing
@@ -618,10 +618,11 @@ export class PiAgent extends BaseAgent {
     // These tools (SubmitPlan, config_validate, source auth, call_llm, etc.)
     // are executed in the main process when the LLM calls them.
     this.assertBackendSessionToolParity();
-    // The playbook_* tools are advertised only in a chat anchored to a MemWise conversation step.
-    let sessionToolDefs = getSessionToolProxyDefs({
-      includePlaybookTools: sessionHasPlaybookTools(this.config.workspace.rootPath, this.config.session?.id),
-    });
+    // The playbook_* tools are advertised only in a chat anchored to a MemWise conversation step,
+    // the record_* tools only in a chat anchored to a record.
+    let sessionToolDefs = getSessionToolProxyDefs(
+      memwiseSessionToolOptions(this.config.workspace.rootPath, this.config.session?.id),
+    );
 
     // Mirror Claude's gate: hide `browser_tool` when the user has disabled
     // the built-in browser tool. Without this filter, Pi would still advertise

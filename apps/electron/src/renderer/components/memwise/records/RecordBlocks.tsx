@@ -1,7 +1,8 @@
 /**
  * The blocks a record page is made of (24 §6): fields and details with a source badge each
- * and in-place editing, related tables, cases, the lifecycle, a chart, checks, notes, mentions,
- * "start a playbook here" and the history with its signatures. Presentational.
+ * and in-place editing, related tables, cases, the lifecycle, charts and KPI tiles (drawn with
+ * the @memwise/ui chart kit, 25 §5), "ask about this record", checks, notes, mentions, "start a
+ * playbook here" and the history with its signatures. Presentational.
  */
 
 import * as React from 'react'
@@ -20,6 +21,7 @@ import {
   ExternalLink,
   Link2,
   Lock,
+  MessageSquare,
   Pencil,
   Play,
   Plug,
@@ -28,7 +30,7 @@ import {
   X,
 } from 'lucide-react'
 import type { MwPageBlock, MwRecordField, MwRecordFieldSource, MwRecordPage, MwRecordWriteResult, MwTransitionOption } from '@memwise/shared/protocol'
-import { Markdown } from '@memwise/ui'
+import { Chart, KpiTiles, Markdown } from '@memwise/ui'
 import { Info_Alert } from '@/components/info/Info_Alert'
 import { Info_Badge } from '@/components/info/Info_Badge'
 import { Info_Section } from '@/components/info/Info_Section'
@@ -42,19 +44,23 @@ import {
   SOURCE_TONE_CLASS,
   TONE_PILL,
   baseType,
-  chartData,
+  chartRows,
+  fallbackChart,
   fieldSourceLabel,
   fieldSourceTone,
   formatFieldValue,
   formatTypedValue,
   isPercentType,
   isStructuralCheck,
+  kpiTiles,
   lifecycleSteps,
   relatedColumns,
   statusLabel,
   statusTone,
   transitionBlockedReason,
   transitionLabel,
+  type ChartView,
+  type KpiView,
 } from './record-model'
 
 // ---------------------------------------------------------------- actions
@@ -453,78 +459,53 @@ export function LifecycleBlock({ page, onTransition, busy }: { page: MwRecordPag
   )
 }
 
-// ---------------------------------------------------------------- chart
+// ---------------------------------------------------------------- chart, kpis, chat (25 §5)
 
-const CHART_COLORS = ['var(--accent)', 'var(--info)', 'var(--success)', 'var(--destructive)', 'var(--secondary)']
-
-export function ChartBlock({ page, block }: { page: MwRecordPage; block: Extract<MwPageBlock, { kind: 'chart' }> }) {
+/**
+ * A chart in a section, drawn with the kit (@memwise/ui charts): the rows the server computed
+ * for it, or nothing-to-chart. Record pages and dashboards both use it.
+ */
+export function ChartSection({ title, chart }: { title: string; chart: ChartView | null }) {
   const { t } = useTranslation()
-  const data = chartData(page, block)
-  const title = page.related[block.of]?.label ?? humanize(block.of)
-  const by = block.by ?? 'status'
-  const total = data.reduce((s, d) => s + d.value, 0)
-  const max = Math.max(1, ...data.map(d => d.value))
+  const data = chart ? chartRows(chart) : []
   return (
-    <Info_Section title={t('memwise.record.chartTitle', { of: title, by: humanize(by).toLowerCase() })}>
-      <div className="p-3.5" data-chart={block.chart}>
-        {data.length === 0 ? (
+    <Info_Section title={title} count={chart && chart.kind !== 'interval' && chart.total > 0 ? chart.total : undefined}>
+      <div className="p-3.5" data-chart={chart?.kind ?? ''}>
+        {!chart || data.length === 0 ? (
           <p className="text-label text-tertiary">{t('memwise.record.noChartData')}</p>
-        ) : block.chart === 'donut' ? (
-          <div className="flex items-center gap-4">
-            <Donut data={data} />
-            <Legend data={data} total={total} />
-          </div>
-        ) : block.chart === 'line' ? (
-          <svg viewBox={`0 0 ${Math.max(1, data.length - 1) * 40} 60`} className="h-24 w-full" preserveAspectRatio="none" role="img" aria-label={title}>
-            <polyline fill="none" stroke="var(--accent)" strokeWidth="2" points={data.map((d, i) => `${i * 40},${60 - (d.value / max) * 56}`).join(' ')} />
-          </svg>
         ) : (
-          <ul className="space-y-1.5">
-            {data.map((d, i) => (
-              <li key={d.label} className="grid grid-cols-[minmax(0,8rem)_1fr_auto] items-center gap-2 text-label-sm">
-                <span className="truncate text-secondary">{d.label}</span>
-                <span className="h-2 rounded-full bg-fill-hover">
-                  <span className="block h-2 rounded-full" style={{ width: `${(d.value / max) * 100}%`, background: CHART_COLORS[i % CHART_COLORS.length] }} />
-                </span>
-                <span className="tabular-nums text-foreground">{d.value}</span>
-              </li>
-            ))}
-          </ul>
+          <Chart kind={chart.kind} data={data} title={title} unit={chart.unit} />
         )}
+        {!!chart?.skipped && <p className="mt-2 text-label-sm text-tertiary" data-chart-skipped={chart.skipped}>{t('memwise.record.chartSkipped', { count: chart.skipped })}</p>}
       </div>
     </Info_Section>
   )
 }
 
-function Donut({ data }: { data: { label: string; value: number }[] }) {
-  const total = data.reduce((s, d) => s + d.value, 0) || 1
-  const r = 15.9155
-  let offset = 25
-  return (
-    <svg viewBox="0 0 42 42" className="size-20 shrink-0" role="img" aria-hidden>
-      <circle cx="21" cy="21" r={r} fill="none" stroke="var(--fill-hover, #eee)" strokeWidth="6" />
-      {data.map((d, i) => {
-        const pct = (d.value / total) * 100
-        const el = <circle key={d.label} cx="21" cy="21" r={r} fill="none" stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth="6" strokeDasharray={`${pct} ${100 - pct}`} strokeDashoffset={offset} />
-        offset -= pct
-        return el
-      })}
-    </svg>
-  )
+/** A `chart` block: the rows the kernel computed for it, else its related rows counted here. */
+export function ChartBlock({ page, block, chart }: { page: MwRecordPage; block: Extract<MwPageBlock, { kind: 'chart' }>; chart?: ChartView | null }) {
+  const { t } = useTranslation()
+  const view = chart ?? fallbackChart(page, block)
+  const of = page.related[block.of]?.label ?? humanize(block.of)
+  const title = view?.title ?? (block as { title?: string }).title ?? t('memwise.record.chartTitle', { of, by: humanize(block.by ?? 'status').toLowerCase() })
+  return <ChartSection title={title} chart={view} />
 }
 
-function Legend({ data, total }: { data: { label: string; value: number }[]; total: number }) {
+/** A `kpis` block: one tile per field, with the field's label. */
+export function KpisBlock({ page, fields, kpis }: { page: MwRecordPage; fields: string[]; kpis?: Record<string, KpiView> }) {
+  const { t, i18n } = useTranslation()
+  return <KpiTiles items={kpiTiles(page, fields, kpis, t, i18n.language)} />
+}
+
+/** A `chat` block: "Ask about this topic", opening a chat anchored to the record beside the page. */
+export function ChatBlock({ page, onOpenChat }: { page: MwRecordPage; onOpenChat?: () => void }) {
+  const { t } = useTranslation()
+  if (!onOpenChat) return null
   return (
-    <ul className="space-y-1 text-label-sm">
-      {data.map((d, i) => (
-        <li key={d.label} className="flex items-center gap-2">
-          <span className="size-2.5 rounded-full" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
-          <span className="text-secondary">{d.label}</span>
-          <span className="tabular-nums text-foreground">{d.value}</span>
-          <span className="text-tertiary tabular-nums">{Math.round((d.value / (total || 1)) * 100)}%</span>
-        </li>
-      ))}
-    </ul>
+    <Button variant="secondary" className="w-full justify-start" onClick={onOpenChat} data-action="ask-about-record">
+      <MessageSquare />
+      {t('memwise.record.askAbout', { entity: page.entityName.toLowerCase() })}
+    </Button>
   )
 }
 

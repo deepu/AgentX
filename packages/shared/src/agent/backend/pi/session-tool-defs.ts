@@ -20,9 +20,15 @@ export { SESSION_TOOL_NAMES };
 export function getSessionToolProxyDefs(opts?: {
   /** Per session: the MemWise playbook_* tools, for chats anchored to a conversation step. */
   includePlaybookTools?: boolean;
+  /** Per session: record_get / record_query, for chats anchored to a record. */
+  includeRecordTools?: boolean;
+  /** Per session: record_keep, when the record's domain has an entity with `keep_from_chat`. */
+  includeRecordKeep?: boolean;
 }): SessionToolProxyDef[] {
   return getToolDefsAsJsonSchema({
     includePlaybookTools: opts?.includePlaybookTools ?? false,
+    includeRecordTools: opts?.includeRecordTools ?? false,
+    includeRecordKeep: opts?.includeRecordKeep ?? false,
     prefix: 'mcp__session__',
     includeDeveloperFeedback: FEATURE_FLAGS.developerFeedback,
     // Same gate as the Claude path (session-scoped-tools.ts): advertise `decide`

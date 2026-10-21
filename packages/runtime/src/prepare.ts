@@ -103,6 +103,7 @@ export function stepReadFields(step: StepDef): string[] {
   for (const args of Object.values(step.map ?? {})) {
     for (const src of Object.values(args)) if ('case' in src) fields.add(head(src.case));
   }
+  for (const path of Object.values(step.each ?? {})) fields.add(head(path));
   return [...fields].sort();
 }
 

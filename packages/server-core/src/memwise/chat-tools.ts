@@ -6,11 +6,13 @@
  *
  * Loaded by SessionManager at module level, so no kernel imports here except lazily.
  */
-import type { MemwiseToolCallbacks, PlaybookToolDiagnostic } from '@memwise/session-tools-core'
+import type { MemwiseRecordToolCallbacks, MemwiseToolCallbacks, PlaybookToolDiagnostic, RecordKeepRowResult } from '@memwise/session-tools-core'
 import type { Diagnostic, DraftDiff, DraftMeta, DraftReport } from '@memwise/defs'
 import { emitMemwiseChange, getMemwiseService } from './host'
 import { authoringOf, conversationState, isConversationStep, type ConversationState } from './conversation'
 import type { MemwiseService, PersonActor } from './service'
+import type { ProjectDefs } from '@memwise/defs'
+import type { RecordField, RecordFieldSource, RecordPage, RecordQueryResult, RecordsService } from '@memwise/runtime'
 
 export interface MemwiseChatToolsOptions {
   sessionId: string
@@ -213,4 +215,261 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
       }
     },
   }
+}
+
+
+// ---------------------------------------------------------------- record chats (25 §6)
+
+/** Longest text value a `record_query` row carries; `record_get` gives the whole value. */
+const QUERY_TEXT_MAX = 1500
+/** Related rows per relationship in `record_get` and the chat's digest. */
+const RELATED_ROWS_MAX = 50
+
+/** The entities of a domain a record chat may keep (`keep_from_chat`), with their names. */
+export function keepableEntities(project: Pick<ProjectDefs, 'entities'>, domain: string): { entity: string; name: string }[] {
+  return Object.entries(project.entities)
+    .filter(([, def]) => (def.domain ?? 'domain') === domain && def.keepFromChat === true)
+    .map(([key, def]) => ({ entity: key, name: def.entity }))
+    .sort((a, b) => (a.entity < b.entity ? -1 : 1))
+}
+
+/** Where a value came from, in a few words the model can repeat. */
+export function sourceLabel(src: RecordFieldSource): string {
+  switch (src.kind) {
+    case 'step': return `step ${src.stepRunId}${src.workflowId ? ` of ${src.workflowId}` : ''}`
+    case 'person': return `person ${src.name ?? src.personId}`
+    case 'plugin': return `plugin ${src.plugin}`
+    case 'link': return `linked ${src.domain}.${src.entity}${src.recordId ? ` ${src.recordId}` : ''}`
+    case 'source': return `source ${src.source}`
+    case 'calculated': return 'calculated'
+    case 'domain': return 'entered'
+  }
+}
+
+/** One field of a record as the chat sees it: value, type, source, and its quote when it has one. */
+function fieldForChat(f: RecordField): Record<string, unknown> {
+  const quote = (f as RecordField & { quote?: unknown }).quote
+  return {
+    field: f.name,
+    type: f.type,
+    value: f.value,
+    source: sourceLabel(f.source),
+    ...(typeof quote === 'string' && quote ? { quote } : {}),
+    ...(f.ref ? { ref: { entity: f.ref.entity, id: f.ref.id, title: f.ref.title } } : {}),
+  }
+}
+
+/** A record page as `record_get` returns it: what the person may see, nothing they may not. */
+export function recordForChat(page: RecordPage): Record<string, unknown> {
+  const visible = page.fields.filter((f) => !f.hidden)
+  const hidden = page.fields.filter((f) => f.hidden).map((f) => f.name)
+  const quotes = (page as RecordPage & { quotes?: unknown }).quotes
+  return {
+    entity: page.entity,
+    id: page.id,
+    title: page.title,
+    entityName: page.entityName,
+    domain: page.domain,
+    ...(page.status ? { status: page.status } : {}),
+    ...(page.parents.length ? { parents: page.parents.map((p) => ({ entity: p.entity, id: p.id, title: p.title })) } : {}),
+    values: visible.map(fieldForChat),
+    ...(hidden.length ? { hiddenFields: hidden } : {}),
+    ...(quotes !== undefined ? { quotes } : {}),
+    related: Object.fromEntries(Object.entries(page.related).map(([rel, r]) => [rel, {
+      entity: r.entity,
+      total: r.total,
+      rows: r.rows.slice(0, RELATED_ROWS_MAX).map((row) => ({ id: row.id, title: row.title, ...(row.status ? { status: row.status } : {}), values: row.values })),
+      ...(r.total > RELATED_ROWS_MAX ? { more: `${r.total - RELATED_ROWS_MAX} more; use record_query on ${r.entity}` } : {}),
+    }])),
+    ...(page.flags.length ? { flags: page.flags.filter((f) => !f.closedAt).map((f) => f.message) } : {}),
+    ...(page.lifecycle ? {
+      lifecycle: {
+        ...(page.lifecycle.current ? { current: page.lifecycle.current } : {}),
+        transitions: page.lifecycle.transitions.map((t) => ({ name: t.name, to: t.to, allowed: t.allowed, ...(t.reason ? { reason: t.reason } : {}) })),
+      },
+    } : {}),
+    ...(page.notes?.body ? { notes: page.notes.body } : {}),
+  }
+}
+
+const clipText = (v: unknown): unknown => (typeof v === 'string' && v.length > QUERY_TEXT_MAX ? `${v.slice(0, QUERY_TEXT_MAX)}… (cut; record_get has the whole value)` : v)
+
+/** A query result as `record_query` returns it (long text cut; record_get has the rest). */
+export function queryForChat(r: RecordQueryResult): Record<string, unknown> {
+  return {
+    entity: r.entity,
+    total: r.total,
+    returned: r.rows.length,
+    columns: r.columns.map((c) => `${c.name} (${c.type})`),
+    rows: r.rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      ...(row.status ? { status: row.status } : {}),
+      values: Object.fromEntries(Object.entries(row.values).filter(([k]) => !row.hidden.includes(k)).map(([k, v]) => [k, clipText(v)])),
+      ...(row.refs && Object.keys(row.refs).length ? { refs: Object.fromEntries(Object.entries(row.refs).map(([k, ref]) => [k, { id: ref.id, title: ref.title }])) } : {}),
+    })),
+    ...(r.groups ? { groups: r.groups } : {}),
+  }
+}
+
+export interface RecordChatContext {
+  svc: MemwiseService
+  actor: PersonActor
+  records: RecordsService
+  project: ProjectDefs
+  /** The anchored record. */
+  entity: string
+  id: string
+  domain: string
+}
+
+/**
+ * The record tools' callbacks (`record_get`, `record_query`, `record_keep`; doc 25 §6), wired by
+ * SessionManager for a chat anchored to a record. Each call resolves the chat's anchor
+ * (mw.chat_anchors → the record and the person) and acts as that person, with their access.
+ */
+export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & {
+  /** Tests: the anchor context without the process's service. */
+  resolve?: () => Promise<RecordChatContext>
+}): MemwiseRecordToolCallbacks {
+  const { sessionId } = opts
+
+  async function ctx(): Promise<RecordChatContext> {
+    if (opts.resolve) return opts.resolve()
+    const svc = getMemwiseService()
+    if (!svc) throw new Error('MemWise is not running in this app right now.')
+    const { PgChatAnchorStore, parseRecordAnchorId } = await import('@memwise/db')
+    const anchor = await new PgChatAnchorStore().get(svc.kernel.pool, sessionId)
+    const rec = anchor?.anchorKind === 'record' ? parseRecordAnchorId(anchor.anchorId) : undefined
+    if (!anchor || !rec) throw new Error('This chat is not about a record.')
+    if (!anchor.personId) throw new Error('This chat has no person to act for.')
+    const records = (svc.kernel as { records?: RecordsService }).records
+    if (!records) throw new Error('Records are not available in this version.')
+    const actor = await svc.kernel.people.actorFor(anchor.personId)
+    const { project } = await svc.kernel.project()
+    const domain = project.entities[rec.entity]?.domain ?? rec.entity.split('.')[0] ?? 'domain'
+    return { svc, actor, records, project, entity: rec.entity, id: rec.id, domain }
+  }
+
+  /** A bare entity name is looked up in the anchored record's domain. */
+  function entityKey(c: RecordChatContext, entity: string): string {
+    if (c.project.entities[entity]) return entity
+    if (!entity.includes('.')) {
+      const inDomain = Object.entries(c.project.entities).find(([key, def]) => (def.domain ?? 'domain') === c.domain && (key === `${c.domain}.${entity}` || def.entity.toLowerCase() === entity.toLowerCase()))
+      if (inDomain) return inDomain[0]
+    }
+    return entity
+  }
+
+  return {
+    async get(input) {
+      const c = await ctx()
+      const page = await c.records.page(entityKey(c, input.entity), input.id, c.actor)
+      if (!page) throw new Error(`No ${input.entity} ${input.id} that this person may see.`)
+      return recordForChat(page)
+    },
+
+    async query(input) {
+      const c = await ctx()
+      const r = await c.records.query({
+        entity: entityKey(c, input.entity),
+        ...(input.filter ? { filter: input.filter } : {}),
+        ...(input.sort?.length ? { sort: input.sort } : {}),
+        ...(input.columns?.length ? { columns: input.columns } : {}),
+        limit: Math.min(Math.max(input.limit ?? 50, 1), 200),
+      }, c.actor)
+      return queryForChat(r)
+    },
+
+    async keep(input) {
+      const c = await ctx()
+      const entity = entityKey(c, input.entity)
+      const allowed = keepableEntities(c.project, c.domain)
+      if (!allowed.some((k) => k.entity === entity)) {
+        throw new Error(allowed.length
+          ? `${input.entity} can't be kept from this chat; it keeps ${allowed.map((k) => k.entity).join(', ')}.`
+          : 'Nothing in this record\'s domain can be kept from chat.')
+      }
+      if (typeof (c.records as Partial<RecordsService>).keep !== 'function') throw new Error('Keeping from chat is not available in this version.')
+      const out = await c.records.keep({ entity, rows: input.rows, chatId: sessionId }, c.actor)
+      const rows: RecordKeepRowResult[] = (out.rows ?? []).map((r) => ({
+        ...(r.id ? { id: r.id } : {}),
+        ...(typeof r.quoteFound === 'boolean' ? { quoteFound: r.quoteFound } : {}),
+        ...(r.error || r.errors ? { error: r.error ?? Object.entries(r.errors ?? {}).map(([k, v]) => `${k}: ${v.join(', ')}`).join('; ') } : {}),
+      }))
+      if (rows.some((r) => r.id)) emitMemwiseChange({ kind: 'records', entity })
+      opts.log?.(`[memwise] chat ${sessionId} kept ${rows.filter((r) => r.id).length} ${entity} row(s)`)
+      return { entity, rows }
+    },
+  }
+}
+
+/** Longest record digest put into a record chat's context (the system prompt). */
+const RECORD_DIGEST_MAX = 16_000
+const DIGEST_VALUE_MAX = 600
+const DIGEST_RELATED_MAX = 25
+
+/** One page block in plain words ("chart: Included papers by year (bar of screenings by year)"). */
+function describeBlock(block: { kind: string; [k: string]: unknown }): string {
+  const list = (v: unknown) => (Array.isArray(v) ? v.join(', ') : '')
+  switch (block.kind) {
+    case 'fields': return `fields: ${list(block.fields)}`
+    case 'kpis': return `tiles: ${list(block.fields)}`
+    case 'related': return `related: ${list(block.relationships)}`
+    case 'viewer': return `viewer: ${String(block.field)} (the text, with the quotes of its values lit)`
+    case 'chart': {
+      const what = block.chart === 'interval'
+        ? `interval of ${String(block.of)}: ${String(block.value ?? '')} with ${String(block.low ?? '')}–${String(block.high ?? '')}${block.label ? `, labelled ${String(block.label)}` : ''}`
+        : `${String(block.chart)} of ${String(block.of)}${block.by ? ` by ${String(block.by)}` : ''}`
+      return `chart: ${block.title ? `${String(block.title)} (${what})` : what}${block.where ? ` where ${String(block.where)}` : ''}`
+    }
+    case 'chat': return 'chat: the "Ask in chat" button (this chat)'
+    default: return block.kind
+  }
+}
+
+/**
+ * The context of a chat anchored to a record (doc 25 §6), from its page as the person sees it:
+ * its values (with where each came from and its quote), related rows (titles and ids), open
+ * flags, cases, and what the page shows.
+ */
+export function recordDigest(page: RecordPage): string {
+  const clip = (v: unknown, n = DIGEST_VALUE_MAX) => {
+    const s = typeof v === 'string' ? v : JSON.stringify(v)
+    return s && s.length > n ? `${s.slice(0, n)}…` : s
+  }
+  const lines: string[] = [
+    `${page.entityName} "${page.title}" (entity ${page.entity}, id ${page.id}) in the domain ${page.domain}${page.status ? `, status ${page.status}` : ''}.`,
+  ]
+  if (page.parents.length) lines.push(`Under: ${page.parents.map((p) => `${p.title} (${p.entity} ${p.id})`).join(' › ')}`)
+  lines.push('Values:')
+  for (const f of page.fields) {
+    if (f.hidden) { lines.push(`- ${f.name}: (not visible to this person)`); continue }
+    if (f.value === null || f.value === undefined || f.value === '') continue
+    const quote = (f as RecordField & { quote?: unknown }).quote
+    const shown = f.ref ? `${f.ref.title} (${f.ref.entity} ${f.ref.id})` : clip(f.value)
+    lines.push(`- ${f.name} (${f.type}): ${shown} [${sourceLabel(f.source)}]${typeof quote === 'string' && quote ? ` quote: "${clip(quote, 300)}"` : ''}`)
+  }
+  const related = Object.entries(page.related)
+  if (related.length) {
+    lines.push('Related:')
+    for (const [rel, r] of related) {
+      const rows = r.rows.slice(0, DIGEST_RELATED_MAX).map((row) => `${row.title} [${row.id}]${row.status ? ` (${row.status})` : ''}`)
+      lines.push(`- ${rel} (${r.entity}, ${r.total}): ${rows.join('; ') || 'none'}${r.total > rows.length ? `; … ${r.total - rows.length} more (record_query ${r.entity})` : ''}`)
+    }
+  }
+  const flags = page.flags.filter((f) => !f.closedAt)
+  if (flags.length) lines.push('Open flags:', ...flags.map((f) => `- ${f.message}`))
+  if (page.cases.length) lines.push('Cases:', ...page.cases.slice(0, 10).map((c) => `- ${c.title} (${c.workflowId}, ${c.state}, ${c.status}) [${c.caseId}]`))
+  if (page.lifecycle?.transitions.length) {
+    lines.push(`Lifecycle: ${page.lifecycle.states.join(' → ')}; now ${page.lifecycle.current ?? '?'}; moves: ${page.lifecycle.transitions.map((t) => `${t.name}${t.allowed ? '' : ' (not for this person now)'}`).join(', ')}`)
+  }
+  const areas = Object.entries(page.layout.areas) as [string, { kind: string }[]][]
+  lines.push(`The page shows (${page.layout.layout} layout; header: ${page.layout.header.join(', ') || 'title'}):`)
+  for (const [area, blocks] of areas) {
+    if (blocks?.length) lines.push(`- ${area}: ${blocks.map((b) => describeBlock(b as { kind: string; [k: string]: unknown })).join('; ')}`)
+  }
+  let digest = lines.join('\n')
+  if (digest.length > RECORD_DIGEST_MAX) digest = `${digest.slice(0, RECORD_DIGEST_MAX)}\n… (shortened; use record_get and record_query)`
+  return digest
 }

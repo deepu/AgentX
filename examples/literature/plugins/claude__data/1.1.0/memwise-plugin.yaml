@@ -1,0 +1,37 @@
+id: claude/data
+version: 1.1.0
+title: data
+description: Write SQL, explore datasets, and generate insights faster. Build visualizations and dashboards, and turn raw data into clear stories for stakeholders.
+trust: community
+imported_from:
+  kind: claude-plugin
+  name: data
+  version: 1.1.0
+mcp_servers:
+  snowflake:
+    url: ""
+  databricks:
+    url: ""
+  bigquery:
+    url: https://bigquery.googleapis.com/mcp
+  hex:
+    url: https://app.hex.tech/mcp
+  amplitude:
+    url: https://mcp.amplitude.com/mcp
+  amplitude-eu:
+    url: https://mcp.eu.amplitude.com/mcp
+  atlassian:
+    url: https://mcp.atlassian.com/v1/mcp
+  definite:
+    url: https://api.definite.app/v3/mcp/http
+skills:
+  - analyze
+  - build-dashboard
+  - create-viz
+  - data-context-extractor
+  - data-visualization
+  - explore-data
+  - sql-queries
+  - statistical-analysis
+  - validate-data
+  - write-query

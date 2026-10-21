@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import pg from 'pg';
 import {
-  createTestDatabase, PgChatAnchorStore, PgExplanationStore, PgFileStore, PgNotificationStore, PgPeopleStore, PgRateCounter,
+  createTestDatabase, PgChatAnchorStore, PgExplanationStore, PgFileStore, PgNotificationStore, PgPeopleStore, PgRateCounter, parseRecordAnchorId, recordAnchorId,
   postgresAvailable, withActor, type TestDatabase,
 } from '../src/index.ts';
 
@@ -121,6 +121,13 @@ describe.skipIf(!postgresAvailable())('people and Phase 2 stores', () => {
     expect(moved).toMatchObject({ chatId: 'chat1', anchorKind: 'step', anchorId: 's1' });
     expect((await anchors.forAnchor(db.pool, 'step', 's1')).map((a) => a.chatId)).toEqual(['chat1']);
     expect(await anchors.forAnchor(db.pool, 'case', 'case_1')).toEqual([]);
+    // A chat anchored to a record (doc 25 §6): the entity key and record id in one anchor id.
+    const rec = await anchors.set(db.pool, { chatId: 'chat2', anchorKind: 'record', anchorId: recordAnchorId('literature.topic', 'rec_1'), personId: 'person_a' });
+    expect(rec).toMatchObject({ anchorKind: 'record', anchorId: 'literature.topic:rec_1' });
+    expect(parseRecordAnchorId(rec.anchorId)).toEqual({ entity: 'literature.topic', id: 'rec_1' });
+    expect(parseRecordAnchorId('no-colon')).toBeUndefined();
+    expect((await anchors.forAnchor(db.pool, 'record', 'literature.topic:rec_1')).map((a) => a.chatId)).toEqual(['chat2']);
+    await anchors.remove(db.pool, 'chat2');
     await anchors.remove(db.pool, 'chat1');
     expect(await anchors.get(db.pool, 'chat1')).toBeUndefined();
   });

@@ -54,7 +54,7 @@ export function kindOfType(t: ValueType): ConditionName {
 
 const KINDS = new Set(['number', 'text', 'boolean', 'date', 'datetime', 'duration', 'any']);
 /** Value type kinds (scalar, enum, ref, …) and condition kinds never share a word. */
-const toName = (v: ValueType | ConditionKind | ConditionName): ConditionName =>
+export const toName = (v: ValueType | ConditionKind | ConditionName): ConditionName =>
   typeof v === 'string' ? { kind: v } : KINDS.has(v.kind) ? v as ConditionName : kindOfType(v as ValueType);
 
 const WORD: Record<ConditionKind | 'null', string> = {

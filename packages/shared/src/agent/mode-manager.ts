@@ -2067,8 +2067,11 @@ export function shouldAllowToolInMode(
         // Classification, not visibility: `decide` is read-only and Explore-safe
         // whenever the backend advertised it.
         includeDecide: true,
-        // Same for the MemWise playbook tools (advertised only in conversation-step chats).
+        // Same for the MemWise playbook tools (advertised only in conversation-step chats)
+        // and the record tools (record chats: record_get / record_query read; record_keep is blocked).
         includePlaybookTools: true,
+        includeRecordTools: true,
+        includeRecordKeep: true,
       });
 
       if (safeAllowedSessionTools.has(toolName)) {
@@ -2081,6 +2084,14 @@ export function shouldAllowToolInMode(
         return {
           allowed: false,
           reason: `The draft can't be sent for review in ${config.displayName} mode. Ask the person to switch to Ask mode (${config.shortcutHint}) to send the draft for review; they will be asked once before it is sent.`
+        };
+      }
+
+      // MemWise record_keep: never auto-allowed; in Explore it can't run at all, so say how to keep.
+      if (toolName === 'mcp__session__record_keep') {
+        return {
+          allowed: false,
+          reason: `Rows can't be kept in ${config.displayName} mode. Ask the person to switch to Ask mode (${config.shortcutHint}); they will be shown the rows and asked before anything is kept.`
         };
       }
 

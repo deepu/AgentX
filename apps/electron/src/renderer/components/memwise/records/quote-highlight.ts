@@ -110,3 +110,73 @@ export function highlightItemHtml(str: string, ranges: (ItemRange & { quote: num
   }
   return out + escapeHtml(str.slice(pos))
 }
+
+// ---------------------------------------------------------------- plain text (25 §4)
+
+/**
+ * A Text field's quotes (25 §4): matched the way the kernel checks them, after Unicode NFKC,
+ * case folding, `·` read as `.`, and whitespace collapsed to one space. Each match maps back to
+ * offsets in the original text, so the viewer can wrap exactly those characters.
+ */
+export interface TextQuoteRange { quote: number; start: number; end: number }
+
+function foldChar(ch: string): string {
+  return ch.normalize('NFKC').toLowerCase().replace(/·/g, '.')
+}
+
+/** A quote as the matcher compares it. */
+export function normalizeQuote(text: string): string {
+  return foldChar(text).replace(/\s+/g, ' ').trim()
+}
+
+/** The folded text with, for each of its characters, where it starts and ends in the original. */
+function foldText(text: string): { folded: string; starts: number[]; ends: number[] } {
+  let folded = ''
+  const starts: number[] = []
+  const ends: number[] = []
+  let i = 0
+  for (const cp of text) {
+    const end = i + cp.length
+    for (const ch of foldChar(cp)) {
+      if (/\s/.test(ch)) {
+        // Collapse runs of whitespace into one space (it ends where the run ends).
+        if (folded.endsWith(' ')) { ends[ends.length - 1] = end; continue }
+        if (!folded) continue
+        folded += ' '
+      } else {
+        folded += ch
+      }
+      starts.push(i)
+      ends.push(end)
+    }
+    i = end
+  }
+  return { folded, starts, ends }
+}
+
+/** Where each quote is in `text` (its first occurrence), and the ones that aren't there. */
+export function findTextQuotes(text: string, quotes: string[]): { ranges: TextQuoteRange[]; missing: number[] } {
+  const { folded, starts, ends } = foldText(text)
+  const ranges: TextQuoteRange[] = []
+  const missing: number[] = []
+  quotes.forEach((q, quote) => {
+    const needle = normalizeQuote(q)
+    const at = needle ? folded.indexOf(needle) : -1
+    if (at < 0) { missing.push(quote); return }
+    ranges.push({ quote, start: starts[at]!, end: ends[at + needle.length - 1]! })
+  })
+  return { ranges, missing }
+}
+
+/** The text cut at every quote boundary: each piece with the quotes covering it (none: plain text). */
+export function textSegments(text: string, ranges: TextQuoteRange[]): { start: number; end: number; quotes: number[] }[] {
+  const cuts = [...new Set([0, text.length, ...ranges.flatMap(r => [r.start, r.end])])].sort((a, b) => a - b)
+  const out: { start: number; end: number; quotes: number[] }[] = []
+  for (let k = 0; k < cuts.length - 1; k++) {
+    const start = cuts[k]!
+    const end = cuts[k + 1]!
+    if (end <= start) continue
+    out.push({ start, end, quotes: ranges.filter(r => r.start <= start && r.end >= end).map(r => r.quote) })
+  }
+  return out
+}

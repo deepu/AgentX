@@ -101,7 +101,10 @@ export {
   writeSessionMemwiseContext,
   readSessionMemwiseContext,
   sessionHasPlaybookTools,
+  sessionHasRecordTools,
+  memwiseSessionToolOptions,
   type SessionMemwiseContext,
+  type MemwiseChatAnchor,
 } from './memwise-context.ts';
 
 // Field utilities

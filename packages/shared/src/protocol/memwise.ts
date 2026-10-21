@@ -575,9 +575,13 @@ export interface MwExplanation {
   at: string
 }
 
-/** Open the regular chat screen anchored to a case or step (09 §1). */
+/**
+ * Open the regular chat screen anchored to a case or step (09 §1), or (doc 25 §6) to a record:
+ * `entity` is the entity key (`literature.topic`). A record chat gets `record_get`,
+ * `record_query` and, when its domain has an entity with `keep_from_chat`, `record_keep`.
+ */
 export interface MwOpenChatInput {
-  anchor: { kind: 'case' | 'step' | 'workflow'; id: string }
+  anchor: { kind: 'case' | 'step' | 'workflow'; id: string } | { kind: 'record'; entity: string; id: string }
 }
 
 // ---------------------------------------------------------------- domain

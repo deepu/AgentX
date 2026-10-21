@@ -1,0 +1,39 @@
+workflow: check-topic
+version: 1
+title: Check a topic
+owner: lead
+# One case per topic per week, on its next_check date ("Check now" sets next_check to today).
+# Searches PubMed for what was added since the last check, reads each new paper once, and a
+# reviewer screens them; the screenings are recorded and the next check is set for a week later.
+start: status
+starts_on:
+  - before: { field: Topic.next_check, by: 0d }
+    with: { topic: record }
+steps:
+  status:                                            # only an active topic is searched
+    on: { active: search, draft: end, paused: end, closed: end }
+  search:
+    on:
+      found:        read_all
+      nothing_new:  mark_checked
+      failed:       needs_person
+  read_all:                                          # "Read a paper" once per new paper
+    for_each:
+      items: case.new_articles
+      as: article
+      call:
+        workflow: read-paper
+        with: { article: item }
+      join: all
+    on: { done: suggest, failed: needs_person }
+  suggest:
+    on: { suggested: screen, failed: needs_person }
+  screen:                                            # the reviewer decides, paper by paper
+    on: { done: record }
+    wait: { remind: 3d, timeout: 14d → needs_person }
+  record:       { on: { done: end } }
+  mark_checked: { on: { done: end } }
+  needs_person:                                      # PubMed was down, or the screening is overdue
+    assignee: lead
+    on: { retry: search, screen: screen, closed: end }
+    wait: { timeout: 14d → end }

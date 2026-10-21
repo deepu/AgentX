@@ -187,8 +187,46 @@ async function syncTablesIn(db: Queryable, entities: Record<string, EntityTypeDe
         notes.push(`${def.entity}.${c.field}: column ${name}.${c.column} is ${have}, the field now wants ${c.type}; left as it is`);
       }
     }
+    notes.push(...(await syncKeyIndex(db, def)));
   }
   return notes;
+}
+
+/** The unique index on an entity's key columns (25 §3): `<table>__key`, cut to Postgres's 63 characters. */
+export const keyIndexName = (def: EntityRef) => `${entityTableName(def)}__key`.slice(0, 63);
+
+/** The columns of an entity's key (25 §3), in the key's order; empty when it has none. */
+export function keyColumns(def: EntityTypeDef): EntityColumn[] {
+  const byField = new Map(entityColumns(def).map((c) => [c.field, c]));
+  return (def.key ?? []).map((f) => byField.get(f)).filter((c): c is EntityColumn => !!c);
+}
+
+/**
+ * Makes the key's unique index match the definition: created when missing, made again when the
+ * key changed, dropped when the key was removed. Rows that already break a new key leave it
+ * unenforced, with a note (in a savepoint, so the rest of the sync goes on).
+ */
+async function syncKeyIndex(db: Queryable, def: EntityTypeDef): Promise<string[]> {
+  const index = keyIndexName(def);
+  const cols = keyColumns(def);
+  const { rows } = await db.query<{ indexdef: string }>(`select indexdef from pg_indexes where schemaname = 'domain' and indexname = $1`, [index]);
+  const want = cols.length ? `(${cols.map((c) => q(c.column)).join(', ')})` : undefined;
+  const have = rows[0]?.indexdef;
+  // `pg_indexes` quotes only the names that need it; compare without quotes.
+  const bare = (sql: string) => sql.replace(/"/g, '');
+  if (have && want && bare(have).endsWith(bare(want))) return [];
+  if (have) await db.query(`drop index domain.${q(index)}`);
+  if (!want) return [];
+  await db.query('savepoint mw_key_index');
+  try {
+    await db.query(`create unique index ${q(index)} on ${table(def)} ${want}`);
+    await db.query('release savepoint mw_key_index');
+    return [];
+  } catch (e) {
+    await db.query('rollback to savepoint mw_key_index');
+    if ((e as { code?: string }).code !== '23505') throw e;
+    return [`${def.entity}: key (${(def.key ?? []).join(', ')}) not enforced: some records share a key; give them different values and index again`];
+  }
 }
 
 const normalType = (dataType: string) => (dataType === 'timestamp with time zone' ? 'timestamptz' : dataType);

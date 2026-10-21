@@ -1,6 +1,6 @@
 # Data Tables Guide
 
-This guide covers how to present structured data using datatable and spreadsheet blocks, and how to use the `transform_data` tool for large datasets.
+This guide covers how to present structured data using datatable and spreadsheet blocks, how to draw charts with `chart` blocks, and how to use the `transform_data` tool for large datasets.
 
 ## Overview
 
@@ -328,6 +328,41 @@ const rows = data.items.map(item => ({
 
 fs.writeFileSync(process.argv.at(-1), JSON.stringify({ rows }));
 ```
+
+## Charts
+
+Draw charts with a `chart` block. It renders natively in the app, follows the theme, and keeps the numbers readable (hover, screen readers). Don't write Python plots, Mermaid charts or HTML dashboards for this unless the user asks for them.
+
+````
+```chart
+{
+  "kind": "interval",
+  "title": "Change in systolic BP vs placebo",
+  "unit": "mmHg",
+  "data": [
+    { "label": "Trial A (low dose)", "value": -4.2, "low": -6.1, "high": -2.3 },
+    { "label": "Trial B (high dose)", "value": -6.8, "low": -9.0, "high": -4.6 }
+  ],
+  "source": "[Trial A](https://doi.org/10.1000/example-a); [Trial B](https://pubmed.ncbi.nlm.nih.gov/00000000/)"
+}
+```
+````
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `kind` | yes | `bar` (categories), `line` (ordered: years, months), `donut` (shares of a whole), `interval` (forest plot: a dot per row with its confidence interval and a reference line at 0) |
+| `title` | no | Shown above the chart |
+| `data` | yes | `[{ "label", "value", "low"?, "high"? }]`; values are raw numbers. `low`/`high` are used by `interval` |
+| `unit` | no | Unit of the values (`"%"`, `"mmHg"`, `"papers"`) |
+| `source` | no | Where the numbers come from, as markdown; link the papers (DOI or PubMed) |
+| `reference` | no | `interval` only: the "no effect" line (default 0; use 1 for ratios) |
+
+Tips:
+- Keep the data in the block (no `src`); a chart rarely needs more than ~30 points. Aggregate first with `transform_data` if needed.
+- One series per chart. Use a `datatable` beside it when the user needs the exact rows.
+- Bars with many categories or long labels are drawn horizontally on their own.
+- Donuts fold more than five slices into "Other"; prefer bars when there are many.
+- Only chart numbers you have from a source, and say which in `source`.
 
 ## Security & Constraints
 

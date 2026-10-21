@@ -1,0 +1,20 @@
+workflow: set-up-watch
+version: 1
+title: Set up a watch
+owner: lead
+# Starts when a topic is created. The searcher turns the question into a PubMed search and tries
+# it; the lead approves it (or sends it back with a note); then the topic is active and its first
+# weekly check is due today.
+start: draft_query
+starts_on:
+  - created: Topic
+    with: { topic: record }
+steps:
+  draft_query:
+    on:
+      drafted: approve_query
+      failed:  approve_query     # the lead writes the search by hand
+  approve_query:
+    on: { approved: activate, redo: draft_query }
+    wait: { remind: 3d, timeout: 30d → end }
+  activate:    { on: { done: end } }

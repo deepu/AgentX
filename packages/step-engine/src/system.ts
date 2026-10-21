@@ -12,6 +12,12 @@
  *
  * The idempotency key of a call is `${stepRunId}:${tool}`, so a crash between the call and the
  * commit replays the call from the ledger instead of repeating its effect.
+ *
+ * Literature (25 §3): a tool whose `map` says `each: case.<List field>` is called once per item,
+ * in order, with `item.<path>` beside `case.<path>`; its calls are `<tool>:<index>` (step names
+ * and the idempotency key `${stepRunId}:${tool}:${index}`), and a write from it gets the list of
+ * results. `{ today: n }` and `{ now: true }` are read from the step run's start, so a replay
+ * maps the same arguments.
  */
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import {
@@ -38,15 +44,33 @@ export function valueAt(v: unknown, path: string | undefined): unknown {
   return cur;
 }
 
-/** A tool's arguments from the step's `map`: `case.<path>` reads the case (absent values are left out). */
-export function mapArgs(map: Record<string, ArgSource> | undefined, snapshot: CaseSnapshot): Record<string, unknown> {
+/** A case path (`documents`, `topic.name`): the value of its first field, then the rest of the path. */
+export function caseValueAt(snapshot: CaseSnapshot, path: string): unknown {
+  const [head, ...rest] = path.split('.');
+  return valueAt(snapshot.values[head!]?.value, rest.join('.') || undefined);
+}
+
+/** `YYYY-MM-DD` of `at` plus `days`, in the local time zone. */
+export function localDate(at: Date, days = 0): string {
+  const d = new Date(at.getFullYear(), at.getMonth(), at.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * A tool's arguments from the step's `map`: `case.<path>` reads the case, `item.<path>` the item
+ * of an `each:` call, `{ today: n }` and `{ now: true }` the clock `at` (absent values are left out).
+ */
+export function mapArgs(map: Record<string, ArgSource> | undefined, snapshot: CaseSnapshot, opts: { item?: unknown; at?: Date } = {}): Record<string, unknown> {
   const args: Record<string, unknown> = {};
+  const at = opts.at ?? new Date();
   for (const [arg, src] of Object.entries(map ?? {})) {
-    if ('case' in src) {
-      const [head, ...rest] = src.case.split('.');
-      const v = valueAt(snapshot.values[head!]?.value, rest.join('.') || undefined);
-      if (v !== undefined && v !== null) args[arg] = v;
-    } else if (src.value !== undefined) args[arg] = src.value;
+    let v: unknown;
+    if ('case' in src) v = caseValueAt(snapshot, src.case);
+    else if ('item' in src) v = valueAt(opts.item, src.item || undefined);
+    else if ('today' in src) v = localDate(at, src.today);
+    else if ('now' in src) v = at.toISOString();
+    else v = src.value;
+    if (v !== undefined && ('value' in src || v !== null)) args[arg] = v;
   }
   return args;
 }
@@ -62,7 +86,8 @@ export async function systemStepWorkflow(input: StepRunInput): Promise<StepResul
   let activeMs = 0;
   // Arguments mapped from tainted case values make the calls tainted (07 §6).
   let tainted = input.tainted === true;
-  const results: Record<string, { result: unknown; callId: string; tainted: boolean }> = {};
+  /** By tool: its result, or with `each` the list of its results in item order. */
+  const results: Record<string, { result: unknown; callId: string; tainted: boolean; each?: boolean }> = {};
 
   await DBOS.runStep(() => deps.recorder.start({
     stepRunId: input.stepRunId, runId: input.runId, caseId: input.case.id, stepId: step.id, attempt: input.attempt,
@@ -94,74 +119,90 @@ export async function systemStepWorkflow(input: StepRunInput): Promise<StepResul
     };
   };
 
+  const at0 = new Date(t0);
   for (const tool of step.tools.required) {
-    const callId = tool;
-    const args = mapArgs(step.map?.[tool], input.case);
-    const decision = await DBOS.runStep(async () => {
-      const d = await deps.tools.check({ tool, args, token: input.token }, input.policy, { tainted });
-      await journal({ journalKey: `policy:${tool}`, kind: 'policy', name: tool, callId, request: { args, tainted }, response: d, effect: d.effect, startedAt: new Date().toISOString() });
-      return d;
-    }, { name: `policy:${tool}` }) as GatewayDecision;
-    const verdict = decision.decision.verdict;
-    if (verdict === 'deny') {
-      // No rule behind it: the tool itself can't run now (an unknown tool, no public address).
-      const why = decision.decision.origins.length ? 'was refused by policy' : "can't run now";
-      return finish('needs_person', `${tool} ${why}: ${decision.decision.reason}`);
+    // Once, or once per item of a List case field (`each:`, 25 §3).
+    const over = step.each?.[tool];
+    let items: unknown[] | undefined;
+    if (over !== undefined) {
+      const list = caseValueAt(input.case, over);
+      if (list !== undefined && list !== null && !Array.isArray(list)) return finish('needs_person', `${tool} is called once per item of case.${over}, which is not a list`);
+      items = (list as unknown[] | null | undefined) ?? [];
     }
+    const calls = items ? items.map((item, index) => ({ item, callId: `${tool}:${index}` })) : [{ item: undefined, callId: tool }];
+    const got: unknown[] = [];
+    let gotTainted = false;
 
-    if (verdict === 'approve') {
-      const id = `${input.stepRunId}:${callId}`;
-      let executed = false;
-      await DBOS.runStep(async () => {
-        executed = true;
-        const request: ApprovalRequest = {
-          id, stepRunId: input.stepRunId, tool, effect: decision.effect, treatment: verdict, args,
-          preview: decision.preview ?? { summary: `${tool} ${JSON.stringify(args)}` }, requestedAt: new Date().toISOString(),
-        };
-        await deps.recorder.approvalRequested(request);
-        await deps.recorder.status(input.stepRunId, 'waiting');
-        await journal({ journalKey: `approval.request:${tool}`, kind: 'approval', name: tool, callId, request, effect: decision.effect, startedAt: request.requestedAt });
-      }, { name: `approval.request:${tool}` });
-      if (executed) crashPoint('waiting-approval', tool);
-      const waitSeconds = deps.approvalTimeoutSeconds ?? APPROVAL_WAIT_SECONDS;
-      const answer = await DBOS.recv<ApprovalDecision>(approvalTopic(id), { timeoutSeconds: waitSeconds });
-      await DBOS.runStep(async () => {
-        await deps.recorder.status(input.stepRunId, 'running');
-        await journal({
-          journalKey: `approval.answer:${tool}`, kind: 'approval', name: tool, callId, request: { id },
-          response: answer ?? undefined, ...(answer ? {} : { error: 'no answer in time' }), startedAt: new Date().toISOString(),
-        });
-      }, { name: `approval.answer:${tool}` });
-      if (!answer) return finish('needs_person', `the approval for ${tool} got no answer in time`);
-      if (answer.status === 'rejected') return finish('needs_person', `${tool} was rejected by ${answer.by}${answer.comment ? `: ${answer.comment}` : ''}`);
-    }
+    for (const { item, callId } of calls) {
+      const args = mapArgs(step.map?.[tool], input.case, { item, at: at0 });
+      const decision = await DBOS.runStep(async () => {
+        const d = await deps.tools.check({ tool, args, token: input.token }, input.policy, { tainted });
+        await journal({ journalKey: `policy:${callId}`, kind: 'policy', name: tool, callId, request: { args, tainted }, response: d, effect: d.effect, startedAt: new Date().toISOString() });
+        return d;
+      }, { name: `policy:${callId}` }) as GatewayDecision;
+      const verdict = decision.decision.verdict;
+      if (verdict === 'deny') {
+        // No rule behind it: the tool itself can't run now (an unknown tool, no public address).
+        const why = decision.decision.origins.length ? 'was refused by policy' : "can't run now";
+        return finish('needs_person', `${tool} ${why}: ${decision.decision.reason}`);
+      }
 
-    let out: { result: GatewayCallResult; startedAt: string; durationMs: number; quarantine: boolean };
-    let ran = false;
-    try {
-      out = await DBOS.runStep(async () => {
-        ran = true;
-        const startedAt = new Date();
-        const idempotencyKey = `${input.stepRunId}:${tool}`;
-        const result = await deps.tools.execute({ tool, args, callId, idempotencyKey, token: input.token }, decision);
-        const durationMs = Date.now() - startedAt.getTime();
-        await journal({
-          journalKey: `tool:${tool}`, kind: 'tool', name: tool, callId, request: { args, idempotencyKey }, response: result,
-          ...(result.status !== 'ok' ? { error: failure(result) } : {}), effect: decision.effect, startedAt: startedAt.toISOString(), durationMs,
-        }).catch((e) => DBOS.logger.warn(`step ${input.stepRunId}: journal entry tool:${tool} not recorded: ${e instanceof Error ? e.message : String(e)}`));
-        return { result, startedAt: startedAt.toISOString(), durationMs, quarantine: deps.tools.get(tool)?.quarantine === true };
-      }, { name: `tool:${tool}` });
-    } catch (e) {
-      if (isCancel(e)) throw e;
-      return finish('needs_person', `${tool} failed: ${e instanceof Error ? e.message : String(e)}`);
+      if (verdict === 'approve') {
+        const id = `${input.stepRunId}:${callId}`;
+        let executed = false;
+        await DBOS.runStep(async () => {
+          executed = true;
+          const request: ApprovalRequest = {
+            id, stepRunId: input.stepRunId, tool, effect: decision.effect, treatment: verdict, args,
+            preview: decision.preview ?? { summary: `${tool} ${JSON.stringify(args)}` }, requestedAt: new Date().toISOString(),
+          };
+          await deps.recorder.approvalRequested(request);
+          await deps.recorder.status(input.stepRunId, 'waiting');
+          await journal({ journalKey: `approval.request:${callId}`, kind: 'approval', name: tool, callId, request, effect: decision.effect, startedAt: request.requestedAt });
+        }, { name: `approval.request:${callId}` });
+        if (executed) crashPoint('waiting-approval', tool);
+        const waitSeconds = deps.approvalTimeoutSeconds ?? APPROVAL_WAIT_SECONDS;
+        const answer = await DBOS.recv<ApprovalDecision>(approvalTopic(id), { timeoutSeconds: waitSeconds });
+        await DBOS.runStep(async () => {
+          await deps.recorder.status(input.stepRunId, 'running');
+          await journal({
+            journalKey: `approval.answer:${callId}`, kind: 'approval', name: tool, callId, request: { id },
+            response: answer ?? undefined, ...(answer ? {} : { error: 'no answer in time' }), startedAt: new Date().toISOString(),
+          });
+        }, { name: `approval.answer:${callId}` });
+        if (!answer) return finish('needs_person', `the approval for ${tool} got no answer in time`);
+        if (answer.status === 'rejected') return finish('needs_person', `${tool} was rejected by ${answer.by}${answer.comment ? `: ${answer.comment}` : ''}`);
+      }
+
+      let out: { result: GatewayCallResult; startedAt: string; durationMs: number; quarantine: boolean };
+      let ran = false;
+      try {
+        out = await DBOS.runStep(async () => {
+          ran = true;
+          const startedAt = new Date();
+          const idempotencyKey = `${input.stepRunId}:${callId}`;
+          const result = await deps.tools.execute({ tool, args, callId, idempotencyKey, token: input.token }, decision);
+          const durationMs = Date.now() - startedAt.getTime();
+          await journal({
+            journalKey: `tool:${callId}`, kind: 'tool', name: tool, callId, request: { args, idempotencyKey }, response: result,
+            ...(result.status !== 'ok' ? { error: failure(result) } : {}), effect: decision.effect, startedAt: startedAt.toISOString(), durationMs,
+          }).catch((e) => DBOS.logger.warn(`step ${input.stepRunId}: journal entry tool:${callId} not recorded: ${e instanceof Error ? e.message : String(e)}`));
+          return { result, startedAt: startedAt.toISOString(), durationMs, quarantine: deps.tools.get(tool)?.quarantine === true };
+        }, { name: `tool:${callId}` });
+      } catch (e) {
+        if (isCancel(e)) throw e;
+        return finish('needs_person', `${tool} failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      // A kill here (the call done, the step not committed) must not repeat the call on resume.
+      if (ran) crashPoint('after-system-tool', tool);
+      toolCalls += 1;
+      activeMs += out.durationMs;
+      if (out.result.status !== 'ok') return finish('needs_person', `${tool} did not succeed: ${failure(out.result)}`);
+      if (out.quarantine) tainted = true;
+      got.push(out.result.result);
+      gotTainted ||= out.quarantine;
     }
-    // A kill here (the call done, the step not committed) must not repeat the call on resume.
-    if (ran) crashPoint('after-system-tool', tool);
-    toolCalls += 1;
-    activeMs += out.durationMs;
-    if (out.result.status !== 'ok') return finish('needs_person', `${tool} did not succeed: ${failure(out.result)}`);
-    if (out.quarantine) tainted = true;
-    results[tool] = { result: out.result.result, callId, tainted: out.quarantine };
+    results[tool] = items ? { result: got, callId: tool, tainted: gotTainted, each: true } : { result: got[0], callId: tool, tainted: gotTainted };
   }
 
   // Writes from results; a value that is missing or of the wrong type ends the step for a person.
@@ -171,7 +212,8 @@ export async function systemStepWorkflow(input: StepRunInput): Promise<StepResul
   for (const [field, w] of Object.entries(step.writes)) {
     if (w.from.kind !== 'tool') { problems.push(`${field} has no tool to come from`); continue; }
     const hit = results[w.from.tool];
-    const value = hit ? valueAt(hit.result, w.from.field) : undefined;
+    // A tool called once per item gives the list of what each call returned.
+    const value = !hit ? undefined : hit.each ? (hit.result as unknown[]).map((r) => valueAt(r, w.from.kind === 'tool' ? w.from.field : undefined) ?? null) : valueAt(hit.result, w.from.field);
     if (value === undefined) {
       // With `outcomeFrom` the result's shape follows its outcome (a stale publish has no
       // version), so only a required write must be there.

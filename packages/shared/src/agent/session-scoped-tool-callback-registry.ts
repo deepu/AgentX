@@ -115,6 +115,12 @@ export interface SessionScopedToolCallbacks {
    * anchor (step run, case, draft, person) is resolved at call time.
    */
   memwise?: import('@memwise/session-tools-core').MemwiseToolCallbacks;
+  /**
+   * MemWise record tools (record_get/query/keep; docs/memwise/25-literature-poc.md §6).
+   * Wired by SessionManager only for chats anchored to a record; the anchor (record,
+   * person) is resolved at call time.
+   */
+  memwiseRecords?: import('@memwise/session-tools-core').MemwiseRecordToolCallbacks;
 }
 
 // Registry of callbacks keyed by sessionId

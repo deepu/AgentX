@@ -1,0 +1,9 @@
+case: paper_reading
+fields:
+  article:      { type: Ref<Article>, required: true, description: The paper being read }
+  study_type:   Enum[randomised_trial, non_randomised_trial, cohort, case_control, cross_sectional, systematic_review, review, preclinical, other]
+  phase:        Enum[phase_1, phase_2, phase_3, phase_4, not_a_trial]
+  n:            { type: Number, description: How many people were randomised or enrolled }
+  sponsor:      Text
+  intervention: Text
+  condition:    Text

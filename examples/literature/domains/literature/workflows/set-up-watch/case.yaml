@@ -1,0 +1,13 @@
+case: literature_watch_setup
+fields:
+  topic:         { type: Ref<Topic>, required: true, description: The topic being set up }
+  query:         { type: Text, description: The PubMed search proposed for the topic }
+  inclusion:     { type: Text, description: Which papers count for the topic }
+  found_count:   { type: Number, description: How many papers PubMed has for the search today }
+  sample:        { type: List<SampleArticle>, description: "The first papers the search finds, to judge it by" }
+  query_comment: { type: Text, description: "The lead's note when the search needs another try" }
+types:
+  SampleArticle:
+    pmid:  Text
+    title: Text
+    year:  Number

@@ -218,6 +218,7 @@ function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, ste
   if (step.extract) checkExtract(d, step, env);
   if (step.performer === 'system') checkSystemStep(d, workflow, step, env, entities);
   else if (step.map) at('warning', 'map-ignored', `only system steps use \`map\`; a ${step.performer} step chooses its own arguments`, ['map']);
+  if (step.quotes && step.performer !== 'agent') at('warning', 'quotes-ignored', `only agent steps quote their sources; a ${step.performer} step has no judgement to quote for`, ['quotes']);
 
   for (const outcome of outcomesOf(step)) {
     if (!(outcome in state.on)) shape('error', 'outcome-without-transition', `step \`${stateName}\` can finish with \`${outcome}\`, but the shape has no transition for it`, ['steps', stateName, 'on']);
@@ -303,6 +304,21 @@ function checkSystemStep(d: Diagnostics, workflow: WorkflowDef, step: StepDef, e
   }
   const reads = step.reads.map((r) => r.slice('case.'.length));
   const isRead = (path: string) => reads.some((r) => path === r || path.startsWith(`${r}.`));
+  // `each: case.<List field>` (25 §3): the tool is called once per item, which `item.<path>` reads.
+  const itemFields: Record<string, Record<string, FieldDef> | undefined> = {};
+  for (const [tool, path] of Object.entries(step.each ?? {})) {
+    if (!calls.has(tool)) continue; // reported as map-unknown-tool
+    const missing = unknownReadSegment(`case.${path}`, workflow, entities);
+    if (missing) { at('error', 'unknown-case-field', `\`each: case.${path}\`: \`${missing}\` is not a field of the case`, ['map', tool, 'each']); continue; }
+    if (!isRead(path)) at('error', 'map-unread-field', `\`case.${path}\` is not in the step's \`reads\`; add it there so the record shows what the step used`, ['map', tool, 'each']);
+    const field = !path.includes('.') ? workflow.caseType.fields[path] : undefined;
+    if (field && field.type.kind !== 'list') {
+      at('error', 'map-each-not-list', `\`each: case.${path}\` is ${field.typeSource}, not a List: the tool is called once per item of a list`, ['map', tool, 'each']);
+      continue;
+    }
+    const of = field?.type.kind === 'list' ? field.type.of : undefined;
+    itemFields[tool] = of?.kind === 'named' ? (workflow.caseType.types[of.name]?.fields ?? entities?.[of.name]?.fields) : undefined;
+  }
   for (const tool of step.tools.required) {
     const args = map[tool] ?? {};
     const schema = env.tools[tool]?.inputSchema;
@@ -315,6 +331,13 @@ function checkSystemStep(d: Diagnostics, workflow: WorkflowDef, step: StepDef, e
       if (props && schema?.additionalProperties === false && !(arg in props)) {
         at('error', 'unknown-argument', `${tool} has no argument \`${arg}\` (it takes ${Object.keys(props).join(', ') || 'none'})`, ['map', tool, arg]);
       }
+      if ('item' in src) {
+        if (!step.each?.[tool]) at('error', 'map-item-without-each', `\`item${src.item ? `.${src.item}` : ''}\` reads the item of a tool called once per item: add \`each: case.<List field>\` to ${tool}'s map`, ['map', tool, arg]);
+        const head = src.item.split('.')[0];
+        const fields = itemFields[tool];
+        if (head && fields && !fields[head]) at('error', 'unknown-case-field', `\`item.${src.item}\`: \`${head}\` is not a field of the items (they have ${Object.keys(fields).join(', ')})`, ['map', tool, arg]);
+        continue;
+      }
       if (!('case' in src)) continue;
       const missing = unknownReadSegment(`case.${src.case}`, workflow, entities);
       if (missing) at('error', 'unknown-case-field', `\`case.${src.case}\`: \`${missing}\` is not a field of the case`, ['map', tool, arg]);
@@ -324,6 +347,9 @@ function checkSystemStep(d: Diagnostics, workflow: WorkflowDef, step: StepDef, e
   for (const [field, write] of Object.entries(step.writes)) {
     if (write.from.kind !== 'tool') at('error', 'system-write-not-from-tool', `a system step has no judgement: \`${field}\` must come \`from: { tool, field }\``, ['writes', field]);
     else if (!calls.has(write.from.tool)) at('error', 'system-write-tool-not-called', `\`${field}\` comes from ${write.from.tool}, which this step does not call (it is not in tools.required)`, ['writes', field, 'from']);
+    else if (step.each?.[write.from.tool] && write.type.kind !== 'list') {
+      at('error', 'each-write-not-list', `\`${field}\` comes from ${write.from.tool}, which is called once per item, so it is a list of results: declare it List<${write.typeSource}>`, ['writes', field]);
+    }
   }
 }
 

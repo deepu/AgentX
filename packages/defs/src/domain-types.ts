@@ -139,19 +139,48 @@ export interface LifecycleDef {
 export type PageLayoutShape = 'single' | 'split' | 'sidebar';
 export type PageArea = 'header' | 'main' | 'left' | 'right' | 'side' | 'below';
 
+/** Chart kinds (25 §5): counts per value (`bar`, `line`, `donut`), or a value with its interval per row (`interval`). */
+export type ChartKind = 'bar' | 'line' | 'donut' | 'interval';
+
+/**
+ * A chart on a record page (24 §6, 25 §5). `bar`/`line`/`donut` count the related rows of `of`
+ * per value of `by`; `interval` draws one row per related record: `label` (a template over its
+ * fields, "{intervention} vs {comparator}"), `value`, `low`, `high` and `unit` (field names).
+ * `where` filters the related rows (condition language).
+ */
+export interface ChartBlockDef {
+  kind: 'chart';
+  chart: ChartKind;
+  /** A many relationship (or calculated field) of the record. */
+  of: string;
+  by?: string;
+  where?: string;
+  title?: string;
+  label?: string;
+  value?: string;
+  low?: string;
+  high?: string;
+  unit?: string;
+}
+
 export type PageBlock =
   | { kind: 'fields'; fields: string[] }
   | { kind: 'details' }
+  /** A Document, File or Image field, or (25 §4) a Text field shown with its quotes lit. */
   | { kind: 'viewer'; field: string }
   | { kind: 'related'; relationships: string[] }
   | { kind: 'cases' }
   | { kind: 'lifecycle' }
-  | { kind: 'chart'; chart: 'bar' | 'line' | 'donut'; of: string; by?: string }
+  | ChartBlockDef
   | { kind: 'checks' }
   | { kind: 'notes' }
   | { kind: 'mentions' }
   | { kind: 'start' }
-  | { kind: 'history' };
+  | { kind: 'history' }
+  /** 25 §5: tiles with the values of these calculated or Number fields. */
+  | { kind: 'kpis'; fields: string[] }
+  /** 25 §5: "Ask about this record": opens a chat anchored to it (no data). */
+  | { kind: 'chat' };
 
 export interface PageLayoutDef {
   layout: PageLayoutShape;
@@ -194,7 +223,27 @@ export type DashboardBlock =
       rows: { entity: string; where?: string; label?: string };
       columns: { label: string; value: string }[];
     }
-  | { kind: 'text'; markdown: string };
+  | { kind: 'text'; markdown: string }
+  | DashboardChartDef;
+
+/**
+ * A chart on a free page (25 §5): `bar`/`line`/`donut` count the records of `entity` (matching
+ * `where`) per value of `by`; `interval` is one row per record with `label` (a template),
+ * `value`, `low`, `high` and `unit`. Computed in SQL like the KPIs.
+ */
+export interface DashboardChartDef {
+  kind: 'chart';
+  chart: ChartKind;
+  entity: string;
+  where?: string;
+  by?: string;
+  title?: string;
+  label?: string;
+  value?: string;
+  low?: string;
+  high?: string;
+  unit?: string;
+}
 
 /** `pages/<id>.yaml`: a dashboard (a definition; numbers come from Postgres). */
 export interface FreePageDef {
