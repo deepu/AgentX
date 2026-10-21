@@ -293,6 +293,22 @@ export class PgEntityStore {
     return this.select(db, def, 'order by v.created_at desc, v.id desc limit $1', [opts.limit ?? 500], opts.unrestricted);
   }
 
+  /** Rows by id (any order; missing ids are left out). `unrestricted` as for `list`. */
+  async getMany(db: Queryable, def: EntityTypeDef, ids: string[], opts: { unrestricted?: boolean } = {}): Promise<StoredEntityRow[]> {
+    if (!ids.length) return [];
+    return this.select(db, def, 'where v.id = any($1::text[])', [ids], opts.unrestricted);
+  }
+
+  /**
+   * Rows no identity link of this plugin source points at yet, newest first: the ones a source's
+   * new records may match (Stage 6). The kernel's own read, from the table like `list`.
+   */
+  async unlinked(db: Queryable, def: EntityTypeDef, link: { plugin: string; source: string }, opts: { limit?: number } = {}): Promise<StoredEntityRow[]> {
+    return this.select(db, def,
+      'where not exists (select 1 from mw.identity_links l where l.record_id = v.id and l.plugin = $1 and l.source = $2) order by v.created_at desc, v.id desc limit $3',
+      [link.plugin, link.source, opts.limit ?? 10_000], true);
+  }
+
   /** A view's records (24 §6): filter, sort, group counts, columns, paging, and the total. */
   async query(db: Queryable, def: EntityTypeDef, entities: Record<string, EntityTypeDef>, query: EntityQuery = {}): Promise<EntityQueryResult> {
     const cols = recordColumns(def, entities);

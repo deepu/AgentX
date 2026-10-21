@@ -69,6 +69,8 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
       logLevel: 'error', // the run is left waiting at shutdown on purpose; DBOS warns about that
       publicUrl: () => EXAMPLE_PUBLIC_URL,
       businessName: 'Example Business',
+      // An example runs on its stubs alone: no connector is read on a schedule behind its back.
+      sourceSyncs: false,
     });
     try {
       await kernel.index();
