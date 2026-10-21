@@ -358,6 +358,31 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - a new coordinator in the Rave fixture makes eTMF ask the site for a CV.
 - **Needs Sandeep:** a Rave (or Veeva CDMS) sandbox for a real check.
 
+**As built (Part A, before Stage 3's projects).**
+- **Where:** EDC lives in the eTMF example (`examples/etmf/domains/edc`), not a new example: a study across apps needs both apps in one workspace, and the `edc` domain and eTMF's link to its Site were already there (D114).
+- **The fake Rave** (`packages/runtime/tests/fixtures/fake-rave-http.ts`) serves RWS paths with Basic sign-in, GET only. Study MW-301 has 12 sites, 186 subjects and 142 open queries, 23 of them older than 14 days (104: 9, 109: 8, 102: 3, 106: 2, 111: 1); 91% of pages are verified; site 104's coordinator has been Lena Hoffmann since 2 Sep. MW-207 sits beside it. `setCoordinator` (or `POST /__fake/coordinator`) changes a site's coordinator during a test, and `bun packages/runtime/tests/fixtures/fake-rave-http.ts --port 4790` runs it on its own.
+- **The plugin** `examples/plugins/medidata-rave` (`memwise/medidata-rave`) has nine `read` tools on builtin routes `rave.rws.*` (`packages/server-core/src/memwise/rave`) and record sources for study, site, subject and query. Settings `RAVE_URL`, `RAVE_USER`, `RAVE_PASSWORD` and `RAVE_STUDY` (optional) come from the connection: the secret store, else the environment. No tool takes them as arguments, so nobody types them again (D111).
+- **Records:** the binding maps Rave onto `edc.Study`, `edc.Site`, `edc.Subject` and `edc.Query`, all owned by the plugin. Subjects and queries hang off their site through `transform: [{ link: site }]` (D112). Sites roll up randomised, open queries and queries older than 14 days. Views: Old queries, Open queries, Sites; page: Enrolment.
+- **Read through, as a read-only copy (D110, a deliberate deviation from "never copied"):** the binding's `sync: { every: 15m }` reads Rave again on a kernel sweep and refreshes only the plugin-owned fields. Every such field shows Rave as its source with "as of <time>" (`source.asOf`), and no person or step can edit it. The copy's real job is to turn Rave changes into change events.
+- **Changes flow into playbooks (D113):** a refreshed coordinator is a `changed` event on `edc.Site`. eTMF's Site follows `coordinator`, so the link consumer announces the change on the paired eTMF Site, and eTMF's **Ask a new coordinator for their documents** (`starts_on: changed: { entity: Site, fields: [coordinator] }`) adds her to the site's staff, expects her CV and GCP training, and emails her once approved.
+- **Chase old queries** (`edc`, every Monday 08:00): an agent drafts one reminder per site with old queries; a system step sends them with `each:`, and each email waits for its own approval.
+- **Screens** (`components/memwise/edc`):
+  - `EdcHomeScreen({ projectId })` is XEdcHome: Rave read only and when it was synced; randomised against target and plan; open and old queries; pages verified; what waits; randomised by site; Also in other apps.
+  - `AlsoInOtherApps({ projectId })`.
+  - `OwnerTag`, `OpenInAppButton` and `RecordFactsByAppView`. On a record page in more than one app, they show "One record, each fact owned by one app", with "Open in eTMF" / "Open in EDC".
+  - RPC: `memwise:edc:home`, `memwise:study:apps`, `memwise:records:linked`.
+  - Until projects land, a project id is read as the study key ("MW-301").
+- **Tests:**
+  - `rave-tools.test.ts` covers the fake and the tools.
+  - `edc-exit.test.ts` runs end to end against Postgres and the fake: the sync, read-only Rave facts, the study home, site 104 in both apps, a new coordinator asking for a CV, and Chase old queries with five approvals.
+  - `edc-render.test.tsx` covers the screens.
+  - `memwise test examples/etmf` runs the playbooks' examples, including `two-sites-behind`, `nothing-old` and `asks-for-cv`.
+- **Not yet:**
+  - XQueries ("Old queries by site" as a page from a question) needs Stage 2's pages on this branch.
+  - `project.yaml` `study:` and per-project bindings need Stage 3.
+  - Screenshots against the mocks.
+- **Needs Sandeep: a Rave (or Veeva CDMS) sandbox.** The client speaks RWS paths with the fake's JSON bodies; a real Rave answers ODM XML and clinical views. `packages/server-core/src/memwise/rave/client.ts` is the one file to check against it.
+
 ## 12. Risks
 
 | Risk | Where it shows | If it goes wrong |

@@ -10,15 +10,16 @@ memwise check examples/etmf
 memwise test  examples/etmf
 ```
 
-- `workspace.yaml`: Northlight CRO, its roles (TMF specialist, study manager, CRA) and the house rules
+- `workspace.yaml`: Northlight CRO, its roles (TMF specialist, study manager, CRA, data manager) and the house rules
   for every domain (a person approves every outbound message; nothing irreversible).
-- `domains/edc/`: the study's EDC, the source of truth for sites: their number, name, address and
-  principal investigator.
+- `domains/edc/`: the study's EDC, connected to Medidata Rave (Stage 6, docs/memwise/26 §9): studies,
+  sites with their staff, subjects and queries, read only. See "EDC" below.
 - `domains/etmf/`: the TMF itself, a **regulated** domain (`domain.yaml`: `regulated: true`, records kept 25
   years). Its intake address is `etmf`: anything emailed there starts "Sort an incoming message".
 
-There is no default domain (no `domain/` folder): every entity type is named by its domain, so the tools
-are `etmf.document.create`, `etmf.site.transition`, `edc.site.get` and so on.
+Every entity type is named by its domain, so the tools are `etmf.document.create`, `etmf.site.transition`,
+`edc.site.get` and so on. `domain/` holds only the connector bindings (`domain/bindings/`: Medidata Rave
+and the sample email), which are workspace-wide until projects make them per project.
 
 ## Entities (`domains/etmf/entities/`)
 
@@ -63,3 +64,26 @@ CVs expiring this month, a heatmap of the sites' start-up packs and the missing 
 
 Example cases seed the records they need (`records:`, by entity, with fixed ids such as `site_us012`) and
 script the model roles (`router`, `classifier`, `verifier`) and the people (`submit:`).
+
+## EDC (`domains/edc/`)
+
+Data entry stays in Medidata Rave; MemWise reads it and chases it (docs/memwise/26 §9, D110–D114).
+The Rave plugin (`plugins/memwise__medidata-rave`, from `examples/plugins/medidata-rave`) has only `read`
+tools. Its binding maps Rave's studies, sites, subjects and queries onto `edc.Study`, `edc.Site`,
+`edc.Subject` and `edc.Query`, and reads them again every 15 minutes (`sync:`). Every Rave field is
+owned by the plugin, so it is read only here and shows Rave as its source, with when it was read.
+
+- **Site** rolls up `randomised`, `open_queries` and `old_queries` (open longer than 14 days). eTMF's
+  Site follows its name, PI and coordinator.
+- `chase-old-queries` (**Chase old queries**, every Monday): the `chaser` drafts one reminder per site
+  with old queries to its coordinator. Each email is approved with its exact text before it goes.
+- eTMF's `new-coordinator` (**Ask a new coordinator for their documents**): starts when EDC's Site
+  changes coordinator (`starts_on: changed`, through the link). It adds them to the site's staff,
+  expects their CV and GCP training, and emails them once approved.
+
+To run it against the fake Rave:
+
+```
+bun packages/runtime/tests/fixtures/fake-rave-http.ts --port 4790
+RAVE_URL=http://127.0.0.1:4790/RaveWebServices RAVE_USER=rave.reader RAVE_PASSWORD=not-a-real-password
+```
