@@ -305,7 +305,7 @@ export function EntityRecordsTab({ domain, type, views, state, onState, result, 
                     <td key={c.name} className="px-4 py-2 text-secondary">
                       {row.hidden.includes(c.name) ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span>
                         : c.type === 'Lifecycle' || c.name === 'status' ? <StatusPill status={row.values[c.name] as string | undefined} />
-                        : formatTypedValue(c.type, row.values[c.name], t, i18n.language)}
+                        : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}
                     </td>
                   ))}
                 </tr>
@@ -326,6 +326,9 @@ function Board({ result, group, columns, onOpenRecord }: { result: MwRecordQuery
     return v === null || v === undefined || v === '' ? null : String(v)
   }
   const keys = result.groups?.map(g => g.key) ?? [...new Set(result.rows.map(keyOf))]
+  // A group by a reference is named by the record's title (the result's group, else a row's ref).
+  const groupTitle = (k: string | null) => k === null ? null
+    : result.groups?.find(g => g.key === k)?.title ?? result.rows.find(r => keyOf(r) === k)?.refs?.[group]?.title ?? k
   const extra = columns.filter(c => c.name !== group).slice(0, 2)
   return (
     <div className="flex gap-3 overflow-x-auto pb-2" data-board={group}>
@@ -335,14 +338,14 @@ function Board({ result, group, columns, onOpenRecord }: { result: MwRecordQuery
         return (
           <div key={k ?? NONE} className="w-64 shrink-0 space-y-2 rounded-lg bg-fill-hover/50 p-2" data-board-column={k ?? ''}>
             <div className="flex items-center gap-2 px-1 text-label-sm font-medium text-secondary">
-              {group === 'status' ? <StatusPill status={k ?? undefined} /> : <span>{k ?? t('memwise.entities.noValue')}</span>}
+              {group === 'status' ? <StatusPill status={k ?? undefined} /> : <span>{groupTitle(k) ?? t('memwise.entities.noValue')}</span>}
               <span className="tabular-nums text-tertiary">{count}</span>
             </div>
             {rows.map(row => (
               <button key={row.id} type="button" className="block w-full rounded-md bg-raised p-2.5 text-left shadow-elev-1 hover:bg-fill-hover" onClick={() => onOpenRecord?.(row.entity, row.id)}>
                 <span className="block text-label font-medium text-foreground">{row.title}</span>
                 {extra.map(c => (
-                  <span key={c.name} className="block text-label-sm text-secondary">{row.hidden.includes(c.name) ? t('memwise.case.restrictedValue') : formatTypedValue(c.type, row.values[c.name], t, i18n.language)}</span>
+                  <span key={c.name} className="block text-label-sm text-secondary">{row.hidden.includes(c.name) ? t('memwise.case.restrictedValue') : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}</span>
                 ))}
               </button>
             ))}

@@ -809,6 +809,7 @@
   "memwise.cases.status.done": "完了",
   "memwise.cases.status.stopped": "停止",
   "memwise.cases.waitingOnAgent": "エージェントが作業中",
+  "memwise.cases.waitingOnCondition": "条件の成立待ち",
   "memwise.cases.waitingOnRole": "{{role}} の対応待ち",
   "memwise.cases.waitingOnSystem": "実行中",
   "memwise.clientLink.byEmail": "メールで",

@@ -188,6 +188,8 @@ export interface MwCaseValue {
   tainted?: boolean
   /** The viewer may not see this field; `value` is null. */
   hidden?: boolean
+  /** Phase 6: a Ref value's record, by its title (`value` keeps the id). */
+  refTitle?: string
 }
 
 /** A file attached to a case (`Document` and `File` values). */
@@ -213,7 +215,8 @@ export interface MwCaseSummary {
   status: MwRunStatus
   stopReason?: string
   /** Who the current state waits on, if anyone. */
-  waitingOn?: { kind: 'role' | 'agent' | 'system'; role?: string }
+  /** `condition`: a `wait_until` block, waiting on a record's data rather than on anyone. */
+  waitingOn?: { kind: 'role' | 'agent' | 'system' | 'condition'; role?: string }
   createdAt: string
   updatedAt: string
   /** Phase 6: the playbook's domain (for the domain filter). */
@@ -1574,9 +1577,11 @@ export interface MwRecordQueryInput {
 export interface MwRecordQueryResult {
   entity: string
   columns: { name: string; label: string; type: string; calculated?: boolean; followed?: boolean }[]
-  rows: (MwRecordRef & { values: Record<string, unknown>; hidden: string[] })[]
+  /** `refs`: the records a row's Ref fields point at, by title (absent when none). */
+  rows: (MwRecordRef & { values: Record<string, unknown>; hidden: string[]; refs?: Record<string, MwRecordRef> })[]
   total: number
-  groups?: { key: string | null; count: number }[]
+  /** The groups in order, with counts (and the title, when grouped by a Ref). */
+  groups?: { key: string | null; count: number; title?: string }[]
 }
 
 export interface MwTreeInput { domain: string; parent?: { entity: string; id: string } }
@@ -1648,7 +1653,8 @@ export interface MwCaseLink {
   status: MwRunStatus
 }
 
-export interface MwWaitingCondition { record: MwRecordRef; condition: string; holds: boolean; values: Record<string, unknown> }
+/** `types`: each value's declared type (a percent rollup is `Percentage`), so the screen formats it. */
+export interface MwWaitingCondition { record: MwRecordRef; condition: string; holds: boolean; values: Record<string, unknown>; types?: Record<string, string> }
 
 export interface MwAuditTrail {
   entity: string

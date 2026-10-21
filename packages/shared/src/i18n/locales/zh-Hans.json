@@ -809,6 +809,7 @@
   "memwise.cases.status.done": "已完成",
   "memwise.cases.status.stopped": "已停止",
   "memwise.cases.waitingOnAgent": "智能体正在处理",
+  "memwise.cases.waitingOnCondition": "等待条件满足",
   "memwise.cases.waitingOnRole": "等待 {{role}}",
   "memwise.cases.waitingOnSystem": "运行中",
   "memwise.clientLink.byEmail": "通过电子邮件",

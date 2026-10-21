@@ -168,7 +168,7 @@ export function CaseFieldList({ values, fields, people, only, className }: CaseF
           >
             <dt className="text-secondary" title={def?.description}>{humanize(name)}</dt>
             <dd className="min-w-0 text-foreground">
-              {cv.hidden ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span> : <CaseValueView value={cv.value} fieldNames={fieldNames} />}
+              {cv.hidden ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span> : <CaseValueView value={cv.refTitle ?? cv.value} fieldNames={fieldNames} />}
             </dd>
             {/* Nothing there: no "who set it" badge for an empty value */}
             {(cv.hidden || !isEmptyValue(cv.value)) && <div className="col-start-2 justify-self-start @lg/fields:col-start-3"><ProvenanceBadge value={cv} people={people} /></div>}

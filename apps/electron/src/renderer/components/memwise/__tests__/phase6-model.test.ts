@@ -10,9 +10,9 @@ import { setupI18n, i18n } from '@memwise/shared/i18n'
 import type { MwDashboardBlock, MwInboxItem, MwTransitionOption } from '@memwise/shared/protocol'
 import {
   acceptAllAbove, areaBlocks, chartData, changedReviewFields, confidenceLabel, detailFields, diffRows, fieldSourceLabel,
-  fieldSourceTone, firstDocumentReview, headerFields, heatBucket, initialReviewDraft, isReviewItem, kpiBelowTarget, kpiValue,
-  layoutColumns, lifecycleSteps, lockedMessage, missingReviewFields, nestTree, queueKeyAction, queueNeighbour, retentionLabel,
-  reviewOutcomes, sameKindItems, statusLabel, tableColumns, tableRows, tableSubmission, transitionBlockedReason, transitionLabel,
+  fieldSourceTone, firstDocumentReview, formatTypedValue, headerFields, heatBucket, initialReviewDraft, isReviewItem, kpiBelowTarget,
+  kpiValue, layoutColumns, lifecycleSteps, lockedMessage, missingReviewFields, nestTree, queueKeyAction, queueNeighbour,
+  relatedColumns, retentionLabel, reviewOutcomes, sameKindItems, statusLabel, tableColumns, tableRows, tableSubmission, transitionBlockedReason, transitionLabel,
   treeNodeKey,
 } from '../records/record-model'
 import { findQuotes, highlightItemHtml, rangesByItem } from '../records/quote-highlight'
@@ -51,6 +51,21 @@ describe('record values and sources', () => {
     expect(fieldSourceTone({ kind: 'step' } as never)).toBe('agent')
   })
 
+  test('a percentage as the definitions type it', () => {
+    // A percent rollup is typed `Percentage` (defs); the sample pages say `Percent`.
+    expect(formatTypedValue('Percentage', 90, t, 'en')).toBe('90%')
+    expect(formatTypedValue('Percent', 52, t, 'en')).toBe('52%')
+  })
+
+  test('related rows show their own values, not the status or a repeat of the title', () => {
+    const rows = [
+      { title: 'Investigator CV', values: { artifact: 'Investigator CV', phase: 'start_up', status: 'missing' } },
+      { title: 'IRB approval', values: { artifact: 'IRB approval', phase: 'start_up', status: 'filed' } },
+    ]
+    expect(relatedColumns(rows)).toEqual(['phase'])
+    expect(relatedColumns([])).toEqual([])
+  })
+
   test('retention in years when it divides, else days', () => {
     expect(retentionLabel(9125, t)).toBe('Kept 25 years')
     expect(retentionLabel(30, t)).toBe('Kept 30 days')
@@ -84,6 +99,7 @@ describe('layouts and blocks', () => {
     expect(transitionBlockedReason(tr, t)).toBe('Not yet: start_up_pack = 100')
     expect(transitionBlockedReason({ ...tr, guard: undefined }, t)).toBe('Your role cannot make this move.')
     expect(transitionBlockedReason({ ...tr, reason: 'Needs the IRB letter' }, t)).toBe('Needs the IRB letter')
+    expect(transitionBlockedReason({ ...tr, reason: 'only a playbook step can make "approved" on a Site' }, t)).toBe('Only a playbook step can make "approved" on a Site')
     expect(transitionBlockedReason({ ...tr, allowed: true }, t)).toBeUndefined()
   })
 

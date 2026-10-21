@@ -809,6 +809,7 @@
   "memwise.cases.status.done": "Erledigt",
   "memwise.cases.status.stopped": "Angehalten",
   "memwise.cases.waitingOnAgent": "Der Agent arbeitet",
+  "memwise.cases.waitingOnCondition": "Wartet auf eine Bedingung",
   "memwise.cases.waitingOnRole": "Wartet auf {{role}}",
   "memwise.cases.waitingOnSystem": "Läuft",
   "memwise.clientLink.byEmail": "per E-Mail",

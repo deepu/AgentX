@@ -144,7 +144,8 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
 
   it('has two domains, eTMF regulated, and no acting as someone else', async () => {
     const domains = await api.call<MwDomain[]>(ownerCtx, ch.DOMAINS_LIST)
-    expect(domains.map((d) => d.id).sort()).toEqual(expect.arrayContaining(['edc', 'etmf']))
+    // The meta playbooks the app adds make no default domain appear beside the named ones.
+    expect(domains.map((d) => d.id).sort()).toEqual(['edc', 'etmf'])
     expect(domains.find((d) => d.id === 'etmf')).toMatchObject({ name: 'eTMF', regulated: true })
     const status = await api.call(ownerCtx, ch.STATUS)
     expect(status.canActAs).toBe(false)
@@ -169,6 +170,13 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
     expect(name).toMatchObject({ followed: true, editable: false, source: { kind: 'link', domain: 'edc' } })
     expect(page.title).toContain('US-012')
     expect(page.fields.find((f) => f.name === 'start_up_pack_complete')?.value).toBe(90)
+    // Its expected documents show their own values: not the site they belong to, nor the study's id.
+    const expected = page.related.expected_documents!
+    expect(expected.total).toBe(10)
+    expect(expected.rows.every((r) => !('site' in r.values) && !('study' in r.values) && r.values.phase === 'start_up')).toBe(true)
+    // A list of records names what they point at.
+    const sites = await api.call<MwRecordQueryResult>(manager, ch.RECORDS_QUERY, { entity: 'etmf.Site' })
+    expect(sites.rows[0]!.refs?.study).toMatchObject({ id: ids.study, title: 'AST-301 · A study of AST-301 in solid tumours' })
   }, 60_000)
 
   it('moving the site to Activating starts its activation case, which waits for the start-up pack', async () => {
@@ -176,6 +184,8 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
       .toMatchObject({ applied: true })
     const cases = await until('the activation case', () => api.call<any[]>(manager, ch.CASES_LIST, { workflowId: 'activate-site' }), (xs) => xs.length > 0, 30_000)
     expect(cases).toHaveLength(1)
+    // A case with nothing typed of its own is named after the record it is about.
+    expect(cases[0].title).toBe('US-012 · Harbor Oncology, Boston')
     activationCaseId = cases[0].caseId
     const view = await until('waiting for the pack', () => api.call<MwCase>(manager, ch.CASES_GET, activationCaseId), (c) => c.state === 'collect_pack' && !!c.waiting, 30_000)
     expect(view.waiting).toMatchObject({ holds: false, record: { id: ids.site } })

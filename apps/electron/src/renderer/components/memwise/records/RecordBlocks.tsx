@@ -47,7 +47,9 @@ import {
   fieldSourceTone,
   formatFieldValue,
   formatTypedValue,
+  isPercentType,
   lifecycleSteps,
+  relatedColumns,
   statusLabel,
   statusTone,
   transitionBlockedReason,
@@ -184,7 +186,7 @@ export function useReasonedWrite(regulated: boolean) {
 
 function editorKind(type: string): 'number' | 'date' | 'boolean' | 'text' {
   const base = baseType(type)
-  if (base === 'Number' || base === 'Percent' || base === 'Integer') return 'number'
+  if (base === 'Number' || isPercentType(base) || base === 'Integer') return 'number'
   if (base === 'Date') return 'date'
   if (base === 'Boolean') return 'boolean'
   return 'text'
@@ -285,7 +287,7 @@ export function RelatedBlock({ page, names, actions }: { page: MwRecordPage; nam
       {names.map(name => {
         const rel = page.related[name]
         if (!rel) return null
-        const columns = [...new Set(rel.rows.flatMap(r => Object.keys(r.values)))].filter(c => c !== 'status').slice(0, 2)
+        const columns = relatedColumns(rel.rows)
         return (
           <Info_Section
             key={name}

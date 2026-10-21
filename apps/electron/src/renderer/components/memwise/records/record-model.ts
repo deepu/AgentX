@@ -56,6 +56,11 @@ export function baseType(type: string): string {
   return type.replace(/[<(].*$/, '').trim()
 }
 
+/** A percent type: `Percentage` as the definitions write it (`Percent` is accepted too). */
+export function isPercentType(base: string): boolean {
+  return base === 'Percentage' || base === 'Percent'
+}
+
 /** The target of a `Ref<X>`/`List<X>` type, else undefined. */
 export function typeTarget(type: string): string | undefined {
   return /<\s*([\w.]+)\s*>/.exec(type)?.[1]
@@ -78,7 +83,7 @@ export function formatTypedValue(type: string, value: unknown, t: TFunction, loc
   if (ref) return ref.title
   if (value === null || value === undefined || value === '') return t('memwise.case.noValue')
   const base = baseType(type)
-  if (base === 'Percent' && typeof value === 'number') return formatPercent(value, locale)
+  if (isPercentType(base) && typeof value === 'number') return formatPercent(value, locale)
   if (base === 'Date' && typeof value === 'string') return formatDate(value, locale)
   if ((base === 'DateTime' || base === 'Timestamp') && typeof value === 'string') return absoluteTime(value, locale)
   if ((base === 'Lifecycle' || base === 'Status') && typeof value === 'string') return statusLabel(value)
@@ -192,9 +197,19 @@ export function transitionLabel(tr: Pick<MwTransitionOption, 'to' | 'label'>, t:
 /** Why a transition can't be made now, in words: the server's reason, else its guard. */
 export function transitionBlockedReason(tr: MwTransitionOption, t: TFunction): string | undefined {
   if (tr.allowed) return undefined
-  if (tr.reason) return tr.reason
+  // The kernel's reason is a sentence fragment ("only a playbook step can make …"): start it as a sentence.
+  if (tr.reason) return tr.reason.charAt(0).toUpperCase() + tr.reason.slice(1)
   if (tr.guard && !tr.guard.holds) return t('memwise.record.guardNotMet', { condition: tr.guard.condition })
   return t('memwise.record.notAllowed')
+}
+
+// ---------------------------------------------------------------- related
+
+/** Up to two columns for a related table: not the status (it has its pill), nor a value that only repeats the row's title. */
+export function relatedColumns(rows: { title: string; values: Record<string, unknown> }[]): string[] {
+  return [...new Set(rows.flatMap(r => Object.keys(r.values)))]
+    .filter(c => c !== 'status' && !rows.every(r => r.values[c] === undefined || r.values[c] === r.title))
+    .slice(0, 2)
 }
 
 // ---------------------------------------------------------------- chart

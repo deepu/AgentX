@@ -148,6 +148,7 @@ describe('dashboard, entities, automations, domains', () => {
     expect(html).toContain('data-heatmap')
     expect(html).toContain('95% or more')
     expect(html).toContain('Under 70%')
+    expect(html).toMatch(/data-heat="fair">70%</)
     expect(html).toMatch(/Computed /)
   })
 
@@ -155,6 +156,9 @@ describe('dashboard, entities, automations, domains', () => {
     const base = { domain: S.sampleDomains[0]!, type: S.sampleSiteType, onTab: () => {}, views: S.sampleViews, state: viewToState(null), onState: () => {} }
     const html = render(<EntityView {...base} tab="records" result={S.sampleSitesQuery} onSaveView={async v => ({ ...v, domain: 'etmf', personal: true })} />)
     expect(html).toContain('data-records-table')
+    // A reference reads as the record's title, not its id.
+    expect(html).toContain('AST-301')
+    expect(html).not.toContain('stud_ast301')
     expect(html).toContain('All records')
     expect(html).toContain('Save as my view')
     const broken = render(<EntityView {...base} tab="records" result={null} error="Unexpected '!' at position 9." state={{ ...viewToState(null), filter: 'status !! 1' }} />)

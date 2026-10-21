@@ -200,7 +200,7 @@ export function toRecordPage(ctx: Pick<DtoContext, 'project'>, p: RecordPage, na
     cases: p.cases.map((c) => ({
       caseId: c.caseId, runId: c.runId, workflowId: c.workflowId, title: c.title || wfTitle(c.workflowId),
       state: stateTitle(project.workflows[c.workflowId], c.state), status: c.status, updatedAt: c.updatedAt,
-      ...(c.waitingOn ? { waitingOn: names.get(c.waitingOn) ?? c.waitingOn } : {}),
+      ...(c.waitingOn ? { waitingOn: names.get(c.waitingOn) ?? project.roles?.[c.waitingOn]?.title ?? humanize(c.waitingOn) } : {}),
     })),
     ...(p.lifecycle ? { lifecycle: { states: [...p.lifecycle.states], ...(p.lifecycle.current ? { current: p.lifecycle.current } : {}), transitions: p.lifecycle.transitions.map(toTransitionOption) } } : {}),
     flags: p.flags.map((f) => ({ ...f })),
@@ -234,9 +234,12 @@ export function toQueryResult(r: RecordQueryResult): MwRecordQueryResult {
       name: c.name, label: c.name === 'status' ? 'Status' : humanize(c.name), type: c.type,
       ...(c.calculated ? { calculated: true } : {}), ...(c.followed ? { followed: true } : {}),
     })),
-    rows: r.rows.map((x) => ({ entity: x.entity, id: x.id, title: x.title, ...(x.status ? { status: x.status } : {}), values: { ...x.values }, hidden: [...x.hidden] })),
+    rows: r.rows.map((x) => ({
+      entity: x.entity, id: x.id, title: x.title, ...(x.status ? { status: x.status } : {}), values: { ...x.values }, hidden: [...x.hidden],
+      ...(x.refs ? { refs: Object.fromEntries(Object.entries(x.refs).map(([f, ref]) => [f, { entity: ref.entity, id: ref.id, title: ref.title, ...(ref.status ? { status: ref.status } : {}) }])) } : {}),
+    })),
     total: r.total,
-    ...(r.groups ? { groups: r.groups.map((g) => ({ key: g.key, count: g.count })) } : {}),
+    ...(r.groups ? { groups: r.groups.map((g) => ({ key: g.key, count: g.count, ...(g.title ? { title: g.title } : {}) })) } : {}),
   }
 }
 
@@ -359,10 +362,21 @@ export function toCaseLink(project: ProjectDefs, l: CaseLinkView): MwCaseLink {
   }
 }
 
-export function toWaiting(w: WaitingCondition): MwWaitingCondition {
+/**
+ * What a `wait_until` waits for. `project`: the values' types from the record's entity; `titles`:
+ * the record's title as the viewer reads it (with its followed fields), by id.
+ */
+export function toWaiting(w: WaitingCondition, project?: Pick<ProjectDefs, 'entities'>, titles?: ReadonlyMap<string, string>): MwWaitingCondition {
+  const def = project?.entities[w.record.entity]
+  const typeOf = (k: string): string | undefined => {
+    const c = def?.calculated?.[k]
+    if (c) return c.kind === 'rollup' && c.rollup === 'percent' ? 'Percentage' : 'Number'
+    return def?.fields[k]?.typeSource
+  }
+  const types = Object.fromEntries(Object.keys(w.values).flatMap((k) => { const t = typeOf(k); return t ? [[k, t]] : [] }))
   return {
-    record: { entity: w.record.entity, id: w.record.id, title: w.record.title, ...(w.record.status ? { status: w.record.status } : {}) },
-    condition: w.condition, holds: !!w.holds, values: { ...w.values },
+    record: { entity: w.record.entity, id: w.record.id, title: titles?.get(w.record.id) ?? w.record.title, ...(w.record.status ? { status: w.record.status } : {}) },
+    condition: w.condition, holds: !!w.holds, values: { ...w.values }, ...(Object.keys(types).length ? { types } : {}),
   }
 }
 

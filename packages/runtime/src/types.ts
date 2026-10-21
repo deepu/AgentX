@@ -769,10 +769,11 @@ export interface RecordQuery {
 export interface RecordQueryResult {
   entity: string;
   columns: { name: string; type: string; calculated?: boolean; followed?: boolean }[];
-  rows: (RecordRef & { values: Record<string, unknown>; hidden: string[] })[];
+  /** `refs`: the records a row's Ref fields point at, by title (absent when none). */
+  rows: (RecordRef & { values: Record<string, unknown>; hidden: string[]; refs?: Record<string, RecordRef> })[];
   total: number;
-  /** With `group`: the groups in order, with counts. */
-  groups?: { key: string | null; count: number }[];
+  /** With `group`: the groups in order, with counts (and the title, when grouped by a Ref). */
+  groups?: { key: string | null; count: number; title?: string }[];
 }
 
 export type TreeNode =

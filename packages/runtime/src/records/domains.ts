@@ -2,7 +2,7 @@
 // counts under the viewer's row rules, playbooks, pages, views, open flags), the workspace itself,
 // and people's grants (a role in one domain, optionally limited to records).
 import { PgFlagStore, PgGrantStore, PgPageStore, viewOf, withActor } from '@memwise/db';
-import { DEFAULT_DOMAIN, keyOf, type Grant } from '@memwise/defs';
+import { DEFAULT_DOMAIN, META_PLAYBOOKS, keyOf, type Grant } from '@memwise/defs';
 import type { Actor, DomainsService, DomainSummary } from '../types.ts';
 import { domainDef, domainOfEntity, type RecordsDeps } from './context.ts';
 
@@ -43,6 +43,10 @@ export function createDomainsService(deps: RecordsDeps): DomainsService {
           const flags = await flagStore.list(db, { domain: id, open: true, limit: 1000 });
           const workflows = d.workflows.length ? d.workflows
             : Object.values(project?.workflows ?? {}).filter((w) => (w.domain ?? DEFAULT_DOMAIN) === id).map((w) => w.id);
+          // A project of named domains has no default one of its own: the meta playbooks the app adds
+          // (building and changing playbooks, binding plugins) don't make one appear in the sidebar.
+          const onlyMeta = workflows.every((w) => (META_PLAYBOOKS as readonly string[]).includes(w));
+          if (id === DEFAULT_DOMAIN && domainIds().length > 1 && !mine.length && !Object.keys(d.pages).length && !Object.keys(d.views).length && !written.length && onlyMeta) continue;
           out.push({
             id, name: d.name, ...(d.description ? { description: d.description } : {}), regulated: !!d.regulated,
             ...(d.owner ? { owner: d.owner } : {}), ...(d.retentionMs !== undefined ? { retentionMs: d.retentionMs } : {}),

@@ -24,6 +24,7 @@ import {
   confidenceLabel,
   formatTypedValue,
   initialReviewDraft,
+  isPercentType,
   missingReviewFields,
   queueKeyAction,
   reviewOutcomes,
@@ -64,7 +65,7 @@ function editable(p: MwProposedValue): 'text' | 'number' | 'date' | 'boolean' | 
   const base = baseType(p.type)
   if (base === 'Ref' || base === 'List' || base === 'Document' || base === 'File') return null
   if (base === 'Boolean') return 'boolean'
-  if (base === 'Number' || base === 'Percent' || base === 'Integer') return 'number'
+  if (base === 'Number' || isPercentType(base) || base === 'Integer') return 'number'
   if (base === 'Date') return 'date'
   return typeof p.value === 'object' && p.value !== null ? null : 'text'
 }

@@ -85,8 +85,42 @@ const PLUGIN_BINDING_CASE = 'plugin_binding'
  * A readable case title: the client's name, the legal name, the first text value, else a short
  * reference. A plugin binding case is "Bind Client intake" (the installed plugin's title, else its id).
  */
-export function caseTitle(values: Record<string, unknown>, caseId: string, caseType?: CaseTypeDef, project?: Pick<ProjectDefs, 'plugins'>): string {
-  const plain = (v: unknown) => (v && typeof v === 'object' && 'value' in (v as object) ? (v as { value: unknown }).value : v)
+const plainValue = (v: unknown) => (v && typeof v === 'object' && 'value' in (v as object) ? (v as { value: unknown }).value : v)
+
+/** The records a case's Ref values point at, in the case type's field order. */
+export function caseRefs(values: Record<string, unknown>, caseType?: CaseTypeDef): { field: string; entity: string; id: string }[] {
+  const out: { field: string; entity: string; id: string }[] = []
+  for (const [field, f] of Object.entries(caseType?.fields ?? {})) {
+    if (f.type.kind !== 'ref') continue
+    const v = plainValue(values[field])
+    if (typeof v === 'string' && v) out.push({ field, entity: f.type.entity, id: v })
+  }
+  return out
+}
+
+/**
+ * The record a case is about: its first Ref value (a site's activation, a document's filing). A
+ * case with nothing typed of its own is named after that record (`caseTitle`'s `subjectTitle`).
+ */
+export function caseSubject(values: Record<string, unknown>, caseType?: CaseTypeDef): { field: string; entity: string; id: string } | undefined {
+  return caseRefs(values, caseType)[0]
+}
+
+/** Ref values with their record's title (`titles`, by record id), so a screen shows the title, not the id. */
+export function withRefTitles(values: Record<string, MwCaseValue>, caseType: CaseTypeDef | undefined, titles?: ReadonlyMap<string, string>): Record<string, MwCaseValue> {
+  if (!titles?.size) return values
+  const out = { ...values }
+  for (const [field, f] of Object.entries(caseType?.fields ?? {})) {
+    const v = out[field]
+    if (f.type.kind !== 'ref' || !v || v.hidden || typeof v.value !== 'string') continue
+    const title = titles.get(v.value)
+    if (title) out[field] = { ...v, refTitle: title }
+  }
+  return out
+}
+
+export function caseTitle(values: Record<string, unknown>, caseId: string, caseType?: CaseTypeDef, project?: Pick<ProjectDefs, 'plugins'>, subjectTitle?: string): string {
+  const plain = plainValue
   if (caseType?.id === PLUGIN_BINDING_CASE) {
     const plugin = plain(values.plugin)
     if (typeof plugin === 'string' && plugin.trim()) return `Bind ${project ? pluginTitle(project, plugin.trim()) : plugin.trim()}`
@@ -101,6 +135,7 @@ export function caseTitle(values: Record<string, unknown>, caseId: string, caseT
     const texty = !type || (type.kind === 'scalar' && (type.name === 'Text' || type.name === 'PersonName'))
     if (texty && typeof v === 'string' && v.trim()) return v.trim()
   }
+  if (subjectTitle?.trim()) return subjectTitle.trim()
   // Nothing typed yet: a short, readable reference rather than the full id.
   return `New case ${caseId.slice(-6)}`
 }
@@ -119,6 +154,9 @@ export function waitingOn(wf: WorkflowDef | undefined, state: string, status: st
     if (step.performer === 'system') return { kind: 'system' }
     return { kind: 'role', ...(step.assignee ? { role: step.assignee } : {}) }
   }
+  // Phase 6: a hand-off block runs by itself; `wait_until` waits on a record's data, not on a person.
+  const block = wf.states[state]?.block
+  if (block) return { kind: block.kind === 'wait_until' ? 'condition' : 'system' }
   const role = wf.states[state]?.assignee ?? wf.owner
   return { kind: 'role', ...(role ? { role } : {}) }
 }
@@ -393,15 +431,17 @@ export function toCaseValues(values: Record<string, Parameters<typeof toCaseValu
   return out
 }
 
-export function toCaseSummary(project: ProjectDefs, s: CaseSummary): MwCaseSummary {
+/** `subjects`: the titles of the records cases are about, by record id (`caseSubject`). */
+export function toCaseSummary(project: ProjectDefs, s: CaseSummary, subjects?: ReadonlyMap<string, string>): MwCaseSummary {
   const wf = project.workflows[s.workflowId]
   const wait = waitingOn(wf, s.state, s.status)
+  const subject = caseSubject(s.values, wf?.caseType)
   return {
     caseId: s.caseId,
     runId: s.runId,
     workflowId: s.workflowId,
     workflowVersion: s.workflowVersion,
-    title: caseTitle(s.values, s.caseId, wf?.caseType, project),
+    title: caseTitle(s.values, s.caseId, wf?.caseType, project, subject && subjects?.get(subject.id)),
     state: s.state,
     stateTitle: stateTitle(wf, s.state),
     status: s.status,
@@ -480,13 +520,16 @@ export function toInboxExtract(step: StepDef | undefined): { documentsField: str
   return { documentsField: x.documents, fields: [...new Set(Object.values(x.fields))], minConfidence: x.minConfidence }
 }
 
-export function toCase(ctx: DtoContext, view: CaseView, extra: { links?: ExternalLinkSummary[]; deliveries?: Delivery[] } = {}): MwCase {
+/** `subjects`: the titles of the records the case points at (its Ref values, what it waits on), by record id. */
+export function toCase(ctx: DtoContext, view: CaseView, extra: { links?: ExternalLinkSummary[]; deliveries?: Delivery[]; subjects?: ReadonlyMap<string, string> } = {}): MwCase {
   const wf = ctx.project.workflows[view.summary.workflowId]
+  const values = Object.fromEntries(Object.entries(view.values).map(([k, v]) => [k, v.hidden ? undefined : v.value]))
+  const subject = caseSubject(values, wf?.caseType)
   return {
-    ...toCaseSummary(ctx.project, view.summary),
-    title: caseTitle(Object.fromEntries(Object.entries(view.values).map(([k, v]) => [k, v.hidden ? undefined : v.value])), view.summary.caseId, wf?.caseType, ctx.project),
+    ...toCaseSummary(ctx.project, view.summary, extra.subjects),
+    title: caseTitle(values, view.summary.caseId, wf?.caseType, ctx.project, subject && extra.subjects?.get(subject.id)),
     fields: wf ? caseFields(ctx, wf.caseType) : [],
-    values: toCaseValues(view.values),
+    values: withRefTitles(toCaseValues(view.values), wf?.caseType, extra.subjects),
     timeline: view.stepRuns.map((r) => toStepRunSummary(ctx.project, view.summary.workflowId, r)),
     transitions: view.transitions.map(toTransition),
     path: [...view.path],
@@ -494,7 +537,7 @@ export function toCase(ctx: DtoContext, view: CaseView, extra: { links?: Externa
     ...(extra.deliveries ? { deliveries: [...extra.deliveries].sort((a, b) => b.at.localeCompare(a.at)).map(toDelivery) } : {}),
     // Phase 6: hand-offs, the `wait_until` condition, the domain
     ...(view.links?.length ? { caseLinks: view.links.map((l) => toCaseLink(ctx.project, l)) } : {}),
-    ...(view.waiting ? { waiting: toWaiting(view.waiting) } : {}),
+    ...(view.waiting ? { waiting: toWaiting(view.waiting, ctx.project, extra.subjects) } : {}),
     ...(view.domain ?? wf?.domain ? { domain: view.domain ?? wf?.domain } : {}),
   }
 }
