@@ -180,6 +180,26 @@ describe('the app home and app playbooks', () => {
     expect((await load(dir)).project.projects!.ops2!.apps).toEqual(['etmf', 'edc']);
   });
 
+  test("a project's own binding serves its connection; without one, the app's does", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mw-projects-'));
+    dirs.push(dir);
+    cpSync(join(EXAMPLES, 'literature'), dir, { recursive: true });
+    const before = await loadProject(dir);
+    expect(before.project.projects!.literature!.bindings).toBeUndefined();
+    expect(before.project.bindings!['claude/pubmed']).toBeDefined();
+    const text = readFileSync(join(dir, 'domain/bindings/claude__pubmed.yaml'), 'utf8');
+    write(dir, { 'projects/literature/bindings/claude__pubmed.yaml': text });
+    const after = await loadProject(dir);
+    expect(after.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(after.project.projects!.literature!.bindings!['claude/pubmed']).toMatchObject({ plugin: 'claude/pubmed', file: 'projects/literature/bindings/claude__pubmed.yaml' });
+    expect(after.project.projects!.literature!.hash).not.toBe(before.project.projects!.literature!.hash);
+    // One that isn't frozen is reported, and the app's binding keeps serving.
+    write(dir, { 'projects/literature/bindings/claude__pubmed.yaml': text.replace(/frozen:\n  by: example\n  at: [^\n]+\n/, '') });
+    const unfrozen = await loadProject(dir);
+    expect(unfrozen.project.projects!.literature!.bindings).toBeUndefined();
+    expect(unfrozen.diagnostics.map((d) => d.code)).toContain('binding-not-frozen');
+  });
+
   test('create-project is the app\'s own: projects get no copy of it', async () => {
     const { project } = await load(ETMF);
     expect(project.workflows['create-project']).toBeDefined();

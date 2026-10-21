@@ -18,6 +18,9 @@ import { DEFAULT_DOMAIN, type DomainDef, type FreePageDef, type ViewDef } from '
 import { loadWorkflow, type WorkflowOverlayFile } from './load.ts';
 import { parsePageFile, parseViewFile } from './parse-domain.ts';
 import { parsePolicyFile } from './parse-policy.ts';
+import { parseBindingFile } from './binding-file.ts';
+import { pinnedPlugin } from './project-plugins.ts';
+import type { BindingDef } from './plugin-types.ts';
 import { defaultApp, parseAppFile, parseProjectFile, projectSource, type ProjectFile } from './parse-projects.ts';
 import {
   APP_PLAYBOOKS, APP_VERSIONS_DIR, OVERRIDABLE, OVERRIDES_DIR, PROJECT_ID_PATTERN, PROJECTS_DIR, type AppDef, type MwProjectDef,
@@ -250,9 +253,30 @@ async function resolveProject(abs: string, project: ProjectDefs, pf: ProjectFile
   const pages = await effectiveFiles<FreePageDef>(abs, 'pages', tdir, live ? domain.pages : undefined, overrides, bytes, overridesRel, without, parsePageFile, diagnostics);
   const views = await effectiveFiles<ViewDef>(abs, 'views', tdir, live ? domain.views : undefined, overrides, bytes, overridesRel, without, parseViewFile, diagnostics);
 
+  // Its own bindings: frozen, of a plugin installed at the version they pin.
+  const bindings: Record<string, BindingDef> = {};
+  const bindingsRel = `${dir}/bindings`;
+  for (const name of (await filesUnder(join(abs, bindingsRel))).filter((n) => /^[^/]+\.ya?ml$/.test(n)).sort()) {
+    const file = `${bindingsRel}/${name}`;
+    const r = parseBindingFile(await readFile(join(abs, file), 'utf8'), file);
+    diagnostics.push(...r.diagnostics);
+    const b = r.value;
+    if (!b?.plugin) continue;
+    if (!b.frozen) {
+      diagnostics.push({ severity: 'warning', code: 'binding-not-frozen', file, line: 1, message: `this project's binding of ${b.plugin} is not frozen, so the app's binding serves it` });
+      continue;
+    }
+    if (!pinnedPlugin(project, b)) {
+      diagnostics.push({ severity: 'error', code: 'binding-plugin-missing', file, line: 1, message: `the binding pins ${b.plugin} ${b.pluginVersion}, which is not installed (or changed since it was bound)` });
+      continue;
+    }
+    bindings[b.plugin] = b;
+  }
+
   const projectText = await readFile(join(abs, pf.file));
   const hash = sha256(projectText, '\0', domain.id, '\0', String(version), '\0',
-    ...overrides.flatMap((p) => [p, '\0', bytes.get(p)!, '\0']), ...Object.values(workflows).map((w) => w.hash));
+    ...overrides.flatMap((p) => [p, '\0', bytes.get(p)!, '\0']), ...Object.values(workflows).map((w) => w.hash),
+    ...Object.values(bindings).map((x) => `${x.plugin}@${x.pluginVersion}:${x.version}`));
   const def: MwProjectDef = {
     id: pf.id, app: app.id, apps: [app.id, ...also], name: pf.name, version,
     from: projectSource(pf, version),
@@ -261,6 +285,7 @@ async function resolveProject(abs: string, project: ProjectDefs, pf: ProjectFile
     status: pf.status, people: pf.people, connections: pf.connections,
     ...(pf.settings ? { settings: pf.settings } : {}),
     without: [...without].sort(), overrides, dir, file: pf.file, hash,
+    ...(Object.keys(bindings).length ? { bindings } : {}),
     workflows, ...(policy ? { policy } : {}), pages, views,
   };
   rememberLocator(def, locatorOf(pf) ?? (() => undefined));

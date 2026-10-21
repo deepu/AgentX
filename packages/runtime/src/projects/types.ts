@@ -74,6 +74,10 @@ export interface MwProjectDetail extends MwProjectSummary {
   overrides: { path: string; workflow?: string; title: string }[];
   /** The playbooks it runs: its own copies, and which it changed. */
   playbooks: { id: string; title: string; version: number; overridden: boolean }[];
+  /** Its pages (the template's, minus what it leaves out). */
+  pages: { id: string; title: string }[];
+  /** The record types it keeps records of (its apps' project-scoped types), by entity key. */
+  recordTypes: { entity: string; name: string }[];
   /** The person may change it (the app's owner role in this project, or no roles at all). */
   canEdit: boolean;
 }

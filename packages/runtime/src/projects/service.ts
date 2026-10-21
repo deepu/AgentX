@@ -168,8 +168,8 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       people,
       connections: p.connections.map((c) => ({
         ...c,
-        // A project's own binding (projects/<id>/bindings/) is not there yet: the app's serves every project.
-        bound: c.plugin && bound.has(c.plugin) ? 'app' : 'none',
+        // Its own binding (projects/<id>/bindings/), else the app's (domain/bindings/).
+        bound: c.plugin && p.bindings?.[c.plugin] ? 'project' : c.plugin && bound.has(c.plugin) ? 'app' : 'none',
       })),
       settings: r?.settings && Object.keys(r.settings).length ? r.settings : p.settings ?? {},
       without: p.without,
@@ -180,6 +180,12 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       }),
       playbooks: Object.values(p.workflows).map((w) => ({ id: w.id, title: w.title ?? w.id, version: w.version, overridden: !!w.overridden?.length }))
         .sort((a, b) => a.title.localeCompare(b.title)),
+      pages: Object.values(p.pages).map((x) => ({ id: x.id, title: x.title ?? x.id })).sort((a, b) => a.title.localeCompare(b.title)),
+      // The record types it has records of: its apps' own (project-scoped) types.
+      recordTypes: Object.entries(deps.entities())
+        .filter(([, e]) => projectScoped(e) && (p.apps ?? [p.app]).includes(e.domain ?? 'domain'))
+        .map(([entity, e]) => ({ entity, name: e.entity.replace(/([a-z])([A-Z])/g, '$1 $2') }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
       canEdit,
     };
   }
@@ -473,7 +479,8 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
     async reviewUpdate(id, actor, opts = {}) {
       const d = await defs();
       const p = projectOf(d, id);
-      if (!sees(actor, p)) return undefined;
+      // Reviewed by who may take it (the app's owner role there), like the item itself.
+      if (!sees(actor, p) || !mayManage(d, actor, p.app, p.id)) return undefined;
       const item = (await itemsFor(undefined)).find((i) => i.project === id);
       const update = await templateUpdate(d, id);
       if (!item || !update) return undefined;

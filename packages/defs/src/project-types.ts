@@ -150,6 +150,11 @@ export interface MwProjectDef {
   file?: string;
   /** Covers project.yaml, every override and the template version it resolves against. */
   hash: string;
+  /**
+   * Its own frozen bindings (`projects/<id>/bindings/<plugin>.yaml`), by plugin id: a connection
+   * of the project uses its own binding, else the app's (`domain/bindings/`).
+   */
+  bindings?: Record<string, import('./plugin-types.ts').BindingDef>;
 
   // ---- the effective definitions (template at `version` + overrides − without)
   /** By workflow id. Shared objects with `ProjectDefs.workflows` where nothing differs. */
