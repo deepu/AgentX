@@ -77,11 +77,15 @@ describe.skipIf(!pgAvailable)('Stage 3 (D105): one project, several apps, many c
     expect(Object.keys(firm.workflows).sort()).toEqual(['file-gst', 'file-itr']);
     expect(firm.workflows['file-gst']!.hash).not.toBe(project.workflows['file-gst']!.hash);
     expect(Object.keys(project.projects!.other!.workflows)).toEqual(['file-gst']);
-    // Every app is run by a firm, so none has an implicit project.
+    // Every app is run by a firm, so none has an implicit project; each app still has its own
+    // project's row (D107), where its own runs and what someone with no project makes live.
     expect(Object.keys(project.projects!).sort()).toEqual(['firm', 'other']);
     expect(await db.pool.query(`select id, app, apps from mw.projects order by id`).then((r) => r.rows)).toEqual([
       { id: 'firm', app: 'practice', apps: ['practice', 'gst', 'itr'] },
+      { id: 'gst', app: 'gst', apps: ['gst'] },
+      { id: 'itr', app: 'itr', apps: ['itr'] },
       { id: 'other', app: 'practice', apps: ['practice', 'gst'] },
+      { id: 'practice', app: 'practice', apps: ['practice'] },
     ]);
     // A person's role in the firm holds in each of its apps.
     expect(ravi.grants).toEqual([

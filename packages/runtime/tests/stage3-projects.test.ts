@@ -91,7 +91,8 @@ describe.skipIf(!pgAvailable)('Stage 3: projects inside apps', () => {
     expect(priya.grants).toEqual([{ role: 'cra', domain: 'etmf', project: 'mw301' }]);
     expect(tom.grants).toEqual([{ role: 'tmf_specialist', domain: 'etmf', project: 'mw207' }, { role: 'tmf_specialist', domain: 'etmf', project: 'mw301' }]);
     expect((await rows(`select id, app, status, template_version from mw.projects where app = 'etmf' order by id`)))
-      .toEqual([{ id: 'mw207', app: 'etmf', status: 'active', template_version: 4 }, { id: 'mw301', app: 'etmf', status: 'active', template_version: 4 }]);
+      // The app's own project (D107) has its row beside the studies.
+      .toEqual([{ id: 'etmf', app: 'etmf', status: 'active', template_version: 4 }, { id: 'mw207', app: 'etmf', status: 'active', template_version: 4 }, { id: 'mw301', app: 'etmf', status: 'active', template_version: 4 }]);
   });
 
   test('the walkthrough records are made into their studies, once', async () => {

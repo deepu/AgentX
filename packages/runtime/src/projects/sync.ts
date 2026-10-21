@@ -5,15 +5,24 @@
  * isn't in the workspace yet is added, without a password, as an invited person would be.
  */
 import { PgGrantStore, PgProjectStore, withTransaction, type PgPeopleStore } from '@memwise/db';
-import type { Grant, ProjectDefs } from '@memwise/defs';
+import type { Grant, MwProjectDef, ProjectDefs } from '@memwise/defs';
 import type pg from 'pg';
 
 const projects = new PgProjectStore();
 const grants = new PgGrantStore();
 
+/** The fields an app's own project row needs beyond its ids (it has no project.yaml). */
+const APP_OWN = { status: 'active', people: [], connections: [], without: [], overrides: [], implicit: true, settings: {} } as unknown as MwProjectDef;
+
 export async function syncProjects(pool: pg.Pool, people: PgPeopleStore, defs: ProjectDefs): Promise<void> {
   const list = Object.values(defs.projects ?? {});
-  await projects.sync(pool, list);
+  // Every app's own project has a row too (id = the app id, D107), also once studies exist: it holds
+  // the app's own runs (create-project) and what someone with no study makes in the app, so a record
+  // made there still starts its playbooks. The 0009 backfill made these rows for existing workspaces.
+  const own = Object.values(defs.apps ?? {})
+    .filter((a) => !defs.projects?.[a.id])
+    .map((a): MwProjectDef => ({ ...APP_OWN, id: a.id, app: a.id, apps: [a.id], name: a.title, version: a.version }));
+  await projects.sync(pool, [...list, ...own]);
   const roles = new Set(Object.keys(defs.roles ?? {}));
   const byPerson = new Map<string, Grant[]>();
   for (const p of list) {
