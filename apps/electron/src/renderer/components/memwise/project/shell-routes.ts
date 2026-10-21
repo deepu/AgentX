@@ -8,7 +8,7 @@
 import type { MwCaseSummary, MwInboxItem } from '@memwise/shared/protocol'
 import { inboxItemProject } from '@memwise/shared/protocol'
 import type { NavigationState } from '../../../../shared/types'
-import { projectRoute, type ProjectDetails } from '../../../../shared/project-route'
+import { ALL_PROJECTS, projectRoute, type ProjectDetails } from '../../../../shared/project-route'
 
 export interface ShellRouteData {
   /** The open project, else the last one used, else the first. */
@@ -19,6 +19,12 @@ export interface ShellRouteData {
   cases: MwCaseSummary[] | null
   /** Whether a project exists (unknown ones fall back to the current project). */
   hasProject: (id: string) => boolean
+  /**
+   * Stage 3: the project to open an app's screens in when the app id isn't itself a project (a
+   * study app): the open project when it runs the app, else the one project that does; undefined
+   * when that isn't clear, and the app home opens instead.
+   */
+  projectForApp?: (appId: string) => string | undefined
 }
 
 /**
@@ -29,6 +35,14 @@ export function shellRouteFor(state: NavigationState, data: ShellRouteData): str
   const p = (id: string | undefined) => (id && data.hasProject(id) ? id : data.currentProject)
   const at = (project: string | undefined, details?: ProjectDetails) => projectRoute(p(project), details ?? { type: 'home' })
   const entityDomain = (key: string) => data.entityDomain(key) ?? key.split('.')[0]
+  // A classic domain route: in the project of that id (Stage 1, and an app's own project), else
+  // the project that runs the app, else the app home (Stage 3: a domain id isn't a project id).
+  const inApp = (app: string | undefined, details?: ProjectDetails) => {
+    if (!app || data.hasProject(app)) return at(app, details)
+    const project = data.projectForApp?.(app)
+    if (project) return at(project, details)
+    return data.projectForApp ? projectRoute(ALL_PROJECTS, { type: 'app', appId: app }) : at(app, details)
+  }
   switch (state.navigator) {
     case 'inbox': {
       if (!state.details) return at(undefined, { type: 'waiting' })
@@ -39,22 +53,30 @@ export function shellRouteFor(state: NavigationState, data: ShellRouteData): str
     case 'cases': {
       if (!state.details) return at(undefined)
       const c = data.cases?.find(x => x.caseId === state.details!.caseId)
-      return at(c?.project ?? c?.domain ?? (c ? data.workflowDomain(c.workflowId) : undefined), { type: 'run', caseId: state.details.caseId })
+      if (c?.project) return at(c.project, { type: 'run', caseId: state.details.caseId })
+      return inApp(c?.domain ?? (c ? data.workflowDomain(c.workflowId) : undefined), { type: 'run', caseId: state.details.caseId })
     }
     case 'playbooks': {
       if (!state.details) return at(undefined)
       if (state.details.type !== 'playbook') return null
-      return at(data.workflowDomain(state.details.playbookId), { type: 'playbook', workflowId: state.details.playbookId })
+      return inApp(data.workflowDomain(state.details.playbookId), { type: 'playbook', workflowId: state.details.playbookId })
     }
     case 'domains': {
       const d = state.details
       if (!d) return at(undefined)
       switch (d.type) {
-        case 'record': return at(entityDomain(d.entity), { type: 'record', entity: d.entity, recordId: d.recordId })
-        case 'entities': return at(d.domain, d.entity ? { type: 'records', entity: d.entity } : { type: 'settings' })
-        case 'dashboard': return at(d.domain, { type: 'dashboard', domain: d.domain, pageId: d.pageId, ...(d.params ? { params: d.params } : {}) })
-        case 'automations': return at(d.domain, { type: 'settings', tab: 'automations' })
-        case 'domain': return at(d.domain, d.tab ? { type: 'settings', tab: d.tab } : undefined)
+        case 'record': {
+          // A record opens in its own project; when the app id isn't a project, under all
+          // projects, where the record page finds its project (or shows it there).
+          const domain = entityDomain(d.entity)
+          const details = { type: 'record' as const, entity: d.entity, recordId: d.recordId }
+          if (!domain || data.hasProject(domain) || !data.projectForApp) return at(domain, details)
+          return projectRoute(ALL_PROJECTS, details)
+        }
+        case 'entities': return inApp(d.domain, d.entity ? { type: 'records', entity: d.entity } : { type: 'settings' })
+        case 'dashboard': return inApp(d.domain, { type: 'dashboard', domain: d.domain, pageId: d.pageId, ...(d.params ? { params: d.params } : {}) })
+        case 'automations': return inApp(d.domain, { type: 'settings', tab: 'automations' })
+        case 'domain': return inApp(d.domain, d.tab ? { type: 'settings', tab: d.tab } : undefined)
       }
       return null
     }
@@ -63,7 +85,7 @@ export function shellRouteFor(state: NavigationState, data: ShellRouteData): str
       return state.details ? at(undefined, { type: 'home', chatId: state.details.sessionId }) : at(undefined)
     }
     case 'plugins': {
-      if (state.details?.type === 'records') return at(entityDomain(state.details.entity), { type: 'records', entity: state.details.entity })
+      if (state.details?.type === 'records') return inApp(entityDomain(state.details.entity), { type: 'records', entity: state.details.entity })
       return null
     }
     default:

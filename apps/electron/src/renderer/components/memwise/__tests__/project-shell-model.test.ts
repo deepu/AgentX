@@ -126,6 +126,30 @@ describe('older routes open inside a project', () => {
     expect(to(routes.view.allSessions())).toBe('mw/edc')
   })
 
+  test('Stage 3: a domain id is no project id; its routes open in the project that runs the app, or the app home', () => {
+    // Studies MW-301 (open) and MW-207 run eTMF; the firm runs GST and ITR; nothing runs Stock.
+    const stored: ShellRouteData = {
+      ...data,
+      currentProject: 'mw301',
+      cases: [{ caseId: 'k1', workflowId: 'activate-site', domain: 'etmf', project: 'mw207' }, { caseId: 'k2', workflowId: 'file-gst', domain: 'gst' }] as MwCaseSummary[],
+      workflowDomain: id => (id === 'file-gst' ? 'gst' : playbooks.find(p => p.id === id)?.domain),
+      hasProject: id => ['mw301', 'mw207', 'firm'].includes(id),
+      projectForApp: app => (app === 'etmf' ? 'mw301' : app === 'gst' ? 'firm' : undefined),
+    }
+    const go = (route: string) => shellRouteFor(parseRouteToNavigationState(route)!, stored)
+    // A record opens under all projects, where its page finds its own project.
+    expect(go(routes.view.record('etmf.Site', 's1'))).toBe('mw/*/record/etmf.Site%3As1')
+    // A case in its own project; one without, in the project running its app.
+    expect(go(routes.view.cases('k1'))).toBe('mw/mw207/run/k1')
+    expect(go(routes.view.cases('k2'))).toBe('mw/firm/run/k2')
+    expect(go(routes.view.playbooks('activate-site'))).toBe('mw/mw301/playbook/activate-site')
+    expect(go(routes.view.domains({ type: 'entities', domain: 'etmf', entity: 'etmf.Site' }))).toBe('mw/mw301/records/etmf.Site')
+    expect(go(routes.view.domains({ type: 'dashboard', domain: 'gst', pageId: 'returns' }))).toBe('mw/firm/dashboard/gst%3Areturns')
+    // No one project runs it: the app home.
+    expect(go(routes.view.domains({ type: 'domain', domain: 'stock' }))).toBe('mw/*/app/stock')
+    expect(go(routes.view.domains({ type: 'automations', domain: 'stock' }))).toBe('mw/*/app/stock')
+  })
+
   test('settings and the other app screens keep their own layout', () => {
     expect(to('settings')).toBeNull()
     expect(to(routes.view.draft('d1'))).toBeNull()

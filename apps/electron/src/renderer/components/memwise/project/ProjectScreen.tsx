@@ -201,6 +201,20 @@ function ShellCard({ children, className, style, testId }: { children: React.Rea
   )
 }
 
+/**
+ * A record opened from a classic route (Stage 3): it moves to its own project once its page says
+ * which; a record every project of the app shares, or one in no listed project, shows here.
+ */
+function RecordInItsProject({ entity, recordId, projects }: { entity: string; recordId: string; projects: ShellProject[] }) {
+  const { data: page, loaded } = useMemwiseRecordPage(entity, recordId)
+  const target = page?.project && projects.some(p => p.id === page.project) ? page.project : null
+  React.useEffect(() => {
+    if (target) navigate(routes.view.project(target, { type: 'record', entity, recordId }))
+  }, [target, entity, recordId])
+  if (!loaded || target) return null
+  return <RecordPage entity={entity} recordId={recordId} />
+}
+
 /** The page column: what the route names. */
 function PageColumn({ view, project, projects, stored }: { view: ProjectView; project: ShellProject; projects: ShellProject[]; stored: boolean }) {
   const { t } = useTranslation()
@@ -212,6 +226,7 @@ function PageColumn({ view, project, projects, stored }: { view: ProjectView; pr
   if (d.type === 'new') return <NewProjectScreen key={d.appId} appId={d.appId} />
   if (view.projectId === ALL_PROJECTS) {
     if (d.type === 'waiting' && d.itemId) return <InboxDetailPage itemId={d.itemId} />
+    if (d.type === 'record') return <RecordInItsProject key={`${d.entity}:${d.recordId}`} entity={d.entity} recordId={d.recordId} projects={projects} />
     return stored ? <WaitingAllScreen /> : <WaitingPage projectId={ALL_PROJECTS} projects={projects} />
   }
   switch (d.type) {

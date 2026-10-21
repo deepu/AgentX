@@ -51,6 +51,14 @@ export function useProjectShellRouting(navState: NavigationState, workspaceName?
       inbox: store.get(memwiseInboxAtom),
       cases: store.get(memwiseCasesAtom),
       hasProject: id => list.some(p => p.id === id),
+      // Stage 3: only once projects are stored does an app id stop being a project id.
+      ...(list.some(p => p.stored) ? {
+        projectForApp: (app: string) => {
+          if (current.apps.includes(app)) return current.id
+          const running = list.filter(p => p.apps.includes(app) && p.status !== 'archived')
+          return running.length === 1 ? running[0]!.id : undefined
+        },
+      } : {}),
     })
   }, [store, stack, focusedIndex])
 
