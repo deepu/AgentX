@@ -516,6 +516,35 @@ export type MwInboxItem =
       description: string
       since: string
     }
+  /** Stage 5: a change request waiting for a signature: the raiser's ("Send to QA") or QA's. No case. */
+  | {
+      kind: 'change-request'
+      id: string
+      caseId?: undefined
+      runId?: undefined
+      workflowId: string
+      /** `CR-014 · Stop the QC step for CVs`, for the list row. */
+      caseTitle: string
+      /** The playbook's title. */
+      stepTitle: string
+      signoff: 'raiser' | 'qa'
+      changeRequest: import('./memwise-regulated').MwChangeRequestSummary
+      since: string
+    }
+  /** Stage 5: an inspector asked the study team a question (answered in the app). No case. */
+  | {
+      kind: 'inspector-question'
+      id: string
+      caseId?: undefined
+      runId?: undefined
+      workflowId?: undefined
+      /** The question, for the list row. */
+      caseTitle: string
+      /** The inspection's name. */
+      stepTitle: string
+      question: import('./memwise-regulated').MwInspectorQuestion
+      since: string
+    }
 
 export interface MwSubmitStepInput {
   stepRunId: string
