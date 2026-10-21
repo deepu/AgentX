@@ -30,10 +30,10 @@ describe('WorkflowMap', () => {
 
   it('shows counts and a case path in live mode', () => {
     const html = renderToStaticMarkup(createElement(WorkflowMap, { playbook: samplePlaybook, mode: 'live', live: sampleLiveCounts, highlightPath: sampleHighlightPath }))
-    expect(html).toContain('3 open cases here')
+    expect(html).toContain('3 open runs here')
     expect(html).toContain('aria-current="step"')
     expect(text(html)).toContain('Now')
-    expect(text(html)).toContain("This case's path")
+    expect(text(html)).toContain("This run's path")
     expect(html).toContain('stroke="var(--accent-raw)"')
   })
 })

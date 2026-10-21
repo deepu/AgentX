@@ -522,11 +522,15 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
     return { svc, actor, records, project, entity: rec.entity, id: rec.id, domain }
   }
 
-  /** A bare entity name is looked up in the anchored record's domain. */
+  /** A bare entity name is looked up in the anchored record's domain (in every domain for `*`, all projects). */
   function entityKey(c: RecordChatContext, entity: string): string {
     if (c.project.entities[entity]) return entity
     if (!entity.includes('.')) {
-      const inDomain = Object.entries(c.project.entities).find(([key, def]) => (def.domain ?? 'domain') === c.domain && (key === `${c.domain}.${entity}` || def.entity.toLowerCase() === entity.toLowerCase()))
+      const inDomain = Object.entries(c.project.entities).find(([key, def]) => {
+        const domain = def.domain ?? 'domain'
+        if (c.domain !== '*' && domain !== c.domain) return false
+        return key === `${domain}.${entity}` || def.entity.toLowerCase() === entity.toLowerCase()
+      })
       if (inDomain) return inDomain[0]
     }
     return entity

@@ -1025,7 +1025,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
    * Reuses the person's chat on this step, or on an earlier attempt of it in the same run (after a
    * review sent it back), re-anchoring it to the waiting attempt; otherwise makes one.
    */
-  async function openConversationChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, stepRunId: string): Promise<string> {
+  async function openConversationChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, stepRunId: string, message?: string): Promise<string> {
     const s = await conversationState(svc, stepRunId, actor)
     const wf = c.project.workflows[s.workflowId]
     const step = wf?.steps[s.stepId]
@@ -1054,6 +1054,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
             })
           }
         }
+        if (message) sendFirst(a.chatId, message)
         return a.chatId
       }
     }
@@ -1075,7 +1076,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       block: await conversationBlock(svc, s, actor, who),
       personName: who,
     })
-    kickoff(session.id, 'conversation')
+    // The person's own first message, when they typed one (the project shell), else the agent opens.
+    if (message) sendFirst(session.id, message)
+    else kickoff(session.id, 'conversation')
     return session.id
   }
 
@@ -1471,7 +1474,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         if (rec && isConversationStep(step)) {
           const s = await conversationState(svc, rec.stepRunId, actor)
           // A finished conversation opens as an ordinary chat about it.
-          if (s.status === 'waiting') return { sessionId: await openConversationChat(svc, actor, c, workspaceId, s.stepRunId) }
+          if (s.status === 'waiting') return { sessionId: await openConversationChat(svc, actor, c, workspaceId, s.stepRunId, message) }
         }
       }
       if (input?.anchor?.kind === 'record') {
