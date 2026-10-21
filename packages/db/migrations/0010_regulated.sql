@@ -116,8 +116,9 @@ create or replace function mw.audit_hash(prev_hash text, id text, project text, 
       'entity', entity, 'record_id', record_id, 'case_id', case_id, 'data', data)), 'UTF8')), 'hex')
   $$;
 
--- Appends one entry, chained to the project's last one. One lock for the whole log, so entries
--- of concurrent transactions chain in commit order and two projects never wait on each other.
+-- Appends one entry, chained to the project's last one. One lock per project, held to the end of
+-- the transaction, so a project's entries from concurrent transactions chain in commit order and
+-- two projects never wait on each other.
 create or replace function mw.audit_append(p_project text, p_actor_kind text, p_actor text, p_actor_label text, p_action text,
                                            p_entity text, p_record_id text, p_case_id text, p_data jsonb) returns text
   language plpgsql security definer set search_path = mw, pg_temp as $$
@@ -127,7 +128,7 @@ declare
   new_id text := 'aud_' || mw.ulid();
   d jsonb := mw.audit_plain(coalesce(p_data, '{}'::jsonb));
 begin
-  perform pg_advisory_xact_lock(hashtext('mw.audit_log'));
+  perform pg_advisory_xact_lock(hashtext('mw.audit_log:' || p_project));
   t := clock_timestamp();
   select a.hash into prev from mw.audit_log a where a.project = p_project order by a.seq desc limit 1;
   prev := coalesce(prev, repeat('0', 64));
@@ -192,7 +193,8 @@ begin
   if new.via like 'run_%/%' then
     select s.case_id into case_id from mw.step_runs s where s.id = new.via;
   end if;
-  perform mw.audit_append(split_part(new.entity, '.', 1), who.kind, who.actor, who.label,
+  -- An entity key names its domain (`etmf.Document`); a default-domain entity (`Client`) is in `domain`.
+  perform mw.audit_append(case when new.entity like '%.%' then split_part(new.entity, '.', 1) else 'domain' end, who.kind, who.actor, who.label,
     case when new.version = 1 then 'record.created' else 'record.changed' end, new.entity, new.record_id, case_id,
     jsonb_strip_nulls(jsonb_build_object('version', new.version, 'changed', to_jsonb(new.changed), 'reason', new.reason,
       'via', new.via, 'status', new."values" ->> 'status', 'versionHash', new.hash)));

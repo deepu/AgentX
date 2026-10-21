@@ -16,14 +16,16 @@ import type { AuditEntry, AuditEntryView, AuditExport, AuditLogService, AuditQue
 
 export const AUDIT_EXPORT_FORMAT = 'memwise-audit/1';
 const SIGNING_KEY = 'audit-export-ed25519';
-/** Entries one export holds at most. */
-const MAX_EXPORT = 100_000;
+/** Entries in one export at most (exported from the first: a longer log's export is not complete). */
+export const MAX_EXPORT = 100_000;
 
 export interface AuditLogDeps {
   pool: pg.Pool;
   entities(): Record<string, EntityTypeDef>;
   defs: DefinitionCache;
   people: import('@memwise/db').PgPeopleStore;
+  /** Entries in one export at most (default MAX_EXPORT; tests set a small one). */
+  maxExport?: number;
 }
 
 const log = new PgAuditLog();
@@ -57,7 +59,9 @@ function asRows(entries: unknown): AuditEntryRow[] | undefined {
 
 /**
  * Checks an export with no database: every entry's hash, the links between entries, and the
- * signature over the file (by the public key in it; `trustedKey` says whether that key is ours).
+ * signature over the file (by the public key in it). Anyone can sign a file with a key of their
+ * own, so the export is verified only against a trusted key (this workspace's): without one the
+ * result is `ok: false`, unverified, however well the chain and signature hold.
  */
 export function verifyAuditExport(doc: unknown, trustedKey?: string): AuditVerifyResult {
   const d = doc as Partial<AuditExport> | null;
@@ -78,10 +82,11 @@ export function verifyAuditExport(doc: unknown, trustedKey?: string): AuditVerif
   } else {
     signature = { ok: false, publicKey: '' };
   }
-  const ok = chain.ok && signature.ok && signature.trusted !== false;
+  const ok = chain.ok && signature.ok && signature.trusted === true;
   const message = !chain.ok ? `The chain is broken: ${chain.message}.`
     : !signature.ok ? 'The chain holds, but the signature does not match: the file was changed after it was exported.'
     : signature.trusted === false ? 'The chain and signature hold, but the file was signed by another key than this workspace\'s.'
+    : signature.trusted === undefined ? 'Unverified: the chain and signature hold, but no trusted key was given, so who signed the file is not known. Give the workspace\'s public key.'
     : `The chain holds for all ${entries.length} entries and the signature is valid.`;
   return { ok, entries: entries.length, chain: { ok: chain.ok, ...(chain.brokenAt ? { brokenAt: chain.brokenAt } : {}), ...(chain.message ? { message: chain.message } : {}) }, signature, message };
 }
@@ -167,7 +172,11 @@ export function createAuditLogService(deps: AuditLogDeps): AuditLogService {
     },
 
     async export(q, actor) {
-      const entries = await rows({ ...q, afterSeq: 0 }, MAX_EXPORT);
+      // One more than fits says whether the log was cut short: a cut export isn't the complete log.
+      const max = deps.maxExport ?? MAX_EXPORT;
+      const fetched = await rows({ ...q, afterSeq: 0 }, max + 1);
+      const truncated = fetched.length > max;
+      const entries = truncated ? fetched.slice(0, max) : fetched;
       const filtered = !!(q.entity || q.recordId || q.caseId || q.actorKinds?.length || q.actions?.length);
       const { privateKey, publicKey } = await auditSigningKey(deps.pool);
       const by = actor.kind === 'person' ? actor.personId : 'system';
@@ -177,7 +186,7 @@ export function createAuditLogService(deps: AuditLogDeps): AuditLogService {
           ...(q.entity ? { entity: q.entity } : {}), ...(q.recordId ? { recordId: q.recordId } : {}), ...(q.caseId ? { caseId: q.caseId } : {}),
           ...(q.actorKinds?.length ? { actorKinds: q.actorKinds } : {}), ...(q.actions?.length ? { actions: q.actions } : {}),
         },
-        complete: !filtered,
+        complete: !filtered && !truncated,
         exportedAt: new Date().toISOString(), exportedBy: await actorName(actor),
         entries: entries.map(toEntry), publicKey,
       };

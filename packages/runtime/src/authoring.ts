@@ -47,7 +47,9 @@ export interface AuthoringDeps {
    */
   changes?: {
     onDraftCreated(meta: { id: string; workflowId: string; title: string; kind: string }, by: Actor): Promise<void>;
-    publishRefusal(draftId: string, changeRequest: string | undefined): Promise<string | undefined>;
+    publishRefusal(draft: { id: string; workflowId: string; kind: string }, changeRequest: string | undefined): Promise<string | undefined>;
+    /** Why the draft's files can't change now (its request was sent to QA or closed), if they can't. */
+    writeRefusal(draftId: string): Promise<string | undefined>;
     regulated(workflowId: string): boolean;
   };
 }
@@ -432,6 +434,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async write(input, by) {
+      const refused = await deps.changes?.writeRefusal(input.draftId);
+      if (refused) throw new Error(refused);
       const edit = await writeDraftFiles(root, input.draftId, input.files, {
         by: byLabel(by), via: input.via, summary: input.summary, ...(input.chatId ? { chatId: input.chatId } : {}),
       });
@@ -440,6 +444,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async keepEdit(draftId, editId) {
+      const refused = await deps.changes?.writeRefusal(draftId);
+      if (refused) return { applied: false, message: refused };
       try {
         await setDraftEditStatus(root, draftId, editId, 'kept');
         emit(draftId);
@@ -450,6 +456,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async discardEdit(draftId, editId) {
+      const refused = await deps.changes?.writeRefusal(draftId);
+      if (refused) return { applied: false, message: refused };
       const r = await discardDraftEdit(root, draftId, editId);
       if (r.applied) emit(draftId);
       return { applied: r.applied, ...(r.message ? { message: r.message } : {}), ...(r.conflicts ? { conflicts: r.conflicts } : {}) };
@@ -518,7 +526,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         return { status: 'failed', message: `draft ${draftId} was already published` };
       }
       if (d.meta.status !== 'open') return { status: 'failed', message: `draft ${draftId} is ${d.meta.status}` };
-      const refusal = await deps.changes?.publishRefusal(draftId, opts.changeRequest);
+      const refusal = await deps.changes?.publishRefusal({ id: draftId, workflowId: d.meta.workflowId, kind: d.meta.kind }, opts.changeRequest);
       if (refusal) return { status: 'failed', message: refusal };
       if ((await draftContentHash(root, draftId)) !== opts.hash) return { status: 'stale', message: 'the draft changed after it was checked; check it again' };
       try {

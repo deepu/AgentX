@@ -666,7 +666,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       emit: (change) => feed.emit(change),
       changes: {
         onDraftCreated: (meta, by) => changes.onDraftCreated(meta, by),
-        publishRefusal: (draftId, cr) => changes.publishRefusal(draftId, cr),
+        publishRefusal: (draft, cr) => changes.publishRefusal(draft, cr),
+        writeRefusal: (draftId) => changes.writeRefusal(draftId),
         regulated: (workflowId) => isRegulatedPlaybook(indexed?.project, workflowId),
       },
     });

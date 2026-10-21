@@ -27,6 +27,23 @@ const FILED_STATES = new Set(['filed', 'superseded']);
 /** What an inspector's trail leaves out: change requests, other inspectors, exports. */
 const HIDDEN_ACTIONS = /^(change|inspector|audit)\./;
 
+/**
+ * Whether an entry of a document's trail is shown to an inspector: not the kernel's own entries
+ * (above), and of record changes only those of this record (its cases also wrote other records).
+ */
+export function inspectorSees(e: Pick<AuditEntryView, 'action' | 'entity' | 'recordId'>, entity: string, recordId: string): boolean {
+  if (HIDDEN_ACTIONS.test(e.action)) return false;
+  if (e.action.startsWith('record.')) return e.entity === entity && e.recordId === recordId;
+  return true;
+}
+
+/** An AI entry without the AI's own words about it (D117: no AI suggestions); its quote of the document stays. */
+export function withoutAiProse<T extends Pick<AuditEntryView, 'actorKind' | 'data'>>(e: T): T {
+  if (e.actorKind !== 'ai' || !e.data || !('rationale' in e.data)) return e;
+  const { rationale: _drop, ...data } = e.data;
+  return { ...e, data };
+}
+
 export const inspectorTokenHash = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
 export interface InspectorDeps {
@@ -290,8 +307,9 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
       const found = await filedDocument(l, entity, id);
       if (!found) return undefined;
       await logged(l, 'inspector.viewed', { entity: keyOf(found.def), recordId: id }, { view: 'trail' });
-      const { entries, chain } = await deps.auditLog().list({ project: l.project, entity: keyOf(found.def), recordId: id, limit: 2000 }, { kind: 'system' });
-      return { entries: entries.filter((e: AuditEntryView) => !HIDDEN_ACTIONS.test(e.action)), chain: { ok: chain.ok } };
+      const key = keyOf(found.def);
+      const { entries, chain } = await deps.auditLog().list({ project: l.project, entity: key, recordId: id, limit: 2000 }, { kind: 'system' });
+      return { entries: entries.filter((e: AuditEntryView) => inspectorSees(e, key, id)).map(withoutAiProse), chain: { ok: chain.ok } };
     },
 
     async download(token: string, entity: string, id: string) {

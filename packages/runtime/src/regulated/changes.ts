@@ -9,8 +9,8 @@
 // verifier model role, as the step engine does) on the result and evidence each case recorded,
 // and compares the verdict with the person's decision: "41 of 42 match QC".
 import {
-  changeRequestLabel, contentHash, PgChangeRequestStore, PgSignatureStore, withTransaction, type ChangeRequestRow, type ChangeValidationRow,
-  type PgPeopleStore,
+  changeRequestLabel, contentHash, PgAuditLog, PgChangeRequestStore, PgSignatureStore, withTransaction, type ChangeRequestRow, type ChangeValidationRow,
+  type PgPeopleStore, type Queryable,
 } from '@memwise/db';
 import {
   DEFAULT_DOMAIN, diffDraft, loadDraft, type Diagnostic, type DraftDiff, type ProjectDefs, type StepDef, type WorkflowDef,
@@ -52,11 +52,13 @@ export interface ChangesDeps {
 export interface ChangesKernelService extends ChangesService {
   inboxItems(actor: Actor): Promise<import('../types.ts').InboxItem[]>;
   onDraftCreated(meta: { id: string; workflowId: string; title: string; kind: string }, by: Actor): Promise<void>;
-  publishRefusal(draftId: string, changeRequest: string | undefined): Promise<string | undefined>;
+  publishRefusal(draft: { id: string; workflowId: string; kind: string }, changeRequest: string | undefined): Promise<string | undefined>;
+  writeRefusal(draftId: string): Promise<string | undefined>;
 }
 
 const store = new PgChangeRequestStore();
 const signatures = new PgSignatureStore();
+const auditStore = new PgAuditLog();
 
 /** The project (domain) of a live playbook. */
 const projectOf = (wf: Pick<WorkflowDef, 'domain'>) => wf.domain ?? DEFAULT_DOMAIN;
@@ -186,21 +188,32 @@ export function createChangesService(deps: ChangesDeps): ChangesKernelService {
     return deps.project()?.workflows[id];
   }
 
-  async function requireCr(idOrNumber: string, project?: string): Promise<ChangeRequestRow> {
-    const cr = await store.find(deps.pool, idOrNumber, project);
-    if (!cr) throw new Error(`there is no change request ${idOrNumber}`);
+  /**
+   * The request a change is made to, by its id only: numbers (`CR-014`) are per project, so a bare
+   * number could name another project's request. Reads resolve labels with their project.
+   */
+  async function requireCr(id: string): Promise<ChangeRequestRow> {
+    if (!/^cr_/.test(id)) throw new Error(`name the change request by its id (cr_…), not ${id}: numbers are per project`);
+    const cr = await store.find(deps.pool, id);
+    if (!cr) throw new Error(`there is no change request ${id}`);
     return cr;
   }
 
   const changed = (cr: ChangeRequestRow) => deps.emit({ kind: 'regulated', project: cr.project });
 
-  async function audit(cr: ChangeRequestRow, by: PersonActor | undefined, action: string, data: Record<string, unknown> = {}) {
-    await deps.auditLog().append({
-      project: cr.project, actorKind: by ? 'person' : 'system', actor: by?.personId ?? 'system', ...(by ? { actorLabel: await nameOf(by.personId) } : {}),
+  /** A change request's entry in its project's trail; in `db`'s transaction when given. */
+  async function audit(cr: ChangeRequestRow, by: PersonActor | undefined, action: string, data: Record<string, unknown> = {}, db?: Queryable) {
+    const entry = {
+      project: cr.project, actorKind: by ? 'person' as const : 'system' as const, actor: by?.personId ?? 'system', ...(by ? { actorLabel: await nameOf(by.personId) } : {}),
       action, entity: 'change_request', recordId: cr.id,
       data: { number: cr.number, label: changeRequestLabel(cr.number), workflow: cr.workflowId, ...data },
-    });
+    };
+    if (db) await auditStore.append(db, entry);
+    else await deps.auditLog().append(entry);
   }
+
+  /** The latest signature of a role (a request sent back and sent again is signed again). */
+  const latestSig = <T extends { manifest: Record<string, unknown> }>(sigs: T[], role: 'raiser' | 'qa') => sigs.filter((x) => x.manifest.role === role).at(-1);
 
   async function summary(cr: ChangeRequestRow, validations?: ChangeValidationRow[], draftHash?: string): Promise<ChangeRequestSummary> {
     const live = liveWorkflow(cr.workflowId);
@@ -236,8 +249,9 @@ export function createChangesService(deps: ChangesDeps): ChangesKernelService {
     const roleTitle = (r: string) => project?.roles[r]?.title;
     const validations = await store.validations(deps.pool, cr.id);
     const sigs = await signatures.forRecord(deps.pool, 'change_request', cr.id);
-    const raiserSig = sigs.find((s) => s.manifest.role === 'raiser');
-    const qaSig = sigs.find((s) => s.manifest.role === 'qa');
+    // An open request isn't signed yet (one sent back to its raiser keeps the old signature in the trail).
+    const raiserSig = cr.status === 'open' ? undefined : latestSig(sigs, 'raiser');
+    const qaSig = cr.status === 'open' ? undefined : latestSig(sigs, 'qa');
     const qaRole = qaRoleOf(project, cr.project);
     const signoffs: ChangeSignoff[] = [
       {
@@ -500,29 +514,49 @@ export function createChangesService(deps: ChangesDeps): ChangesKernelService {
         if (by.personId === cr.raisedBy) {
           return { applied: false, status: 'forbidden', message: `you raised ${label}; someone else in QA signs it` };
         }
-        const sent = (await signatures.forRecord(deps.pool, 'change_request', cr.id)).find((s) => s.manifest.role === 'raiser');
+        const sigs = await signatures.forRecord(deps.pool, 'change_request', cr.id);
+        const qaSigned = latestSig(sigs, 'qa');
+        // QA signed and the draft went live, but the request wasn't closed (the app stopped in
+        // between): close it with the version that was made, without publishing again.
+        if (qaSigned && draft.meta.status === 'published') {
+          const made = await a.publish(cr.draftId, { hash, by: by.personId, source: 'app', changeRequest: cr.id });
+          if (made.status !== 'published') return { applied: false, status: 'failed', message: made.message };
+          return finishPublished(cr, by, made);
+        }
+        const sent = latestSig(sigs, 'raiser');
         if (!sent || sent.manifest.draftHash !== hash || !validated) {
-          return { applied: false, status: 'stale', message: `${label} changed after it was sent to QA: it goes back to the person who raised it` };
+          // Changed after it was sent: back to the raiser, who validates and signs it again.
+          const back = await withTransaction(deps.pool, async (db) => {
+            const row = (await store.update(db, cr.id, { status: 'open' }))!;
+            await audit(row, by, 'change.returned', {
+              why: 'changed after it was sent to QA', sentHash: (sent?.manifest.draftHash as string | undefined) ?? null, draftHash: hash,
+            }, db);
+            return row;
+          });
+          changed(back);
+          return {
+            applied: false, status: 'stale', view: await view(back, by),
+            message: `${label} changed after it was sent to QA: it went back to ${await nameOf(cr.raisedBy)} to validate and sign again`,
+          };
         }
         const refused = await checkSigningPassword(deps.people, by, input, QA_MEANING, { changeRequest: cr.id });
         if (refused) return { applied: refused.applied, status: refused.status, ...(refused.message ? { message: refused.message } : {}) };
-        // Published first: a publish that can't apply (the live files changed) signs nothing.
+        // QA's signature and the marker that publishing started are kept first, in one transaction:
+        // no version goes live without the signature that approved it.
+        if (!qaSigned || qaSigned.manifest.draftHash !== hash) {
+          await withTransaction(deps.pool, async (db) => {
+            await signChange(db, cr, by, 'qa', hash, last!.id);
+            await audit(cr, by, 'change.publishing', { draftHash: hash }, db);
+          });
+        }
         const published = await a.publish(cr.draftId, { hash, by: by.personId, source: 'app', changeRequest: cr.id });
         if (published.status !== 'published') {
+          // Signed, not live (the live files changed): the request stays with QA, and signing again retries.
+          await audit(cr, by, 'change.publish_failed', { status: published.status, message: published.message ?? null });
+          changed(cr);
           return { applied: false, status: published.status === 'stale' ? 'stale' : published.status === 'conflict' ? 'conflict' : 'failed', message: published.message };
         }
-        const next = await withTransaction(deps.pool, async (db) => {
-          await signChange(db, cr, by, 'qa', hash, last!.id);
-          return (await store.update(db, cr.id, {
-            status: 'published', toVersion: published.version, toHash: published.hash, closedAt: new Date().toISOString(), closedBy: by.personId,
-          }))!;
-        });
-        await audit(next, by, 'change.published', { version: published.version, hash: published.hash, fromVersion: cr.fromVersion ?? null });
-        changed(next);
-        return {
-          applied: true, status: 'applied', view: await view(next, by),
-          published: { workflowId: published.workflowId, version: published.version, hash: published.hash },
-        };
+        return finishPublished(cr, by, published);
       }
       return { applied: false, status: 'failed', message: `${label} is ${cr.status}` };
     },
@@ -542,6 +576,19 @@ export function createChangesService(deps: ChangesDeps): ChangesKernelService {
       await store.setNextNumber(deps.pool, project, next);
     },
   };
+
+  /** Closes a request whose draft QA's signature published. */
+  async function finishPublished(cr: ChangeRequestRow, by: PersonActor, published: { workflowId: string; version: number; hash: string }): Promise<ChangeSignResult> {
+    const next = (await store.update(deps.pool, cr.id, {
+      status: 'published', toVersion: published.version, toHash: published.hash, closedAt: new Date().toISOString(), closedBy: by.personId,
+    }))!;
+    await audit(next, by, 'change.published', { version: published.version, hash: published.hash, fromVersion: cr.fromVersion ?? null });
+    changed(next);
+    return {
+      applied: true, status: 'applied', view: await view(next, by),
+      published: { workflowId: published.workflowId, version: published.version, hash: published.hash },
+    };
+  }
 
   async function signChange(db: pg.PoolClient, cr: ChangeRequestRow, by: PersonActor, role: 'raiser' | 'qa', draftHash: string, validationId: string) {
     const values = { number: cr.number, workflow: cr.workflowId, title: cr.title, reason: cr.reason, draftHash, validation: validationId, role };
@@ -595,10 +642,26 @@ export function createChangesService(deps: ChangesDeps): ChangesKernelService {
       await openFor(meta, by);
     },
     /** Authoring's hook: why the draft can't be published other than through its request, if it can't. */
-    async publishRefusal(draftId: string, changeRequest: string | undefined): Promise<string | undefined> {
+    async publishRefusal(draft: { id: string; workflowId: string; kind: string }, changeRequest: string | undefined): Promise<string | undefined> {
+      const cr = await store.byDraft(deps.pool, draft.id);
+      if (cr) return cr.id === changeRequest ? undefined : `this draft is ${changeRequestLabel(cr.number)}: it goes live when QA signs the change request`;
+      // A regulated playbook's change with no request (made by an agent or the system, which don't
+      // open one) or published under another request's name goes live only through a request of its own.
+      const live = liveWorkflow(draft.workflowId);
+      if (draft.kind === 'change' && live && deps.project()?.domains?.[projectOf(live)]?.regulated) {
+        return `${live.title ?? live.id} is in a regulated domain: this draft has no change request, so it can't go live (open a change request for it)`;
+      }
+      if (changeRequest) return `this draft is not the draft of that change request`;
+      return undefined;
+    },
+    /** Authoring's hook: a request's draft changes only while the request is open. */
+    async writeRefusal(draftId: string): Promise<string | undefined> {
       const cr = await store.byDraft(deps.pool, draftId);
-      if (!cr || cr.id === changeRequest) return undefined;
-      return `this draft is ${changeRequestLabel(cr.number)}: it goes live when QA signs the change request`;
+      if (!cr || cr.status === 'open') return undefined;
+      const label = changeRequestLabel(cr.number);
+      return cr.status === 'in_review'
+        ? `${label} is in review: its draft can't be changed while QA has it. Withdraw it to change it, or QA sends it back.`
+        : `${label} is ${cr.status}: its draft can't be changed now`;
     },
   });
 }

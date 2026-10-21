@@ -45,7 +45,7 @@ const USAGE = `usage:
   memwise plugin list <project>
   memwise bind <project> <plugin-id> [--draft]
   memwise validation-report <project> [--out <report.md>] [--database-url <admin-url>]
-  memwise audit verify <export.json> [--key <public-key>]
+  memwise audit verify <export.json> --key <public-key>   (without --key the file is reported unverified)
   memwise audit verify --project <id> --database-url <url>`;
 
 /**
@@ -462,7 +462,7 @@ async function auditVerify(file: string | undefined, opts: { key?: string; proje
     const r = verifyAuditExport(doc, opts.key);
     console.log(r.message);
     if (r.chain.brokenAt) console.log(`  first broken entry: ${r.chain.brokenAt.seq} (${r.chain.brokenAt.id}), ${r.chain.brokenAt.reason === 'hash' ? 'its hash does not match' : 'it does not follow the entry before it'}`);
-    if (r.signature?.publicKey) console.log(`  signed by key ${r.signature.publicKey.slice(-16)}${r.signature.trusted === undefined ? '' : r.signature.trusted ? ' (the key given)' : ' (not the key given)'}`);
+    if (r.signature?.publicKey) console.log(`  signed by key ${r.signature.publicKey.slice(-16)}${r.signature.trusted === undefined ? ' (not checked: pass --key <public key> to verify who signed it)' : r.signature.trusted ? ' (the key given)' : ' (not the key given)'}`);
     return r.ok ? 0 : 1;
   }
   if (!opts.project || !opts.databaseUrl) return 2;

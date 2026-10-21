@@ -13,7 +13,10 @@ import type { TestDatabase } from '@memwise/db';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { draftDir } from '@memwise/defs';
 import { createKernel } from '../src/kernel.ts';
+import { createAuditLogService } from '../src/regulated/audit-log.ts';
+import { inspectorSees, withoutAiProse } from '../src/regulated/inspectors.ts';
 import { main } from '../src/cli.ts';
 import type { AuditExport, ChangeRequestView, Kernel, PersonActor } from '../src/types.ts';
 import {
@@ -117,6 +120,16 @@ describe.skipIf(!pgAvailable)('regulated projects (Stage 5) on the eTMF example'
     const other = await a.createDraft({ workflowId: 'file-document', title: 'Another change' }, anika);
     expect(await kernel.changes.forDraft(other.id)).toMatchObject({ number: 15 });
     await kernel.changes.withdraw((await kernel.changes.forDraft(other.id))!.id, anika, 'opened by mistake');
+    // A change draft made by the system or an agent opens no request, and so can't go live either.
+    const bySystem = await a.createDraft({ workflowId: 'file-document', title: 'An agent\'s change', kind: 'change' }, { kind: 'system' });
+    expect(await kernel.changes.forDraft(bySystem.id)).toBeUndefined();
+    const sysHash = (await a.getDraft(bySystem.id))!.contentHash;
+    expect(await a.publish(bySystem.id, { hash: sysHash, source: 'app' })).toMatchObject({ status: 'failed', message: expect.stringContaining('no change request') });
+    expect(await a.publish(bySystem.id, { hash: sysHash, source: 'app', changeRequest: cr.id })).toMatchObject({ status: 'failed' });
+    await a.discardDraft(bySystem.id, anika);
+    // Numbers are per project: a change is made to a request by its id, never by a bare number.
+    await expect(kernel.changes.update('CR-014', { reason: 'x' }, anika)).rejects.toThrow(/by its id/);
+    await expect(kernel.changes.sign('CR-014', { password: PASSWORD }, anika)).rejects.toThrow(/by its id/);
   });
 
   test('validation: the AI checks alone would have passed the unsigned CV QC sent back (2 of 3), so it fails', async () => {
@@ -161,8 +174,33 @@ describe.skipIf(!pgAvailable)('regulated projects (Stage 5) on the eTMF example'
     expect(sent.view!.signoffs.map((s) => [s.role, s.status])).toEqual([['raiser', 'signed'], ['qa', 'waiting']]);
     const items = await kernel.inbox(grace);
     expect(items.find((i) => i.kind === 'change-request')).toMatchObject({ signoff: 'qa', changeRequest: { label: 'CR-014' } });
-    // Edits wait while QA has it.
+    // Edits wait while QA has it: the request, and its draft's files, edits kept or undone.
     await expect(kernel.changes.update(cr.id, { reason: 'x' }, anika)).rejects.toThrow(/in review/);
+    await expect(a.write({ draftId: cr.draftId, via: 'editor', summary: 'x', files: [{ path, content: 'x' }] }, anika)).rejects.toThrow(/in review/);
+    const lastEdit = (await a.getDraft(cr.draftId))!.edits.at(-1)!;
+    expect(await a.keepEdit(cr.draftId, lastEdit.id, anika)).toMatchObject({ applied: false, message: expect.stringMatching(/in review/) });
+    expect(await a.discardEdit(cr.draftId, lastEdit.id, anika)).toMatchObject({ applied: false, message: expect.stringMatching(/in review/) });
+  });
+
+  test('changed after it was sent anyway (on disk): QA\'s signature sends it back to the raiser, who validates and signs again', async () => {
+    const a = kernel.authoring!;
+    const path = 'domains/etmf/workflows/file-document/steps/classify.md';
+    const file = join(draftDir(projectDir, cr.draftId), path);
+    const before = readFileSync(file, 'utf8');
+    writeFileSync(file, `${before}\nChanged after it was sent.\n`);
+    const back = await kernel.changes.sign(cr.id, { password: PASSWORD }, grace);
+    expect(back).toMatchObject({ applied: false, status: 'stale', message: expect.stringContaining('went back to Anika Rao'), view: { status: 'open' } });
+    expect(back.view!.signoffs.map((s) => [s.role, s.status])).toEqual([['raiser', 'waiting'], ['qa', 'not-yet']]);
+    const returned = (await kernel.auditLog.list({ project: 'etmf', actions: ['change.returned'] }, anika)).entries;
+    expect(returned).toHaveLength(1);
+    expect(returned[0]).toMatchObject({ actorKind: 'person', actorLabel: 'Grace Lee', recordId: cr.id, data: { label: 'CR-014' } });
+    expect((await kernel.inbox(grace)).some((i) => i.kind === 'change-request')).toBe(false);
+    // Open again: the raiser undoes the stray change, validates and signs it to QA again.
+    await a.write({ draftId: cr.draftId, via: 'editor', summary: 'Undo the stray change', files: [{ path, content: before }] }, anika);
+    expect(await kernel.changes.validate(cr.id, anika)).toMatchObject({ passed: 3, total: 3, status: 'passed' });
+    const again = await kernel.changes.sign(cr.id, { password: PASSWORD }, anika);
+    expect(again).toMatchObject({ applied: true, view: { status: 'in_review' } });
+    expect(again.view!.signoffs.map((s) => [s.role, s.status])).toEqual([['raiser', 'signed'], ['qa', 'waiting']]);
   });
 
   test('QA signs: version 2 goes live; a case started on version 1 finishes on version 1, new cases run on 2', async () => {
@@ -173,6 +211,16 @@ describe.skipIf(!pgAvailable)('regulated projects (Stage 5) on the eTMF example'
     expect((await kernel.getRun(oldRun))!.workflowHash).toBe(liveHash);
 
     expect(await kernel.changes.sign(cr.id, { password: PASSWORD }, tom)).toMatchObject({ applied: false, status: 'forbidden' });
+    // The app stops right after the draft went live: QA's signature was kept before it did.
+    const a = kernel.authoring!;
+    const publish = a.publish;
+    a.publish = async (...args) => { await publish(...args); throw new Error('the app stopped'); };
+    await expect(kernel.changes.sign(cr.id, { password: PASSWORD }, grace)).rejects.toThrow(/the app stopped/);
+    a.publish = publish;
+    const midway = (await kernel.changes.get(cr.id, grace))!;
+    expect(midway.status).toBe('in_review');
+    expect(midway.signoffs.find((s) => s.role === 'qa')).toMatchObject({ status: 'signed', person: { name: 'Grace Lee' } });
+    // Signing again closes the request with the version that was made, without publishing again.
     const signed = await kernel.changes.sign(cr.id, { password: PASSWORD }, grace);
     expect(signed).toMatchObject({ applied: true, published: { workflowId: 'file-document', version: 2 }, view: { status: 'published', toVersion: 2 } });
     const live = (await kernel.project()).project.workflows['file-document']!;
@@ -180,6 +228,11 @@ describe.skipIf(!pgAvailable)('regulated projects (Stage 5) on the eTMF example'
     expect(live.steps.classify!.checkpoint).toContain(SIGNED_RULE);
     const versions = await kernel.versions('file-document');
     expect(versions.find((v) => v.version === 2)).toMatchObject({ publishedBy: grace.personId, source: 'app', live: true });
+    expect(versions.filter((v) => v.version > 1)).toHaveLength(1);
+    const marks = (await kernel.auditLog.list({ project: 'etmf', actions: ['change.publishing', 'change.published'] }, anika)).entries.map((e) => e.action);
+    expect(marks).toEqual(['change.publishing', 'change.published']);
+    expect((await kernel.auditLog.list({ project: 'etmf', entity: 'change_request', recordId: cr.id, actions: ['signature.signed'] }, anika)).entries
+      .map((e) => e.data.role)).toEqual(['raiser', 'raiser', 'qa']);
     expect(versions.find((v) => v.version === 1)).toMatchObject({ openCases: 1, live: false });
 
     await answerQc(kernel, tom, PASSWORD, old.caseId, 'approved');
@@ -235,10 +288,29 @@ describe.skipIf(!pgAvailable)('regulated projects (Stage 5) on the eTMF example'
     writeFileSync(good, JSON.stringify(exp));
     writeFileSync(bad, JSON.stringify(changed));
     expect(await main(['audit', 'verify', good, '--key', exp.publicKey])).toBe(0);
+    // Without a trusted key a self-signed file proves nothing: unverified.
+    expect(await main(['audit', 'verify', good])).toBe(1);
+    const { verifyAuditExport } = await import('../src/regulated/audit-log.ts');
+    expect(verifyAuditExport(JSON.parse(JSON.stringify(exp)))).toMatchObject({ ok: false, chain: { ok: true }, signature: { ok: true }, message: expect.stringContaining('Unverified') });
     expect(await main(['audit', 'verify', bad])).toBe(1);
     expect(await main(['audit', 'verify', '--project', 'etmf', '--database-url', db.url])).toBe(0);
     expect(JSON.parse(readFileSync(good, 'utf8')).entries.length).toBe(exp.entries.length);
     expect(await kernel.auditLog.verify({ project: 'etmf' })).toMatchObject({ ok: true });
+
+    // An export cut short at its limit says it isn't the complete log.
+    const small = createAuditLogService({ pool: db.pool, entities: () => ({}), defs: { latest: async () => undefined, workflow: async () => { throw new Error('none'); } } as never, people: { get: async () => undefined } as never, maxExport: 3 });
+    const cut = await small.export({ project: 'etmf' }, { kind: 'system' });
+    expect(cut).toMatchObject({ complete: false });
+    expect(cut.entries).toHaveLength(3);
+  });
+
+  test('an inspector sees record changes of the document asked for only, and no AI prose', () => {
+    expect(inspectorSees({ action: 'record.changed', entity: 'etmf.Document', recordId: 'd1' }, 'etmf.Document', 'd1')).toBe(true);
+    expect(inspectorSees({ action: 'record.changed', entity: 'etmf.Site', recordId: 's1' }, 'etmf.Document', 'd1')).toBe(false);
+    expect(inspectorSees({ action: 'step.completed', entity: null, recordId: null }, 'etmf.Document', 'd1')).toBe(true);
+    expect(inspectorSees({ action: 'change.published', entity: 'change_request', recordId: 'cr_1' }, 'etmf.Document', 'd1')).toBe(false);
+    expect(withoutAiProse({ actorKind: 'ai', data: { rationale: 'I think', quote: 'Investigator CV' } as Record<string, unknown> }).data).toEqual({ quote: 'Investigator CV' });
+    expect(withoutAiProse({ actorKind: 'person', data: { rationale: 'Not signed' } }).data).toEqual({ rationale: 'Not signed' });
   });
 
   // ---------------------------------------------------------------- inspectors
