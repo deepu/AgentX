@@ -69,3 +69,10 @@ export {
 } from './stores/notes.ts';
 export { PgFlagStore, type FlagRow } from './stores/flags.ts';
 export { PgViewStore, PgPageStore, type WrittenPage, type WrittenPageVersion } from './stores/pages.ts';
+
+// ---------------------------------------------------------------- Stage 5: regulated projects (docs/memwise/26-projects-and-pages.md §8)
+export {
+  PgChangeRequestStore, PgAuditLog, PgInspectorStore, auditEntryHash, checkAuditChain, changeRequestLabel,
+  type ChangeRequestRow, type ChangeRequestStatus, type ChangeValidationRow, type NewAuditEntry, type AuditEntryRow, type AuditFilter,
+  type AuditActorKind, type AuditChainCheck, type InspectorLinkRow, type InspectorQuestionRow, type InspectorPerson,
+} from './stores/regulated.ts';
