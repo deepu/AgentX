@@ -7,7 +7,7 @@ import { describe, expect, it } from 'bun:test'
 import type { AuditTrail, DashboardData, DomainSummary, RecordPage, TriggerSummary } from '@memwise/runtime'
 import {
   auditFileName, caseTitle, entityLabel, retentionDays, toAuditTrail, toDashboard, toDomain, toEntityDefinition, toEntityType, toFlagInboxItem,
-  toRecordPage, toTrigger, toTriggerHoldInboxItem, toView, toWaiting, triggerDescription, versionByLabel, waitingOn, withRefTitles,
+  toKeepResult, toRecordPage, toTrigger, toTriggerHoldInboxItem, toView, toWaiting, triggerDescription, versionByLabel, waitingOn, withRefTitles,
 } from '../dto'
 
 const DAY = 24 * 3600_000
@@ -229,5 +229,47 @@ describe('cases about records', () => {
       { entities } as never, new Map([['site_1', 'US-012 · Harbor Oncology, Boston']]),
     )
     expect(w).toMatchObject({ record: { title: 'US-012 · Harbor Oncology, Boston' }, values: { start_up_pack_complete: 90 }, types: { start_up_pack_complete: 'Percentage' } })
+  })
+})
+
+describe('Literature (doc 25): kpis, charts, a Text viewer with its quotes, rows kept from a chat', () => {
+  const interval = {
+    kind: 'interval' as const, title: 'Effect vs placebo', unit: '%', total: 1, skipped: 2,
+    data: [{ label: 'Orforglipron 36 mg vs placebo', value: -7.1, low: -8.2, high: -6.1, record: { entity: 'literature.Evidence', id: 'evid_1', title: 'Bodyweight', status: 'kept' } }],
+  }
+
+  it('a record page carries its kpis, charts by block key and texts, each in app shapes', () => {
+    const p = toRecordPage({ project }, {
+      ...page,
+      kpis: { included: { field: 'included', value: 3, type: 'Number', description: 'Papers included' } },
+      charts: {
+        'main:1': { kind: 'bar', total: 3, data: [{ label: '2024', value: 1, key: '2024' }, { label: 'Not set', value: 2, key: null }] },
+        'main:2': interval,
+      },
+      texts: { abstract: { text: 'n=1613 were randomised.', highlights: [
+        { quote: '1613 were randomised', field: 'sample_size', kind: 'value', value: 1613, found: true, start: 2, end: 22 },
+        { quote: 'not there', field: 'quote', kind: 'related', record: { entity: 'literature.Evidence', id: 'evid_2', title: 'X' }, found: false },
+      ] } },
+    }, names)
+    expect(p.kpis).toEqual({ included: { field: 'included', value: 3, type: 'Number', description: 'Papers included' } })
+    expect(p.charts?.['main:1']?.data).toEqual([{ label: '2024', value: 1, key: '2024' }, { label: 'Not set', value: 2, key: null }])
+    expect(p.charts?.['main:2']).toEqual({ ...interval, data: [{ ...interval.data[0], record: { entity: 'literature.Evidence', id: 'evid_1', title: 'Bodyweight', status: 'kept' } }] })
+    expect(p.texts?.abstract?.highlights).toEqual([
+      { quote: '1613 were randomised', field: 'sample_size', label: 'Sample size', kind: 'value', value: 1613, found: true, start: 2, end: 22 },
+      { quote: 'not there', field: 'quote', label: 'Quote', kind: 'related', record: { entity: 'literature.Evidence', id: 'evid_2', title: 'X' }, found: false },
+    ])
+    // A page without such blocks has none of the keys.
+    const plain = toRecordPage({ project }, page, names)
+    expect('kpis' in plain || 'charts' in plain || 'texts' in plain).toBe(false)
+  })
+
+  it('a free page chart block keeps its rows', () => {
+    const m = toDashboard('literature', { pageId: 'literature', title: 'Literature', params: {}, computedAt: 't', blocks: [{ kind: 'chart', chart: interval }] })
+    expect(m.blocks[0]).toMatchObject({ kind: 'chart', chart: { kind: 'interval', unit: '%', skipped: 2, data: [{ low: -8.2, high: -6.1 }] } })
+  })
+
+  it('kept rows: the new id and whether its quote was found, or why not', () => {
+    expect(toKeepResult({ entity: 'literature.Evidence', rows: [{ id: 'evid_1', quoteFound: false }, { error: 'some values need fixing', errors: { article: ['required'] } }] }))
+      .toEqual({ entity: 'literature.Evidence', rows: [{ id: 'evid_1', quoteFound: false }, { error: 'some values need fixing', errors: { article: ['required'] } }] })
   })
 })

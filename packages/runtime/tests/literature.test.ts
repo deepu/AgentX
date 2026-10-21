@@ -22,10 +22,10 @@ const ABSTRACT = 'This 72-week, phase 3, double-blind, placebo-controlled trial 
   + '1613 (757 [46·9%] female) were randomly assigned. The mean change in bodyweight was −9·6% (95% CI −10·5 to −8·7) with 36 mg. Eli Lilly and Company.';
 const ARTICLE_ID = 'arti_attain2';
 
-// The extractor reads the paper, then finishes with a quote per value (the `n` one with plain
-// dots and spaces, still found in the abstract's `46·9%`).
+// The extractor reads the paper by its key, then finishes with a quote per value (the `n` one
+// with plain dots and spaces, still found in the abstract's `46·9%`).
 const EXTRACTOR: ScriptedTurn[] = [
-  { toolCalls: [{ name: 'lit.article.get', args: { id: ARTICLE_ID } }] },
+  { toolCalls: [{ name: 'lit.article.get', args: { key: { pmid: '41275875' } } }] },
   { toolCalls: [{ name: 'step.finish', args: {
     outcome: 'extracted',
     writes: { n: 1613, sponsor: 'Eli Lilly and Company' },
@@ -115,7 +115,7 @@ describe.skipIf(!pgAvailable)('Literature in the kernel', () => {
     expect(effects.map((e) => e.idempotency_key.split(':').slice(1).join(':'))).toEqual(['lit.article.create:0', 'lit.article.create:1', 'lit.article.create:2']);
   }, 90_000);
 
-  test('a step reading the paper quotes its sources; the viewer lights the quotes up in the abstract', async () => {
+  test('a step reading the paper (got by its key) quotes its sources; the viewer lights the quotes up in the abstract', async () => {
     const { runId } = await kernel.startRun({ workflowId: 'read-paper', case: { article: ARTICLE_ID } });
     await finished(runId);
     const page = (await kernel.records.page('lit.Article', ARTICLE_ID, lead))!;

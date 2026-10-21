@@ -157,7 +157,7 @@ describe('record pages: kpis, charts, chat and a Text viewer', () => {
 describe('free pages: chart blocks', () => {
   test('parsed, with params narrowing', async () => {
     const { project } = await loadProject(makeMulti({}, LIT));
-    const page = project.domains.sales!.pages['evidence']!;
+    const page = project.domains!.sales!.pages['evidence']!;
     expect(page.blocks).toEqual([
       { kind: 'chart', chart: 'bar', entity: 'Evidence', by: 'outcome', where: 'article = params.article', title: 'By outcome' },
       { kind: 'chart', chart: 'interval', entity: 'Evidence', label: '{outcome}', value: 'effect', low: 'ci_low', high: 'ci_high' },
