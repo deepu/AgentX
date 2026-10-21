@@ -60,6 +60,8 @@ export interface RecordPageViewProps {
   /** Shown found/missing quotes in tests and the playground (the viewer works them out from the PDF). */
   missingQuotes?: number[]
   now?: number
+  /** Stage 6: blocks the container adds below the columns (the same record in other apps). */
+  extra?: React.ReactNode
 }
 
 const LAYOUT_GRID: Record<MwRecordPage['layout']['layout'], string> = {
@@ -68,7 +70,7 @@ const LAYOUT_GRID: Record<MwRecordPage['layout']['layout'], string> = {
   sidebar: '@3xl/record:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]',
 }
 
-export function RecordPageView({ page, actions, files = {}, review, missingQuotes, now }: RecordPageViewProps) {
+export function RecordPageView({ page, actions, files = {}, review, missingQuotes, now, extra }: RecordPageViewProps) {
   const { t, i18n } = useTranslation()
   const [activeField, setActiveField] = React.useState<string | null>(null)
   const move = useReasonedWrite(page.regulated)
@@ -253,6 +255,7 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
             <div className={cn('grid items-start gap-6', LAYOUT_GRID[page.layout.layout])} data-columns={columns.join(' ')}>
               {columns.map(c => <div key={c} className="min-w-0 space-y-6" data-area={c}>{area(c)}</div>)}
             </div>
+            {extra}
             {below && <div className="space-y-6" data-area="below">{area('below')}</div>}
           </>
         )}
