@@ -1,7 +1,7 @@
 workspace: Meridian Medical Affairs
 roles:
-  reviewer: { title: Literature reviewer, description: Screens the papers each watch finds and reviews the evidence kept from them }
-  lead:     { title: Medical affairs lead, description: "Owns the watches, approves each search and keeps the topics current" }
+  reviewer: { title: Literature reviewer, description: "Asks the literature questions, keeps the answers as pages and drafts replies to enquiries" }
+  lead:     { title: Medical affairs lead, description: "Reviews changes to the pages' answers and signs the replies to doctors' enquiries" }
 policy:                        # house rules for every domain
   policy: workspace
   effects:

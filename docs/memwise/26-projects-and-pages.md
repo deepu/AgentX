@@ -307,6 +307,70 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   5. GLP-1's summary leaves the draft sub-page out.
   6. Screenshots match `LAsk`, `LTopic`, `LBoard` and `LChange`.
 
+**As built** (branch `pages`; decisions D99–D103 in `15-decisions.md`):
+
+- **Storage.** `0008_pages.sql` does three things:
+  - It extends `mw.pages` with `project`, `parent`, `status` (draft/kept/archived), `question`, `chat_id`, `refresh` (jsonb: `every`, `until`, `next`, `last`, `playbook`, `summary_due`), `pinned`, `sums_children`, `owner` and `created_by`.
+  - It gives `mw.page_versions` the columns `via` and `reason`.
+  - It adds `mw.page_changes`, with the statuses `pending`, `accepted`, `sent_back` and `nothing_new`, and at most one pending change per page.
+  - A refresh that finds nothing new is kept as a `nothing_new` row for the history line. Undo appends a version and never rewrites one (D99).
+- **Kernel.** The pages service lives in `packages/runtime/src/pages/`.
+  - **Sweep.** It starts the refreshes that are due, with derived run ids so a page never has two at once. It also refreshes a parent's summary once `summary_due` is set.
+  - **Keep.** Keep puts the schedule on the page itself (D100). There is no per-page trigger row.
+  - **Refresh playbooks.** The built-in `refresh-page` runs `compare → review → accept | send_back`. A domain can name its own with `pages: { refresh, reviewer, every }` in `domain.yaml`. `memwise check` treats that playbook as kernel-routed, so its person steps need no `assignee`. Review goes to the page's owner or to `pages.reviewer` (D101).
+  - **Playbook tools.** `page.get`, `page.list` (`{project?, kept_only?}`, for "pages first" lookups), `page.compare`, `page.accept_change` and `page.send_back_change`.
+- **Chat.** Page chats (anchor `'page'`) get `page_get`, `page_update`, `page_create`, `record_get` and `record_query`.
+  - A person acts on their own page or on pages they made, and every change has Undo.
+  - A regulated project refuses page writes from chat (D103).
+  - The domain `home:` ask is now the project ask (`memwise:project:ask`). It makes a draft page, and `record_update` is no longer offered there.
+  - Inbox items for a page change carry the page's title and id.
+- **Blocks.** One renderer draws pages and chat: `packages/ui/src/components/markdown/page-blocks.ts` and `MarkdownPageBlock.tsx`. A block that can't be read says so instead of breaking the page (D102). Each block is a fence whose body is JSON.
+
+  | Block | Body | Kind |
+  |---|---|---|
+  | `tiles` | `{ "tiles": [{ "label", "value", "note"? }] }`, or just the array | Written (frozen when the page is written) |
+  | `table` | `{ "title"?, "columns": [{ "key", "label", "changed"? }], "rows": [{ <key>: Cell }], "note"? }` | Written |
+  | `records` | `{ "entity": "etmf.Site", "filter"?, "columns"?, "sort"?: ["-field"], "limit"? (≤200), "title"? }` | Live: the server adds `result: { entity, total, columns, rows }`, `computedAt` or `error` each time the page is read |
+  | `subpages` | `{ "changes"? }` | Live: the server adds `pages` (kept children in the summary, drafts marked as left out) and `changes` (this week's) |
+
+  A table Cell is text, a number, or `{ "text", "href"?, "quote"?: { "text", "cite"?, "href"? }, "muted"? }`. The quote is what makes a number link to its sentence.
+- **RPCs.** Each channel is `memwise:<channel>`.
+
+  | Channel | ElectronAPI method |
+  |---|---|
+  | `pages:list` | `memwiseListPages` |
+  | `pages:get` | `memwiseGetPage` |
+  | `pages:versions` | `memwisePageVersions` |
+  | `pages:undo` | `memwiseUndoPage` |
+  | `pages:keep` | `memwiseKeepPage` |
+  | `pages:archive` | `memwiseArchivePage` |
+  | `pages:create` | `memwiseCreatePage` |
+  | `pages:refresh` | `memwiseRefreshPage` |
+  | `pageChanges:get` | `memwiseGetPageChange` |
+  | `pageChanges:decide` | `memwiseDecidePageChange` |
+  | `project:ask` | `memwiseProjectAsk` |
+
+  `pages:create` backs "Save as a page". It takes `MwPageCreateInput { projectId, title, body?, question?, parent?, sumsChildren?, status?: 'draft'|'kept', every?, until? }`.
+- **UI.** The components are in `apps/electron/src/renderer/components/memwise/pages/` and exported from its `index.ts`; the hooks are in `hooks/useMemwisePages.ts`.
+  - `PageScreen` / `PageView`: the page, its history line, and Keep, Undo, Archive and Refresh.
+  - `PageChangeScreen` / `PageChangeView`: "Review an answer change".
+  - `PagesKeptTable`, `WhatChangedCard` and `WhatChangedThisWeek`.
+- **Literature** (`examples/literature`; `25-literature-poc.md` §12):
+  - Removed: Topic, Screening and Evidence, their views, and the `check-topic` and `set-up-watch` playbooks. Article stays, and Enquiry is added.
+  - `refresh-literature-page` searches PubMed since the last refresh, reads new papers through `read-paper`, rewrites the page, then compares.
+  - `answer-enquiry` starts on mail to `enquiries`. It drafts from pages first; the lead signs, then it sends.
+  - `monthly-digest` is built. `evidence-pack` is a stub.
+- **Seed.** `seedLiteratureHome()` in `packages/server-core/src/memwise/seed-literature.ts` puts up the `LHome` state, and it is idempotent:
+  - pages: GLP-1 with Weight loss, Type 2 diabetes and a draft Side effects; Heart failure summing three children; a monthly Pipeline watch;
+  - records: eight papers and two enquiries;
+  - waiting items: a pending ATTAIN-MAINTAIN change on Weight loss, and an enquiry reply waiting to be signed.
+- **Exit test.** `literature-pages-exit.test.ts` covers steps 1–5 with a scripted model and the fake PubMed. `startFakePubmed().add()` adds the fixture paper during the test. Not covered here: step 6 (screenshots) and the run with a real model and real PubMed.
+- **Left for later:**
+  - The monthly digest's `every: 30d` is not tied to a day of the month.
+  - A send still waits for the platform's outbound approval after the lead signs.
+  - The seed can't backdate history.
+  - For a moment after Accept, the history can show the new version before the change row records `to_version`.
+
 ### Stage 3 · Projects inside apps (branch `projects`)
 
 - **Migration `0009_projects`:** `mw.projects`, the `project` column on app tables and every per-project table (§3), the backfill into one project per domain, grants with `project`, and RLS by project. Add `scope: app` for entities.

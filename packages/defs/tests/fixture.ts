@@ -15,7 +15,7 @@ export const SAMPLE_ENV: CheckEnvironment = {
       // The bind-plugin meta playbook's tools (Phase 4, bound by the kernel).
       'plugins.install_check', 'plugins.propose_binding', 'plugins.classify_tools', 'plugins.dry_run', 'plugins.freeze', 'identity.resolve',
       // "Refresh a page" (26 §4, bound by the kernel).
-      'page.get', 'page.compare', 'page.accept_change', 'page.send_back_change']
+      'page.get', 'page.list', 'page.compare', 'page.accept_change', 'page.send_back_change']
       .map((t) => [t, {}]),
   ),
 };

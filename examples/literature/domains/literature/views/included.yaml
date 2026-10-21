@@ -1,6 +1,0 @@
-title: Included papers
-entity: Screening
-filter: "decision = 'include'"
-group: topic
-sort: [-year]
-columns: [article, year, phase, reason, confidence]

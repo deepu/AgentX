@@ -1,0 +1,35 @@
+workflow: refresh-literature-page
+version: 1
+title: Refresh a page
+owner: lead
+# The Literature's own "Refresh a page" (26 §4, §6; domain.yaml `pages.refresh`). A kept page
+# refreshes on its schedule, when someone asks, or when one of its kept sub-pages changed. The
+# searcher looks in PubMed for what was added since the page last refreshed and stores each paper
+# in Papers (keyed by PMID, so never twice); each new paper is read once ("Read a paper"); then the
+# writer rewrites the page from its question, its body and the papers. The compare step decides
+# whether the answer changed: if it did, "Review an answer change" waits for whoever kept the page
+# or the medical affairs lead, and nothing reaches the page until they accept it.
+start: search
+steps:
+  search:                      # PubMed since the last refresh, into Papers
+    on: { found: read_new, nothing_new: write, failed: write }
+  read_new:                    # "Read a paper" once per new paper
+    for_each:
+      items: case.new_articles
+      as: article
+      call:
+        workflow: read-paper
+        with: { article: item }
+      join: all
+    on: { done: write, failed: write }
+  write:                       # the writer rewrites the page
+    on: { written: compare }
+  compare:                     # headline, numbers, sections: did the answer change?
+    on: { material: review, nothing_new: end }
+  review:                      # "Review an answer change"; the kernel asks the page's owner or the lead
+    on: { accepted: accept, sent_back: send_back }
+    wait: { remind: 3d, timeout: 30d → send_back }
+  accept:
+    on: { done: end }
+  send_back:
+    on: { done: end }

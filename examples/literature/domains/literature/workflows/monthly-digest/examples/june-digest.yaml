@@ -1,0 +1,33 @@
+name: june-digest
+description: >
+  The 1st of June: two kept pages changed in May (Type 2 diabetes accepted ATTAIN-2, Weight loss
+  added a note from chat) and Heart failure found nothing new. The writer writes the digest and it
+  is emailed to the medical affairs team.
+case:
+  recipients: medical-affairs@meridian.example
+tools:
+  page.list:
+    - { id: page_t2d, title: Type 2 diabetes, status: kept, headline: "ATTAIN-2: 7.1 points more than placebo at 36 mg", last_refresh: { at: "2026-05-25T07:00:00Z", status: accepted, title: ATTAIN-2 added } }
+    - { id: page_hf, title: Heart failure, status: kept, headline: SGLT2 inhibitors cut hospitalisation by about a quarter, last_refresh: { at: "2026-05-25T07:00:00Z", status: nothing_new } }
+  page.get: { id: page_t2d, title: Type 2 diabetes, body: "ATTAIN-2: 7.1 points more than placebo at 36 mg." }
+approvals:
+  email.send: approve        # the platform asks a person before any message goes
+model:
+  writer:
+    - toolCalls:
+        - { name: page.list, args: {} }
+    - toolCalls:
+        - { name: page.get, args: { page: page_t2d } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: written
+            writes:
+              subject: Literature digest, May 2026
+              digest: "Type 2 diabetes: ATTAIN-2 added; orforglipron 36 mg gave 7.1 points more weight loss than placebo (https://doi.org/10.1016/S0140-6736(25)02165-8).\n\nNothing new on Heart failure."
+            rationale: One page changed in May; one found nothing new.
+expect:
+  outcome: written
+  state: end
+  writes: { subject: "Literature digest, May 2026" }
+  effects: { email.send: 1 }

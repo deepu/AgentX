@@ -1,0 +1,4 @@
+case: evidence_pack
+fields:
+  topic: { type: Text, required: true, description: "What the pack is for: a product or a question" }
+  pack:  { type: Text, description: Where the finished pack is }

@@ -2,12 +2,12 @@ workflow: read-paper
 version: 1
 title: Read a paper
 owner: lead
-# Called by "Check a topic" for each new paper. Each paper is read once, whichever topic found it:
-# a paper already read ends here at once; otherwise its facts go onto the Article with the words
-# they were read from.
+# Called by the Literature's "Refresh a page" for each new paper. Each paper is read once,
+# whichever page's refresh found it: a paper already read ends here at once; otherwise its facts go
+# onto the Article with the words they were read from.
 start: status
 steps:
-  status:                                            # read before (by another topic's check): nothing to do
+  status:                                            # read before (by another page's refresh): nothing to do
     on: { found: extract, read: end }
   extract:
     on: { extracted: save }

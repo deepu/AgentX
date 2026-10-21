@@ -1,6 +1,6 @@
 // The kernel's `page.*` tools (26 §4): what "Refresh a page" (built in, or an app's own) calls.
 // `page.get` reads the page as a refresh needs it (its question, its last body, its kept
-// sub-pages); `page.compare` is the system step that decides whether the answer changed and, if
+// sub-pages); `page.list` lists a project's pages (an enquiry's answer looks there first); `page.compare` is the system step that decides whether the answer changed and, if
 // it did, puts the new body up for review; `page.accept_change` and `page.send_back_change` act
 // on the reviewer's answer. Without the pages service (`memwise check`, example cases that stub
 // them) they are definitions only.
@@ -9,6 +9,7 @@ import type { PagesCore } from './service.ts';
 
 export const PAGES_PLUGIN = 'memwise';
 export const PAGE_GET_TOOL = 'page.get';
+export const PAGE_LIST_TOOL = 'page.list';
 export const PAGE_COMPARE_TOOL = 'page.compare';
 export const PAGE_ACCEPT_TOOL = 'page.accept_change';
 export const PAGE_SEND_BACK_TOOL = 'page.send_back_change';
@@ -30,6 +31,22 @@ export function pageTools(core?: () => PagesCore | undefined): ToolDefinition[] 
     effect: 'read',
     source,
     execute: ({ page }) => need().forRefresh(page),
+  };
+
+  const list: ToolDefinition<{ project?: string; kept_only?: boolean }> = {
+    name: PAGE_LIST_TOOL,
+    description: 'List the pages of a project (by default the project of the running playbook): each page\'s id, title, question, headline, parent, whether it is kept and refreshed, and its last refresh. Kept pages are the answers the project keeps current: read them first (`page.get`) before searching elsewhere.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { ...str, description: 'The project id; default the running playbook\'s' },
+        kept_only: { type: 'boolean', description: 'Only kept pages (default true)' },
+      },
+      additionalProperties: false,
+    },
+    effect: 'read',
+    source,
+    execute: (args, ctx) => need().forList(args.project ?? need().projectOfWorkflow(ctx.token.workflowId), args.kept_only !== false),
   };
 
   const compare: ToolDefinition<{
@@ -94,7 +111,7 @@ export function pageTools(core?: () => PagesCore | undefined): ToolDefinition[] 
     },
   };
 
-  return [get, compare, accept, sendBack];
+  return [get, list, compare, accept, sendBack];
 }
 
 /** The page tools as definitions only, for checks and stubs (like `authoringToolDefinitions`). */

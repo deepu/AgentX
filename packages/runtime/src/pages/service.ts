@@ -54,6 +54,10 @@ function summaryOf(p: WrittenPage, extra: { pending?: PageChange; last?: PageCha
 export interface PagesCore extends PagesService {
   /** Used by the page tools: the page as a refresh reads it. */
   forRefresh(id: string): Promise<Record<string, unknown>>;
+  /** Used by `page.list`: a project's pages in a few words each. */
+  forList(project: string, keptOnly: boolean): Promise<Record<string, unknown>[]>;
+  /** The project a playbook's runs belong to (Stage 2: its domain). */
+  projectOfWorkflow(workflowId: string): string;
   /** The compare step: a material change waits for review; otherwise one "nothing new" line. */
   compare(input: { page: string; body: string; title?: string; label?: string; changeTitle?: string; plus?: string;
     leftOut?: { title: string; href?: string; why: string }[]; reason?: string; by?: string; runId?: string; caseId?: string }): Promise<{ outcome: 'material' | 'nothing_new'; change?: string }>;
@@ -533,6 +537,20 @@ export function createPagesService(deps: PagesDeps): PagesCore {
           drafts_left_out: kids.filter((c) => c.status === 'draft').map((c) => c.title),
         } : {}),
       };
+    },
+
+    async forList(project, keptOnly) {
+      const all = await core.list(project, { kind: 'system' });
+      return all.filter((p) => p.status === 'kept' || (!keptOnly && p.status === 'draft')).map((p) => ({
+        id: p.id, title: p.title, status: p.status, ...(p.question ? { question: p.question } : {}), headline: p.headline,
+        ...(p.parent ? { parent: p.parent } : {}), sums_children: p.sumsChildren, ...(p.refresh?.every ? { every: p.refresh.every } : {}),
+        ...(p.lastRefresh ? { last_refresh: p.lastRefresh } : {}), ...(p.pendingChange ? { change_waiting: p.pendingChange.label ?? true } : {}),
+      }));
+    },
+
+    projectOfWorkflow(workflowId) {
+      const wf = deps.project()?.workflows[workflowId];
+      return wf?.domain ?? 'domain';
     },
 
     async compare(input) {
