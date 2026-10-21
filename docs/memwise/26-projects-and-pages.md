@@ -358,6 +358,10 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - **Validation** replays the changed agent step's AI check (the verifier role, on the result and evidence each case recorded) over the playbook's past cases. It compares the verdict with what the person at the next person step decided ("2 of 3 match QC"), and lists the mismatches.
   - A request can be sent only when the latest run is on the current draft and passed.
   - Signatures follow Part 11: password re-authentication, with the meaning stored. The raiser signs to send it to QA. QA (the domain's `qa:` role, else its owner, never the raiser) signs to publish the next version.
+  - While a request is with QA, its draft can't be written (from chat, the app's editor, keep or discard, or `memwise`). If the draft QA would sign is not the one the raiser signed, QA's sign sends it back: the request returns to `open` with a `change.returned` entry, and the raiser validates and signs again.
+  - QA's signature and a `change.publishing` entry are recorded in one transaction before the version is published, then the request is marked published. If publishing stops between the two, signing again finishes it from the version already published instead of publishing twice.
+  - A `change` draft of a regulated playbook that has no change request (an agent's, say) can't be published either.
+  - Calls that change a request (update, validate, sign, withdraw, its chat) take its `cr_…` id, or `CR-014` together with the project, since numbers are per project.
   - Runs keep the version they pinned (D36), so old cases finish on the old version. The trail names their steps as that version did.
 - **The chat beside a change request** edits its draft with the playbook tools and can validate it, but it cannot sign or publish. While QA has the request, the draft is locked.
 - **Inspector access (D117).**
@@ -370,10 +374,12 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - There is one hash-chained log per project, written by database triggers on record versions, signatures, settled step runs, change requests and inspector activity.
   - AI entries name the model, and the verifier's model when there is one, and quote the sentence relied on.
   - The page filters to people and AI and scopes to one record. **Verify** checks the chain in the database.
-  - **Export** is canonical JSON signed with the kernel's Ed25519 key; `memwise audit verify <file>` and the page's verify both check it, and a changed entry fails at that entry.
+  - **Export** is canonical JSON signed with the kernel's Ed25519 key; `memwise audit verify <file> --key <public key>` and the page's verify both check it, and a changed entry fails at that entry. Without `--key` the file is reported unverified (exit 1), since anyone can sign an export with their own key. An export cut at the size limit says `complete: false`.
+  - The log starts when migration `0010_regulated` runs: earlier record versions, signatures and runs are not backfilled into it. A record of the default domain (an entity with no `domain.` prefix) is filed under the project `domain`.
+  - Inspectors see a record's own trail only: no change-request, inspector or audit entries, no other record's entries, and no AI rationale.
 - **TMF index (D119).** The eleven zones of the TMF Reference Model, with expected, filed, missing, in-QC and filed-late counts per zone. A zone's sub-page lists its sites and documents. A document's zone comes from its artifact name, and an unmatched artifact is "unplaced", never guessed. It appears in the sidebar under the project when the app keeps `Document` and `ExpectedDocument`.
 - **In the shell:**
-  - routes `mw/{project}/change/{CR-014}`, `mw/{project}/audit[/{entity:id}]` and `mw/{project}/tmf[/{zone}]`;
+  - routes `mw/{project}/cr/{CR-014}`, `mw/{project}/audit[/{entity:id}]` and `mw/{project}/tmf[/{zone}]`;
   - chats anchored to `change`, `audit` and `tmf`, with the page's content in the chat's context;
   - CR sign-offs and inspector questions under Waiting for you;
   - Inspector access and Audit trail as Project settings tabs on regulated projects.
