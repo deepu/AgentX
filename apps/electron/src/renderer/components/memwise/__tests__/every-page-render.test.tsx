@@ -53,7 +53,7 @@ describe('record page in the shell', () => {
       <RecordPageView page={{ ...S.sampleSitePage, regulated: false }} now={S.SAMPLE_NOW} actions={{ exportAudit: async () => {} }} shell={{ crumb: 'Records' }} />,
     )
     expect(html).not.toContain('data-action="export-audit"')
-    expect(html).toContain('@xl/record:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]')
+    expect(html).toContain('@3xl/record:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]')
   })
 
   test('the classic page keeps its hero and breadcrumbs', () => {

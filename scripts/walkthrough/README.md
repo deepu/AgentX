@@ -24,3 +24,11 @@ model's. Everything else (the kernel, Postgres, the playbooks, the screens) is r
 `shell-etmf.mjs` seeds the eTMF example through the app's own calls (`seed-etmf.mjs`) and goes Home → asks →
 Waiting for you → opens and approves the activation → a page from the tree → a playbook → a record.
 `shell-literature.mjs` asks on the Literature example's Home.
+
+`every-page-etmf.mjs` (Stage 4) seeds with `seed-every-page.mjs` and runs on `every-page-replies.json`, whose
+entries also make scripted tool calls (`"tools": [{ "name", "input" }]`): the playbook's chat drafts a change
+and test-runs it on site 104, the page sends it for review, and the Sites chat filters the list, which is
+saved as a page. Run it with `MEMWISE_SCRIPTED_MODELS=1 MEMWISE_SCRIPTED_EXAMPLE=second-reminder` (the
+playbooks' agent steps replay their examples' turns), and `MEMWISE_APP_NAME=<something>` when another copy
+of the app is running (it holds the single-instance lock). The config folder must be one the postgres user
+can reach (not under a private /tmp folder).

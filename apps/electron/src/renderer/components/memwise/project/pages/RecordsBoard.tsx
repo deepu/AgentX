@@ -99,8 +99,8 @@ export function RecordsBoard({ entity, entityName, states, rows, regulated, deta
           <ReasonBox onConfirm={move.asking} onCancel={move.cancel} busy={move.busy} label={t('memwise.record.reasonForMove')} />
         </div>
       )}
-      <DndContext sensors={sensors} collisionDetection={boardCollisionDetection} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
-        <div className="flex gap-2.5 overflow-x-auto pb-2">
+      <DndContext sensors={sensors} autoScroll={false} collisionDetection={boardCollisionDetection} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
+        <div className="flex gap-2 overflow-x-auto pb-2">
           {columns.map(col => (
             <BoardColumn key={col.state} state={col.state} total={col.total}>
               {col.rows.map(r => <Card key={r.id} row={r} lines={detail?.(r) ?? []} onOpen={() => open(r)} />)}
@@ -128,7 +128,12 @@ function BoardColumn({ state, total, children }: { state: string; total: number;
       ref={setNodeRef}
       aria-label={humanize(state)}
       data-column={state}
-      className={cn('flex w-[150px] min-w-[150px] flex-1 flex-col gap-2 self-start rounded-[10px] bg-fill-hover p-2 transition-colors', isOver && 'bg-accent-tint/60 outline-dashed outline-1 outline-accent/50')}
+      className={cn(
+        'flex flex-col gap-2 self-start rounded-[10px] bg-fill-hover p-2 transition-colors',
+        // An empty state stays a narrow drop target, so a lifecycle's columns fit the page.
+        total > 0 ? 'min-w-[104px] flex-1 basis-0' : 'w-[76px] flex-none',
+        isOver && 'bg-accent-tint/60 outline-dashed outline-1 outline-accent/50',
+      )}
     >
       <h3 className="px-1 text-label-sm font-semibold text-foreground">
         {humanize(state)} <span className="font-normal text-tertiary">{total}</span>

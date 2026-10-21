@@ -14,7 +14,7 @@ import type { MwDraft, MwDraftTestRun, MwPlaybook, MwRole, MwRunTrace } from '@m
 import { cn } from '@/lib/utils'
 import { navigate, routes } from '@/lib/navigate'
 import { memwiseCasesAtom, memwiseDomainsAtom, memwiseInboxAtom, memwiseRolesAtom, memwiseStatusAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
-import { getMemwiseApi, useMemwiseDraft, useMemwiseDrafts, useMemwisePlaybook, useMemwiseVersions } from '@/hooks/useMemwise'
+import { getMemwiseApi, useMemwiseCase, useMemwiseDraft, useMemwiseDrafts, useMemwisePlaybook, useMemwiseVersions } from '@/hooks/useMemwise'
 import { useMemwiseRecordQuery, useMemwiseTriggers } from '@/hooks/useMemwiseRecords'
 import { useMemwiseShellCalls } from '@/hooks/useMemwiseShellPages'
 import { absoluteDate, absoluteTime, humanize, resultMessage, roleTitle, toolLabel } from '../../format'
@@ -56,7 +56,6 @@ export function PlaybookShellPage({ playbookId }: { playbookId: string }) {
       subtitle={(
         <span className="flex flex-wrap items-center gap-2">
           <Tag tone="green" data-testid="playbook-live">{t('memwise.everyPage.liveVersion', { version: playbook.version })}</Tag>
-          {starts[0] && <span>{starts[0].description}</span>}
         </span>
       )}
     >
@@ -153,7 +152,10 @@ function DraftPanel({ draft, playbook, onChanged }: { draft: MwDraft; playbook: 
   const [busy, setBusy] = React.useState<'discard' | 'send' | null>(null)
   const [open, setOpen] = React.useState(false)
   const changes = draftChangeCount(draft)
-  const inReview = draft.stage === 'in_review' || (!!draft.runId && !draft.inChat && draft.stage !== 'draft' && draft.stage !== 'checked' && draft.stage !== 'failed')
+  // Sent: its change run checks it (examples, past cases) on the way to review.
+  const { data: changeRun } = useMemwiseCase(draft.caseId ?? null)
+  const checking = draft.stage !== 'in_review' && !draft.inChat && changeRun?.status === 'active' && changeRun.state !== 'review'
+  const inReview = draft.stage === 'in_review' || checking
   const test = draft.lastTestRun && !draft.testRunStale ? draft.lastTestRun : undefined
 
   const act = async (what: 'discard' | 'send') => {
@@ -173,14 +175,14 @@ function DraftPanel({ draft, playbook, onChanged }: { draft: MwDraft; playbook: 
   return (
     <div className="mb-6 overflow-hidden rounded-[10px] border border-accent/25 bg-accent-tint/50" data-testid="playbook-draft" data-draft={draft.id} data-stage={draft.stage}>
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-label text-foreground" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-label text-foreground" onClick={() => setOpen(o => !o)} aria-expanded={open} data-action="toggle-draft">
           {open ? <ChevronDown className="size-3.5 shrink-0 text-secondary" /> : <ChevronRight className="size-3.5 shrink-0 text-secondary" />}
           <span>
             <span className="font-semibold">{draft.chatId ? t('memwise.everyPage.draftFromChat') : t('memwise.everyPage.draft')}</span>{' '}
             <span data-testid="draft-line">
               {t('memwise.everyPage.changeCount', { count: changes })}
               {test ? ` · ${test.status === 'pass' ? t('memwise.everyPage.testRunPassed') : t('memwise.everyPage.testRunFailed')}` : ''}
-              {inReview ? ` · ${t('memwise.everyPage.inReview')}` : ''}
+              {checking ? ` · ${t('memwise.everyPage.checking')}` : inReview ? ` · ${t('memwise.everyPage.inReview')}` : ''}
             </span>
           </span>
         </button>

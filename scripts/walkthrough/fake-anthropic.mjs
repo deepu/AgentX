@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 // A scripted stand-in for the Anthropic Messages API, for walkthrough screenshots where no API key
 // is available. It answers POST /v1/messages (streaming or not) with a reply picked by matching the
-// last user message against a script, and never calls tools. Not for tests of model behaviour.
+// last user message against a script; scripted tool calls only (see below). Not for tests of model behaviour.
 //
 //   node scripts/walkthrough/fake-anthropic.mjs [port] [script.json]
 //
 // script.json: [{ "match": "regex", "reply": "markdown" }, ...]; the first match wins. Requests
 // whose system prompt asks for a title get a short title from the user's words.
+//
+// An entry may also name tools to call first: { "match", "tools": [{ "name": "playbook_write",
+// "input": {...} }, ...], "reply" }. The turn then calls them one after another, as a model would
+// (the name matches the request's tool whose name ends with it, e.g. mcp__session__playbook_write),
+// and gives the reply once their results are back. The calls are written in advance too.
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
 
@@ -19,34 +24,60 @@ function textOf(content) {
   return (content ?? []).filter(b => b.type === 'text').map(b => b.text).join('\n')
 }
 
-function lastUserText(messages) {
+const isToolResult = (m) => Array.isArray(m.content) && m.content.some(b => b.type === 'tool_result')
+
+/** The index of the person's last message: tool results are not the person's words. */
+function lastUserIndex(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
-    if (m.role !== 'user') continue
-    const t = textOf(m.content).trim()
-    if (t) return t
+    if (m.role !== 'user' || isToolResult(m)) continue
+    if (textOf(m.content).trim()) return i
   }
-  return ''
+  return -1
+}
+
+function lastUserText(messages) {
+  const i = lastUserIndex(messages)
+  return i >= 0 ? textOf(messages[i].content).trim() : ''
+}
+
+/** How many tools the model has called since the person last wrote. */
+function callsSinceUser(messages) {
+  let n = 0
+  for (let j = lastUserIndex(messages) + 1; j < messages.length; j++) {
+    const m = messages[j]
+    if (m.role === 'assistant' && Array.isArray(m.content)) n += m.content.filter(b => b.type === 'tool_use').length
+  }
+  return n
 }
 
 function systemText(system) {
   return typeof system === 'string' ? system : (system ?? []).map(b => b.text ?? '').join('\n')
 }
 
+/** The reply: { text } or { tool: { name, input } } for the next scripted tool call. */
 function replyFor(body) {
-  const user = lastUserText(body.messages ?? [])
+  const messages = body.messages ?? []
+  const user = lastUserText(messages)
   const sys = systemText(body.system)
   if (/\btitle\b/i.test(sys) && /(generate|create|write).{0,40}title/i.test(sys + user)) {
     // The question itself, cut short: the app names chats this way.
     const words = user.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ')
-    return words.replace(/[?.!]+$/, '') || 'Chat'
+    return { text: words.replace(/[?.!]+$/, '') || 'Chat' }
   }
   // The person's own words come last in the turn; system reminders may be wrapped around them.
   const plain = user.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim()
   for (const s of script) {
-    if (new RegExp(s.match, 'i').test(plain)) return s.reply
+    if (!new RegExp(s.match, 'i').test(plain)) continue
+    const next = (s.tools ?? [])[callsSinceUser(messages)]
+    if (next) {
+      const tool = (body.tools ?? []).find(t => t.name === next.name || t.name.endsWith(`__${next.name}`))
+      if (tool) return { tool: { name: tool.name, input: next.input ?? {} } }
+      console.log(`[fake-anthropic] no tool ${next.name} offered; answering instead`)
+    }
+    return { text: s.reply }
   }
-  return FALLBACK
+  return { text: FALLBACK }
 }
 
 function usage(text) {
@@ -75,18 +106,30 @@ const server = createServer((req, res) => {
     }
     let body = {}
     try { body = JSON.parse(raw || '{}') } catch { /* empty */ }
-    const text = replyFor(body)
+    const answer = replyFor(body)
+    const text = answer.text ?? ''
     const model = body.model ?? 'claude-sonnet-5-5'
     const id = `msg_fake_${Date.now().toString(36)}`
-    console.log(`[fake-anthropic] ${body.stream ? 'stream' : 'json'} ${model}: ${JSON.stringify(lastUserText(body.messages ?? []).slice(-80))} -> ${JSON.stringify(text.slice(0, 60))}`)
+    const toolId = `toolu_fake_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+    console.log(`[fake-anthropic] ${body.stream ? 'stream' : 'json'} ${model}: ${JSON.stringify(lastUserText(body.messages ?? []).slice(-80))} -> ${answer.tool ? `tool ${answer.tool.name}` : JSON.stringify(text.slice(0, 60))}`)
     if (!body.stream) {
+      const content = answer.tool ? [{ type: 'tool_use', id: toolId, name: answer.tool.name, input: answer.tool.input }] : [{ type: 'text', text }]
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ id, type: 'message', role: 'assistant', model, content: [{ type: 'text', text }], stop_reason: 'end_turn', stop_sequence: null, usage: usage(text) }))
+      res.end(JSON.stringify({ id, type: 'message', role: 'assistant', model, content, stop_reason: answer.tool ? 'tool_use' : 'end_turn', stop_sequence: null, usage: usage(text || JSON.stringify(answer.tool?.input ?? '')) }))
       return
     }
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
     const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
     send('message_start', { type: 'message_start', message: { id, type: 'message', role: 'assistant', model, content: [], stop_reason: null, stop_sequence: null, usage: { ...usage(''), output_tokens: 1 } } })
+    if (answer.tool) {
+      send('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: toolId, name: answer.tool.name, input: {} } })
+      send('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(answer.tool.input) } })
+      send('content_block_stop', { type: 'content_block_stop', index: 0 })
+      send('message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 40 } })
+      send('message_stop', { type: 'message_stop' })
+      res.end()
+      return
+    }
     send('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } })
     const chunks = text.match(/[\s\S]{1,24}/g) ?? ['']
     let i = 0

@@ -47,6 +47,7 @@ export function RecordsShellPage({ projectId, entity }: { projectId: string; ent
   const { data: chatFilter } = useMemwiseRecordsChatFilter(entity)
   const filter = chatFilter?.filter
   const { data: result, error } = useMemwiseRecordQuery({ entity, ...(filter ? { filter } : {}), ...(chatFilter?.sort?.length ? { sort: chatFilter.sort } : {}), limit: 200 })
+  const asked = chatFilter?.columns
   const calls = useMemwiseShellCalls()
   const shell = useProjectShell()
   const [saving, setSaving] = React.useState(false)
@@ -121,7 +122,7 @@ export function RecordsShellPage({ projectId, entity }: { projectId: string; ent
           detail={r => cardLines(r, result, t, i18n.language)}
         />
       ) : (
-        <RecordsList result={result} entity={entity} projectId={shell?.projectId ?? projectId} title={title} />
+        <RecordsList result={result} entity={entity} projectId={shell?.projectId ?? projectId} title={title} asked={asked} />
       )}
       {hidden > 0 && <p className="mt-3 text-label-sm text-secondary" data-testid="hidden-by-filter">{t('memwise.everyPage.hiddenByFilter', { count: hidden, records: title.toLowerCase() })}</p>}
       <p className="mt-4 rounded-[10px] bg-fill-hover px-4 py-3 text-label text-secondary">{t('memwise.everyPage.recordsExplain')}</p>
@@ -152,8 +153,12 @@ function LayoutToggle({ value, onChange }: { value: Layout; onChange: (l: Layout
 /** Up to two short values for a card: its parent and a status-like value, as the columns hold them. */
 function cardLines(row: MwRecordQueryResult['rows'][number], result: MwRecordQueryResult | null, t: (k: string) => string, locale: string): string[] {
   const out: string[] = []
-  for (const c of listColumns(result ?? { columns: [] }, 6)) {
+  // On a card the record's place (its references: the site) comes first, then its values.
+  const cols = listColumns(result ?? { columns: [] }, 12)
+  const ordered = [...cols.filter(c => /^Ref</.test(c.type)), ...cols.filter(c => !/^Ref</.test(c.type))]
+  for (const c of ordered) {
     if (out.length >= 2) break
+    if (/^(Document|File|Image)\b/.test(c.type)) continue
     const ref = row.refs?.[c.name]
     const v = ref ? ref.title : row.values[c.name]
     if (v === null || v === undefined || v === '' || c.name === 'title') continue
@@ -163,10 +168,10 @@ function cardLines(row: MwRecordQueryResult['rows'][number], result: MwRecordQue
   return out
 }
 
-function RecordsList({ result, entity, projectId, title }: { result: MwRecordQueryResult | null; entity: string; projectId: string; title: string }) {
+function RecordsList({ result, entity, projectId, title, asked }: { result: MwRecordQueryResult | null; entity: string; projectId: string; title: string; asked?: string[] }) {
   const { t, i18n } = useTranslation()
   if (!result) return <p className="text-label text-tertiary">{t('memwise.entities.loading')}</p>
-  const columns = listColumns(result, 3)
+  const columns = listColumns(result, 3, asked)
   const hasStatus = result.rows.some(r => r.status)
   return (
     <ShellTable head={[pluralSingular(title), ...(hasStatus ? [t('memwise.everyPage.status')] : []), ...columns.map(c => c.label)]} testId="records-list">

@@ -1,0 +1,61 @@
+[
+ {
+  "match": "copy the cra|cc the cra",
+  "tools": [
+   {
+    "name": "playbook_write",
+    "input": {
+     "files": [
+      {
+       "path": "domains/etmf/workflows/chase-missing/steps/send.md",
+       "content": "---\ntitle: Send, wait 5 days, remind again, and copy the CRA from the second reminder\nperformer: system\nstrictness: strict\nreads: [case.site, case.email_to, case.email_cc, case.email_subject, case.email_body]\ntools:\n  allowed:  [etmf.reminder.create]\n  required: [etmf.reminder.create]\nmap:\n  etmf.reminder.create:\n    site:    case.site\n    sent_to: case.email_to\n    copied:  case.email_cc\n    subject: case.email_subject\n    body:    case.email_body\n    sent_at: { now: true }\noutcomes: [sent]\n---\nSend the approved reminder to the site and keep it on the site's record, so the next round knows how\nmany reminders came before. Then the site has 5 days to upload; the next reminder goes out unless\nthe start-up pack is complete by then.\n"
+      }
+     ],
+     "summary": "Copy the CRA on the reminder from the second one on"
+    }
+   },
+   {
+    "name": "playbook_test_run",
+    "input": {
+     "record": "site 104"
+    }
+   }
+  ],
+  "reply": "Done: from the second reminder on, the reminder is sent to the site coordinator **and copies the site's CRA**. It's in a draft; the live playbook hasn't changed.\n\nI ran the draft on **site 104** in a throwaway copy: it found 3 missing documents, drafted the reminder, and would record it as sent to the coordinator, copying Priya Shah (the CRA). Nothing was sent.\n\nWhen you're happy with it, use **Send for review** on the page."
+ },
+ {
+  "match": "missing documents|still owe|missing",
+  "tools": [
+   {
+    "name": "records_filter",
+    "input": {
+     "filter": "missing_documents > 0",
+     "label": "Missing documents",
+     "chips": [
+      "Missing documents"
+     ],
+     "sort": [
+      {
+       "field": "missing_documents",
+       "desc": true
+      }
+     ],
+     "columns": [
+      "start_up_pack_complete",
+      "missing_documents",
+      "reminders_sent"
+     ]
+    }
+   }
+  ],
+  "reply": "2 sites still owe documents: **FR-201** (6 missing) and **DE-104** (3 missing). The list beside this chat now shows just those two; save it as a page to keep it."
+ },
+ {
+  "match": "why|test run|what happened",
+  "reply": "The test run copied site 104, its study and its expected documents into a throwaway database and replayed the latest chase's model turns. It stopped at **Wait for the upload**, where the next reminder waits 5 days."
+ },
+ {
+  "match": ".",
+  "reply": "Ask me to change the playbook, or to filter the list, and I'll do it here."
+ }
+]

@@ -126,6 +126,24 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     expect(parse(await handlePlaybookFinish(ctx, { summary: 'Copy the CRA' })).error).toContain('Send for review')
   }, 60_000)
 
+  it("in a project without a staff role, the playbook's owner role may change it and send it for review", async () => {
+    // eTMF defines its own roles: "Chase missing documents" is owned by study_manager.
+    const mia = await svc.kernel.people.create({ name: 'Mia Lund', email: 'mia@northlight.example', roles: ['study_manager'] })
+    const cra = await svc.kernel.people.create({ name: 'Ola Berg', email: 'ola@northlight.example', roles: ['cra'] })
+    const attempt = async (personId: string, client: string) => {
+      const opened = await api.call<{ sessionId: string }>(ctxFor(client, personId), ch.CHAT_OPEN, { anchor: { kind: 'workflow', id: 'chase-missing' }, message: 'Wait 6 days' })
+      const ctx = { memwise: buildMemwiseToolCallbacks({ sessionId: opened.sessionId }) } as unknown as SessionToolContext
+      const live = parse(await handlePlaybookRead(ctx, { path: SEND }))
+      return parse(await handlePlaybookWrite(ctx, { files: [{ path: SEND, content: (live.content as string).replace('wait 5 days', 'wait 6 days') }], summary: 'Wait 6 days' }))
+    }
+    const owner = await attempt(mia.id, 'mia-client')
+    expect(owner).toMatchObject({ status: 'kept' })
+    const sent = await api.call<any>(ctxFor('mia-client', mia.id), ch.DRAFTS_SUBMIT, owner.draftId)
+    expect(sent).toMatchObject({ applied: true })
+    await api.call(ctxFor('mia-client', mia.id), ch.DRAFTS_DISCARD, owner.draftId)
+    expect((await attempt(cra.id, 'ola-client')).error).toContain('study_manager')
+  }, 60_000)
+
   it('the chat runs it on site 104: nothing is sent, and the reminder would copy Priya Shah', async () => {
     const ctx = { memwise: buildMemwiseToolCallbacks({ sessionId: chatId }) } as unknown as SessionToolContext
     const run = parse(await handlePlaybookTestRun(ctx, { record: 'site 104' }))
@@ -171,7 +189,7 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     expect(shown).toMatchObject({ entity: 'etmf.Site', sessionId: opened.sessionId, filter: 'missing_documents > 0', label: 'Missing documents' })
     // Only for the person whose chat it is.
     expect(await api.call(reviewer, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site' })).toBeNull()
-    expect(await api.call(manager, ch.RECORDS_CHAT_FILTER_CLEAR, { entity: 'etmf.Site' })).toEqual({ applied: true })
+    expect(await api.call<{ applied: boolean }>(manager, ch.RECORDS_CHAT_FILTER_CLEAR, { entity: 'etmf.Site' })).toEqual({ applied: true })
     expect(await api.call(manager, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site' })).toBeNull()
   }, 60_000)
 })

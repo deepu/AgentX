@@ -118,13 +118,21 @@ async function findTestRecord(svc: MemwiseService, actor: PersonActor, workflowI
   throw new Error(`No ${refs.join(' or ') || 'record'} matching "${input.record}" that this person may see.`)
 }
 
-/** May this person change playbooks (the change-playbook's first step's role)? */
-async function mayChangePlaybooks(svc: MemwiseService, actor: PersonActor): Promise<void> {
+/**
+ * May this person change playbooks? The change-playbook's first step's role, where the project has
+ * that role; a project with roles of its own (the eTMF's has no `staff`) lets the playbook's owner
+ * role change it instead (D122).
+ */
+async function mayChangePlaybooks(svc: MemwiseService, actor: PersonActor, workflowId?: string): Promise<void> {
   const { project } = await svc.kernel.project()
   const meta = project.workflows['change-playbook']
   if (!meta) throw new Error('Changing playbooks by chat is not set up in this project (the change-playbook playbook is missing).')
   const assignee = meta.steps[meta.start]?.assignee
-  if (assignee && !actor.roles.includes(assignee)) throw new Error(`Changing playbooks is for someone with the ${assignee} role.`)
+  if (!assignee || actor.roles.includes(assignee)) return
+  const known = new Set((await svc.kernel.people.roles()).map((r) => r.id))
+  const owner = workflowId ? project.workflows[workflowId]?.owner : undefined
+  if (!known.has(assignee) && owner && actor.roles.includes(owner)) return
+  throw new Error(`Changing playbooks is for someone with the ${known.has(assignee) || !owner ? assignee : owner} role.`)
 }
 
 export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): MemwiseToolCallbacks {
@@ -217,7 +225,7 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
       const pc = await playbookChat()
       if (pc) {
         const { svc, actor } = pc
-        await mayChangePlaybooks(svc, actor)
+        await mayChangePlaybooks(svc, actor, pc.workflowId)
         const authoring = authoringOf(svc)
         const { project } = await svc.kernel.project()
         const live = project.workflows[pc.workflowId]

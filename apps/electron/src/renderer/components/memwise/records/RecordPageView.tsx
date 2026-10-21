@@ -78,7 +78,8 @@ const LAYOUT_GRID: Record<MwRecordPage['layout']['layout'], string> = {
 const SHELL_LAYOUT_GRID: Record<MwRecordPage['layout']['layout'], string> = {
   single: '',
   split: '@xl/record:grid-cols-2',
-  sidebar: '@xl/record:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]',
+  // A sidebar's field rows need room: in the shell's page column it stays under the main column.
+  sidebar: '@3xl/record:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]',
 }
 
 function ShellFrame({ children }: { children: React.ReactNode; wide?: boolean }) {

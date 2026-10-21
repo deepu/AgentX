@@ -114,9 +114,14 @@ describe('record lists', () => {
     expect(dropDecision('draft', 'qc', [tr('qc', { allowed: false, reason: 'Only a QC reviewer can' })])).toMatchObject({ kind: 'refuse', reason: 'not-allowed', message: 'Only a QC reviewer can' })
   })
 
-  test("the list's columns leave out the id and the status", () => {
-    const cols = listColumns({ columns: [{ name: 'id', label: 'Id' }, { name: 'status', label: 'Status' }, { name: 'city', label: 'City' }, { name: 'pi', label: 'PI' }] } as never, 3)
-    expect(cols.map(c => c.name)).toEqual(['city', 'pi'])
+  test("the list's columns: calculated values first, then fields, then references; or the chat's", () => {
+    const result = { columns: [
+      { name: 'id', label: 'Id', type: 'Text' }, { name: 'status', label: 'Status', type: 'Text' },
+      { name: 'study', label: 'Study', type: 'Ref<Study>' }, { name: 'city', label: 'City', type: 'Text' },
+      { name: 'complete', label: 'Complete', type: 'Percent', calculated: true }, { name: 'pi', label: 'PI', type: 'Text' },
+    ] } as never
+    expect(listColumns(result, 3).map(c => c.name)).toEqual(['complete', 'city', 'pi'])
+    expect(listColumns(result, 3, ['study', 'nope', 'city']).map(c => c.name)).toEqual(['study', 'city'])
   })
 
   test('a chat filter saved as a page is a records block', () => {

@@ -177,9 +177,16 @@ export function dropDecision(from: string | undefined, to: string, transitions: 
   return { kind: 'refuse', reason: 'not-allowed', transition: first, ...(first.reason ? { message: first.reason } : {}) }
 }
 
-/** The list's columns: the title first, then the status, then the type's own fields (up to `max`). */
-export function listColumns(result: Pick<MwRecordQueryResult, 'columns'>, max = 3): MwRecordQueryResult['columns'] {
-  return result.columns.filter(c => c.name !== 'id' && c.name !== 'status').slice(0, max)
+/**
+ * The list's columns after the title and the status (up to `max`): the ones asked for when the
+ * chat chose them, else the type's calculated values first (how far along each record is), then
+ * its plain fields, then its references.
+ */
+export function listColumns(result: Pick<MwRecordQueryResult, 'columns'>, max = 3, asked?: string[]): MwRecordQueryResult['columns'] {
+  const cols = result.columns.filter(c => c.name !== 'id' && c.name !== 'status' && c.name !== 'title')
+  if (asked?.length) return asked.map(n => cols.find(c => c.name === n)).filter((c): c is MwRecordQueryResult['columns'][number] => !!c).slice(0, max)
+  const rank = (c: MwRecordQueryResult['columns'][number]) => (c.calculated ? 0 : /^(Ref|List)</.test(c.type) ? 2 : 1)
+  return cols.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i).map(x => x.c).slice(0, max)
 }
 
 /** The fence a saved page holds for a filtered list (Stage 2's `records` block). */

@@ -16,6 +16,7 @@ import type {
   MwExtractInput,
   MwExtractResult,
   MwExtractSuggestion,
+  MwField,
   MwInboxItem,
   MwRole,
   MwSendEventInput,
@@ -173,6 +174,12 @@ function ResultMessage({ result }: { result: MwSubmitResult | null }) {
       {(result.code || result.message) && <Info_Alert.Description>{resultMessage(result, t)}</Info_Alert.Description>}
     </Info_Alert>
   )
+}
+
+/** A Text field written in lines (an email's body, a note): a text area, so its line breaks show. */
+function isMultilineText(field: Pick<MwField, 'name' | 'type'>, value: unknown): boolean {
+  if (field.type.trim() !== 'Text') return false
+  return (typeof value === 'string' && value.includes('\n')) || /(^|_)(body|note|notes|comment|description|summary|message)$/i.test(field.name)
 }
 
 function CommentBox({ value, onChange, error, placeholder, disabled }: {
@@ -389,6 +396,7 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
             serverErrors={result?.errors}
             onUpload={actions.uploadFile}
             disabled={!!busy || result?.applied}
+            multiline={f => isMultilineText(f, values[f.name])}
           />
           {offersComment && (
             <CommentBox
