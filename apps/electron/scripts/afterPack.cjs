@@ -18,7 +18,34 @@
 const path = require('path');
 const fs = require('fs');
 
+/**
+ * The bundled Postgres (memwise/postgres, copied from @embedded-postgres/<platform>/native) lists
+ * its shared-library symlinks in pg-symlinks.json; npm recreates them in a postinstall script that
+ * Bun skips, so the copy has none and initdb cannot load its libraries. Create them here, before
+ * signing, so the app never writes into its own bundle (packages/db/src/binaries.ts does the same
+ * for a dev run).
+ */
+function hydratePostgresSymlinks(resourcesDir) {
+  const nativeDir = path.join(resourcesDir, 'memwise', 'postgres');
+  const list = path.join(nativeDir, 'pg-symlinks.json');
+  if (!fs.existsSync(list)) return;
+  const inNative = (p) => path.join(nativeDir, p.replace(/^native[\\/]/, ''));
+  let made = 0;
+  for (const { source, target } of JSON.parse(fs.readFileSync(list, 'utf8'))) {
+    const link = inNative(target);
+    if (fs.existsSync(link)) continue;
+    fs.rmSync(link, { force: true });
+    fs.symlinkSync(path.relative(path.dirname(link), inNative(source)), link);
+    made++;
+  }
+  console.log(`afterPack: created ${made} Postgres library symlink(s) in ${nativeDir}`);
+}
+
 module.exports = async function afterPack(context) {
+  if (context.electronPlatformName === 'linux') {
+    hydratePostgresSymlinks(path.join(context.appOutDir, 'resources'));
+  }
+
   // Only process macOS builds
   if (context.electronPlatformName !== 'darwin') {
     console.log('Skipping Liquid Glass icon (not macOS)');
@@ -27,6 +54,7 @@ module.exports = async function afterPack(context) {
 
   const appPath = context.appOutDir;
   const resourcesDir = path.join(appPath, 'MemWise.app', 'Contents', 'Resources');
+  hydratePostgresSymlinks(resourcesDir);
   const precompiledAssets = path.join(context.packager.projectDir, 'resources', 'Assets.car');
 
   console.log(`afterPack: projectDir=${context.packager.projectDir}`);

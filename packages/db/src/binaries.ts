@@ -36,25 +36,29 @@ export function embeddedBinaries(): PgBinaries | undefined {
   if (!name) return undefined;
   let entry: string;
   try { entry = createRequire(import.meta.url).resolve(name); } catch { return undefined; }
-  const root = path.resolve(path.dirname(entry), '..');
-  hydrateSymlinks(root);
-  return fromDir(path.join(root, 'native', 'bin'), 'embedded');
+  const native = path.join(path.resolve(path.dirname(entry), '..'), 'native');
+  hydrateSymlinks(native);
+  return fromDir(path.join(native, 'bin'), 'embedded');
 }
 
 /**
  * The packages list their shared-library symlinks in `native/pg-symlinks.json` and recreate them
  * in a postinstall script, which Bun skips for untrusted dependencies. Recreate any that are
- * missing (idempotent). A read-only install that already has them is left alone.
+ * missing (idempotent). `nativeDir` is the package's `native` folder or a copy of it under another
+ * name (the desktop app's `memwise/postgres`); the list's paths start with `native/`. A read-only
+ * install that already has them is left alone. apps/electron/scripts/afterPack.cjs does the same
+ * for the packaged app.
  */
-function hydrateSymlinks(root: string): void {
-  const list = path.join(root, 'native', 'pg-symlinks.json');
+export function hydrateSymlinks(nativeDir: string): void {
+  const list = path.join(nativeDir, 'pg-symlinks.json');
   if (!fs.existsSync(list)) return;
+  const inNative = (p: string) => path.join(nativeDir, p.replace(/^native[\\/]/, ''));
   for (const { source, target } of JSON.parse(fs.readFileSync(list, 'utf8')) as { source: string; target: string }[]) {
-    const link = path.join(root, target);
+    const link = inNative(target);
     if (fs.existsSync(link)) continue;
     try {
       fs.rmSync(link, { force: true }); // a dangling link from an earlier copy
-      fs.symlinkSync(path.relative(path.dirname(link), path.join(root, source)), link);
+      fs.symlinkSync(path.relative(path.dirname(link), inNative(source)), link);
     } catch {
       // Not writable or a concurrent hydrate won the race; initdb will say if a library is missing.
     }
@@ -81,6 +85,7 @@ export function systemBinaries(): PgBinaries | undefined {
 /** `binDir` when given, else embedded, else system. Throws when none is found. */
 export function findBinaries(binDir?: string): PgBinaries {
   if (binDir) {
+    hydrateSymlinks(path.dirname(binDir)); // a copy of the embedded package's binaries
     const found = fromDir(binDir, 'binDir');
     if (!found) throw new Error(`No initdb/pg_ctl in ${binDir}`);
     return found;
