@@ -138,7 +138,7 @@ const SUBMIT_MESSAGES: Record<string, string> = {
   'signature-failed': 'That password is not right, so nothing was signed.',
   locked: 'Too many attempts. Try again later.',
 }
-/** Phase 6 record writes (`memwise:records:*`); the screens translate `memwise.result.record.<status>`. */
+/** Phase 6 record writes (`memwise:records:*`); the screens translate `memwise.record.result.<status>`. */
 const RECORD_MESSAGES: Record<string, string> = {
   forbidden: 'You cannot change this record.',
   invalid: 'Some values need fixing.',
