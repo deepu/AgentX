@@ -141,6 +141,15 @@ describe.skipIf(!postgresAvailable())('Stage 3 exit: projects inside apps, throu
     expect(groups.find((g) => g.project === 'mw207')!.updates).toEqual([expect.objectContaining({ kind: 'template-update', title: 'Review template update: eTMF v5', from: 4, to: 5 })])
     const r207 = (await api.call<MwTemplateUpdateReview>(anika, ch.TEMPLATE_UPDATE_REVIEW, { projectId: 'mw207' }))!
     expect(r207).toMatchObject({ nothingChanges: false, changes: [expect.objectContaining({ project: 'takes', title: 'Chase missing documents' })] })
+    // A site of MW-207 starts activating, so MW-207 surely has a Chase missing documents case; the
+    // test run replays one on v5 and names it as lists do ("FR-114 · Nantes …"), never by a record id.
+    const at005 = (await sites(anika, 'mw207')).find((r) => r.values.site_number === 'AT-005')!
+    await api.call(anika, ch.RECORDS_TRANSITION, { entity: 'etmf.Site', id: at005.id, transition: 'picked' })
+    await until('a Chase missing documents case in MW-207', () => db.pool.query(`select 1 from mw.runs where project = 'mw207' and workflow_id = 'chase-missing'`), (r) => r.rows.length > 0, 60_000)
+    const t207 = (await api.call<MwTemplateUpdateReview>(anika, ch.TEMPLATE_UPDATE_REVIEW, { projectId: 'mw207', test: true }))!
+    expect(t207.test?.caseId).toBeTruthy()
+    expect(t207.test!.title).toMatch(/^[A-Z]{2}-\d{3} · /)
+    expect(t207.test!.title).not.toMatch(/_[0-9A-Z]{26}/)
     const r301 = (await api.call<MwTemplateUpdateReview>(anika, ch.TEMPLATE_UPDATE_REVIEW, { projectId: 'mw301' }))!
     expect(r301.nothingChanges).toBe(true)
     expect(r301.changes[0]).toMatchObject({ project: 'overridden-same', note: 'This project already does that, so nothing changes here.' })

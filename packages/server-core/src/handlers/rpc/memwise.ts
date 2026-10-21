@@ -2272,8 +2272,21 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
 
     /** Review template update: what changes here, what the project already does, and (`test`) one past case replayed. */
     async reviewTemplateUpdate(ctx: RequestContext, input: MwTemplateUpdateInput): Promise<MwTemplateUpdateReview | null> {
-      const { svc, actor } = await begin(ctx)
-      return (await svc.kernel.projects.reviewUpdate(requireId(input?.projectId, 'project'), actor, input.test ? { test: true } : {})) ?? null
+      const { svc, actor, c, d } = await begin(ctx)
+      const review = (await svc.kernel.projects.reviewUpdate(requireId(input?.projectId, 'project'), actor, input.test ? { test: true } : {})) ?? null
+      // The test run names its case as every list does ("MW-207 · Site 01 binder"), not by a raw value.
+      const caseId = review?.test?.caseId
+      if (review?.test && caseId) {
+        const v = await svc.kernel.getCaseView(caseId, actor).catch(() => undefined)
+        if (v) {
+          const shown = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value]))
+          const caseType = c.project.workflows[v.summary.workflowId]?.caseType
+          const subject = d.caseSubject(shown, caseType)
+          const subjects = await subjectTitles(svc, actor, c, d, [{ workflowId: v.summary.workflowId, values: shown }])
+          review.test = { ...review.test, title: d.caseTitle(shown, caseId, caseType, c.project, subject && subjects.get(subject.id)) }
+        }
+      }
+      return review
     },
 
     async takeTemplateUpdate(ctx: RequestContext, input: MwTemplateUpdateInput): Promise<MwTakeTemplateUpdateResult> {
