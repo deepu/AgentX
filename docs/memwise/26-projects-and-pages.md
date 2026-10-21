@@ -371,16 +371,21 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - `AlsoInOtherApps({ projectId })`.
   - `OwnerTag`, `OpenInAppButton` and `RecordFactsByAppView`. On a record page in more than one app, they show "One record, each fact owned by one app", with "Open in eTMF" / "Open in EDC".
   - RPC: `memwise:edc:home`, `memwise:study:apps`, `memwise:records:linked`.
-  - Until projects land, a project id is read as the study key ("MW-301").
+  - Until projects land, a project id is read as the study key ("MW-301"). In the Stage 1 shell a project's id is its app's ("edc"), which names no study: the app's only study is used, or with several the one with the most sites (`resolveStudy`).
+- **In the project shell (Stage 1):**
+  - An EDC app's Home (one with a Study, Sites and Queries) pins `EdcProjectHome` instead of the plain pinned page. It shows the study and when Rave was last read, the three tiles, the shell's own Waiting for you, randomised by site, the sites with old queries with a link to the queries page, the app's pages, Also in other apps, and what is running. Record links stay in the project.
+  - XQueries is the page `edc/old-queries` ("Old queries by site"): two KPIs, the sites with old queries (view `sites-with-old-queries`) and the oldest queries. It counts every study the Rave account sees, so it can read one more than the study home.
+  - Record pages (XSite) carry "One record, each fact owned by one app" with "Open in eTMF" / "Open in EDC". A fact one app follows from the other is shown once, as the owner's.
+  - `scripts/walkthrough/shell-edc.mjs` runs it in Electron against the fake Rave. Screenshots are in `projects-and-pages-walkthrough/stage-6-edc/`.
+- **Connector reads:** the first read waits for the first index, so the domain tables exist; it used to race them on a fresh workspace. A failed read is tried again within five minutes, not a whole interval later.
 - **Tests:**
   - `rave-tools.test.ts` covers the fake and the tools.
   - `edc-exit.test.ts` runs end to end against Postgres and the fake: the sync, read-only Rave facts, the study home, site 104 in both apps, a new coordinator asking for a CV, and Chase old queries with five approvals.
   - `edc-render.test.tsx` covers the screens.
   - `memwise test examples/etmf` runs the playbooks' examples, including `two-sites-behind`, `nothing-old` and `asks-for-cv`.
 - **Not yet:**
-  - XQueries ("Old queries by site" as a page from a question) needs Stage 2's pages on this branch.
+  - XQueries as a page made from a question needs Stage 2's pages. Until then it is a defined page.
   - `project.yaml` `study:` and per-project bindings need Stage 3.
-  - Screenshots against the mocks.
 - **Needs Sandeep: a Rave (or Veeva CDMS) sandbox.** The client speaks RWS paths with the fake's JSON bodies; a real Rave answers ODM XML and clinical views. `packages/server-core/src/memwise/rave/client.ts` is the one file to check against it.
 
 ## 12. Risks

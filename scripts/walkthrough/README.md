@@ -24,3 +24,7 @@ model's. Everything else (the kernel, Postgres, the playbooks, the screens) is r
 `shell-etmf.mjs` seeds the eTMF example through the app's own calls (`seed-etmf.mjs`) and goes Home → asks →
 Waiting for you → opens and approves the activation → a page from the tree → a playbook → a record.
 `shell-literature.mjs` asks on the Literature example's Home.
+`shell-edc.mjs` (Stage 6) needs the fake Rave running and its address in the environment
+(`RAVE_URL=http://127.0.0.1:4790/RaveWebServices RAVE_USER=rave RAVE_PASSWORD=rave`, see the script's header). It
+seeds eTMF's side of study MW-301, waits for the first read of Rave, and goes from the EDC Home (XEdcHome) to the old
+queries page (XQueries), to site 104 in EDC (XSite), and with "Open in eTMF" to the same site in eTMF.
