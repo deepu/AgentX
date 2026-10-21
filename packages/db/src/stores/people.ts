@@ -86,6 +86,12 @@ export class PgPeopleStore {
     if (!r.rowCount) throw new Error(`No person ${personId}`);
   }
 
+  /** Whether the person has a password (signing in a regulated domain needs one). */
+  async hasPassword(personId: string): Promise<boolean> {
+    const { rows } = await this.pool.query('select password_hash is not null as has from mw.people where id = $1', [personId]);
+    return !!rows[0]?.has;
+  }
+
   /** The person when the password matches and they are not disabled. */
   async verifyPassword(email: string, password: string): Promise<Person | undefined> {
     const { rows } = await this.pool.query<{ id: string; password_hash: string | null; disabled: boolean }>(

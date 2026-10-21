@@ -102,7 +102,7 @@ export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, on
       const r = await submit({ outcome, values: draft, comment: comment.trim() || undefined, ...(password ? { signature: { password } } : {}) })
       if (!password || r.applied) setResult(r)
       if (r.applied) { setSigning(false); onDone?.(r) }
-      else if (!password && r.code === 'submit.signature-required') setSigning(true)
+      else if (!password && (r.code === 'submit.signature-required' || r.code === 'submit.password-not-set')) setSigning(true)
       return r
     } catch (err) {
       const r: MwSubmitResult = { applied: false, message: err instanceof Error ? err.message : String(err) }

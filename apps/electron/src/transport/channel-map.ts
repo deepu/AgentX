@@ -439,6 +439,7 @@ export const CHANNEL_MAP = {
   memwiseListPeople: invoke(RPC_CHANNELS.memwise.PEOPLE_LIST),
   memwiseActAs: invoke(RPC_CHANNELS.memwise.PEOPLE_ACT_AS),
   memwiseCreatePerson: invoke(RPC_CHANNELS.memwise.PEOPLE_CREATE),
+  memwiseSetOwnPassword: invoke(RPC_CHANNELS.memwise.PEOPLE_PASSWORD_SET),
   memwiseListRoles: invoke(RPC_CHANNELS.memwise.ROLES_LIST),
   memwiseListPlaybooks: invoke(RPC_CHANNELS.memwise.PLAYBOOKS_LIST),
   memwiseGetPlaybook: invoke(RPC_CHANNELS.memwise.PLAYBOOKS_GET),

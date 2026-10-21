@@ -167,6 +167,8 @@ export interface PeopleService {
   create(input: { name: string; email: string; roles?: string[]; password?: string }): Promise<Person>;
   setRoles(personId: string, roles: string[]): Promise<Person>;
   setPassword(personId: string, password: string): Promise<void>;
+  /** Phase 6: whether they have a password yet (the desktop owner starts without one). */
+  hasPassword(personId: string): Promise<boolean>;
   verifyPassword(email: string, password: string): Promise<Person | undefined>;
   /** A personal sign-in token, returned once; stored as sha256. */
   issueToken(personId: string, label?: string, ttlMs?: number): Promise<string>;
@@ -205,9 +207,10 @@ export interface SubmitResult {
   applied: boolean;
   /**
    * `forbidden`: the person lacks the role; `invalid`: values failed validation; `stale`: the step is no longer waiting.
-   * Phase 6: `signature-required` (no signature given), `signature-failed` (wrong password), `locked` (too many failures).
+   * Phase 6: `signature-required` (no signature given), `signature-failed` (wrong password), `locked` (too many failures),
+   * `password-not-set` (the person has no password to sign with yet; they choose one, then sign).
    */
-  status: 'applied' | 'forbidden' | 'invalid' | 'stale' | 'missing' | 'unknown-outcome' | 'signature-required' | 'signature-failed' | 'locked';
+  status: 'applied' | 'forbidden' | 'invalid' | 'stale' | 'missing' | 'unknown-outcome' | 'signature-required' | 'signature-failed' | 'locked' | 'password-not-set';
   errors?: Record<string, string[]>;
   message?: string;
 }

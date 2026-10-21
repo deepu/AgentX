@@ -275,6 +275,19 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
     expect(triggers.find((t) => t.workflowId === 'activate-site')?.firings).toBe(1)
   })
 
+  it('the owner works in eTMF themselves: every role, and a signing password they choose', async () => {
+    // No "act as" in a regulated domain, so the install's owner holds the project's roles.
+    expect([...svc.owner.roles].sort()).toEqual(['cra', 'study_manager', 'tmf_specialist'])
+    expect(await api.call(ownerCtx, ch.RECORDS_CREATE, { entity: 'etmf.Sponsor', values: { name: 'Owner Bio' }, reason: 'trying it out' }))
+      .toMatchObject({ applied: true })
+    // They start with no password; the first one needs nothing more, a change needs the current one.
+    expect(await svc.kernel.people.hasPassword(svc.owner.id)).toBe(false)
+    expect(await api.call(ownerCtx, ch.PEOPLE_PASSWORD_SET, { password: 'short' })).toMatchObject({ applied: false, code: 'password.rule' })
+    expect(await api.call(ownerCtx, ch.PEOPLE_PASSWORD_SET, { password: PASSWORD })).toMatchObject({ applied: true })
+    expect(await api.call(ownerCtx, ch.PEOPLE_PASSWORD_SET, { password: 'another long password' })).toMatchObject({ applied: false, code: 'password.current-wrong' })
+    expect(await api.call(ownerCtx, ch.PEOPLE_PASSWORD_SET, { password: 'another long password', current: PASSWORD })).toMatchObject({ applied: true })
+  })
+
   it("the document's audit trail exports, and tampering breaks the chain", async () => {
     const json = await api.call<MwAuditExport>(manager, ch.AUDIT_EXPORT, { entity: 'etmf.Document', id: documentId, format: 'json' })
     const trail = JSON.parse(Buffer.from(json.dataBase64, 'base64').toString('utf8'))

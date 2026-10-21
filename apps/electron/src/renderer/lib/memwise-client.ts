@@ -61,6 +61,8 @@ export const memwise = {
   actAs: (personId: string): Promise<MwStatus> => api().memwiseActAs(activeWorkspaceId(), personId),
   createPerson: (input: { name: string; email: string; roles: string[] }): Promise<MwPerson> =>
     api().memwiseCreatePerson(activeWorkspaceId(), input),
+  setOwnPassword: (input: import('@memwise/shared/protocol').MwSetPasswordInput): Promise<import('@memwise/shared/protocol').MwSetPasswordResult> =>
+    api().memwiseSetOwnPassword(activeWorkspaceId(), input),
   listRoles: (): Promise<MwRole[]> => api().memwiseListRoles(activeWorkspaceId()),
   listPlaybooks: (): Promise<MwPlaybookSummary[]> => api().memwiseListPlaybooks(activeWorkspaceId()),
   getPlaybook: (id: string): Promise<MwPlaybook> => api().memwiseGetPlaybook(activeWorkspaceId(), id),

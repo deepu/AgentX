@@ -50,7 +50,7 @@ export function useSignGate({ sign, signer, submit }: {
       return new Promise<MwSubmitResult>(resolve => setPending({ input, resolve }))
     }
     const r = await submit(input)
-    if (!r.applied && r.code === 'submit.signature-required' && !input.signature) {
+    if (!r.applied && (r.code === 'submit.signature-required' || r.code === 'submit.password-not-set') && !input.signature) {
       setMeaning(sign?.meaning ?? r.message ?? '')
       return new Promise<MwSubmitResult>(resolve => setPending({ input, resolve }))
     }
@@ -69,7 +69,7 @@ export function useSignGate({ sign, signer, submit }: {
         if (!pending) return SIGN_CANCELLED
         const r = await submit({ ...pending.input, signature: { password } })
         // A wrong password or a lock-out stays in the dialog; anything else goes back to the screen.
-        if (r.applied || (r.code !== 'submit.signature-failed' && r.code !== 'submit.locked')) settle(r)
+        if (r.applied || (r.code !== 'submit.signature-failed' && r.code !== 'submit.locked' && r.code !== 'submit.password-not-set')) settle(r)
         return r
       }}
     />

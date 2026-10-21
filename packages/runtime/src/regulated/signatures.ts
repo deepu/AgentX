@@ -68,6 +68,9 @@ export async function checkSignature(deps: SigningDeps, step: StepDef, by: Perso
   if (step.performer !== 'person') {
     return { applied: false, status: 'forbidden', message: 'only a person can sign; this step is answered another way' };
   }
+  if (!(await deps.people.hasPassword(by.personId))) {
+    return { applied: false, status: 'password-not-set', message: 'you have no password to sign with yet: choose one, then sign' };
+  }
   if (!signature?.password) {
     return { applied: false, status: 'signature-required', message: `this step needs your signature ("${step.sign}"): enter your password to sign` };
   }

@@ -1381,7 +1381,7 @@ export interface MwResendResult extends MwSubmitResult { delivery?: MwDelivery }
 // memwise:audit:get             (workspaceId, { entity, id })          → MwAuditTrail | null
 // memwise:audit:export          (workspaceId, MwAuditExportInput)      → MwAuditExport
 // memwise:cases:submit          takes `signature?: { password }` (MwSubmitStepInput) and may answer
-//                               status 'signature-required' | 'signature-failed' | 'locked'.
+//                               status 'signature-required' | 'signature-failed' | 'locked' | 'password-not-set'.
 
 export interface MwDomain {
   id: string
@@ -1714,3 +1714,9 @@ export interface MwDomainDetail {
   acceptsFrom: string[]
   intake?: string
 }
+
+// memwise:people:password:set   (workspaceId, MwSetPasswordInput) → MwSetPasswordResult
+// The signed-in person's own password, to sign in a regulated domain (the desktop owner starts
+// without one). Changing an existing one needs the current password.
+export interface MwSetPasswordInput { password: string; current?: string }
+export interface MwSetPasswordResult { applied: boolean; code?: 'password.current-wrong' | 'password.rule'; message?: string }

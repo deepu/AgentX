@@ -16,7 +16,7 @@ import type {
   MwPluginSummary,
   MwChannelName, MwChannelsAvailable, MwDelivery, MwExternalLink, MwExtractInput, MwExtractResult, MwIssueLinkInput, MwIssuedLink,
   MwNotifySettings, MwRelayConfigureInput, MwRelayStatus, MwResendPreview,
-  MwAuditExport, MwAuditExportInput, MwAuditTrail, MwDashboard, MwDashboardInput, MwDomain, MwFileData, MwRecordCreateInput,
+  MwAuditExport, MwAuditExportInput, MwAuditTrail, MwSetPasswordInput, MwSetPasswordResult, MwDashboard, MwDashboardInput, MwDomain, MwFileData, MwRecordCreateInput,
   MwRecordPage, MwRecordPageInput, MwRecordQueryInput, MwRecordQueryResult, MwRecordTransitionInput, MwRecordUpdateInput,
   MwRecordWriteResult, MwReleaseTriggerInput, MwSaveNoteInput, MwSaveViewInput, MwTreeInput, MwTreeNode, MwTrigger, MwView,
 } from '@memwise/shared/protocol'
@@ -45,6 +45,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.PEOPLE_LIST,
   RPC_CHANNELS.memwise.PEOPLE_ACT_AS,
   RPC_CHANNELS.memwise.PEOPLE_CREATE,
+  RPC_CHANNELS.memwise.PEOPLE_PASSWORD_SET,
   RPC_CHANNELS.memwise.ROLES_LIST,
   RPC_CHANNELS.memwise.PLAYBOOKS_LIST,
   RPC_CHANNELS.memwise.PLAYBOOKS_GET,
@@ -137,6 +138,7 @@ const SUBMIT_MESSAGES: Record<string, string> = {
   'signature-required': 'This step needs your signature: enter your password to sign.',
   'signature-failed': 'That password is not right, so nothing was signed.',
   locked: 'Too many attempts. Try again later.',
+  'password-not-set': 'You have no password to sign with yet. Choose one, then sign.',
 }
 /** Phase 6 record writes (`memwise:records:*`); the screens translate `memwise.record.result.<status>`. */
 const RECORD_MESSAGES: Record<string, string> = {
@@ -834,6 +836,28 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         throw new Error('Only the owner of this install can add people.')
       }
       return d.toPerson(await svc.kernel.people.create({ name: input.name, email: input.email, roles: input.roles ?? [] }))
+    },
+
+    /**
+     * Phase 6: the signed-in person sets their own password (to sign in a regulated domain). The
+     * first one needs nothing more; changing it needs the current one.
+     */
+    async setOwnPassword(ctx: RequestContext, input: MwSetPasswordInput): Promise<MwSetPasswordResult> {
+      const { svc, actor } = await begin(ctx)
+      if (typeof input?.password !== 'string' || !input.password) return { applied: false, message: 'Choose a password.' }
+      const people = svc.kernel.people
+      const me = await people.get(actor.personId)
+      if (!me) return { applied: false, message: 'That person was not found.' }
+      if (await people.hasPassword(me.id)) {
+        const ok = typeof input.current === 'string' ? await people.verifyPassword(me.email, input.current) : undefined
+        if (!ok || ok.id !== me.id) return { applied: false, code: 'password.current-wrong', message: 'Your current password is not right.' }
+      }
+      try {
+        await people.setPassword(me.id, input.password)
+      } catch (e) {
+        return { applied: false, code: 'password.rule', message: e instanceof Error ? e.message : String(e) }
+      }
+      return { applied: true }
     },
 
     async listRoles(ctx: RequestContext): Promise<MwRole[]> {
@@ -1743,6 +1767,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.PEOPLE_LIST, (ctx) => api.listPeople(ctx))
   server.handle(ch.PEOPLE_ACT_AS, (ctx, _ws: string, personId: string) => api.actAs(ctx, personId))
   server.handle(ch.PEOPLE_CREATE, (ctx, _ws: string, input) => api.createPerson(ctx, input))
+  server.handle(ch.PEOPLE_PASSWORD_SET, (ctx, _ws: string, input) => api.setOwnPassword(ctx, input))
   server.handle(ch.ROLES_LIST, (ctx) => api.listRoles(ctx))
   server.handle(ch.PLAYBOOKS_LIST, (ctx) => api.listPlaybooks(ctx))
   server.handle(ch.PLAYBOOKS_GET, (ctx, _ws: string, id: string) => api.getPlaybook(ctx, id))

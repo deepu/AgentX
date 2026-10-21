@@ -749,6 +749,8 @@ export interface ElectronAPI {
   memwiseListPeople(workspaceId: string): Promise<import('@memwise/shared/protocol').MwPerson[]>
   memwiseActAs(workspaceId: string, personId: string): Promise<import('@memwise/shared/protocol').MwStatus>
   memwiseCreatePerson(workspaceId: string, input: { name: string; email: string; roles: string[] }): Promise<import('@memwise/shared/protocol').MwPerson>
+  /** Phase 6: the signed-in person's own password, to sign in a regulated domain. */
+  memwiseSetOwnPassword(workspaceId: string, input: import('@memwise/shared/protocol').MwSetPasswordInput): Promise<import('@memwise/shared/protocol').MwSetPasswordResult>
   memwiseListRoles(workspaceId: string): Promise<import('@memwise/shared/protocol').MwRole[]>
   memwiseListPlaybooks(workspaceId: string): Promise<import('@memwise/shared/protocol').MwPlaybookSummary[]>
   memwiseGetPlaybook(workspaceId: string, id: string): Promise<import('@memwise/shared/protocol').MwPlaybook>

@@ -445,6 +445,8 @@ Example cases settle block states through the flow's dispatcher.
 - The page tree shows entity types that have no parent and no children as top-level groups. A group of more than 25 records opens a view.
 - Mentions are written on the kernel's own connection.
 - Passwords are at least 12 characters in a regulated workspace.
+- The desktop owner holds every role the project defines, and an existing owner gains any role the project added since, on each start. With "act as" refused in a regulated domain, the owner otherwise could do nothing there.
+- Someone with no password yet (the desktop owner) chooses one at their first signature: signing answers `password-not-set`, and the sign dialog asks for a new password twice, saves it (`memwise:people:password:set`) and signs. Changing a password later needs the current one.
 - Publishing a playbook of a regulated domain needs change-playbook's approving review to be signed.
 - `memwise validation-report <project>` writes the validation pack.
 - The audit PDF comes from a small writer with no dependencies.
@@ -473,7 +475,7 @@ Example cases settle block states through the flow's dispatcher.
 - Identity links for entities in a named domain are keyed by the entity key (`etmf.Site`), in Phase 4's code too.
 
 **App (§13, §14).**
-- One channel was added, `memwise:files:read`. The protocol also gained `MwEntityType.definition`, `MwDomain.detail`, `domain` on playbook and case summaries, `MwSubmitResult.retryAfter`, and the client-side code `sign.cancelled`.
+- Two channels were added, `memwise:files:read` and `memwise:people:password:set`. The protocol also gained `MwEntityType.definition`, `MwDomain.detail`, `domain` on playbook and case summaries, `MwSubmitResult.retryAfter`, and the client-side code `sign.cancelled`.
 - Navigation:
   - The top items are Inbox, Cases, Playbooks, Pages, Automations and Chats.
   - The domain filter on the inbox, cases and playbooks shows only when a list spans more than one domain.

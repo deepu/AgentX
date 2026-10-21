@@ -160,6 +160,7 @@ const EXPECTED_CHANNELS: string[] = [
   'memwise:people:actAs',
   'memwise:people:create',
   'memwise:people:list',
+  'memwise:people:password:set',
   'memwise:playbooks:build',
   'memwise:playbooks:get',
   'memwise:playbooks:list',

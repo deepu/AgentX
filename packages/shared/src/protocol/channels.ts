@@ -426,6 +426,7 @@ export const RPC_CHANNELS = {
     PEOPLE_LIST: 'memwise:people:list',
     PEOPLE_ACT_AS: 'memwise:people:actAs',
     PEOPLE_CREATE: 'memwise:people:create',
+    PEOPLE_PASSWORD_SET: 'memwise:people:password:set',
     ROLES_LIST: 'memwise:roles:list',
     PLAYBOOKS_LIST: 'memwise:playbooks:list',
     PLAYBOOKS_GET: 'memwise:playbooks:get',

@@ -101,6 +101,15 @@ describe('signing', () => {
     expect(html).toContain('That password is not right, so nothing was signed.')
   })
 
+  test('with no password yet, the person chooses one (twice) and signs with it', () => {
+    const html = render(<SignForm {...props} onSetPassword={async () => ({ applied: true })} initialResult={{ applied: false, code: 'submit.password-not-set' }} />)
+    expect(html).toContain('data-choose-password')
+    expect(html).toContain('You have no password to sign with yet. Choose one (at least 12 characters)')
+    expect(html).toContain('data-repeat')
+    expect(html).toContain('Save password and sign')
+    expect(html).not.toContain('data-sign-error')
+  })
+
   test('a lock-out says when to try again and disables signing', () => {
     const html = render(<SignForm {...props} initialResult={{ applied: false, code: 'submit.locked', retryAfter: '2026-10-20T10:30:00Z' }} />)
     expect(html).toMatch(/Too many attempts\. Try again after [^<]+\./)

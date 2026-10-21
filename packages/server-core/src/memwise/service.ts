@@ -279,9 +279,16 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     const knownRoles = (roles: string[]) => roles.filter((r) => roleIds.has(r))
     const ownerInfo = opts.owner ?? ownerDefaults(mode)
     const state = readState(stateFile)
-    const owner: Person = (state.ownerId ? await k.people.get(state.ownerId) : undefined)
+    // The owner's roles: staff and manager where the project has them (the intake example); in a
+    // project with roles of its own (Phase 6, like the eTMF's), every role it defines, since a
+    // regulated domain allows no "act as" and the owner must be able to work in it themselves.
+    const ownerRoles = knownRoles(['staff', 'manager']).length ? knownRoles(['staff', 'manager']) : [...roleIds]
+    let owner: Person = (state.ownerId ? await k.people.get(state.ownerId) : undefined)
       ?? (await k.people.byEmail(ownerInfo.email))
-      ?? (await k.people.create({ name: ownerInfo.name, email: ownerInfo.email, roles: knownRoles(['staff', 'manager']) }))
+      ?? (await k.people.create({ name: ownerInfo.name, email: ownerInfo.email, roles: ownerRoles }))
+    // An owner made before the project's roles changed gains the ones it is missing.
+    const missing = ownerRoles.filter((r) => !owner.roles.includes(r))
+    if (missing.length) owner = await k.people.setRoles(owner.id, [...owner.roles, ...missing])
     if (state.ownerId !== owner.id) writeState(stateFile, { ...state, ownerId: owner.id })
     ownerName = owner.name
     if (seeded && mode === 'desktop') {
