@@ -33,10 +33,17 @@ const inbox = [item('a', 'activate-site', '2026-10-20T10:00:00Z'), item('b', 'ac
 
 describe('projects from domains', () => {
   test('each domain is a project in an app of its own; the empty default domain is left out', () => {
-    const projects = shellProjects(domains, inbox, playbooks)
+    const projects = shellProjects(domains, inbox.slice(0, 2), playbooks)
     expect(projects.map(p => p.id)).toEqual(['etmf', 'edc'])
     expect(projects.find(p => p.id === 'etmf')).toMatchObject({ name: 'eTMF', appId: 'etmf', regulated: true, waiting: 2 })
     expect(groupByApp(projects).map(a => [a.id, a.projects.length])).toEqual([['etmf', 1], ['edc', 1]])
+  })
+
+  test('the default domain shows while something waits in it (a playbook being built)', () => {
+    const projects = shellProjects(domains, inbox, playbooks, 'Northlight')
+    expect(projects.map(p => p.id)).toEqual(['etmf', 'edc', 'domain'])
+    expect(projects[2]).toMatchObject({ name: 'Northlight', waiting: 1 })
+    expect(pickProject(projects, null, null)?.id).toBe('etmf')
   })
 
   test('the default domain shows, under the workspace name, when it is the only one', () => {

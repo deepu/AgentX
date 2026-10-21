@@ -29,13 +29,15 @@ export interface AnchoredChatProps {
   alwaysNew?: boolean
   /** Replaces the empty column above the composer (Home's question and lists). */
   empty?: (send: (message: string) => Promise<void>, busy: boolean) => React.ReactNode
+  /** Sends the first message another way (a Literature question opens its page); busy while it runs. */
+  onSend?: (message: string) => Promise<void>
   /** A chat was started here. */
   onStarted?: (sessionId: string) => void
   /** "New chat": the column goes back to the composer. */
   onNewChat?: () => void
 }
 
-export function AnchoredChat({ anchor, title, placeholder, sessionId, alwaysNew, empty, onStarted, onNewChat }: AnchoredChatProps) {
+export function AnchoredChat({ anchor, title, placeholder, sessionId, alwaysNew, empty, onSend, onStarted, onNewChat }: AnchoredChatProps) {
   const { t } = useTranslation()
   const store = useStore()
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
@@ -68,10 +70,16 @@ export function AnchoredChat({ anchor, title, placeholder, sessionId, alwaysNew,
     const text = message.trim()
     const api = getMemwiseApi()
     if (!text || busy) return
+    if (onSend) {
+      setBusy(true)
+      try { await onSend(text) } finally { setBusy(false) }
+      return
+    }
     if (!api || !workspaceId || typeof api.memwiseOpenChat !== 'function') { toast.error(t('memwise.notAvailable')); return }
     setBusy(true)
     try {
-      const r = await api.memwiseOpenChat(workspaceId, { anchor, message: text })
+      // Continues the latest chat here when the list hadn't shown it yet; "New chat" starts one.
+      const r = await api.memwiseOpenChat(workspaceId, { anchor, message: text, reuse: !fresh && !alwaysNew })
       await waitForSession(store, r.sessionId)
       setFresh(false)
       setFound({ key, sessionId: r.sessionId })
@@ -81,7 +89,7 @@ export function AnchoredChat({ anchor, title, placeholder, sessionId, alwaysNew,
     } finally {
       setBusy(false)
     }
-  }, [anchor, busy, key, onStarted, store, t, workspaceId])
+  }, [alwaysNew, anchor, busy, fresh, key, onSend, onStarted, store, t, workspaceId])
 
   const newChat = () => { setFresh(true); onNewChat?.() }
   const header = (

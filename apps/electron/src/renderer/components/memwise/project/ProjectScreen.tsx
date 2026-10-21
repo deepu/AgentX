@@ -113,8 +113,9 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
       alwaysNew={isHome}
       {...(isHome ? {
         empty: (send: (m: string) => Promise<void>, busy: boolean) => (
-          <HomeChatColumn project={project} domain={domain} send={domain?.home ? askOnHome : send} busy={busy} />
+          <HomeChatColumn project={project} domain={domain} send={send} busy={busy} />
         ),
+        ...(domain?.home ? { onSend: askOnHome } : {}),
         onStarted: (sessionId: string) => navigate(routes.view.project(project.id, { type: 'home', chatId: sessionId })),
         onNewChat: () => navigate(routes.view.project(project.id)),
       } : {})}

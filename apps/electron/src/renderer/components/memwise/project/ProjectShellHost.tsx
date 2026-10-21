@@ -11,7 +11,7 @@ import { parseRouteToNavigationState } from '../../../../shared/route-parser'
 import type { ViewRoute } from '../../../../shared/routes'
 import { ALL_PROJECTS, projectRoute } from '../../../../shared/project-route'
 import { memwiseCasesAtom, memwiseDomainsAtom, memwiseInboxAtom, memwisePlaybooksAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
-import { panelStackAtom, reconcilePanelStackAtom } from '@/atoms/panel-stack'
+import { focusedPanelIndexAtom, panelStackAtom, reconcilePanelStackAtom } from '@/atoms/panel-stack'
 import { ProjectSidebar } from './ProjectSidebar'
 import { pickProject, projectLookups } from './project-model'
 import { readLastProject, useProjectShellEnabled, useShellProjects } from './useProjectShell'
@@ -27,6 +27,7 @@ export function useProjectShellRouting(navState: NavigationState, workspaceName?
   const store = useStore()
   const { projects } = useShellProjects(workspaceName)
   const stack = useAtomValue(panelStackAtom)
+  const focusedIndex = useAtomValue(focusedPanelIndexAtom)
   const reconcile = useSetAtom(reconcilePanelStackAtom)
 
   // The rewriter reads the latest data each time it runs.
@@ -38,7 +39,7 @@ export function useProjectShellRouting(navState: NavigationState, workspaceName?
     const list = projectsRef.current
     if (list.length === 0) return null
     const ws = store.get(memwiseWorkspaceIdAtom)
-    const open = stack.length ? parseRouteToNavigationState(stack[0]!.route) : null
+    const open = stack.length ? parseRouteToNavigationState((stack[focusedIndex] ?? stack[0])!.route) : null
     const openProject = open?.navigator === 'mw' && open.view && open.view.projectId !== ALL_PROJECTS ? open.view.projectId : null
     const current = pickProject(list, openProject, readLastProject(ws))
     if (!current) return null
@@ -51,7 +52,7 @@ export function useProjectShellRouting(navState: NavigationState, workspaceName?
       cases: store.get(memwiseCasesAtom),
       hasProject: id => list.some(p => p.id === id),
     })
-  }, [store, stack])
+  }, [store, stack, focusedIndex])
 
   React.useEffect(() => {
     if (!enabled) return
@@ -63,12 +64,14 @@ export function useProjectShellRouting(navState: NavigationState, workspaceName?
   // extra panels close. Settings and the other app screens keep their own layout.
   React.useEffect(() => {
     if (!enabled || stack.length === 0) return
-    const focused = stack[0]!.route
-    // A restored route naming a project that isn't here (another workspace's) opens the landing project's Home.
+    const focused = (stack[focusedIndex] ?? stack[0])!.route
+    // A route naming a project that isn't here (a restored route from another workspace) opens in
+    // the landing project: a waiting item keeps its item, anything else lands on Home.
     const view = navState.navigator === 'mw' ? navState.view : null
     if (view && view.projectId !== ALL_PROJECTS && projects.length > 0 && !projects.some(p => p.id === view.projectId)) {
       const landing = pickProject(projects, null, readLastProject(store.get(memwiseWorkspaceIdAtom)))
-      if (landing) reconcile({ entries: [{ route: projectRoute(landing.id, { type: 'home' }) as ViewRoute, proportion: 1 }], focusedIndex: 0 })
+      const details = view.details?.type === 'waiting' ? view.details : { type: 'home' as const }
+      if (landing) reconcile({ entries: [{ route: projectRoute(landing.id, details) as ViewRoute, proportion: 1 }], focusedIndex: 0 })
       return
     }
     const target = stack.length === 1 && navState.navigator === 'mw' ? null : rewrite(focused)
@@ -78,7 +81,7 @@ export function useProjectShellRouting(navState: NavigationState, workspaceName?
       const keep = stack.find(p => p.route.startsWith('mw/'))!.route
       reconcile({ entries: [{ route: keep, proportion: 1 }], focusedIndex: 0 })
     }
-  }, [enabled, stack, navState, projects, store, rewrite, reconcile])
+  }, [enabled, stack, focusedIndex, navState, projects, store, rewrite, reconcile])
 
   return state
 }

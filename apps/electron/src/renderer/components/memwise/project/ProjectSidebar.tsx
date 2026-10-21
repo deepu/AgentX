@@ -7,12 +7,12 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAtomValue } from 'jotai'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { BookOpen, ChevronDown, ChevronRight, Database, FileText, LayoutDashboard, MessageCircle, Plus, RefreshCw, Settings, SquareCheckBig } from 'lucide-react'
 import type { MwDomain, MwTreeNode } from '@memwise/shared/protocol'
 import { cn } from '@/lib/utils'
 import { navigate, routes } from '@/lib/navigate'
-import { memwiseLastChangeAtom, memwisePlaybooksAtom, memwiseStatusAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
+import { memwiseLastChangeAtom, memwiseNewPlaybookDialogAtom, memwisePeopleOnlyAtom, memwisePlaybooksAtom, memwiseStatusAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { getMemwiseApi } from '@/hooks/useMemwise'
 import { useMemwiseTriggers } from '@/hooks/useMemwiseRecords'
 import type { ProjectDetails } from '../../../../shared/project-route'
@@ -39,6 +39,9 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
   const { data: triggers } = useMemwiseTriggers()
   const status = useAtomValue(memwiseStatusAtom)
   const [showAllPlaybooks, setShowAllPlaybooks] = React.useState(false)
+  // A new playbook is built by chat, so not from a person's own sign-in.
+  const openNewPlaybook = useSetAtom(memwiseNewPlaybookDialogAtom)
+  const peopleOnly = useAtomValue(memwisePeopleOnlyAtom)
   const go = (d?: ProjectDetails) => navigate(routes.view.project(project.id, d))
 
   const ownPlaybooks = projectPlaybooks(project.id, playbooks)
@@ -65,7 +68,7 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
         {extraPages}
         {domain && <PageTree domain={domain} projectId={project.id} details={details} />}
 
-        {ownPlaybooks.length > 0 && <Section title={t('memwise.shell.playbooks')} onAdd={() => go({ type: 'settings', tab: 'playbooks' })} addLabel={t('memwise.shell.newPlaybook')} />}
+        {ownPlaybooks.length > 0 && <Section title={t('memwise.shell.playbooks')} {...(peopleOnly ? {} : { onAdd: () => openNewPlaybook(true) })} addLabel={t('memwise.shell.newPlaybook')} />}
         {shownPlaybooks.map(p => (
           <Row
             key={p.id}

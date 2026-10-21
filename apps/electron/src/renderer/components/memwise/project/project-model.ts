@@ -64,9 +64,12 @@ export function shellProjects(domains: MwDomain[] | null | undefined, inbox: MwI
     const p = inboxItemProject(i, l)
     counts.set(p, (counts.get(p) ?? 0) + 1)
   }
-  // The default domain only shows when it is the only one, or when it has something in it.
+  // The default domain only shows when it is the only one, or when it has something in it (items
+  // waiting on a playbook being built are in it, so it shows while there are any).
   const own = domains.filter(d => d.id !== DEFAULT_PROJECT)
-  const list = own.length ? domains.filter(d => d.id !== DEFAULT_PROJECT || hasContent(d)) : domains
+  // When it shows beside others it comes last, so a person still lands on a project of their own.
+  const shownDefault = domains.filter(d => d.id === DEFAULT_PROJECT && (hasContent(d) || (counts.get(d.id) ?? 0) > 0))
+  const list = own.length ? [...own, ...shownDefault] : domains
   return list.map(d => {
     const name = d.id === DEFAULT_PROJECT ? workspaceName || d.name : d.name
     return {

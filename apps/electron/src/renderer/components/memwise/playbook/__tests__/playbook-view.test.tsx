@@ -39,7 +39,7 @@ describe('PlaybookView', () => {
     expect(out).toContain('If checked → Manager approves onboarding')
     expect(out).toContain('If needs info → back to Client fills in the intake form')
     expect(out).toContain('If sent back → back to Client fills in the intake form')
-    expect(out).toContain('If done → the case is finished')
+    expect(out).toContain('If done → the run is finished')
     expect(out).toContain('If failed or needs person → Needs a person')
     expect(out).toContain('Reminder after 3 days, goes to Needs a person after 7 days')
     expect(out).toContain('Closes after 7 days if nothing happens')
@@ -76,7 +76,7 @@ describe('EffectivePolicyView', () => {
   const out = text(renderToStaticMarkup(createElement(EffectivePolicyView, { rules: samplePlaybook.steps.check!.policy }))).replace(/\/ /g, '/')
 
   it('labels each rule with its layer and source', () => {
-    expect(out).toContain('Sends Needs approval Your domain domain/policy.yaml')
+    expect(out).toContain('Sends Needs approval Your project domain/policy.yaml')
     expect(out).toContain("Can't be undone Not allowed This playbook workflows/client-intake/policy.yaml")
     expect(out).toContain('Tokens 40,000 This step')
     expect(out).toContain('Platform default')

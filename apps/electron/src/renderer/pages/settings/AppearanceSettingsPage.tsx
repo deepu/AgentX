@@ -29,7 +29,9 @@ import {
   SettingsToggle,
 } from '@/components/settings'
 import { ThemeGrid, type ThemeGridOption } from '@/components/settings/ThemeGrid'
-import { useAtom } from 'jotai'
+import { useAtom, useAtomValue } from 'jotai'
+import { memwiseStatusAtom } from '@/atoms/memwise'
+import { saveShellLayout, shellLayoutAtom, type ShellLayout } from '@/components/memwise/project/useProjectShell'
 import * as storage from '@/lib/local-storage'
 import { useWorkspaceIcons } from '@/hooks/useWorkspaceIcon'
 import { WorkspaceAvatar } from '@/components/ui/workspace-avatar'
@@ -133,6 +135,13 @@ export default function AppearanceSettingsPage() {
     appThemeOverrides,
   } = useTheme()
   const { workspaces, sessionStatuses } = useAppShellContext()
+  // MemWise: the project layout or the classic one (the way back after "Use the classic layout").
+  const memwiseStatus = useAtomValue(memwiseStatusAtom)
+  const [shellLayout, setShellLayout] = useAtom(shellLayoutAtom)
+  const chooseShellLayout = useCallback((layout: ShellLayout) => {
+    saveShellLayout(layout)
+    setShellLayout(layout)
+  }, [setShellLayout])
 
   // Fetch workspace icons as data URLs (file:// URLs don't work in renderer)
   const workspaceIconMap = useWorkspaceIcons(workspaces)
@@ -337,6 +346,20 @@ export default function AppearanceSettingsPage() {
           ]}
         />
       </SettingsSection>
+
+      {memwiseStatus && (
+        <SettingsSection title={t("memwise.shell.layoutTitle")} description={t("memwise.shell.layoutChoiceHint")}>
+          <SettingsSegmentedControl
+            value={shellLayout}
+            onValueChange={chooseShellLayout}
+            aria-label={t("memwise.shell.layoutTitle")}
+            options={[
+              { value: 'projects', label: t("memwise.shell.layoutProjects") },
+              { value: 'classic', label: t("memwise.shell.layoutClassic") },
+            ]}
+          />
+        </SettingsSection>
+      )}
 
       {/* Color theme: tiles with live swatches in the active mode */}
       <SettingsSection title={t("settings.appearance.colorTheme")}>
