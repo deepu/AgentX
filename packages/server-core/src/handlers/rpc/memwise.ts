@@ -9,7 +9,7 @@ import type {
   MwInboxItem, MwReturnedNote, MwLiveCounts, MwOpenChatInput, MwChatAnchor, MwFindChatResult, MwAskInput, MwAskResult, MwPerson, MwPlaybook, MwPlaybookSummary, MwRole, MwRunStatus,
   MwSendEventInput, MwStartCaseInput, MwStartCaseRefusal, MwStatus, MwStepRecord, MwSubmitResult, MwSubmitStepInput,
   MwBuildPlaybookInput, MwBuildPlaybookResult, MwCheckDraftInput, MwCreateDraftInput, MwDraft, MwDraftEditInput,
-  MwDraftReport, MwDraftSummary, MwExampleFromCaseInput, MwExampleFromCaseResult, MwSubmitDraftResult, MwVersion,
+  MwDraftReport, MwDraftSummary, MwExampleFromCaseInput, MwExampleFromCaseResult, MwSubmitDraftResult, MwVersion, MwTestRunDraftInput, MwTestRunDraftResult, MwRecordsChatFilter, MwRecordsChatFilterInput,
   MwWriteDraftInput, MwWriteDraftResult,
   MwBindResult, MwBindingVersion, MwBindingView, MwDecideIdentityInput, MwEntityRecord, MwEntityRecordInput, MwGetBindingInput,
   MwIdentityCandidate, MwInboxBinding, MwInstallChoices, MwInstallPluginInput, MwInstallableSource, MwPluginDetail,
@@ -38,6 +38,8 @@ import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseCh
 import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../memwise/service'
 import type { DraftFacts, DtoContext } from '../../memwise/dto'
 import { keepableEntities, recordDigest } from '../../memwise/chat-tools'
+import { untrustedRecordData } from '@memwise/session-tools-core'
+import { clearRecordsChatFilter, getRecordsChatFilter } from '../../memwise/records-filter'
 import {
   authoringOf, conversationBlock, conversationState, draftForRun, isConversationStep, kickoffMessage, personName, plainValues,
   sendBackNote, sentBackMessage,
@@ -82,6 +84,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.DRAFTS_DISCARD,
   RPC_CHANNELS.memwise.DRAFTS_CHECK,
   RPC_CHANNELS.memwise.DRAFTS_SUBMIT,
+  RPC_CHANNELS.memwise.DRAFTS_TEST_RUN,
   RPC_CHANNELS.memwise.EXAMPLES_FROM_CASE,
   // Phase 4
   RPC_CHANNELS.memwise.PLUGINS_LIST,
@@ -118,6 +121,8 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.PAGES_DASHBOARD,
   RPC_CHANNELS.memwise.VIEWS_LIST,
   RPC_CHANNELS.memwise.VIEWS_SAVE,
+  RPC_CHANNELS.memwise.RECORDS_CHAT_FILTER_GET,
+  RPC_CHANNELS.memwise.RECORDS_CHAT_FILTER_CLEAR,
   RPC_CHANNELS.memwise.TRIGGERS_LIST,
   RPC_CHANNELS.memwise.TRIGGERS_RELEASE,
   RPC_CHANNELS.memwise.AUDIT_GET,
@@ -798,6 +803,39 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     return session.id
   }
 
+  /**
+   * Stage 4 (26 §2): a chat about a record type's list. It may look records up and filter the
+   * list beside it (`records_filter`); the list's first rows, as the person sees them, go into its context.
+   */
+  async function openRecordsChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, entity: string, message?: string): Promise<string> {
+    const def = c.project.entities[entity]
+    if (!def) throw new Error('That record type was not found.')
+    const title = def.title ?? def.entity
+    const rows = await recordsOf(svc).query({ entity, limit: 40 }, actor)
+    const fields = Object.entries(def.fields).map(([name, f]) => `${name}${f.description ? ` (${clipText(f.description, 80)})` : ''}`)
+    const states = def.lifecycleChart ? Object.keys(def.lifecycleChart.states) : []
+    const block = [
+      `The list of ${title} records (${entity}): ${rows.total} the person may see.`,
+      `Fields: ${fields.join(', ')}.`,
+      ...(states.length ? [`Lifecycle states: ${states.join(', ')}.`] : []),
+      untrustedRecordData(rows.rows.map((r) => ({ id: r.id, title: r.title, ...(r.status ? { status: r.status } : {}) }))),
+      '',
+      'This chat is about the list above. Look further with record_get and record_query; when the person asks to see some of the records, filter the list with records_filter and answer with the count.',
+      ...(message ? ['', SHELL_STYLE] : []),
+    ].join('\n')
+    const session = await deps.sessionManager.createSession(workspaceId, { name: message ? shortQuestion(message) : title })
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    await new PgChatAnchorStore().set(svc.kernel.pool, { chatId: session.id, anchorKind: 'records', anchorId: entity, personId: actor.personId })
+    deps.sessionManager.setMemwiseContext(session.id, {
+      anchor: { kind: 'records', id: entity },
+      block,
+      personName: (await personName(svc, actor.personId)) ?? undefined,
+    })
+    if (message) sendFirst(session.id, message)
+    else kickoff(session.id, 'explain')
+    return session.id
+  }
+
   /** The anchors table's kind and id for an anchor. */
   async function anchorKey(anchor: MwChatAnchor): Promise<{ kind: import('@memwise/db').ChatAnchorKind; id: string }> {
     if (anchor.kind === 'record') {
@@ -1094,6 +1132,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           run: await runOf(got.meta), changedFiles,
           playbookTitle: c.project.workflows[got.meta.workflowId]?.title ?? got.meta.title,
           names: await (names ??= peopleNames(svc)),
+          ...await authoring.lastTestRun(got.meta.id).then((testRun) => (testRun ? { testRun } : {}), () => ({})),
         }
       },
     }
@@ -1438,6 +1477,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (input?.anchor?.kind === 'record') {
         return { sessionId: await openRecordChat(svc, actor, c, workspaceId, input.anchor, message) }
       }
+      if (input?.anchor?.kind === 'records') {
+        return { sessionId: await openRecordsChat(svc, actor, c, workspaceId, input.anchor.id, message) }
+      }
       if (!input?.anchor || !['case', 'step', 'workflow'].includes(input.anchor.kind)) throw new Error('Choose what the chat is about.')
       return { sessionId: await openExplainChat(svc, actor, c, d, workspaceId, input.anchor as ExplainAnchor, message) }
     },
@@ -1524,6 +1566,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         ...(playbook ? { playbook } : {}),
         diagnostics: diagnostics.map(d.toDiagnostic),
         ...(got.meta.status === 'open' ? { fileTexts: await draftFileTexts(authoring, got.meta, diff) } : {}),
+        ...(facts.testRun ? { lastTestRun: d.toDraftTestRun(facts.testRun, facts.names), testRunStale: facts.testRun.hash !== got.contentHash } : {}),
       }
     },
 
@@ -1640,6 +1683,41 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       } catch (e) {
         return { applied: false, code: 'draft.submit_failed', message: errText(e) }
       }
+    },
+
+    /**
+     * Stage 4 (26 §5, D121): the draft run on one record in a throwaway database (records copied
+     * in, the record's latest case replayed, nothing sent). Takes as long as an example case.
+     */
+    async testRunDraft(ctx: RequestContext, input: MwTestRunDraftInput): Promise<MwTestRunDraftResult> {
+      const { svc, actor } = await begin(ctx)
+      const authoring = authoringOf(svc)
+      const got = await authoring.getDraft(input?.draftId)
+      if (!got) return { applied: false, code: 'draft.missing', message: DRAFT_MESSAGES.missing }
+      if (got.meta.status !== 'open') return { applied: false, code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
+      if (!input.record?.entity || !input.record?.id) return { applied: false, code: 'draft.test_run_failed', message: 'Pick the record to run the draft on.' }
+      try {
+        const run = await authoring.testRun(input.draftId, { entity: input.record.entity, id: input.record.id }, actor)
+        emitMemwiseChange({ kind: 'drafts', id: input.draftId })
+        return { applied: true, testRun: (await dto()).toDraftTestRun(run, await peopleNames(svc)) }
+      } catch (e) {
+        return { applied: false, code: 'draft.test_run_failed', message: errText(e) }
+      }
+    },
+
+    /** Stage 4 (26 §2): the filter the list's chat put on it, for the chips above the list. */
+    async recordsChatFilter(ctx: RequestContext, input: MwRecordsChatFilterInput): Promise<MwRecordsChatFilter | null> {
+      const { actor } = await begin(ctx)
+      if (!input?.entity) return null
+      return getRecordsChatFilter(actor.personId, input.entity)
+    },
+
+    /** × on the chips: the list shows every record again. */
+    async clearRecordsChatFilter(ctx: RequestContext, input: MwRecordsChatFilterInput): Promise<{ applied: boolean }> {
+      const { actor } = await begin(ctx)
+      const applied = !!input?.entity && clearRecordsChatFilter(actor.personId, input.entity)
+      if (applied) emitMemwiseChange({ kind: 'records', entity: input.entity })
+      return { applied }
     },
 
     async exampleFromCase(ctx: RequestContext, input: MwExampleFromCaseInput): Promise<MwExampleFromCaseResult> {
@@ -2200,6 +2278,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.DRAFTS_DISCARD, (ctx, _ws: string, draftId: string) => api.discardDraft(ctx, draftId))
   server.handle(ch.DRAFTS_CHECK, (ctx, _ws: string, input) => api.checkDraft(ctx, input))
   server.handle(ch.DRAFTS_SUBMIT, (ctx, _ws: string, draftId: string) => api.submitDraft(ctx, draftId))
+  server.handle(ch.DRAFTS_TEST_RUN, (ctx, _ws: string, input) => api.testRunDraft(ctx, input))
   server.handle(ch.EXAMPLES_FROM_CASE, (ctx, _ws: string, input) => api.exampleFromCase(ctx, input))
   // Phase 4
   server.handle(ch.PLUGINS_LIST, (ctx) => api.listPlugins(ctx))
@@ -2236,6 +2315,8 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.PAGES_DASHBOARD, (ctx, _ws: string, input) => api.dashboard(ctx, input))
   server.handle(ch.VIEWS_LIST, (ctx, _ws: string, input) => api.listViews(ctx, input))
   server.handle(ch.VIEWS_SAVE, (ctx, _ws: string, input) => api.saveView(ctx, input))
+  server.handle(ch.RECORDS_CHAT_FILTER_GET, (ctx, _ws: string, input) => api.recordsChatFilter(ctx, input))
+  server.handle(ch.RECORDS_CHAT_FILTER_CLEAR, (ctx, _ws: string, input) => api.clearRecordsChatFilter(ctx, input))
   server.handle(ch.TRIGGERS_LIST, (ctx) => api.listTriggers(ctx))
   server.handle(ch.TRIGGERS_RELEASE, (ctx, _ws: string, input) => api.releaseTrigger(ctx, input))
   server.handle(ch.AUDIT_GET, (ctx, _ws: string, input) => api.auditTrail(ctx, input))

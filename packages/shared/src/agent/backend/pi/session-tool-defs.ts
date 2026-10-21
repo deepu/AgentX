@@ -26,12 +26,15 @@ export function getSessionToolProxyDefs(opts?: {
   includeRecordKeep?: boolean;
   /** Per session: record_update, in a chat opened on a draft from a domain's question box. */
   includeRecordUpdate?: boolean;
+  /** Per session: records_filter, in a chat about a record type's list (Stage 4). */
+  includeRecordsFilter?: boolean;
 }): SessionToolProxyDef[] {
   return getToolDefsAsJsonSchema({
     includePlaybookTools: opts?.includePlaybookTools ?? false,
     includeRecordTools: opts?.includeRecordTools ?? false,
     includeRecordKeep: opts?.includeRecordKeep ?? false,
     includeRecordUpdate: opts?.includeRecordUpdate ?? false,
+    includeRecordsFilter: opts?.includeRecordsFilter ?? false,
     prefix: 'mcp__session__',
     includeDeveloperFeedback: FEATURE_FLAGS.developerFeedback,
     // Same gate as the Claude path (session-scoped-tools.ts): advertise `decide`

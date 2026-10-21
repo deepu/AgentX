@@ -6,10 +6,11 @@
  *
  * Loaded by SessionManager at module level, so no kernel imports here except lazily.
  */
-import type { MemwiseRecordToolCallbacks, MemwiseToolCallbacks, PlaybookToolDiagnostic, RecordKeepRowResult } from '@memwise/session-tools-core'
+import type { MemwiseRecordToolCallbacks, MemwiseToolCallbacks, PlaybookTestRunInput, PlaybookToolDiagnostic, RecordKeepRowResult, RecordsFilterInput } from '@memwise/session-tools-core'
 import { untrustedRecordData } from '@memwise/session-tools-core'
-import type { Diagnostic, DraftDiff, DraftMeta, DraftReport } from '@memwise/defs'
+import type { Diagnostic, DraftDiff, DraftMeta, DraftReport, DraftTestRun } from '@memwise/defs'
 import { emitMemwiseChange, getMemwiseService } from './host'
+import { setRecordsChatFilter } from './records-filter'
 import { authoringOf, conversationState, isConversationStep, type ConversationState } from './conversation'
 import type { MemwiseService, PersonActor } from './service'
 import type { ProjectDefs } from '@memwise/defs'
@@ -68,10 +69,86 @@ export function reportForChat(r: DraftReport): Record<string, unknown> {
   }
 }
 
+/** A test run as the chat reads it: where it stopped, the steps it went through and what it would have sent. */
+export function testRunForChat(r: DraftTestRun): Record<string, unknown> {
+  return {
+    status: r.status,
+    record: r.record.title,
+    ...(r.reason ? { reason: r.reason } : {}),
+    ...(r.differences.length ? { differences: r.differences } : {}),
+    ...(r.trace ? {
+      stoppedAt: `${r.trace.state} (${r.trace.status})`,
+      steps: r.trace.steps.map((s) => `${s.title ?? s.state}: ${s.status}${s.outcome ? ` → ${s.outcome}` : ''}`),
+      calls: r.trace.calls.map((c) => ({ step: c.state, tool: c.tool, args: c.args, ...(c.stubbed ? { notSent: true } : {}), ...(c.error ? { error: c.error } : {}) })),
+    } : {}),
+    copied: r.copied,
+    ...(r.replayedCase ? { replayedCase: r.replayedCase } : {}),
+    note: 'A test run: nothing was sent and no record changed. Tell the person in a sentence what it would do.',
+  }
+}
+
+/**
+ * The record a test run starts from, by id or by words of its title ("104", "site DE-104"): among
+ * the records of the type the playbook starts from, as the person sees them.
+ */
+async function findTestRecord(svc: MemwiseService, actor: PersonActor, workflowId: string, input: PlaybookTestRunInput): Promise<{ entity: string; id: string }> {
+  const { project } = await svc.kernel.project()
+  const wf = project.workflows[workflowId]
+  if (!wf) throw new Error('That playbook was not found.')
+  const records = (svc.kernel as { records?: RecordsService }).records
+  if (!records) throw new Error('Records are not available in this version.')
+  const refs = Object.values(wf.caseType.fields).filter((f) => f.type.kind === 'ref').map((f) => (f.type as { entity: string }).entity)
+  const keys = input.entity ? [input.entity, ...refs] : refs
+  const domain = wf.domain ?? 'domain'
+  const resolve = (name: string) => project.entities[name] ? name
+    : Object.entries(project.entities).find(([key, e]) => (e.domain ?? 'domain') === domain && (key === `${domain}.${name}` || e.entity === name))?.[0]
+  const words = input.record.trim().toLowerCase()
+  for (const name of keys) {
+    const entity = resolve(name)
+    if (!entity) continue
+    // "site 104": the type's own name isn't part of the title.
+    const typeName = project.entities[entity]!.entity.toLowerCase()
+    const parts = words.split(/\s+/).filter((w) => w.length > 0 && w !== typeName && w !== `${typeName}s`)
+    const r = await records.query({ entity, limit: 200 }, actor).catch(() => undefined)
+    const row = r?.rows.find((x) => x.id === input.record.trim())
+      ?? r?.rows.find((x) => x.title.toLowerCase() === words)
+      ?? r?.rows.find((x) => x.title.toLowerCase().includes(words) || (parts.length > 0 && parts.every((w) => x.title.toLowerCase().includes(w))))
+    if (row) return { entity, id: row.id }
+  }
+  throw new Error(`No ${refs.join(' or ') || 'record'} matching "${input.record}" that this person may see.`)
+}
+
+/** May this person change playbooks (the change-playbook's first step's role)? */
+async function mayChangePlaybooks(svc: MemwiseService, actor: PersonActor): Promise<void> {
+  const { project } = await svc.kernel.project()
+  const meta = project.workflows['change-playbook']
+  if (!meta) throw new Error('Changing playbooks by chat is not set up in this project (the change-playbook playbook is missing).')
+  const assignee = meta.steps[meta.start]?.assignee
+  if (assignee && !actor.roles.includes(assignee)) throw new Error(`Changing playbooks is for someone with the ${assignee} role.`)
+}
+
 export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): MemwiseToolCallbacks {
   const { sessionId } = opts
   /** Step runs this chat finished: the step's record catches up a moment later. */
   const finished = new Set<string>()
+
+  /**
+   * Stage 4 (26 §5): a chat about a playbook (its page's chat) changes it in a draft of its own
+   * (`chatId`): each edit is kept at once (the page shows it, with Discard), and the page's
+   * "Send for review" button, not the chat, sends it on.
+   */
+  async function playbookChat(): Promise<{ svc: MemwiseService; actor: PersonActor; workflowId: string; draft?: DraftMeta } | undefined> {
+    const svc = getMemwiseService()
+    if (!svc) throw new Error('Playbooks are not running in this app right now.')
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    const anchor = await new PgChatAnchorStore().get(svc.kernel.pool, sessionId)
+    if (!anchor || anchor.anchorKind !== 'workflow') return undefined
+    if (!anchor.personId) throw new Error('This chat has no person to act for.')
+    const actor = await svc.kernel.people.actorFor(anchor.personId)
+    const drafts = await authoringOf(svc).listDrafts({ workflowId: anchor.anchorId }).catch(() => [] as DraftMeta[])
+    const draft = drafts.filter((d) => d.chatId === sessionId && d.status === 'open').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    return { svc, actor, workflowId: anchor.anchorId, ...(draft ? { draft } : {}) }
+  }
 
   async function ctx(): Promise<{ svc: MemwiseService; actor: PersonActor; s: ConversationState }> {
     const svc = getMemwiseService()
@@ -113,11 +190,21 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
 
   return {
     async vocabulary() {
+      const pc = await playbookChat()
+      if (pc) return authoringOf(pc.svc).vocabulary()
       const { svc } = await ctx()
       return authoringOf(svc).vocabulary()
     },
 
     async read(input) {
+      const pc = await playbookChat()
+      if (pc) {
+        const authoring = authoringOf(pc.svc)
+        const path = input.path ? { path: input.path } : {}
+        if (input.playbook) return authoring.read({ workflowId: input.playbook, ...path })
+        if (pc.draft && !input.live) return authoring.read({ draftId: pc.draft.id, ...path })
+        return authoring.read({ workflowId: pc.workflowId, ...path })
+      }
       const { svc, s } = await ctx()
       const authoring = authoringOf(svc)
       if (input.playbook) return authoring.read({ workflowId: input.playbook, ...(input.path ? { path: input.path } : {}) })
@@ -127,6 +214,38 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
     },
 
     async write(input) {
+      const pc = await playbookChat()
+      if (pc) {
+        const { svc, actor } = pc
+        await mayChangePlaybooks(svc, actor)
+        const authoring = authoringOf(svc)
+        const { project } = await svc.kernel.project()
+        const live = project.workflows[pc.workflowId]
+        if (!live) throw new Error('That playbook was not found.')
+        const draft = pc.draft ?? await authoring.createDraft({
+          workflowId: pc.workflowId, title: input.title ?? input.summary, kind: 'change', chatId: sessionId,
+        }, actor)
+        if (!pc.draft) opts.log?.(`[memwise] chat ${sessionId} started draft ${draft.id} (change ${pc.workflowId})`)
+        const { edit, diagnostics } = await authoring.write({
+          draftId: draft.id, files: input.files, summary: input.summary, via: 'chat', chatId: sessionId,
+        }, actor)
+        // The playbook's page shows the change at once (Discard there throws the draft away).
+        if (edit.status === 'pending') await authoring.keepEdit(draft.id, edit.id, actor)
+        emitMemwiseChange({ kind: 'drafts', id: draft.id })
+        const errors = diagnostics.filter((d) => d.severity === 'error').length
+        return {
+          draftId: draft.id,
+          editId: edit.id,
+          status: 'kept',
+          paths: edit.files.map((f) => f.path),
+          errors,
+          warnings: diagnostics.length - errors,
+          diagnostics: diagnostics.map(diag),
+          next: errors
+            ? 'Fix the errors.'
+            : 'The live playbook is unchanged until this is approved. Offer a test run on one record (playbook_test_run); the person sends it for review with the button on the playbook page.',
+        }
+      }
       const { svc, actor, s } = await ctx()
       requireWaiting(s)
       const draft = await ensureDraft(svc, actor, s, input)
@@ -148,12 +267,24 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
     },
 
     async diff() {
+      const pc = await playbookChat()
+      if (pc) {
+        if (!pc.draft) return { draftId: null, note: 'Nothing written yet: the first playbook_write creates the draft.' }
+        return diffForChat(await authoringOf(pc.svc).diff(pc.draft.id))
+      }
       const { svc, s } = await ctx()
       if (!s.draft) return { draftId: null, note: 'Nothing written yet: the first playbook_write creates the draft.' }
       return diffForChat(await authoringOf(svc).diff(s.draft.id))
     },
 
     async check(input) {
+      const pc = await playbookChat()
+      if (pc) {
+        if (!pc.draft) throw new Error('Nothing to check yet: write the change into the draft first.')
+        const report = await authoringOf(pc.svc).check(pc.draft.id, { ...(input.pastCases !== undefined ? { pastCases: input.pastCases } : {}) })
+        emitMemwiseChange({ kind: 'drafts', id: pc.draft.id })
+        return reportForChat(report)
+      }
       const { svc, s } = await ctx()
       if (!s.draft) throw new Error('Nothing to check yet: write the playbook into the draft first.')
       const report = await authoringOf(svc).check(s.draft.id, { ...(input.pastCases !== undefined ? { pastCases: input.pastCases } : {}) })
@@ -161,7 +292,21 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
       return reportForChat(report)
     },
 
+    async testRun(input) {
+      const pc = await playbookChat()
+      const found = pc ? { svc: pc.svc, actor: pc.actor, draft: pc.draft } : await ctx().then(({ svc, actor, s }) => ({ svc, actor, draft: s.draft }))
+      if (!found.draft) throw new Error('Nothing to run yet: write the change into the draft first.')
+      const record = await findTestRecord(found.svc, found.actor, found.draft.workflowId, input)
+      const run = await authoringOf(found.svc).testRun(found.draft.id, record, found.actor)
+      emitMemwiseChange({ kind: 'drafts', id: found.draft.id })
+      opts.log?.(`[memwise] chat ${sessionId} test run of ${found.draft.id} on ${record.entity} ${record.id}: ${run.status}`)
+      return testRunForChat(run)
+    },
+
     async finish(input) {
+      if (await playbookChat()) {
+        return { applied: false, message: 'From this chat the person sends the draft for review with the "Send for review" button on the playbook page; ask them to press it.' }
+      }
       const { svc, actor, s } = await ctx()
       requireWaiting(s)
       if (!s.draft) return { applied: false, message: 'Nothing was written yet: build the playbook in the draft first.' }
@@ -337,6 +482,8 @@ export interface RecordChatContext {
   entity: string
   id: string
   domain: string
+  /** Stage 4: a chat about a record type's list, by entity key. */
+  list?: string
 }
 
 /**
@@ -361,12 +508,15 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
     const page = anchor && (anchor.anchorKind === 'project' || anchor.anchorKind === 'waiting' || anchor.anchorKind === 'dashboard')
       ? (anchor.anchorKind === 'dashboard' ? anchor.anchorId.split(':')[0] : anchor.anchorId)
       : undefined
-    if (!anchor || (!rec && !page)) throw new Error('This chat is not about a record.')
+    const list = anchor?.anchorKind === 'records' ? anchor.anchorId : undefined
+    if (!anchor || (!rec && !page && !list)) throw new Error('This chat is not about a record.')
     if (!anchor.personId) throw new Error('This chat has no person to act for.')
     const records = (svc.kernel as { records?: RecordsService }).records
     if (!records) throw new Error('Records are not available in this version.')
     const actor = await svc.kernel.people.actorFor(anchor.personId)
     const { project } = await svc.kernel.project()
+    // A chat about a record type's list (Stage 4): no record of its own; `records_filter` filters the list.
+    if (list) return { svc, actor, records, project, entity: '', id: '', domain: project.entities[list]?.domain ?? 'domain', list }
     if (!rec) return { svc, actor, records, project, entity: '', id: '', domain: page || 'domain' }
     const domain = project.entities[rec.entity]?.domain ?? rec.entity.split('.')[0] ?? 'domain'
     return { svc, actor, records, project, entity: rec.entity, id: rec.id, domain }
@@ -421,6 +571,28 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
       if (rows.some((r) => r.id)) emitMemwiseChange({ kind: 'records', entity })
       opts.log?.(`[memwise] chat ${sessionId} kept ${rows.filter((r) => r.id).length} ${entity} row(s)`)
       return { entity, rows }
+    },
+
+    /**
+     * Stage 4 (26 §2): a list's chat filters the list. The filter is tried first (a bad one is
+     * refused with the reason), then kept for the list's page, which shows it as chips with
+     * "Save as a page". Nothing about the records changes.
+     */
+    async filter(input: RecordsFilterInput) {
+      const c = await ctx()
+      if (!c.list) throw new Error('Only a chat about a list of records can filter it.')
+      const entity = input.entity ? entityKey(c, input.entity) : c.list
+      if (entity !== c.list) throw new Error(`This chat filters the ${c.list} list, not ${input.entity}.`)
+      const sort = input.sort?.length ? input.sort : undefined
+      const r = await c.records.query({ entity, filter: input.filter, ...(sort ? { sort } : {}), limit: 5 }, c.actor)
+      const set = setRecordsChatFilter({
+        personId: c.actor.personId, entity, sessionId, filter: input.filter,
+        label: input.label.trim(), chips: (input.chips?.length ? input.chips : [input.label]).map((x) => x.trim()).filter(Boolean),
+        ...(sort ? { sort } : {}), ...(input.columns?.length ? { columns: input.columns } : {}),
+      })
+      emitMemwiseChange({ kind: 'records', entity })
+      opts.log?.(`[memwise] chat ${sessionId} filtered ${entity}: ${input.filter}`)
+      return { applied: true, total: r.total, label: set.label, chips: set.chips, shown: 'The list beside the chat now shows only these, with the filter as chips and "Save as a page".' }
     },
 
     /**

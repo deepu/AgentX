@@ -461,6 +461,8 @@ export const RPC_CHANNELS = {
     DRAFTS_DISCARD: 'memwise:drafts:discard',
     DRAFTS_CHECK: 'memwise:drafts:check',
     DRAFTS_SUBMIT: 'memwise:drafts:submit',
+    // Projects and pages, Stage 4 (docs/memwise/26-projects-and-pages.md §5): a draft run on one record
+    DRAFTS_TEST_RUN: 'memwise:drafts:testRun',
     EXAMPLES_FROM_CASE: 'memwise:examples:fromCase',
     // Phase 4 (docs/memwise/22-phase-4-interfaces.md §9)
     PLUGINS_LIST: 'memwise:plugins:list',
@@ -496,6 +498,9 @@ export const RPC_CHANNELS = {
     PAGES_DASHBOARD: 'memwise:pages:dashboard',
     VIEWS_LIST: 'memwise:views:list',
     VIEWS_SAVE: 'memwise:views:save',
+    // Stage 4 (26 §2): the filter a list's chat put on it, as chips above the list
+    RECORDS_CHAT_FILTER_GET: 'memwise:records:chatFilter:get',
+    RECORDS_CHAT_FILTER_CLEAR: 'memwise:records:chatFilter:clear',
     TRIGGERS_LIST: 'memwise:triggers:list',
     TRIGGERS_RELEASE: 'memwise:triggers:release',
     AUDIT_GET: 'memwise:audit:get',

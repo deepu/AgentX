@@ -36,11 +36,13 @@ const PLAIN_SESSION_TOOL_LABELS: Record<string, string> = {
   playbook_diff: 'Show what the draft changes',
   playbook_check: 'Check the draft',
   playbook_finish: 'Send the draft for review',
+  playbook_test_run: 'Test run on one record',
   // A chat anchored to a record (docs/memwise/25-literature-poc.md §6)
   record_get: 'Read a record',
   record_query: 'Look up records',
   record_keep: 'Keep in MemWise',
   record_update: 'Fill in the draft',
+  records_filter: 'Filter the list',
 };
 
 /**

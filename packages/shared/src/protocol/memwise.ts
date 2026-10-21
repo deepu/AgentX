@@ -604,6 +604,8 @@ export type MwChatAnchor =
   | { kind: 'record'; entity: string; id: string }
   | { kind: 'project' | 'waiting'; id: string }
   | { kind: 'dashboard'; domain: string; id: string }
+  /** Stage 4 (26 §2): a record type's list (`id`: the entity key); its chat may filter the list (`records_filter`). */
+  | { kind: 'records'; id: string }
 
 /** The person's latest chat on an anchor (`memwise:chat:find`): null when there is none yet. */
 export interface MwFindChatResult {
@@ -699,6 +701,10 @@ export interface MwDraftSummary {
   caseId?: string
   /** The run is still at its chat step: the draft is finished (and sent for review) from that chat. */
   inChat?: boolean
+  /** Stage 4 (26 §5): the playbook's own chat drafted it (the chat's session id). */
+  chatId?: string
+  /** Stage 4: the last test run's status, when it covers the current content. */
+  testRun?: 'pass' | 'fail' | 'skip'
 }
 
 export interface MwDraftEdit {
@@ -805,7 +811,72 @@ export interface MwDraft extends MwDraftSummary {
    * plus the domain files it changes (for the step editor). Absent once the draft is closed.
    */
   fileTexts?: Record<string, string>
+  /** Stage 4 (26 §5): the last test run on one record. */
+  lastTestRun?: MwDraftTestRun
+  /** The draft changed since `lastTestRun`. */
+  testRunStale?: boolean
 }
+
+/** What a run did: the steps it went through, the calls it made and where it stopped. */
+export interface MwRunTrace {
+  steps: { state: string; title?: string; performer?: string; status: string; outcome?: string }[]
+  state: string
+  status: string
+  /** `stubbed`: the call would leave the building, so it was approved but not made. */
+  calls: { state: string; tool: string; args: Record<string, unknown>; stubbed?: boolean; error?: string }[]
+  values: Record<string, unknown>
+}
+
+/**
+ * Stage 4 (26 §5, D121): a draft run on one record in a throwaway database. The record and the
+ * records around it are copied in, the model turns of the record's latest case are replayed, person
+ * steps take their first outcome and nothing leaves the building.
+ */
+export interface MwDraftTestRun {
+  draftId: string
+  workflowId: string
+  at: string
+  by: string
+  byName?: string
+  record: { entity: string; id: string; title: string }
+  status: 'pass' | 'fail' | 'skip'
+  differences: string[]
+  reason?: string
+  trace?: MwRunTrace
+  replayedCase?: string
+  copied: Record<string, number>
+}
+
+export interface MwTestRunDraftInput {
+  draftId: string
+  record: { entity: string; id: string }
+}
+
+export interface MwTestRunDraftResult {
+  applied: boolean
+  testRun?: MwDraftTestRun
+  code?: string
+  message?: string
+}
+
+/**
+ * Stage 4 (26 §2): the filter a list's chat put on it (`records_filter`), shown as chips above the
+ * list. `filter` is the records filter expression; each chip is one part of it, in words.
+ */
+export interface MwRecordsChatFilter {
+  entity: string
+  /** The chat that set it. */
+  sessionId: string
+  filter: string
+  /** Short words for the whole filter ("Below 80%"), and for each part. */
+  label: string
+  chips: string[]
+  sort?: { field: string; desc?: boolean }[]
+  columns?: string[]
+  at: string
+}
+
+export interface MwRecordsChatFilterInput { entity: string }
 
 export interface MwCreateDraftInput {
   /** The playbook to change; with `create`, the new playbook's id. */

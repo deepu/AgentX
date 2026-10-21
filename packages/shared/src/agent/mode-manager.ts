@@ -2073,6 +2073,7 @@ export function shouldAllowToolInMode(
         includeRecordTools: true,
         includeRecordKeep: true,
         includeRecordUpdate: true,
+        includeRecordsFilter: true,
       });
 
       if (safeAllowedSessionTools.has(toolName)) {

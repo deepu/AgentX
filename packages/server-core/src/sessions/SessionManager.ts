@@ -80,7 +80,7 @@ import { createTaskFromSpec, resolveCreateTaskProjectId } from '../tasks'
 import { buildPagesToolCallbacks } from '../pages/tool-callbacks'
 import { buildDecisionToolCallbacks } from '../decisions/tool-callbacks'
 import { buildMemwiseRecordToolCallbacks, buildMemwiseToolCallbacks } from '../memwise/chat-tools'
-import { anchorReadsRecords, sessionHasPlaybookTools, sessionHasRecordTools, writeSessionMemwiseContext, type SessionMemwiseContext } from '@memwise/shared/sessions'
+import { anchorReadsRecords, chatChangesPlaybook, sessionHasPlaybookTools, sessionHasRecordTools, writeSessionMemwiseContext, type SessionMemwiseContext } from '@memwise/shared/sessions'
 import { buildServersFromSources as buildServersFromSourcesShared } from '../sources/build-servers'
 import { buildMcpSourceToolCallbacks } from '../sources/mcp-source-tool-callbacks'
 import { ConfigWatcher, type ConfigWatcherCallbacks } from '@memwise/shared/config'
@@ -3069,7 +3069,7 @@ export class SessionManager implements ISessionManager {
     const managed = this.sessions.get(sessionId)
     if (!managed) return false
     writeSessionMemwiseContext(managed.workspace.rootPath, sessionId, ctx)
-    if (ctx.conversation) {
+    if (chatChangesPlaybook(ctx)) {
       mergeSessionScopedToolCallbacks(sessionId, {
         memwise: buildMemwiseToolCallbacks({ sessionId, log: (message: string) => sessionLog.info(message) }),
       })

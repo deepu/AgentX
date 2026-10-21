@@ -25,11 +25,21 @@ export type MemwiseChatAnchor =
   | { kind: 'case' | 'step' | 'workflow'; id: string }
   | { kind: 'record'; entity: string; id: string }
   /** The project shell (doc 26 §2): a project's Home or Waiting for you (id: the project), a dashboard (`<domain>:<page>`). */
-  | { kind: 'project' | 'waiting' | 'dashboard'; id: string };
+  | { kind: 'project' | 'waiting' | 'dashboard'; id: string }
+  /** Stage 4 (26 §2): a record type's list (id: the entity key); its chat filters the list (`records_filter`). */
+  | { kind: 'records'; id: string };
 
 /** Anchors whose chat may look records up (`record_get`, `record_query`): a record, and the project shell's pages. */
 export function anchorReadsRecords(kind: MemwiseChatAnchor['kind'] | undefined): boolean {
-  return kind === 'record' || kind === 'project' || kind === 'waiting' || kind === 'dashboard';
+  return kind === 'record' || kind === 'project' || kind === 'waiting' || kind === 'dashboard' || kind === 'records';
+}
+
+/**
+ * Whether the chat may change a playbook in a draft (`playbook_*`): a conversation step of a meta
+ * playbook, or (Stage 4, 26 §5) a chat about a playbook, which drafts the change beside its page.
+ */
+export function chatChangesPlaybook(ctx: Pick<SessionMemwiseContext, 'anchor' | 'conversation'> | null | undefined): boolean {
+  return ctx?.conversation === true || ctx?.anchor.kind === 'workflow';
 }
 
 export interface SessionMemwiseContext {
@@ -93,7 +103,7 @@ export function readSessionMemwiseContext(workspaceRootPath: string, sessionId: 
 /** Whether the session is a conversation-step chat (offers the `playbook_*` tools). */
 export function sessionHasPlaybookTools(workspaceRootPath: string | undefined, sessionId: string | undefined): boolean {
   if (!workspaceRootPath || !sessionId) return false;
-  return readSessionMemwiseContext(workspaceRootPath, sessionId)?.conversation === true;
+  return chatChangesPlaybook(readSessionMemwiseContext(workspaceRootPath, sessionId));
 }
 
 /** Whether the session is a chat anchored to a record or a project page (offers `record_get` and `record_query`). */
@@ -112,13 +122,15 @@ export function memwiseSessionToolOptions(workspaceRootPath: string | undefined,
   includeRecordTools: boolean;
   includeRecordKeep: boolean;
   includeRecordUpdate: boolean;
+  includeRecordsFilter: boolean;
 } {
   const ctx = workspaceRootPath && sessionId ? readSessionMemwiseContext(workspaceRootPath, sessionId) : null;
   const record = ctx?.anchor.kind === 'record';
   return {
-    includePlaybookTools: ctx?.conversation === true,
+    includePlaybookTools: chatChangesPlaybook(ctx),
     includeRecordTools: anchorReadsRecords(ctx?.anchor.kind),
     includeRecordKeep: record && !!ctx?.keep?.length,
     includeRecordUpdate: record && ctx?.draft === true,
+    includeRecordsFilter: ctx?.anchor.kind === 'records',
   };
 }

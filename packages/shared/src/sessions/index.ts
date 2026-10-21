@@ -104,6 +104,7 @@ export {
   sessionHasRecordTools,
   memwiseSessionToolOptions,
   anchorReadsRecords,
+  chatChangesPlaybook,
   type SessionMemwiseContext,
   type MemwiseChatAnchor,
 } from './memwise-context.ts';

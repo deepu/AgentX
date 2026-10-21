@@ -786,6 +786,8 @@ export interface ElectronAPI {
   memwiseDiscardDraft(workspaceId: string, draftId: string): Promise<import('@memwise/shared/protocol').MwSubmitResult>
   memwiseCheckDraft(workspaceId: string, input: import('@memwise/shared/protocol').MwCheckDraftInput): Promise<import('@memwise/shared/protocol').MwDraftReport>
   memwiseSubmitDraft(workspaceId: string, draftId: string): Promise<import('@memwise/shared/protocol').MwSubmitDraftResult>
+  /** Stage 4 (26 §5): run the draft on one record in a throwaway database. */
+  memwiseTestRunDraft(workspaceId: string, input: import('@memwise/shared/protocol').MwTestRunDraftInput): Promise<import('@memwise/shared/protocol').MwTestRunDraftResult>
   memwiseExampleFromCase(workspaceId: string, input: import('@memwise/shared/protocol').MwExampleFromCaseInput): Promise<import('@memwise/shared/protocol').MwExampleFromCaseResult>
   // Phase 4: plugins, bindings, identity (docs/memwise/22-phase-4-interfaces.md §9)
   memwiseListPlugins(workspaceId: string): Promise<import('@memwise/shared/protocol').MwPluginSummary[]>
@@ -823,6 +825,9 @@ export interface ElectronAPI {
   memwiseGetDashboard(workspaceId: string, input: import('@memwise/shared/protocol').MwDashboardInput): Promise<import('@memwise/shared/protocol').MwDashboard>
   memwiseListViews(workspaceId: string, input: { domain: string; entity?: string }): Promise<import('@memwise/shared/protocol').MwView[]>
   memwiseSaveView(workspaceId: string, input: import('@memwise/shared/protocol').MwSaveViewInput): Promise<import('@memwise/shared/protocol').MwView>
+  /** Stage 4 (26 §2): the filter the list's chat put on it (null when none), and clearing it. */
+  memwiseGetRecordsChatFilter(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordsChatFilterInput): Promise<import('@memwise/shared/protocol').MwRecordsChatFilter | null>
+  memwiseClearRecordsChatFilter(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordsChatFilterInput): Promise<{ applied: boolean }>
   memwiseListTriggers(workspaceId: string): Promise<import('@memwise/shared/protocol').MwTrigger[]>
   memwiseReleaseTrigger(workspaceId: string, input: import('@memwise/shared/protocol').MwReleaseTriggerInput): Promise<import('@memwise/shared/protocol').MwSubmitResult & { started?: number }>
   memwiseGetAuditTrail(workspaceId: string, input: { entity: string; id: string }): Promise<import('@memwise/shared/protocol').MwAuditTrail | null>

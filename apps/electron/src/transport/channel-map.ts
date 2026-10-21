@@ -472,6 +472,7 @@ export const CHANNEL_MAP = {
   memwiseDiscardDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_DISCARD),
   memwiseCheckDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_CHECK),
   memwiseSubmitDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_SUBMIT),
+  memwiseTestRunDraft: invoke(RPC_CHANNELS.memwise.DRAFTS_TEST_RUN),
   memwiseExampleFromCase: invoke(RPC_CHANNELS.memwise.EXAMPLES_FROM_CASE),
   // Phase 4: plugins, bindings, identity (docs/memwise/22-phase-4-interfaces.md §9)
   memwiseListPlugins: invoke(RPC_CHANNELS.memwise.PLUGINS_LIST),
@@ -508,6 +509,8 @@ export const CHANNEL_MAP = {
   memwiseGetDashboard: invoke(RPC_CHANNELS.memwise.PAGES_DASHBOARD),
   memwiseListViews: invoke(RPC_CHANNELS.memwise.VIEWS_LIST),
   memwiseSaveView: invoke(RPC_CHANNELS.memwise.VIEWS_SAVE),
+  memwiseGetRecordsChatFilter: invoke(RPC_CHANNELS.memwise.RECORDS_CHAT_FILTER_GET),
+  memwiseClearRecordsChatFilter: invoke(RPC_CHANNELS.memwise.RECORDS_CHAT_FILTER_CLEAR),
   memwiseListTriggers: invoke(RPC_CHANNELS.memwise.TRIGGERS_LIST),
   memwiseReleaseTrigger: invoke(RPC_CHANNELS.memwise.TRIGGERS_RELEASE),
   memwiseGetAuditTrail: invoke(RPC_CHANNELS.memwise.AUDIT_GET),

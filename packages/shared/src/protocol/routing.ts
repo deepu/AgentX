@@ -511,6 +511,7 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.memwise.DRAFTS_DISCARD,
   RPC_CHANNELS.memwise.DRAFTS_CHECK,
   RPC_CHANNELS.memwise.DRAFTS_SUBMIT,
+  RPC_CHANNELS.memwise.DRAFTS_TEST_RUN,
   RPC_CHANNELS.memwise.EXAMPLES_FROM_CASE,
   // Phase 4 (docs/memwise/22-phase-4-interfaces.md §9): plugins live in the server's project folder
   RPC_CHANNELS.memwise.PLUGINS_LIST,
@@ -546,6 +547,8 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.memwise.PAGES_DASHBOARD,
   RPC_CHANNELS.memwise.VIEWS_LIST,
   RPC_CHANNELS.memwise.VIEWS_SAVE,
+  RPC_CHANNELS.memwise.RECORDS_CHAT_FILTER_GET,
+  RPC_CHANNELS.memwise.RECORDS_CHAT_FILTER_CLEAR,
   RPC_CHANNELS.memwise.TRIGGERS_LIST,
   RPC_CHANNELS.memwise.TRIGGERS_RELEASE,
   RPC_CHANNELS.memwise.AUDIT_GET,
