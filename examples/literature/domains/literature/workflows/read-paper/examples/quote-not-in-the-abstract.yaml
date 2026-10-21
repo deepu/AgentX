@@ -1,0 +1,67 @@
+name: quote-not-in-the-abstract
+description: >
+  The extractor's first answer takes the 2859 people screened for the 1613 randomised, and quotes
+  words that aren't in the abstract ("2859 participants were randomised"). The quote check sends it
+  back; the second answer gives 1613 with the abstract's own words, and only then are the facts saved.
+records:
+  Article:
+    - id: arti_attain2
+      pmid: "41275875"
+      doi: 10.1016/S0140-6736(25)02165-8
+      title: "Orforglipron, an oral small-molecule GLP-1 receptor agonist, for the treatment of obesity in people with type 2 diabetes (ATTAIN-2): a phase 3, double-blind, randomised, multicentre, placebo-controlled trial."
+      journal: Lancet
+      year: 2025
+      abstract: >-
+        Obesity is a chronic disease that significantly contributes to type 2 diabetes and its
+        complications. We aimed to evaluate orforglipron, an oral small-molecule (non-peptide) GLP-1
+        receptor agonist, for obesity treatment in adults with type 2 diabetes. This 72-week, phase
+        3, double-blind, placebo-controlled trial was conducted across 136 sites in ten countries.
+        Participants with a BMI of 27 kg/m2 or higher and glycated haemoglobin (HbA1c) of 7-10%
+        (53-86 mmol/mol) were randomly assigned (1:1:1:2) to once-daily orforglipron 6 mg, 12 mg, 36
+        mg, or placebo. The primary endpoint was the mean percent change in bodyweight from baseline
+        to week 72. From June 5, 2023, to Feb 15, 2024, 2859 participants were screened, and 1613
+        (757 [46·9%] female) were randomly assigned, following a dose-escalation phase, to receive
+        orforglipron 6 mg (n=329), 12 mg (n=332), 36 mg (n=322), or placebo (n=630), as an adjunct
+        to lifestyle modification; 1444 (89·5%) completed the study. For the treatment regimen
+        estimand, the mean percent change in bodyweight from baseline to week 72 was -5·1% (95% CI
+        -6·0 to -4·2) with 6 mg (estimated treatment difference [ETD] -2·7 [95% CI -3·7 to -1·6];
+        p<0·0001), -7·0% (-7·8 to -6·2) with 12 mg (ETD -4·5 [-5·5 to -3·6]; p<0·0001), and -9·6%
+        (-10·5 to -8·7) with 36 mg orforglipron (ETD -7·1 [-8·2 to -6·1]; p<0·0001), versus -2·5%
+        (-3·0 to -1·9) with placebo (all p<0·0001 compared with placebo). Eli Lilly and Company.
+      status: found
+case:
+  article: arti_attain2
+model:
+  extractor:
+    - toolCalls:
+        - { name: literature.article.get, args: { id: arti_attain2 } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: extracted
+            writes: { study_type: randomised_trial, phase: phase_3, n: 2859, sponsor: Eli Lilly and Company }
+            quotes:
+              study_type: were randomly assigned (1:1:1:2)
+              phase: This 72-week, phase 3, double-blind, placebo-controlled trial
+              n: 2859 participants were randomised
+              sponsor: Eli Lilly and Company.
+            rationale: A randomised phase 3 trial of 2859 participants.
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: extracted
+            writes: { study_type: randomised_trial, phase: phase_3, n: 1613, sponsor: Eli Lilly and Company }
+            quotes:
+              study_type: were randomly assigned (1:1:1:2)
+              phase: This 72-week, phase 3, double-blind, placebo-controlled trial
+              n: 1613 (757 [46·9%] female) were randomly assigned
+              sponsor: Eli Lilly and Company.
+            rationale: 2859 were screened; 1613 were randomly assigned, as the abstract says.
+expect:
+  outcome: found
+  state: end
+  writes: { n: 1613 }
+  effects: { literature.article.update: 1, literature.article.transition: 1 }
+  entities:
+    Article:
+      - { pmid: "41275875", n: 1613, phase: phase_3 }

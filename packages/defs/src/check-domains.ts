@@ -5,8 +5,8 @@
  *
  * Codes are stable; tools and editors key on them.
  */
-import { checkCondition, entityConditionScope, type ConditionCheckOptions, type ConditionScope } from './condition-check.ts';
-import { BLOCK_EVENTS, DEFAULT_DOMAIN, type BlockDef, type DashboardValue, type DomainDef, type HandoffArg, type ViewDef } from './domain-types.ts';
+import { checkCondition, entityConditionScope, toName, type ConditionCheckOptions, type ConditionScope } from './condition-check.ts';
+import { BLOCK_EVENTS, DEFAULT_DOMAIN, type BlockDef, type ChartBlockDef, type DashboardValue, type DomainDef, type HandoffArg, type ViewDef } from './domain-types.ts';
 import { domainOf, resolveEntity, scopedEntities, splitEntityKey } from './domains.ts';
 import { shapeFileOf } from './load.ts';
 import { lineOf, type PathKey } from './source.ts';
@@ -84,11 +84,34 @@ export function blockEvents(block: BlockDef, target?: WorkflowDef): string[] {
 
 const isDateType = (t: ValueType) => t.kind === 'scalar' && (t.name === 'Date' || t.name === 'DateTime');
 const isDocumentField = (t: ValueType) => t.kind === 'scalar' && (t.name === 'Document' || t.name === 'File' || t.name === 'Image');
+const isTextField = (t: ValueType) => t.kind === 'scalar' && t.name === 'Text';
+const isNumberField = (t: ValueType) => t.kind === 'scalar' && (t.name === 'Number' || t.name === 'Percentage');
+/** Types a key field may have (25 §3): stored as text or a number. */
+const isKeyType = (t: ValueType) => t.kind === 'ref' || t.kind === 'identifier' || t.kind === 'enum'
+  || (t.kind === 'scalar' && ['Text', 'Number', 'Email', 'Phone', 'Date'].includes(t.name));
 
 /** `{site_number} · {name}` → the names in braces. */
 const templateNames = (title: string) => [...title.matchAll(/\{\s*([A-Za-z_][\w.]*)\s*\}/g)].map((m) => m[1]!);
 
 // ---------------------------------------------------------------- the project: domains, entities, views, pages
+
+/** `home:`: its entity is in the domain and has a lifecycle (a draft is its first state); its fields are Text. */
+function checkHome(add: ReturnType<typeof collector>['add'], project: ProjectDefs, domain: DomainDef, file: string): void {
+  const home = domain.home!;
+  const def = resolveEntity(project.entities, domain.id, home.entity);
+  if (!def) {
+    add('error', 'unknown-entity', `home.entity: there is no entity \`${home.entity}\` in the ${domain.name} domain`, file, domain, ['home', 'entity']);
+    return;
+  }
+  if (!def.lifecycleChart) add('error', 'home-needs-lifecycle', `home.entity: ${def.entity} needs a lifecycle, so a question can make a draft of it`, file, domain, ['home', 'entity']);
+  for (const key of ['question', 'name', 'page'] as const) {
+    const field = home[key];
+    if (field === undefined) continue;
+    const f = def.fields[field];
+    if (!f) add('error', 'unknown-field', `home.${key}: ${def.entity} has no field \`${field}\``, file, domain, ['home', key]);
+    else if (!(f.type.kind === 'scalar' && f.type.name === 'Text')) add('error', 'home-field-not-text', `home.${key}: \`${field}\` must be a Text field`, file, domain, ['home', key]);
+  }
+}
 
 export function checkDomains(project: ProjectDefs, roles: string[] | undefined): Diagnostic[] {
   const { list, add } = collector();
@@ -110,6 +133,7 @@ export function checkDomains(project: ProjectDefs, roles: string[] | undefined):
       if (seen) add('error', 'duplicate-intake-address', `the intake address \`${domain.intake.address}\` is also the ${seen} domain's`, file, domain, ['intake', 'address']);
       else intake.set(domain.intake.address, domain.id);
     }
+    if (domain.home) checkHome(add, project, domain, file);
     if (domain.id !== DEFAULT_DOMAIN && domain.policy?.approvals?.by && roleSet) {
       const policy = domain.policy;
       policy.approvals!.by!.forEach((role, i) => {
@@ -163,6 +187,36 @@ function checkEntity(add: Add, project: ProjectDefs, def: EntityTypeDef, roles: 
     const field = def.fields[def.parent];
     if (!(rel?.cardinality === 'one' || field?.type.kind === 'ref')) {
       at('error', 'unknown-field', `parent: \`${def.parent}\` is not a one relationship or Ref field of ${def.entity}`, ['parent']);
+    }
+  }
+
+  // ---- Literature (25 §3, §4): the key, and fields quoting another record's text
+  def.key?.forEach((name, i) => {
+    const f = def.fields[name];
+    if (!f) at('error', 'key-unknown-field', `key: \`${name}\` is not a field of ${def.entity}`, ['key', i]);
+    else if (!isKeyType(f.type)) at('error', 'key-unknown-field', `key: \`${name}\` is ${f.typeSource}; a key is a Text, Number or Ref field`, ['key', i]);
+    else if (!f.required) at('error', 'key-field-not-required', `key: \`${name}\` identifies a ${def.entity}, so every one has it: add \`required: true\``, ['key', i]);
+    else if (f.access?.length) at('error', 'key-field-restricted', `key: \`${name}\` has \`access:\`, but a key finds the ${def.entity} for anyone who creates or reads one by it: drop \`access:\` from ${name} or key on another field`, ['key', i]);
+  });
+  // The records table's default columns: its own fields, calculated ones, or its status.
+  def.list?.forEach((name, i) => {
+    if (def.fields[name] || def.calculated?.[name] || name === 'status') return;
+    at('error', 'list-unknown-field', `list: \`${name}\` is not a field of ${def.entity}`, ['list', i]);
+  });
+  for (const [name, f] of Object.entries(def.fields)) {
+    if (!f.quoteOf) continue;
+    const path: PathKey[] = ['fields', name, 'quote_of'];
+    const written = `${f.quoteOf.ref}.${f.quoteOf.field}`;
+    if (!isTextField(f.type)) at('error', 'quote-of-not-text', `${name}: only a Text field quotes another record's text (this one is ${f.typeSource})`, path);
+    const refField = def.fields[f.quoteOf.ref];
+    const rel = def.relationships[f.quoteOf.ref];
+    const targetName = refField?.type.kind === 'ref' ? refField.type.entity : rel?.cardinality === 'one' ? rel.target : undefined;
+    if (!targetName) { at('error', 'quote-of-unknown-field', `${name}: \`quote_of: ${written}\`: \`${f.quoteOf.ref}\` is not a Ref field of ${def.entity}`, path); continue; }
+    const target = resolveEntity(entities, domainId, targetName);
+    if (!target) continue; // reported with the field or relationship
+    const text = target.fields[f.quoteOf.field];
+    if (!text || !isTextField(text.type)) {
+      at('error', 'quote-of-unknown-field', `${name}: \`quote_of: ${written}\`: \`${f.quoteOf.field}\` is not a Text field of ${target.entity}`, path);
     }
   }
 
@@ -261,9 +315,17 @@ function checkEntity(add: Add, project: ProjectDefs, def: EntityTypeDef, roles: 
         const path: PathKey[] = ['page', area];
         if (b.kind === 'fields') {
           for (const n of b.fields) if (!known(n)) at('error', 'unknown-field', `page ${area}: \`${n}\` is not a field of ${def.entity}`, path);
+        } else if (b.kind === 'kpis') {
+          for (const n of b.fields) {
+            const f = def.fields[n];
+            if (!def.calculated?.[n] && !(f && isNumberField(f.type))) at('error', 'unknown-field', `page ${area}: kpis \`${n}\` is not a calculated or Number field of ${def.entity}`, path);
+          }
         } else if (b.kind === 'viewer') {
           const f = def.fields[b.field];
-          if (!f || !isDocumentField(f.type)) at('error', 'unknown-field', `page ${area}: viewer \`${b.field}\` is not a Document, File or Image field of ${def.entity}`, path);
+          if (!f || !(isDocumentField(f.type) || isTextField(f.type))) at('error', 'unknown-field', `page ${area}: viewer \`${b.field}\` is not a Document, File, Image or Text field of ${def.entity}`, path);
+        } else if (b.kind === 'markdown') {
+          const f = def.fields[b.field];
+          if (!f || !isTextField(f.type)) at('error', 'unknown-field', `page ${area}: markdown \`${b.field}\` is not a Text field of ${def.entity}`, path);
         } else if (b.kind === 'related') {
           for (const n of b.relationships) {
             if (def.relationships[n]?.cardinality !== 'many' && !['versions', 'signatures'].includes(n)) {
@@ -274,11 +336,35 @@ function checkEntity(add: Add, project: ProjectDefs, def: EntityTypeDef, roles: 
           const rel = def.relationships[b.of];
           if (!rel && !def.calculated?.[b.of]) at('error', 'unknown-field', `page ${area}: chart of \`${b.of}\` is not a relationship or calculated field of ${def.entity}`, path);
           const target = rel ? resolveEntity(entities, domainId, rel.target) : def;
-          if (b.by && target && !entityConditionScope(target, project.entities)[b.by]) at('error', 'unknown-field', `page ${area}: chart by \`${b.by}\` is not a field of ${target.entity}`, path);
+          if (target) checkChartFields(add, def.file, def, path, b, target, entityConditionScope(target, project.entities), `page ${area}: chart`);
+          if (b.chart === 'interval' && rel?.cardinality !== 'many') at('error', 'unknown-field', `page ${area}: an interval chart draws the rows of a many relationship; \`${b.of}\` is not one`, path);
         }
       }
     }
   }
+}
+
+/**
+ * A chart's fields on the entity whose rows it draws (25 §5): `by`, `where`, and for an
+ * interval `value`, `low`, `high` (numbers), `unit` and the names in the `label` template.
+ */
+function checkChartFields(
+  add: Add, file: string, def: object, path: PathKey[], c: Pick<ChartBlockDef, 'chart' | 'by' | 'where' | 'label' | 'value' | 'low' | 'high' | 'unit'>,
+  target: EntityTypeDef, scope: ConditionScope, what: string, params?: ConditionScope,
+): void {
+  const unknown = (key: string, n: string) => add('error', 'unknown-field', `${what} ${key} \`${n}\` is not a field of ${target.entity}`, file, def, path);
+  if (c.by !== undefined && !scope[c.by]) unknown('by', c.by);
+  if (c.where) conditionAt(add, c.where, scope, file, def, path, { params });
+  if (c.chart !== 'interval') return;
+  for (const key of ['value', 'low', 'high'] as const) {
+    const n = c[key];
+    if (n === undefined) continue;
+    const kind = scope[n];
+    if (!kind) unknown(key, n);
+    else if (toName(kind).kind !== 'number' && toName(kind).kind !== 'any') add('error', 'unknown-field', `${what} ${key} \`${n}\` is not a number field of ${target.entity}`, file, def, path);
+  }
+  if (c.unit !== undefined && !scope[c.unit]) unknown('unit', c.unit);
+  for (const n of templateNames(c.label ?? '')) if (!scope[n]) unknown('label', `{${n}}`);
 }
 
 function checkView(
@@ -330,6 +416,12 @@ function checkPages(add: Add, project: ProjectDefs, domain: DomainDef): void {
             if (!domain.views[b.view]) at('unknown-view', `there is no view \`${b.view}\` in ${domain.dir}/views/`, [...path, 'view']);
           } else checkView(add, project, domain, b.view, page, file, [...path, 'view'], params);
           return;
+        case 'chart': {
+          const entity = resolveEntity(entities, domain.id, b.entity);
+          if (!entity) { at('unknown-entity', `chart: there is no entity type ${b.entity}`, [...path, 'entity']); return; }
+          checkChartFields(add, file, page, path, b, entity, entityConditionScope(entity, project.entities), 'chart', params);
+          return;
+        }
         case 'heatmap': {
           const entity = resolveEntity(entities, domain.id, b.rows.entity);
           if (!entity) { at('unknown-entity', `rows: there is no entity type ${b.rows.entity}`, [...path, 'rows', 'entity']); return; }

@@ -11,6 +11,7 @@ import { MarkdownDiffBlock } from './MarkdownDiffBlock'
 import { MarkdownJsonBlock } from './MarkdownJsonBlock'
 import { MarkdownMermaidBlock } from './MarkdownMermaidBlock'
 import { MarkdownDatatableBlock } from './MarkdownDatatableBlock'
+import { MarkdownChartBlock } from './MarkdownChartBlock'
 import { MarkdownSpreadsheetBlock } from './MarkdownSpreadsheetBlock'
 import { MarkdownHtmlBlock } from './MarkdownHtmlBlock'
 import { MarkdownImageBlock } from './MarkdownImageBlock'
@@ -286,6 +287,10 @@ function createComponents(
           if (match?.[1] === 'datatable') {
             return wrapBlock('datatable', code, <MarkdownDatatableBlock code={code} className="my-2" />, props.node?.position)
           }
+          // Chart code blocks → the chart kit (bar, line, donut, interval)
+          if (match?.[1] === 'chart') {
+            return wrapBlock('chart', code, <MarkdownChartBlock code={code} className="my-2" onUrlClick={onUrlClick} onFileClick={onFileClick} />, props.node?.position)
+          }
           // Spreadsheet code blocks → Excel-style grid
           if (match?.[1] === 'spreadsheet') {
             return wrapBlock('spreadsheet', code, <MarkdownSpreadsheetBlock code={code} className="my-2" />, props.node?.position)
@@ -423,6 +428,10 @@ function createComponents(
         // Datatable code blocks → sortable/filterable data table
         if (match?.[1] === 'datatable') {
           return wrapBlock('datatable', code, <MarkdownDatatableBlock code={code} className="my-2" />, props.node?.position)
+        }
+        // Chart code blocks → the chart kit (bar, line, donut, interval)
+        if (match?.[1] === 'chart') {
+          return wrapBlock('chart', code, <MarkdownChartBlock code={code} className="my-2" onUrlClick={onUrlClick} onFileClick={onFileClick} />, props.node?.position)
         }
         // Spreadsheet code blocks → Excel-style grid
         if (match?.[1] === 'spreadsheet') {

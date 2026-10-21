@@ -156,6 +156,10 @@ Not done yet:
 
 The full list is in [24 §17](24-phase-6-interfaces.md).
 
+## Side track · Literature watch (PubMed proof of concept)
+
+Built beside Phase 6, not a phase: a client's PubMed + data plugin question turned into a domain (D79–D86). Spec and exit test in [25](25-literature-poc.md).
+
 ## Phase 7 · Server, hosting and learning
 
 - **Server and worker modes** on external Postgres and S3-compatible storage; workers scaled from DBOS queues.

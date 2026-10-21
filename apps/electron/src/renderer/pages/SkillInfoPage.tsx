@@ -201,7 +201,8 @@ export default function SkillInfoPage({ skillSlug, workspaceId, workingDirectory
                 {skill.metadata.description}
               </Info_Table.Row>
               <Info_Table.Row label={t('common.source')}>
-                {skill.source === 'project' ? t('skillInfo.sourceProject') :
+                {skill.source === 'plugin' ? (skill.plugin ? `${skill.plugin.title ?? skill.plugin.name} ${skill.plugin.version}` : skill.slug.split(':')[0]) :
+                 skill.source === 'project' ? t('skillInfo.sourceProject') :
                  skill.source === 'global' ? t('skillInfo.sourceGlobal') :
                  t('skillInfo.sourceWorkspace')}
               </Info_Table.Row>

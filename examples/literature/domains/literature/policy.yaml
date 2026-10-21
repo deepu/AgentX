@@ -1,0 +1,7 @@
+policy: literature-domain
+effects:
+  irreversible: deny           # PubMed is only read; the domain's own records are the only writes
+budgets:
+  tokens: 800000            # a check reads 20 to 50 abstracts, and every model call re-reads them
+  modelCalls: 60
+modelRoles: [searcher, screener, extractor, verifier]

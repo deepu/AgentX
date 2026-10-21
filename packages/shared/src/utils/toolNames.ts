@@ -27,7 +27,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 /**
  * Plain labels for session tools that people who aren't developers meet, on permission
  * cards and in the chat's activity rows: the MemWise playbook tools of a build/change chat
- * (docs/memwise/20-phase-3-interfaces.md §4). Say what happens, in the person's words.
+ * (docs/memwise/20-phase-3-interfaces.md §4) and the record tools of a record chat. Say what happens, in the person's words.
  */
 const PLAIN_SESSION_TOOL_LABELS: Record<string, string> = {
   playbook_vocabulary: 'Look up what a playbook may use',
@@ -36,6 +36,11 @@ const PLAIN_SESSION_TOOL_LABELS: Record<string, string> = {
   playbook_diff: 'Show what the draft changes',
   playbook_check: 'Check the draft',
   playbook_finish: 'Send the draft for review',
+  // A chat anchored to a record (docs/memwise/25-literature-poc.md §6)
+  record_get: 'Read a record',
+  record_query: 'Look up records',
+  record_keep: 'Keep in MemWise',
+  record_update: 'Fill in the draft',
 };
 
 /**

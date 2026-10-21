@@ -76,6 +76,8 @@ export {
   CollapsibleMarkdownProvider,
   useCollapsibleMarkdown,
   MarkdownDatatableBlock,
+  MarkdownChartBlock,
+  parseChartSpec,
   MarkdownSpreadsheetBlock,
   MarkdownImageBlock,
   ImageCardStack,
@@ -85,6 +87,8 @@ export {
   type TiptapMarkdownEditorProps,
   type MarkdownEngine,
   type MarkdownDatatableBlockProps,
+  type MarkdownChartBlockProps,
+  type ChartSpec,
   type MarkdownSpreadsheetBlockProps,
   type MarkdownImageBlockProps,
   type ImageCardStackProps,
@@ -95,6 +99,30 @@ export {
   shellCommandFromBlock,
   consoleSnippetCommand,
 } from './components/markdown'
+
+// Charts (25 §5): one kit for record pages, dashboards and the ```chart block
+export {
+  Chart,
+  BarChart,
+  LineChart,
+  DonutChart,
+  IntervalChart,
+  KpiTiles,
+  kpiBelowTarget,
+  CHART_COLORS,
+  chartColor,
+  niceTicks,
+  formatChartNumber,
+  type ChartProps,
+  type BarChartProps,
+  type LineChartProps,
+  type DonutChartProps,
+  type IntervalChartProps,
+  type KpiTile,
+  type KpiTilesProps,
+  type ChartDatum,
+  type ChartKind,
+} from './components/charts'
 
 // UI primitives
 export {

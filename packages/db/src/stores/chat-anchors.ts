@@ -1,10 +1,29 @@
-/** Chat anchors (19 §6): a chat session opened from a case or a step. One anchor per chat. */
+/**
+ * Chat anchors (19 §6): a chat session opened from a case or a step. One anchor per chat.
+ * `anchor_kind` is free text (no check constraint), so new kinds need no migration:
+ * `workflow` (a chat about a playbook) and, from doc 25 §6, `record`, whose `anchor_id` is
+ * `<entity key>:<record id>` (`recordAnchorId`).
+ */
 import type { Queryable } from '../pool.ts';
 import { compact, iso } from '../rows.ts';
 
+export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record';
+
+/** The `anchor_id` of a record anchor: `literature.topic:rec_1`. Entity keys have no colon. */
+export function recordAnchorId(entity: string, id: string): string {
+  return `${entity}:${id}`;
+}
+
+/** A record anchor's entity key and record id, or undefined when `anchorId` isn't one. */
+export function parseRecordAnchorId(anchorId: string): { entity: string; id: string } | undefined {
+  const at = anchorId.indexOf(':');
+  if (at <= 0 || at === anchorId.length - 1) return undefined;
+  return { entity: anchorId.slice(0, at), id: anchorId.slice(at + 1) };
+}
+
 export interface ChatAnchor {
   chatId: string;
-  anchorKind: 'case' | 'step';
+  anchorKind: ChatAnchorKind;
   anchorId: string;
   personId?: string;
   createdAt: string;
@@ -27,7 +46,7 @@ export class PgChatAnchorStore {
     return rows[0] && toAnchor(rows[0]);
   }
 
-  /** Chats anchored to a case or step (optionally only one person's), most recent first. */
+  /** Chats anchored to a case, step or record (optionally only one person's), most recent first. */
   async forAnchor(db: Queryable, anchorKind: ChatAnchor['anchorKind'], anchorId: string, personId?: string): Promise<ChatAnchor[]> {
     const { rows } = await db.query<AnchorRow>(
       `select * from mw.chat_anchors where anchor_kind = $1 and anchor_id = $2 and ($3::text is null or person_id = $3)
@@ -41,7 +60,7 @@ export class PgChatAnchorStore {
   }
 }
 
-interface AnchorRow { chat_id: string; anchor_kind: ChatAnchor['anchorKind']; anchor_id: string; person_id: string | null; created_at: Date; updated_at: Date }
+interface AnchorRow { chat_id: string; anchor_kind: ChatAnchorKind; anchor_id: string; person_id: string | null; created_at: Date; updated_at: Date }
 
 function toAnchor(r: AnchorRow): ChatAnchor {
   return {

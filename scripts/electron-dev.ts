@@ -282,7 +282,17 @@ function getElectronEnv(): Record<string, string> {
 //   TLA-free ESM, so the runtime `require('@anthropic-ai/claude-agent-sdk')`
 //   resolves correctly. Mirror of the same flag in `scripts/electron-build-main.ts`
 //   and `apps/electron/package.json` build:main.
-const MAIN_BUNDLE_EXTERNALS = ["electron", "@anthropic-ai/claude-agent-sdk"];
+// - winston / @opentelemetry/*: optional DBOS telemetry deps, not installed;
+//   mirror of MEMWISE_OPTIONAL_EXTERNALS in `scripts/electron-build-main.ts`.
+const MAIN_BUNDLE_EXTERNALS = [
+  "electron",
+  "@anthropic-ai/claude-agent-sdk",
+  "winston",
+  "winston-transport",
+  "@opentelemetry/sdk-logs",
+  "@opentelemetry/exporter-trace-otlp-proto",
+  "@opentelemetry/exporter-logs-otlp-proto",
+];
 
 // Run a one-shot esbuild using the JavaScript API
 async function runEsbuild(
@@ -576,7 +586,11 @@ async function main(): Promise<void> {
   console.log("🚀 Starting Electron...\n");
 
   const electronProc = spawn({
-    cmd: [ELECTRON_BIN, "apps/electron"],
+    cmd: [
+      ELECTRON_BIN, "apps/electron",
+      // MEMWISE_REMOTE_DEBUG_PORT=9333 lets a test driver attach over CDP.
+      ...(process.env.MEMWISE_REMOTE_DEBUG_PORT ? [`--remote-debugging-port=${process.env.MEMWISE_REMOTE_DEBUG_PORT}`] : []),
+    ],
     cwd: ROOT_DIR,
     stdin: "ignore",
     stdout: "inherit",

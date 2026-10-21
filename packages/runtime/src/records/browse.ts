@@ -5,6 +5,7 @@
 import { PgEntityStore, PgPageStore, withActor, type Queryable } from '@memwise/db';
 import { keyOf, type DashboardBlock, type DashboardValue, type EntityTypeDef, type FreePageDef, type ViewDef } from '@memwise/defs';
 import type { Actor, DashboardData, RecordQuery, RecordQueryResult, RecordRef, RecordsService, TreeNode } from '../types.ts';
+import { chartData } from './charts.ts';
 import { domainDef, domainOfEntity, entityByName, recordTitle, refEntity, type RecordsDeps } from './context.ts';
 
 const entityStore = new PgEntityStore();
@@ -57,7 +58,7 @@ export async function queryRecords(deps: RecordsDeps, def: EntityTypeDef, q: Omi
     entity: keyOf(def),
     columns: columnsOf(def, q.columns),
     rows: r.rows.map((row, i) => ({
-      entity: keyOf(def), id: row.id, title: recordTitle(def, row.id, row.values), ...(row.lifecycle ? { status: row.lifecycle } : {}),
+      entity: keyOf(def), id: row.id, title: recordTitle(def, row.id, { ...row.values, ...Object.fromEntries(Object.entries(r.refs[i]!).map(([f, ref]) => [f, ref.title])) }), ...(row.lifecycle ? { status: row.lifecycle } : {}),
       values: row.values, hidden: row.hidden, ...(Object.keys(r.refs[i]!).length ? { refs: r.refs[i]! } : {}),
     })),
     total: r.total,
@@ -220,6 +221,11 @@ export async function buildDashboard(deps: RecordsDeps, _service: RecordsService
           ...(view.columns ? { columns: view.columns } : {}), limit: block.kind === 'list' ? 20 : 100,
         }, actor, bound, db);
         out.push({ kind: block.kind, ...(block.title ? { title: block.title } : {}), result });
+      } else if (block.kind === 'chart') {
+        // Literature (25 §5): counts per `by`, or an interval per record, narrowed by the page's params.
+        const def = defOf(block.entity);
+        const chart = await chartData(deps, actor, db, def, block, scopedFilter(def, block.where, bound), bound);
+        out.push({ kind: 'chart', chart });
       } else if (block.kind === 'heatmap') {
         const def = defOf(block.rows.entity);
         const r = await queryRecords(deps, def, { ...(block.rows.where ? { filter: block.rows.where } : {}), limit: 200 }, actor, bound, db);

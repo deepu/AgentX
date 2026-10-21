@@ -1,0 +1,9 @@
+case: paper_screening
+fields:
+  topic:      Ref<Topic>
+  rows:       List<ScreenRow>
+  screenings: List<Text>
+types:
+  ScreenRow:
+    article:  Ref<Article>
+    decision: Text

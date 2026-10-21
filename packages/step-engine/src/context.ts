@@ -45,6 +45,16 @@ function writeSource(w: WriteDef): string {
   return w.from.field ? `must equal \`${w.from.field}\` of a result of ${w.from.tool}` : `must equal a value returned by ${w.from.tool}`;
 }
 
+/** Writes the agent judges, which may carry a quote (25 §4, D81). */
+const judgedWrites = (step: StepDef): [string, WriteDef][] => agentWrites(step).filter(([, w]) => w.from.kind === 'judgement');
+
+/** What the step is told about quotes, in the finish tool's schema and the prompt. */
+function quotesHelp(step: StepDef): string {
+  return step.quotes === 'required'
+    ? 'Required: for each value you write, the exact words of a tool result you read it from, copied character for character (a phrase or sentence, not a paraphrase). A quote that is not in a tool result fails the check.'
+    : 'Optional: for a value you read from a tool result, the exact words you read it from, copied character for character. A quote that is not in a tool result fails the check.';
+}
+
 /** JSON Schema of `step.finish`, generated from the step's writes and outcomes. */
 export function finishToolParameters(step: StepDef, recordTypes: Record<string, RecordTypeDef>): Record<string, unknown> {
   const writes = agentWrites(step);
@@ -52,6 +62,15 @@ export function finishToolParameters(step: StepDef, recordTypes: Record<string, 
   for (const [field, w] of writes) {
     properties[field] = { ...valueTypeToJsonSchema(w.type, recordTypes), description: `${w.typeSource}; ${writeSource(w)}` };
   }
+  const judged = judgedWrites(step);
+  const quotes = judged.length ? {
+    quotes: {
+      type: 'object',
+      properties: Object.fromEntries(judged.map(([f]) => [f, { type: 'string', description: `The exact words ${f} was read from.` }])),
+      additionalProperties: false,
+      description: `By write: ${quotesHelp(step)}`,
+    },
+  } : {};
   return {
     type: 'object',
     properties: {
@@ -64,8 +83,9 @@ export function finishToolParameters(step: StepDef, recordTypes: Record<string, 
         description: 'Values to write to the case.',
       },
       rationale: { type: 'string', description: 'One or two sentences on why, citing what you saw.' },
+      ...quotes,
     },
-    required: ['outcome', 'writes', 'rationale'],
+    required: ['outcome', 'writes', 'rationale', ...(step.quotes === 'required' && judged.length ? ['quotes'] : [])],
     additionalProperties: false,
   };
 }
@@ -104,6 +124,7 @@ function systemPrompt(input: StepRunInput, pushed: Record<string, CaseValue>, of
     out.push('- writes: {} (this step writes nothing)');
   }
   out.push('- rationale: one or two sentences on why.');
+  if (judgedWrites(step).length) out.push(`- quotes: { <write>: "<exact words>" }. ${quotesHelp(step)}`);
   if (step.checkpoint.length) {
     out.push('', 'Before the outcome counts, your result is checked against these rules:');
     step.checkpoint.forEach((rule, i) => out.push(`${i + 1}. ${rule}`));
@@ -129,7 +150,9 @@ export function assembleContext(input: StepRunInput, deps: Pick<StepEngineDeps, 
   tools.push({
     name: modelToolName(FINISH_TOOL),
     tool: FINISH_TOOL,
-    description: 'Finish the step with an outcome, the values to write to the case, and a short rationale. The result is checked before it counts.',
+    description: judgedWrites(step).length
+      ? `Finish the step with an outcome, the values to write to the case, a short rationale and${step.quotes === 'required' ? '' : ' optionally'} the exact words each value was read from (quotes). The result is checked before it counts.`
+      : 'Finish the step with an outcome, the values to write to the case, and a short rationale. The result is checked before it counts.',
     parameters: finishToolParameters(step, input.recordTypes),
   });
 

@@ -1,0 +1,19 @@
+entity: Screening
+title: "{article}"
+parent: topic
+key: [topic, article]          # one screening per paper per topic, so a re-entered `record` adds none
+list: [topic, decision, by, confidence, year, phase]
+fields:
+  topic:      { type: Ref<Topic>, required: true }
+  article:    { type: Ref<Article>, required: true }
+  decision:   { type: "Enum[include, exclude]", required: true, description: "Include or exclude; change it here to reconsider" }
+  by:         { type: "Enum[ai, reviewer]", description: "Who decided: the AI screener, or a reviewer who changed it" }
+  reason:     { type: Text, description: "Why, against the topic's inclusion rules" }
+  confidence: { type: Number, description: "How sure the screener was, 0 to 1" }
+  year:       { type: Number, description: "The paper's year, copied when it was screened (for charts)" }
+  phase:      { type: "Enum[phase_1, phase_2, phase_3, phase_4, not_a_trial]", description: "The paper's trial phase, copied when it was screened (for charts)" }
+page:
+  layout: single
+  header: [title, decision, topic]
+  main: [{ fields: [decision, by, reason, confidence, article, year, phase] }, details]
+  below: [notes, history]

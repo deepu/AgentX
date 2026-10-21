@@ -53,4 +53,18 @@ describe('session tool safe-mode classification', () => {
       expect(result.reason).not.toContain('sources and agents');
     }
   });
+
+  // A record chat in Explore (docs/memwise/25-literature-poc.md §6): reading runs, keeping can't,
+  // and the refusal says how to keep.
+  it('allows the record reads in safe mode and never record_keep', () => {
+    for (const toolName of ['mcp__session__record_get', 'mcp__session__record_query']) {
+      expect(shouldAllowToolInMode(toolName, {}, 'safe').allowed).toBe(true);
+    }
+    const result = shouldAllowToolInMode('mcp__session__record_keep', { entity: 'literature.evidence', rows: [{}] }, 'safe');
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toContain('switch to Ask mode');
+      expect(result.reason).toContain('shown the rows');
+    }
+  });
 });

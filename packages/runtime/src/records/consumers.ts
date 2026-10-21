@@ -7,6 +7,7 @@ import {
 } from '@memwise/db';
 import { keyOf, type EntityEvent, type EntityLinkDef, type EntityTypeDef } from '@memwise/defs';
 import { domainOfEntity, entityByName, plainValues, recordTitle, type RecordsDeps } from './context.ts';
+import { quotesConsumer } from './quotes.ts';
 
 /** The flow dispatcher's consumer shape (`EventConsumer` in flow/dispatcher.ts). */
 export interface RecordEventConsumer {
@@ -118,7 +119,7 @@ export async function checkInvariants(db: Queryable, entities: Record<string, En
   return { raised, closed };
 }
 
-/** The consumers, in the order the dispatcher calls them: pairing first, so invariants see followed fields. */
+/** The consumers, in the order the dispatcher calls them: pairing first, so invariants see followed fields; then quotes. */
 export function recordConsumers(deps: Pick<RecordsDeps, 'pool' | 'entities' | 'emit'>): RecordEventConsumer[] {
   const links: RecordEventConsumer = {
     name: 'links',
@@ -166,5 +167,6 @@ export function recordConsumers(deps: Pick<RecordsDeps, 'pool' | 'entities' | 'e
     },
   };
 
-  return [links, invariants];
+  // Literature (25 §4): quote fields are checked against their sources on every write.
+  return [links, invariants, quotesConsumer(deps)];
 }

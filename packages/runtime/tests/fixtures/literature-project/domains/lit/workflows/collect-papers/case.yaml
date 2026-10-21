@@ -1,0 +1,12 @@
+case: paper_collection
+fields:
+  rows:     List<PaperRow>
+  articles: List<Text>
+  checked:  DateTime
+  next:     Date
+types:
+  PaperRow:
+    pmid:     Text
+    title:    Text
+    abstract: Text
+    year:     Number

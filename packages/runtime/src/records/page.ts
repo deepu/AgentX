@@ -14,10 +14,12 @@ import {
 } from '@memwise/defs';
 import { recordContentHash } from '../regulated/content.ts';
 import { signedRecordField } from '../regulated/signatures.ts';
-import type {
-  Actor, DocumentValue, RecordField, RecordFieldSource, RecordPage, RecordReview, RecordTransitionOption, RecordVersionSummary,
-  SignatureView,
+import {
+  pageBlockKey, type Actor, type ChartData, type DocumentValue, type RecordField, type RecordFieldSource, type RecordKpi, type RecordPage,
+  type RecordReview, type RecordTextView, type RecordTransitionOption, type RecordVersionSummary, type SignatureView,
 } from '../types.ts';
+import { chartData } from './charts.ts';
+import { textView } from './quotes.ts';
 import { assigneeOf } from '../driver.ts';
 import { maySee } from '../views.ts';
 import { domainOfEntity, inverseOf, isControlled, isRegulated, recordTitle, refEntity, type RecordsDeps } from './context.ts';
@@ -83,6 +85,18 @@ export async function signatureViews(db: import('@memwise/db').Queryable, def: E
 async function titleOf(deps: RecordsDeps, actor: Actor, def: EntityTypeDef, id: string): Promise<{ row: StoredEntityRow; title: string } | undefined> {
   const row = await withActor(deps.pool, actor, (db) => entityStore.get(db, def, id));
   return row ? { row, title: recordTitle(def, id, { ...row.values, ...(row.lifecycle ? { status: row.lifecycle } : {}) }) } : undefined;
+}
+
+/** Values with the title template's references named by their records' titles ("{article}" reads as the paper, not its id). */
+async function refsNamed(deps: RecordsDeps, actor: Actor, entities: Record<string, EntityTypeDef>, def: EntityTypeDef, values: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const out = { ...values };
+  for (const [, name] of (def.title ?? '').matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) {
+    const target = refEntity(entities, def, name!);
+    const v = values[name!];
+    const t = target && typeof v === 'string' && v ? await titleOf(deps, actor, target, v) : undefined;
+    if (t) out[name!] = t.title;
+  }
+  return out;
 }
 
 export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: string, actor: Actor, opts: { review?: { stepRunId: string } } = {}): Promise<RecordPage | undefined> {
@@ -153,7 +167,7 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
   }
 
   const status = row.lifecycle;
-  const title = recordTitle(def, id, { ...values, ...(status ? { status } : {}) });
+  const title = recordTitle(def, id, await refsNamed(deps, actor, entities, def, { ...values, ...(status ? { status } : {}) }));
 
   // ---- parents (root first)
   const parents: RecordPage['parents'] = [];
@@ -178,7 +192,7 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
     // A row's own values: not the reference back to this record, nor other references (bare ids
     // that mean nothing on the page; the row's title names it).
     const own = (v: Record<string, unknown>) => Object.fromEntries(Object.entries(v).filter(([f]) => f !== inv.via && !refEntity(entities, inv.target, f)));
-    const rows = r.rows.map((x) => ({ entity: keyOf(inv.target), id: x.id, title: recordTitle(inv.target, x.id, x.values), ...(x.lifecycle ? { status: x.lifecycle } : {}), values: own(x.values) }));
+    const rows = await Promise.all(r.rows.map(async (x) => ({ entity: keyOf(inv.target), id: x.id, title: recordTitle(inv.target, x.id, await refsNamed(deps, actor, entities, inv.target, x.values)), ...(x.lifecycle ? { status: x.lifecycle } : {}), values: own(x.values) })));
     const shown = new Set(rows.flatMap((x) => Object.keys(x.values)));
     const types = Object.fromEntries(Object.entries(inv.target.fields).filter(([f]) => shown.has(f)).map(([f, d]) => [f, d.typeSource]));
     related[rel] = { entity: keyOf(inv.target), total: r.total, rows, ...(Object.keys(types).length ? { types } : {}) };
@@ -223,10 +237,26 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
         const t = chart.transitions[name];
         const check = await checkTransition(db, def, entities, project, { id, transition: name }, mover);
         const guard = t?.guard ? await evaluateCondition(db, def, entities, id, t.guard).then((g) => ({ condition: t.guard!, holds: g.holds })).catch(() => ({ condition: t.guard!, holds: false })) : undefined;
-        transitions.push({ name, to, allowed: check.ok, ...(!check.ok ? { reason: check.message } : {}), ...(guard ? { guard } : {}), ...(t?.signed ? { signed: true } : {}) });
+        // A transition no role may make is the playbooks' (an "activate" `by: [step]`): never a person's button.
+        const automatic = !!t && !chart.fromList && !t.by.some((b) => b.kind === 'role');
+        transitions.push({
+          name, to, allowed: check.ok, ...(!check.ok ? { reason: check.message } : {}), ...(guard ? { guard } : {}), ...(t?.signed ? { signed: true } : {}),
+          ...(automatic ? { automatic: true } : {}),
+          ...(t?.label ? { label: t.label } : {}),
+          ...(t?.primary ? { primary: true } : {}),
+        });
       }
     });
-    lifecycle = { states: Object.keys(chart.states), ...(status ? { current: status } : {}), transitions };
+    // The states on the shortest way from the first state to the current one, so a page doesn't
+    // tick a branch the record never took (kept → rejected skips reviewed).
+    const via = new Map<string, string | null>([[chart.initial, null]]);
+    for (let queue = [chart.initial]; queue.length && status && !via.has(status);) {
+      const s = queue.shift()!;
+      for (const to of Object.values(chart.states[s]?.on ?? {})) if (!via.has(to)) { via.set(to, s); queue.push(to); }
+    }
+    const passed: string[] = [];
+    for (let s = status && via.has(status) ? via.get(status)! : null; s; s = via.get(s) ?? null) passed.unshift(s);
+    lifecycle = { states: Object.keys(chart.states), ...(status ? { current: status, passed } : {}), transitions };
   }
 
   // ---- flags, signatures, notes, mentions
@@ -244,9 +274,42 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
     if (byTrigger || byField) start.push({ workflowId: wf.id, title: wf.title ?? wf.id });
   }
 
-  // ---- documents for viewer blocks
+  // ---- documents for viewer blocks; a Text field's viewer shows the text with its quotes lit (25 §4)
   const documents: Record<string, DocumentValue | null> = {};
-  for (const b of blocks) if (b.kind === 'viewer') documents[b.field] = hidden.has(b.field) ? null : ((values[b.field] as DocumentValue | undefined) ?? null);
+  const texts: Record<string, RecordTextView> = {};
+  for (const b of blocks) {
+    if (b.kind !== 'viewer') continue;
+    const t = def.fields[b.field]?.type;
+    if (t?.kind === 'scalar' && t.name === 'Text') {
+      if (texts[b.field]) continue;
+      const text = hidden.has(b.field) || typeof values[b.field] !== 'string' ? null : values[b.field] as string;
+      texts[b.field] = await textView(deps, def, id, b.field, text, actor);
+    } else {
+      documents[b.field] = hidden.has(b.field) ? null : ((values[b.field] as DocumentValue | undefined) ?? null);
+    }
+  }
+
+  // ---- KPI tiles and charts (25 §5)
+  const kpis: Record<string, RecordKpi> = {};
+  for (const b of blocks) {
+    if (b.kind !== 'kpis') continue;
+    for (const name of b.fields) {
+      const f = fields.find((x) => x.name === name);
+      const v = f && !f.hidden ? f.value : null;
+      const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null;
+      kpis[name] = { field: name, value: n, type: f?.type ?? 'Number', ...(f?.description ? { description: f.description } : {}) };
+    }
+  }
+  const charts: Record<string, ChartData> = {};
+  for (const [area, list] of Object.entries(layout.areas)) {
+    for (const [i, b] of (list ?? []).entries()) {
+      if (b.kind !== 'chart') continue;
+      const inv = inverseOf(entities, def, b.of);
+      if (!inv) continue; // a chart of a calculated field draws nothing yet
+      const filter = [`${inv.via} = params.record`, ...(b.where?.trim() ? [`(${b.where})`] : [])].join(' and ');
+      charts[pageBlockKey(area, i)] = await withActor(deps.pool, actor, (db) => chartData(deps, actor, db, inv.target, b, filter, { record: id }));
+    }
+  }
 
   const labelsAll = labels;
   const history = [...versions].reverse().slice(0, 20).map((v) => versionSummary(v, labelsAll));
@@ -258,6 +321,9 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
     ...(note ? { notes: { body: note.body, version: note.version, by: labels.get(note.by) ?? (await deps.people.get(note.by))?.name ?? note.by, at: note.at } } : {}),
     mentions: mentionRows.map((m) => ({ sourceKind: m.sourceKind, sourceId: m.sourceId, label: m.label ?? m.sourceId, at: m.at, ...(m.caseId ? { caseId: m.caseId } : {}) })),
     start, documents, history,
+    ...(Object.keys(kpis).length ? { kpis } : {}),
+    ...(Object.keys(charts).length ? { charts } : {}),
+    ...(Object.keys(texts).length ? { texts } : {}),
   };
   if (opts.review) {
     const review = await buildReview(deps, def, id, actor, opts.review.stepRunId);

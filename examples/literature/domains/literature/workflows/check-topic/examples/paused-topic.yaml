@@ -1,0 +1,18 @@
+name: paused-topic
+description: >
+  The lead paused "Oral GLP-1s for weight in T2D" while the team's question is rewritten. Its check
+  date still comes round, but a paused topic isn't searched: the case ends at once.
+records:
+  Topic:
+    - id: topi_glp1_weight
+      name: Oral GLP-1s for weight in T2D
+      question: How much weight do adults with type 2 diabetes lose on oral GLP-1 receptor agonists, compared with placebo?
+      next_check: "2026-10-21"
+      status: paused
+case:
+  topic: topi_glp1_weight
+model: {}
+expect:
+  outcome: paused
+  state: end
+  effects: { literature.topic.update: 0 }

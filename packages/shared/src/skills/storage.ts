@@ -15,6 +15,7 @@ import {
 import { homedir } from 'os';
 import { join } from 'path';
 import matter from 'gray-matter';
+import { parse as parseYaml } from 'yaml';
 import type { LoadedSkill, SkillMetadata, SkillSource } from './types.ts';
 import { getWorkspaceSkillsPath } from '../workspaces/storage.ts';
 import {
@@ -195,17 +196,150 @@ export function loadWorkspaceSkills(workspaceRoot: string): LoadedSkill[] {
 // (workspaceRoot, projectRoot) pair with a 5-minute safety TTL.
 
 const skillsCache = new Map<string, { skills: LoadedSkill[]; ts: number }>();
+const pluginSkillsCache = new Map<string, { skills: LoadedSkill[]; ts: number }>();
 const SKILLS_CACHE_TTL = 5 * 60_000; // 5 minutes
 
 /** Invalidate the skills cache (call on working dir change or skill file events). */
 export function invalidateSkillsCache(): void {
   skillsCache.clear();
+  pluginSkillsCache.clear();
+}
+
+// ── Plugin skills (docs/memwise/25-literature-poc.md §7) ───────────────
+// Skills of the plugins installed in the MemWise project are a fourth tier, after global,
+// workspace and project, named `<plugin>:<skill>` (`data:create-viz`). The project folder is
+// known to the MemWise host (server-core), which registers it here when it starts.
+
+/** The MemWise plugin manifest file of an installed plugin version. */
+const PLUGIN_MANIFEST_FILE = 'memwise-plugin.yaml';
+/** Installed plugins: `<project>/plugins/<slug>/<version>/`. */
+const PLUGINS_DIR = 'plugins';
+
+let pluginSkillsRootProvider: (() => string | undefined) | null = null;
+
+/**
+ * Register where plugin skills come from: a function answering the MemWise project folder (or
+ * undefined while none is running). `null` turns the tier off. Clears the skills cache.
+ */
+export function setPluginSkillsRootProvider(provider: (() => string | undefined) | null): void {
+  pluginSkillsRootProvider = provider;
+  invalidateSkillsCache();
+}
+
+/** The MemWise project folder whose installed plugins' skills are offered, if any. */
+export function getPluginSkillsRoot(): string | undefined {
+  try {
+    return pluginSkillsRootProvider?.() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** `1.10.0` > `1.9.2`; a pre-release sorts below its release; non-versions last. */
+export function comparePluginVersions(a: string, b: string): number {
+  const parse = (v: string) => {
+    const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(v);
+    return m ? { nums: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] } : null;
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  if (!pa || !pb) return pa ? 1 : pb ? -1 : a < b ? -1 : a > b ? 1 : 0;
+  for (let i = 0; i < 3; i++) {
+    if (pa.nums[i] !== pb.nums[i]) return pa.nums[i]! - pb.nums[i]!;
+  }
+  if (pa.pre === pb.pre) return 0;
+  if (!pa.pre) return 1;
+  if (!pb.pre) return -1;
+  return pa.pre < pb.pre ? -1 : 1;
+}
+
+/** A name usable in a skill mention: lower case, letters, digits, `-` and `_`. */
+function pluginSkillName(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'plugin';
+}
+
+/** The plugin's name for its skills: the Claude plugin's name, else the id's last part, else the folder. */
+function readPluginInfo(versionDir: string, slug: string, version: string): NonNullable<LoadedSkill['plugin']> {
+  let manifest: Record<string, unknown> = {};
+  try {
+    const parsed = parseYaml(readFileSync(join(versionDir, PLUGIN_MANIFEST_FILE), 'utf-8')) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) manifest = parsed as Record<string, unknown>;
+  } catch {
+    // No readable manifest: named after the folder.
+  }
+  const id = typeof manifest.id === 'string' ? manifest.id : undefined;
+  const imported = manifest.importedFrom as { name?: unknown } | undefined;
+  const importedName = imported && typeof imported.name === 'string' ? imported.name : undefined;
+  const raw = importedName ?? id?.split('/').pop() ?? slug.split('__').pop() ?? slug;
+  return {
+    name: pluginSkillName(raw),
+    ...(id ? { id } : {}),
+    ...(typeof manifest.title === 'string' ? { title: manifest.title } : {}),
+    version: typeof manifest.version === 'string' ? manifest.version : version,
+  };
 }
 
 /**
- * Load all skills from all sources (global, workspace, project)
+ * The skills of the plugins installed in a MemWise project: for each `plugins/<slug>/`, the
+ * newest version's `skills/<skill>/SKILL.md`, named `<plugin>:<skill>`. A second plugin with
+ * the same name is left out (the first by folder name wins).
+ */
+export function loadPluginSkills(projectRoot: string): LoadedSkill[] {
+  const now = Date.now();
+  const cached = pluginSkillsCache.get(projectRoot);
+  if (cached && now - cached.ts < SKILLS_CACHE_TTL) return cached.skills;
+
+  const skills: LoadedSkill[] = [];
+  const pluginsDir = join(projectRoot, PLUGINS_DIR);
+  const seenNames = new Set<string>();
+  try {
+    if (existsSync(pluginsDir)) {
+      const slugs = readdirSync(pluginsDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+        .map((e) => e.name)
+        .sort();
+      for (const slug of slugs) {
+        let versions: string[];
+        try {
+          versions = readdirSync(join(pluginsDir, slug), { withFileTypes: true })
+            .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+            .map((e) => e.name)
+            .sort((a, b) => comparePluginVersions(b, a));
+        } catch {
+          continue;
+        }
+        const newest = versions[0];
+        if (!newest) continue;
+        const versionDir = join(pluginsDir, slug, newest);
+        const plugin = readPluginInfo(versionDir, slug, newest);
+        if (seenNames.has(plugin.name)) continue;
+        seenNames.add(plugin.name);
+        for (const skill of loadSkillsFromDir(join(versionDir, 'skills'), 'plugin')) {
+          skills.push({ ...skill, slug: `${plugin.name}:${skill.slug}`, plugin });
+        }
+      }
+    }
+  } catch {
+    // An unreadable plugins folder offers no plugin skills.
+  }
+  skills.sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  pluginSkillsCache.set(projectRoot, { skills, ts: now });
+  return skills;
+}
+
+/** The plugin skill of this `<plugin>:<skill>` name, from the registered MemWise project. */
+export function findPluginSkill(name: string): LoadedSkill | null {
+  if (!name.includes(':')) return null;
+  const root = getPluginSkillsRoot();
+  if (!root) return null;
+  return loadPluginSkills(root).find((s) => s.slug === name) ?? null;
+}
+
+/**
+ * Load all skills from all sources (global, workspace, project, then MemWise plugins)
  * Skills with the same slug are overridden by higher-priority sources.
- * Priority: global (lowest) < workspace < project (highest)
+ * Priority: global (lowest) < workspace < project (highest). Plugin skills come last, named
+ * `<plugin>:<skill>` (see setPluginSkillsRootProvider).
  *
  * Results are cached per (workspaceRoot, projectRoot) pair. Call
  * invalidateSkillsCache() on working directory changes or skill file events.
@@ -214,7 +348,8 @@ export function invalidateSkillsCache(): void {
  * @param projectRoot - Optional project root (working directory) for project-level skills
  */
 export function loadAllSkills(workspaceRoot: string, projectRoot?: string): LoadedSkill[] {
-  const cacheKey = `${workspaceRoot}::${projectRoot ?? ''}`;
+  const pluginRoot = getPluginSkillsRoot();
+  const cacheKey = `${workspaceRoot}::${projectRoot ?? ''}::${pluginRoot ?? ''}`;
   const now = Date.now();
   const cached = skillsCache.get(cacheKey);
   if (cached && now - cached.ts < SKILLS_CACHE_TTL) {
@@ -241,6 +376,13 @@ export function loadAllSkills(workspaceRoot: string, projectRoot?: string): Load
     }
   }
 
+  // 4. Plugin skills (doc 25 §7): named `<plugin>:<skill>`, so they never shadow the tiers above.
+  if (pluginRoot) {
+    for (const skill of loadPluginSkills(pluginRoot)) {
+      if (!skillsBySlug.has(skill.slug)) skillsBySlug.set(skill.slug, skill);
+    }
+  }
+
   const result = Array.from(skillsBySlug.values());
   skillsCache.set(cacheKey, { skills: result, ts: now });
   return result;
@@ -255,6 +397,9 @@ export function loadAllSkills(workspaceRoot: string, projectRoot?: string): Load
  * @param projectRoot - Optional project root for project-level skills
  */
 export function loadSkillBySlug(workspaceRoot: string, slug: string, projectRoot?: string): LoadedSkill | null {
+  // A plugin skill (`data:create-viz`): only the plugin tier names skills with a colon.
+  if (slug.includes(':')) return findPluginSkill(slug);
+
   // Highest priority: project-level
   if (projectRoot) {
     const projectSkillsDir = join(projectRoot, PROJECT_AGENT_SKILLS_DIR);

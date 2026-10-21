@@ -543,7 +543,7 @@ export function useMemwiseUpload(): (file: File) => Promise<import('@memwise/sha
 // ---------------------------------------------------------------- chat
 
 /** Wait briefly for a session the server just created to reach the session list. */
-async function waitForSession(store: ReturnType<typeof useStore>, sessionId: string): Promise<void> {
+export async function waitForSession(store: ReturnType<typeof useStore>, sessionId: string): Promise<void> {
   const deadline = Date.now() + 3000
   while (!store.get(sessionMetaMapAtom).has(sessionId) && Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 100))

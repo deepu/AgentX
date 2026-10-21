@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import path from 'node:path';
 import { loadProject, type EntityTypeDef, type ProjectDefs, type StepToken } from '@memwise/defs';
 import {
-  applyDomainSchema, columnType, compileRls, createTestDatabase, domainCreators, entityColumns, entityTableName, PgEntityStore,
+  applyDomainSchema, columnType, compileRls, createTestDatabase, domainCreators, entityColumns, entityTableName, keyIndexName, PgEntityStore,
   postgresAvailable, syncEntityTables, withActor, type Actor, type TestDatabase,
 } from '../src/index.ts';
 
@@ -28,6 +28,18 @@ test('naming and column types', () => {
   expect(columnType({ kind: 'ref', entity: 'Customer' })).toBe('text');
   expect(columnType({ kind: 'list', of: { kind: 'scalar', name: 'Text' } })).toBe('jsonb');
   expect(columnType({ kind: 'scalar', name: 'DateTime' })).toBe('timestamptz');
+});
+
+test('key index names: short ones as they are; long ones keep a prefix and end with a hash of the whole', () => {
+  expect(keyIndexName('Customer')).toBe('domain__customer__key');
+  const a = keyIndexName({ entity: 'ExpectedRegulatoryDocumentSubmissionForInvestigatorSiteA', domain: 'etmf' });
+  const b = keyIndexName({ entity: 'ExpectedRegulatoryDocumentSubmissionForInvestigatorSiteB', domain: 'etmf' });
+  expect(a.length).toBe(63);
+  expect(a).toStartWith('etmf__expected_regulatory_document_submission_for_');
+  expect(a).toMatch(/_[0-9a-f]{10}$/);
+  // Cut to 63 characters these two would have been the same index.
+  expect(a).not.toBe(b);
+  expect(keyIndexName({ entity: 'ExpectedRegulatoryDocumentSubmissionForInvestigatorSiteA', domain: 'etmf' })).toBe(a);
 });
 
 describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {

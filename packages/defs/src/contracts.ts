@@ -21,7 +21,11 @@ export type Provenance =
       /** Phase 6 (24 §11): where in the document it was read: the page (1-based) and the text quoted. */
       page?: number; quote?: string;
     }
-  | { kind: 'judgement'; at: string; stepRunId: string; rationale?: string; tainted?: boolean; /** A conversation step's chat wrote it, for this person (Phase 3). */ chatId?: string; by?: string }
+  | {
+      kind: 'judgement'; at: string; stepRunId: string; rationale?: string; tainted?: boolean; /** A conversation step's chat wrote it, for this person (Phase 3). */ chatId?: string; by?: string;
+      /** Literature (25 §4, D81): the exact words of a tool result the value was read from (checked before the step finishes). */
+      quote?: string;
+    }
   | { kind: 'person'; at: string; by: string; stepRunId?: string }
   | { kind: 'system'; at: string; note?: string }
   /** Phase 5 (D67): typed by an external participant through a link; always tainted (untrusted input). */

@@ -24,7 +24,7 @@ export {
 export { PgNotificationStore, type Notification, type NewNotification } from './stores/notifications.ts';
 export { PgExplanationStore, type StoredExplanation, type ExplanationCite } from './stores/explanations.ts';
 export { PgFileStore, type StoredFile } from './stores/files.ts';
-export { PgChatAnchorStore, type ChatAnchor } from './stores/chat-anchors.ts';
+export { PgChatAnchorStore, recordAnchorId, parseRecordAnchorId, type ChatAnchor, type ChatAnchorKind } from './stores/chat-anchors.ts';
 export { PgRateCounter } from './stores/rates.ts';
 export {
   applyDomainSchema, columnType, compileRls, domainCreators, domainToolNames, entityColumns, entityIdPrefix,
@@ -45,6 +45,8 @@ export {
 export {
   RECORD_COLUMNS, tableOf, viewOf, domainUpdaters, type DomainSchemaOptions, type EntityRef,
 } from './domain/tables.ts';
+// Literature (docs/memwise/25-literature-poc.md §3): keyed records.
+export { keyColumns, keyIndexName } from './domain/tables.ts';
 export {
   withRecordContext, RecordWriteError, type RecordContext, type RecordWriteErrorCode, type EntityQuery, type EntityQueryResult,
   type EntityAggregate,

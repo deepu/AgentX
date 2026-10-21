@@ -1,0 +1,7 @@
+workflow: collect-papers
+version: 1
+title: Collect papers
+owner: lead
+start: store
+steps:
+  store: { on: { done: end } }

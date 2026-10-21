@@ -3,7 +3,7 @@
  * (`pages/*.yaml`, dashboards) and shared views (`views/*.yaml`).
  */
 import { basename } from 'node:path';
-import type { DashboardBlock, DashboardValue, DomainDef, FreePageDef, ViewDef, WorkspaceDef } from './domain-types.ts';
+import type { DashboardBlock, DashboardChartDef, DashboardValue, DomainDef, DomainHomeDef, FreePageDef, ViewDef, WorkspaceDef } from './domain-types.ts';
 import { dashboardBlockFormats, domainFormat, pageFormat, viewFormat, workspaceFormat } from './formats.ts';
 import { toPolicyDoc } from './parse-policy.ts';
 import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, type ParseResult, type PathKey } from './source.ts';
@@ -57,7 +57,7 @@ export function parseWorkspaceFile(text: string, file: string, folderName = 'Wor
  * policy are filled in by the loader.
  */
 export function parseDomainFile(text: string, file: string, id: string, dir: string): ParseResult<DomainDef> {
-  const { data, report, locate } = readMap(text, file, 'a domain: domain, name, owner, regulated, retention, accepts_from, intake');
+  const { data, report, locate } = readMap(text, file, 'a domain: domain, name, owner, regulated, retention, accepts_from, intake, home');
   if (!data) return { diagnostics: report.diagnostics };
   report.validate(domainFormat, data);
   const written = asString(data.domain);
@@ -74,6 +74,7 @@ export function parseDomainFile(text: string, file: string, id: string, dir: str
     retentionMs: typeof retention === 'string' || typeof retention === 'number' ? parseDuration(retention) : undefined,
     acceptsFrom: Array.isArray(data.accepts_from) ? asStrings(data.accepts_from) : undefined,
     intake: isRecord(data.intake) && typeof data.intake.address === 'string' ? { address: data.intake.address.trim() } : undefined,
+    home: homeOf(data.home),
     dir,
     entities: [],
     workflows: [],
@@ -83,6 +84,19 @@ export function parseDomainFile(text: string, file: string, id: string, dir: str
   });
   rememberLocator(value, locate);
   return { value, diagnostics: report.diagnostics };
+}
+
+function homeOf(raw: unknown): DomainHomeDef | undefined {
+  if (!isRecord(raw) || typeof raw.entity !== 'string' || typeof raw.question !== 'string') return undefined;
+  return compact({
+    ask: asString(raw.ask),
+    placeholder: asString(raw.placeholder),
+    entity: raw.entity.trim(),
+    question: raw.question.trim(),
+    name: asString(raw.name),
+    page: asString(raw.page),
+    suggested: Array.isArray(raw.suggested) ? asStrings(raw.suggested) : [],
+  });
 }
 
 /** A domain's display name when `domain.yaml` gives none: "Main" for the default domain, else the id. */
@@ -180,6 +194,19 @@ function parseDashboardBlock(raw: unknown, report: Reporter, path: PathKey[]): D
     }
     case 'text':
       return { kind, markdown: typeof v === 'string' ? v : '' };
+    case 'chart': {
+      // Literature (25 §5): counts per `by`, or an interval per record.
+      const chart = b.kind as DashboardChartDef['chart'];
+      if (chart === 'interval' ? !(b.value && b.low && b.high) : !b.by) {
+        report.error('invalid-format', chart === 'interval'
+          ? '`chart`: an interval chart names its `value`, `low` and `high` fields (and a `label` template)'
+          : `\`chart\`: a ${chart} chart counts records per value of a field: name it with \`by\``, [...path, kind]);
+        return undefined;
+      }
+      const block: DashboardChartDef = { kind, chart, entity: asString(b.entity) ?? '' };
+      for (const k of ['where', 'by', 'title', 'label', 'value', 'low', 'high', 'unit'] as const) if (typeof b[k] === 'string') block[k] = b[k] as string;
+      return block;
+    }
   }
 }
 

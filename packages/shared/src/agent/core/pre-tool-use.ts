@@ -36,7 +36,7 @@ import {
 } from '../../config/cli-domains.ts';
 import { FEATURE_FLAGS } from '../../feature-flags.ts';
 import { AGENTS_PLUGIN_NAME } from '../../skills/types.ts';
-import { GLOBAL_AGENT_SKILLS_DIR, PROJECT_AGENT_SKILLS_DIR } from '../../skills/storage.ts';
+import { GLOBAL_AGENT_SKILLS_DIR, PROJECT_AGENT_SKILLS_DIR, findPluginSkill, getPluginSkillsRoot, loadPluginSkills } from '../../skills/storage.ts';
 import {
   shouldAllowToolInMode,
   isReadOnlyBashCommandWithConfig,
@@ -200,10 +200,11 @@ export function expandToolPaths(
  * Ensure skill names are fully-qualified with the correct plugin prefix.
  *
  * The SDK resolves skills as `pluginName:skillSlug` where the plugin name is
- * read from `.claude-plugin/plugin.json` `name` field. Skills can live in 3 tiers:
+ * read from `.claude-plugin/plugin.json` `name` field. Skills can live in 4 tiers:
  *   1. Workspace: {workspaceRoot}/skills/{slug}/ → plugin name from plugin.json
  *   2. Project:   {workingDir}/.agents/skills/{slug}/ → plugin name = ".agents"
  *   3. Global:    ~/.agents/skills/{slug}/ → plugin name = ".agents"
+ *   4. MemWise plugins: {memwise project}/plugins/<slug>/<version>/skills/{slug}/ → `<plugin>:<slug>`
  *
  * This function resolves the bare slug to the correct plugin prefix by checking
  * which directory actually contains the skill. It also handles re-qualifying
@@ -226,6 +227,9 @@ export function qualifySkillName(
 ): SkillQualificationResult {
   const skill = input.skill as string | undefined;
   if (!skill) return { modified: false, input };
+
+  // A MemWise plugin skill is already fully named `<plugin>:<skill>` (doc 25 §7).
+  if (skill.includes(':') && findPluginSkill(skill)) return { modified: false, input };
 
   // Extract the bare slug — strip any existing qualifier (e.g. "MemWiseAgentWS:commit" → "commit")
   const bareSlug = skill.includes(':') ? skill.split(':').pop()! : skill;
@@ -280,6 +284,11 @@ function resolveSkillPlugin(
   if (existsSync(join(GLOBAL_AGENT_SKILLS_DIR, bareSlug, 'SKILL.md'))) {
     return `${AGENTS_PLUGIN_NAME}:${bareSlug}`;
   }
+
+  // 4. MemWise plugins (doc 25 §7): <project>/plugins/<slug>/<version>/skills/{slug}/SKILL.md → `<plugin>:<slug>`
+  const pluginRoot = getPluginSkillsRoot();
+  const pluginSkill = pluginRoot ? loadPluginSkills(pluginRoot).find((s) => s.slug.endsWith(`:${bareSlug}`)) : undefined;
+  if (pluginSkill) return pluginSkill.slug;
 
   // Fallback: assume workspace plugin (original behavior)
   return `${workspaceSlug}:${bareSlug}`;
@@ -668,6 +677,46 @@ export interface PrerequisiteManagerLike {
   checkBashPrerequisites(command: string): PrerequisiteCheckResult;
 }
 
+/** MemWise: keeping rows from a record chat; asked in every mode that can run it. */
+const RECORD_KEEP_TOOL = 'mcp__session__record_keep';
+
+const KEEP_VALUE_MAX = 200;
+const KEEP_QUOTE_MAX = 600;
+const KEEP_PREVIEW_MAX = 8000;
+
+function keepValueText(value: unknown, max: number): string {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  const flat = (text ?? '').replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+/**
+ * The permission prompt of `record_keep`: what is kept, as plain rows the person can read
+ * (each field and value, the quote on its own line). No "Always Allow": each keep is asked.
+ */
+function describeRecordKeep(input: Record<string, unknown>): PromptInfo {
+  const entity = typeof input.entity === 'string' ? input.entity : '';
+  const rows = Array.isArray(input.rows) ? input.rows : [];
+  const name = (entity.split('.').pop() || 'record').replace(/[_-]+/g, ' ');
+  const lines: string[] = [];
+  rows.forEach((row, i) => {
+    const values = row && typeof row === 'object' && !Array.isArray(row) ? Object.entries(row as Record<string, unknown>) : [];
+    const fields = values
+      .filter(([k, v]) => k !== 'quote' && v !== null && v !== undefined && v !== '')
+      .map(([k, v]) => `${k}: ${keepValueText(v, KEEP_VALUE_MAX)}`);
+    lines.push(`${i + 1}. ${fields.join(' · ') || '(no values)'}`);
+    const quote = values.find(([k]) => k === 'quote')?.[1];
+    if (quote !== undefined && quote !== null && quote !== '') lines.push(`   quote: "${keepValueText(quote, KEEP_QUOTE_MAX)}"`);
+  });
+  let command = lines.join('\n');
+  if (command.length > KEEP_PREVIEW_MAX) command = `${command.slice(0, KEEP_PREVIEW_MAX)}\n…`;
+  return {
+    promptType: 'mcp_mutation',
+    description: `Keep ${rows.length} ${rows.length === 1 ? 'row' : 'rows'} as ${name}${entity ? ` (${entity})` : ''}`,
+    command: command || '(no rows)',
+  };
+}
+
 /** Built-in MCP servers that are always available (not user sources) */
 const BUILT_IN_MCP_SERVERS = new Set(['session']);
 
@@ -883,7 +932,9 @@ export function runPreToolUseChecks(ctx: PreToolUseInput): PreToolUseCheckResult
   // ============================================================
   // 6. ASK MODE PROMPT DECISION
   // ============================================================
-  if (effectivePermissionMode === 'ask') {
+  // MemWise record_keep is never auto-allowed (Explore blocked it above): every other mode asks,
+  // and the prompt that shows the rows is the Keep button (docs/memwise/25-literature-poc.md §6).
+  if (effectivePermissionMode === 'ask' || toolName === RECORD_KEEP_TOOL) {
     const promptInfo = shouldPromptInAskMode(
       toolName,
       input, // Use original input for permission decisions (before stripping)
@@ -1108,6 +1159,11 @@ export function shouldPromptInAskMode(
       command,
       remember,
     };
+  }
+
+  // --- MemWise record_keep: always asked, never remembered ---
+  if (toolName === RECORD_KEEP_TOOL) {
+    return describeRecordKeep(input);
   }
 
   // --- MCP mutations ---

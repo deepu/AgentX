@@ -14,11 +14,12 @@ import type { Diagnostic, ProjectDefs } from '@memwise/defs'
 import type { ToolDefinition } from '@memwise/gateway'
 import type { Actor, Kernel as KernelPhase1, KernelOptions, KernelPhase2, Person } from '@memwise/runtime'
 import type { DtoContext, ToolInfo } from './dto'
-import { emitMemwiseChange, getMemwiseHostStatus, setMemwiseHostStatus, setMemwiseService, type MemwiseHostStatus } from './host'
+import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange, setMemwiseHostStatus, setMemwiseService, type MemwiseHostStatus } from './host'
+import { invalidateSkillsCache, setPluginSkillsRootProvider } from '@memwise/shared/skills'
 import { defaultModelResolver, projectModelRoles, type ModelResolver } from './models'
 import { addMissingMetaPlaybooks, affectsIndex, findExampleProject, findExamplePlugins, META_PLAYBOOK_DIRS, seedProject } from './seed'
 import { createConnectorBridge, type SourcePluginFolder } from './connectors'
-import { toDiagnostic } from './dto'
+import { projectToolInfo, toDiagnostic } from './dto'
 import { createPublicHandler, findFormAppDir, type PublicHandler } from './public'
 import { createPublicAddress, type PublicAddress, type PublicAddressOptions } from './relay'
 import { channelTools, pgSentStore } from './channels'
@@ -126,6 +127,22 @@ function ownerDefaults(mode: 'desktop' | 'server'): { name: string; email: strin
   return { name, email: process.env.MEMWISE_OWNER_EMAIL || `${slug}@memwise.local` }
 }
 
+let pluginSkillsOffered = false
+
+/**
+ * Skills of the plugins installed in the running project join chat's skills as a fourth tier,
+ * `<plugin>:<skill>` (doc 25 §7): the skills loader asks for the project folder at each load,
+ * and forgets what it read when plugins or definitions change.
+ */
+function offerPluginSkills(): void {
+  setPluginSkillsRootProvider(() => getMemwiseService()?.projectDir)
+  if (pluginSkillsOffered) return
+  pluginSkillsOffered = true
+  onMemwiseChange((c) => {
+    if (c.kind === 'plugins' || c.kind === 'definitions') invalidateSkillsCache()
+  })
+}
+
 function readState(file: string): { ownerId?: string } {
   try { return JSON.parse(readFileSync(file, 'utf8')) as { ownerId?: string } } catch { return {} }
 }
@@ -215,17 +232,25 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       ...(opts.workspaceRoot ? { workspaceRoot: opts.workspaceRoot } : {}),
       logger: log,
     })
-    const toolInfo = new Map<string, ToolInfo>()
-    // Builtins describe the plugin tools bound to them too; a directly passed tool wins by name.
-    for (const t of [...tools, ...builtins]) {
-      if (toolInfo.has(t.name)) continue
-      toolInfo.set(t.name, {
-        name: t.name,
-        ...(t.description ? { description: t.description } : {}),
-        ...(typeof t.effect === 'string' ? { effect: t.effect } : {}),
-        ...(t.source?.plugin ? { plugin: t.source.plugin } : {}),
-      })
+    const infoOf = (list: ToolDefinition[]) => {
+      const out = new Map<string, ToolInfo>()
+      for (const t of list) {
+        if (out.has(t.name)) continue
+        out.set(t.name, {
+          name: t.name,
+          ...(t.description ? { description: t.description } : {}),
+          ...(typeof t.effect === 'string' ? { effect: t.effect } : {}),
+          ...(t.source?.plugin ? { plugin: t.source.plugin } : {}),
+        })
+      }
+      return out
     }
+    // A directly passed tool wins by name; builtins describe the plugin tools bound to them too.
+    const directInfo = infoOf(tools)
+    const builtinInfo = infoOf(builtins)
+    /** The tools as the kernel binds them for this project: entity tools and frozen bindings included. */
+    const toolsFor = (project: ProjectDefs): Map<string, ToolInfo> =>
+      projectToolInfo(directInfo, builtinInfo, defs.entityTools(project.entities ?? {}), defs.boundPluginTools(project))
 
     // ---- public address (Phase 5): the handler answers 503 until the kernel is up
     const publicHandler = createPublicHandler({
@@ -320,6 +345,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       const diagnostics = await k.index()
       await refreshContext()
       setMemwiseHostStatus({ diagnostics: diagnosticsOf() })
+      log.info(`[memwise] re-read the playbooks: ${diagnostics.filter((d) => d.severity === 'error').length} error(s)`)
       return diagnostics
     }
 
@@ -353,7 +379,6 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       return (await k.people.get(ownerPerson.id)) ?? ownerPerson
     }
 
-    const tools2 = toolInfo
     const service: MemwiseService = {
       kernel: k,
       mode,
@@ -371,7 +396,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
         const { valueTypeToJsonSchema } = await import('@memwise/defs')
         // Always the kernel's current index: a publish re-indexes inside the kernel.
         indexed = await k.project()
-        return { project: indexed.project as ProjectDefs, diagnostics: indexed.diagnostics, tools: tools2, jsonSchema: valueTypeToJsonSchema }
+        return { project: indexed.project as ProjectDefs, diagnostics: indexed.diagnostics, tools: toolsFor(indexed.project as ProjectDefs), toolsFor, jsonSchema: valueTypeToJsonSchema }
       },
       personFor,
       async actorFor(client) {
@@ -405,6 +430,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     }
 
     setMemwiseService(service)
+    offerPluginSkills()
     setMemwiseHostStatus({
       phase: 'ready',
       message: models.configured ? undefined : models.message,

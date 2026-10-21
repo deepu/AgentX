@@ -85,9 +85,14 @@ mock.module('../../../skills/types.ts', () => ({
   AGENTS_PLUGIN_NAME: '.agents',
 }));
 
+// MemWise plugin skills (doc 25 §7): one installed plugin `data` with the skill `create-viz`.
+const mockPluginSkills = [{ slug: 'data:create-viz', source: 'plugin' }];
 mock.module('../../../skills/storage.ts', () => ({
   GLOBAL_AGENT_SKILLS_DIR: '/Users/test/.agents/skills',
   PROJECT_AGENT_SKILLS_DIR: '.agents/skills',
+  getPluginSkillsRoot: () => '/memwise/project',
+  loadPluginSkills: () => mockPluginSkills,
+  findPluginSkill: (name: string) => mockPluginSkills.find((s) => s.slug === name) ?? null,
 }));
 
 let mockMemWiseCliFlag = false;
@@ -750,6 +755,51 @@ describe('runPreToolUseChecks', () => {
   describe('step 6: ask-mode prompt decision', () => {
     beforeEach(() => {
       mockEffectivePermissionMode = 'ask';
+    });
+
+    // docs/memwise/25-literature-poc.md §6: the prompt showing the rows is the Keep button.
+    it('always asks before record_keep, in Ask and in Execute, with the rows readable and nothing to remember', () => {
+      const rows = [
+        { topic: 'topic_1', article: 'art_1', outcome: 'Body weight', effect: -10.5, unit: '%', quote: '1613 (757 [46·9%] female) were randomly assigned' },
+        { topic: 'topic_1', article: 'art_1', outcome: 'HbA1c', effect: -1.8, note: null },
+      ];
+      for (const mode of ['ask', 'allow-all'] as const) {
+        mockEffectivePermissionMode = mode;
+        const result = runPreToolUseChecks(createInput({
+          toolName: 'mcp__session__record_keep',
+          input: { entity: 'literature.evidence', rows },
+          permissionMode: mode,
+          permissionManager: createMockPermissionManager({ isCommandWhitelisted: () => true }),
+        }));
+        expect(result.type).toBe('prompt');
+        if (result.type === 'prompt') {
+          expect(result.promptType).toBe('mcp_mutation');
+          expect(result.description).toBe('Keep 2 rows as evidence (literature.evidence)');
+          expect(result.command).toBe([
+            '1. topic: topic_1 · article: art_1 · outcome: Body weight · effect: -10.5 · unit: %',
+            '   quote: "1613 (757 [46·9%] female) were randomly assigned"',
+            '2. topic: topic_1 · article: art_1 · outcome: HbA1c · effect: -1.8',
+          ].join('\n'));
+          expect(result.remember).toBeUndefined();
+        }
+      }
+    });
+
+    it('does not prompt for the record reads', () => {
+      mockShouldAllowToolInMode.mockImplementation(
+        (tool: string, _input: Record<string, unknown>, mode: string) =>
+          mode === 'safe' && tool.endsWith('record_keep') ? { allowed: false, reason: 'blocked' } : { allowed: true, reason: '' }
+      );
+      for (const toolName of ['mcp__session__record_get', 'mcp__session__record_query']) {
+        expect(runPreToolUseChecks(createInput({ toolName, input: { entity: 'literature.topic', id: 't1' }, permissionMode: 'ask' })).type).toBe('allow');
+      }
+    });
+
+    it('leaves a MemWise plugin skill name as it is, and qualifies its bare name', () => {
+      mockEffectivePermissionMode = 'allow-all';
+      expect(runPreToolUseChecks(createInput({ toolName: 'Skill', input: { skill: 'data:create-viz' }, permissionMode: 'allow-all' })).type).toBe('allow');
+      const bare = runPreToolUseChecks(createInput({ toolName: 'Skill', input: { skill: 'create-viz' }, permissionMode: 'allow-all' }));
+      expect(bare).toEqual({ type: 'modify', input: { skill: 'data:create-viz' } });
     });
 
     it('prompts for bash commands in ask mode', () => {

@@ -10,6 +10,7 @@
  * `domain.domain__<entity>`) happens once, in the same transaction.
  */
 import { DEFAULT_DOMAIN, keyOf, splitEntityKey, type DomainDef, type EntityTypeDef, type ValueType, type WorkflowDef } from '@memwise/defs';
+import crypto from 'node:crypto';
 import type pg from 'pg';
 import { APP_ROLE } from '../actor.ts';
 import { quoteIdent } from '../cluster.ts';
@@ -187,8 +188,60 @@ async function syncTablesIn(db: Queryable, entities: Record<string, EntityTypeDe
         notes.push(`${def.entity}.${c.field}: column ${name}.${c.column} is ${have}, the field now wants ${c.type}; left as it is`);
       }
     }
+    notes.push(...(await syncKeyIndex(db, def)));
   }
   return notes;
+}
+
+/** Postgres keeps the first 63 bytes of a name. */
+const PG_NAME_MAX = 63;
+
+/**
+ * The unique index on an entity's key columns (25 §3): `<table>__key`. A longer name keeps its
+ * start and ends with a hash of the whole, so two long entity names that share a start don't
+ * get the same index.
+ */
+export function keyIndexName(def: EntityRef): string {
+  const full = `${entityTableName(def)}__key`;
+  if (Buffer.byteLength(full) <= PG_NAME_MAX) return full;
+  const hash = crypto.createHash('sha256').update(full).digest('hex').slice(0, 10);
+  let head = full.slice(0, PG_NAME_MAX - hash.length - 1);
+  while (Buffer.byteLength(head) > PG_NAME_MAX - hash.length - 1) head = head.slice(0, -1);
+  return `${head}_${hash}`;
+}
+
+/** The columns of an entity's key (25 §3), in the key's order; empty when it has none. */
+export function keyColumns(def: EntityTypeDef): EntityColumn[] {
+  const byField = new Map(entityColumns(def).map((c) => [c.field, c]));
+  return (def.key ?? []).map((f) => byField.get(f)).filter((c): c is EntityColumn => !!c);
+}
+
+/**
+ * Makes the key's unique index match the definition: created when missing, made again when the
+ * key changed, dropped when the key was removed. Rows that already break a new key leave it
+ * unenforced, with a note (in a savepoint, so the rest of the sync goes on).
+ */
+async function syncKeyIndex(db: Queryable, def: EntityTypeDef): Promise<string[]> {
+  const index = keyIndexName(def);
+  const cols = keyColumns(def);
+  const { rows } = await db.query<{ indexdef: string }>(`select indexdef from pg_indexes where schemaname = 'domain' and indexname = $1`, [index]);
+  const want = cols.length ? `(${cols.map((c) => q(c.column)).join(', ')})` : undefined;
+  const have = rows[0]?.indexdef;
+  // `pg_indexes` quotes only the names that need it; compare without quotes.
+  const bare = (sql: string) => sql.replace(/"/g, '');
+  if (have && want && bare(have).endsWith(bare(want))) return [];
+  if (have) await db.query(`drop index domain.${q(index)}`);
+  if (!want) return [];
+  await db.query('savepoint mw_key_index');
+  try {
+    await db.query(`create unique index ${q(index)} on ${table(def)} ${want}`);
+    await db.query('release savepoint mw_key_index');
+    return [];
+  } catch (e) {
+    await db.query('rollback to savepoint mw_key_index');
+    if ((e as { code?: string }).code !== '23505') throw e;
+    return [`${def.entity}: key (${(def.key ?? []).join(', ')}) not enforced: some records share a key; give them different values and index again`];
+  }
 }
 
 const normalType = (dataType: string) => (dataType === 'timestamp with time zone' ? 'timestamptz' : dataType);

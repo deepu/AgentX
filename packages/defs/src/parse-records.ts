@@ -5,7 +5,7 @@
  * report what only makes sense once read (an unknown page block, a duration that isn't one).
  */
 import type {
-  CalculatedFieldDef, EntityLinkDef, LifecycleDef, LifecycleStateDef, LifecycleTransitionDef, PageArea, PageBlock,
+  CalculatedFieldDef, ChartBlockDef, ChartKind, EntityLinkDef, LifecycleDef, LifecycleStateDef, LifecycleTransitionDef, PageArea, PageBlock,
   PageLayoutDef, PageLayoutShape, RelationshipDef, RollupKind, TransitionActor,
 } from './domain-types.ts';
 import { asRecord, asString, asStrings, compact, isRecord, type PathKey, type Reporter } from './source.ts';
@@ -136,7 +136,10 @@ export function parseLifecycle(raw: unknown, report: Reporter): { states?: strin
       if (actor) by.push(actor);
       else report.error('invalid-format', `\`${src}\` is not who may make a transition: expected step, system, role:<id> or source:<plugin or domain:<id>>`, ['lifecycle', 'transitions', name, 'by', ...(typeof t.by === 'string' ? [] : [i])]);
     });
-    transitions[name] = compact({ name, by, guard: asString(t.guard), signed: typeof t.signed === 'boolean' ? t.signed : undefined });
+    transitions[name] = compact({
+      name, by, guard: asString(t.guard), signed: typeof t.signed === 'boolean' ? t.signed : undefined,
+      label: asString(t.label), primary: t.primary === true ? true : undefined,
+    });
   }
   const chart: LifecycleDef = { initial: asString(raw.initial) ?? '', states, transitions };
   return { states: Object.keys(states), chart };
@@ -145,8 +148,12 @@ export function parseLifecycle(raw: unknown, report: Reporter): { states?: strin
 // ---------------------------------------------------------------- record pages (24 §6)
 
 /** Blocks written as a bare word. */
-const WORD_BLOCKS = ['details', 'cases', 'lifecycle', 'checks', 'notes', 'mentions', 'start', 'history'] as const;
-export const PAGE_BLOCK_KINDS = [...WORD_BLOCKS, 'fields', 'viewer', 'related', 'chart'] as const;
+const WORD_BLOCKS = ['details', 'cases', 'lifecycle', 'checks', 'notes', 'mentions', 'start', 'history', 'chat'] as const;
+export const PAGE_BLOCK_KINDS = [...WORD_BLOCKS, 'fields', 'viewer', 'markdown', 'related', 'chart', 'kpis'] as const;
+
+const CHART_KINDS: ChartKind[] = ['bar', 'line', 'donut', 'interval'];
+/** The keys of a record page chart, besides `kind` (24 §6, 25 §5). */
+const CHART_KEYS = ['of', 'by', 'where', 'title', 'label', 'value', 'low', 'high', 'unit'] as const;
 
 /** Which areas each layout has (`below` is in all of them). */
 export const LAYOUT_AREAS: Record<PageLayoutShape, Exclude<PageArea, 'header'>[]> = {
@@ -175,13 +182,25 @@ function parseBlock(raw: unknown, report: Reporter, path: PathKey[]): PageBlock 
   };
   switch (kind) {
     case 'fields': return Array.isArray(v) ? { kind, fields: asStrings(v) } : bad('a list of fields');
+    case 'kpis': return Array.isArray(v) ? { kind, fields: asStrings(v) } : bad('a list of calculated or Number fields');
     case 'related': return Array.isArray(v) ? { kind, relationships: asStrings(v) } : bad('a list of many relationships');
-    case 'viewer': return typeof v === 'string' ? { kind, field: v } : bad('a Document or File field');
+    case 'viewer': return typeof v === 'string' ? { kind, field: v } : bad('a Document, File or Text field');
+    case 'markdown': return typeof v === 'string' ? { kind, field: v } : bad('a Text field');
     case 'chart': {
       const c = asRecord(v);
-      const chart = asString(c.kind);
-      if (!isRecord(v) || !chart || !['bar', 'line', 'donut'].includes(chart) || typeof c.of !== 'string') return bad('{ kind: bar | line | donut, of: <relationship or calculated field>, by: <field> }');
-      return compact({ kind, chart: chart as 'bar', of: c.of, by: asString(c.by) });
+      const chart = asString(c.kind) as ChartKind | undefined;
+      if (!isRecord(v) || !chart || !CHART_KINDS.includes(chart) || typeof c.of !== 'string') {
+        return bad('{ kind: bar | line | donut, of: <relationship>, by: <field>, where, title } or { kind: interval, of: <relationship>, label, value, low, high, unit, where, title }');
+      }
+      for (const k of Object.keys(c)) {
+        if (k !== 'kind' && !(CHART_KEYS as readonly string[]).includes(k)) report.warn('unknown-key', `unknown key \`${k}\` in a chart (it takes kind, ${CHART_KEYS.join(', ')})`, [...path, kind, k]);
+      }
+      if (chart === 'interval' && (typeof c.value !== 'string' || typeof c.low !== 'string' || typeof c.high !== 'string')) {
+        return bad('an interval chart names its `value`, `low` and `high` fields (and a `label` template)');
+      }
+      const block: ChartBlockDef = { kind, chart, of: c.of };
+      for (const k of CHART_KEYS) if (k !== 'of' && typeof c[k] === 'string') block[k] = c[k] as string;
+      return block;
     }
     default:
       // `{ details: … }` and friends: a word block written as a map.
@@ -207,7 +226,8 @@ export function parsePageLayout(raw: unknown, report: Reporter): PageLayoutDef |
     areas[area] = (raw[area] as unknown[]).map((b, i) => parseBlock(b, report, ['page', area, i])).filter((b): b is PageBlock => !!b);
   }
   const all = Object.values(areas).flat();
-  if (!all.some((b) => b.kind === 'details')) (areas[LAYOUT_AREAS[layout][0]!] ??= []).push({ kind: 'details' });
+  // A written page (`markdown`) is the record; it gets no list of fields under it.
+  if (!all.some((b) => b.kind === 'details' || b.kind === 'markdown')) (areas[LAYOUT_AREAS[layout][0]!] ??= []).push({ kind: 'details' });
   return { layout, header: asStrings(raw.header), areas };
 }
 

@@ -162,7 +162,9 @@ describe.skipIf(!pgAvailable)('Phase 6 records', () => {
     expect(page.lifecycle).toMatchObject({ current: 'in_review', states: ['draft', 'in_review', 'released'] });
     const options = Object.fromEntries(page.lifecycle!.transitions.map((t) => [t.name, t]));
     expect(options.reject).toMatchObject({ to: 'draft', allowed: true });
-    expect(options.release).toMatchObject({ to: 'released', allowed: false, signed: true });
+    expect(options.reject!.automatic).toBeUndefined();
+    // `by: [step]`: no person ever makes it, so the page says so rather than offering a button.
+    expect(options.release).toMatchObject({ to: 'released', allowed: false, signed: true, automatic: true });
 
     // The list form: any role in the domain may move to any state.
     const inst = await kernel.records.create({ entity: 'lab.Instrument', values: { serial: 'SN-1', model: 'Autoclave 9', location: 'Room 2' } }, tech);

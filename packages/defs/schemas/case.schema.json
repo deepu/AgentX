@@ -39,6 +39,11 @@
               "controlled": {
                 "description": "Phase 6: false exempts the field from the regulated reason rule (default true in a regulated domain).",
                 "type": "boolean"
+              },
+              "quote_of": {
+                "description": "A Text field whose value must be words of the referenced record's Text field, e.g. article.abstract; a value not found there raises a flag.",
+                "type": "string",
+                "pattern": "^\\s*[A-Za-z_]\\w*\\.[A-Za-z_]\\w*\\s*$"
               }
             },
             "required": [
@@ -89,6 +94,11 @@
                 "controlled": {
                   "description": "Phase 6: false exempts the field from the regulated reason rule (default true in a regulated domain).",
                   "type": "boolean"
+                },
+                "quote_of": {
+                  "description": "A Text field whose value must be words of the referenced record's Text field, e.g. article.abstract; a value not found there raises a flag.",
+                  "type": "string",
+                  "pattern": "^\\s*[A-Za-z_]\\w*\\.[A-Za-z_]\\w*\\s*$"
                 }
               },
               "required": [

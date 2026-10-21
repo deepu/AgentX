@@ -770,6 +770,8 @@ export interface ElectronAPI {
   memwiseListEntityTypes(workspaceId: string): Promise<import('@memwise/shared/protocol').MwEntityType[]>
   memwiseUploadFile(workspaceId: string, input: import('@memwise/shared/protocol').MwUploadInput): Promise<import('@memwise/shared/protocol').MwDocument>
   memwiseOpenChat(workspaceId: string, input: import('@memwise/shared/protocol').MwOpenChatInput): Promise<{ sessionId: string }>
+  /** A question on a domain's home: makes its draft and opens a chat answering it. */
+  memwiseAsk(workspaceId: string, input: import('@memwise/shared/protocol').MwAskInput): Promise<import('@memwise/shared/protocol').MwAskResult>
   // Phase 3: drafts, versions, building by chat (docs/memwise/20-phase-3-interfaces.md §6)
   memwiseListVersions(workspaceId: string, workflowId: string): Promise<import('@memwise/shared/protocol').MwVersion[]>
   memwiseBuildPlaybook(workspaceId: string, input: import('@memwise/shared/protocol').MwBuildPlaybookInput): Promise<import('@memwise/shared/protocol').MwBuildPlaybookResult>
@@ -810,6 +812,8 @@ export interface ElectronAPI {
   memwiseGetRecordPage(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordPageInput): Promise<import('@memwise/shared/protocol').MwRecordPage | null>
   memwiseCreateRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordCreateInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
   memwiseUpdateRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordUpdateInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
+  /** Literature (25 §6): rows kept from a record chat. */
+  memwiseKeepRecords(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordKeepInput): Promise<import('@memwise/shared/protocol').MwRecordKeepResult>
   memwiseTransitionRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordTransitionInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
   memwiseQueryRecords(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordQueryInput): Promise<import('@memwise/shared/protocol').MwRecordQueryResult>
   memwiseRecordTree(workspaceId: string, input: import('@memwise/shared/protocol').MwTreeInput): Promise<import('@memwise/shared/protocol').MwTreeNode[]>

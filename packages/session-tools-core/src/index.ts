@@ -199,6 +199,12 @@ export type {
   PlaybookCheckInput,
   PlaybookFinishInput,
   PlaybookToolDiagnostic,
+  // MemWise record tool types
+  MemwiseRecordToolCallbacks,
+  RecordGetInput,
+  RecordQueryInput,
+  RecordKeepInput,
+  RecordKeepRowResult,
 } from './context.ts';
 
 export { createNodeFileSystem } from './context.ts';
@@ -253,6 +259,12 @@ export {
   handlePlaybookDiff,
   handlePlaybookCheck,
   handlePlaybookFinish,
+  // MemWise records
+  handleRecordGet,
+  handleRecordQuery,
+  handleRecordKeep,
+  handleRecordUpdate,
+  untrustedRecordData,
 } from './handlers/index.ts';
 
 export type {
@@ -324,6 +336,12 @@ export {
   PlaybookCheckSchema,
   PlaybookFinishSchema,
   PLAYBOOK_TOOL_NAMES,
+  // MemWise record schemas
+  RecordGetSchema,
+  RecordQuerySchema,
+  RecordKeepSchema,
+  RECORD_TOOL_NAMES,
+  RECORD_KEEP_TOOL_NAME,
   // Descriptions
   TOOL_DESCRIPTIONS,
   // Registry

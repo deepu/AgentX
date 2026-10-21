@@ -11,7 +11,7 @@ import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import { WsRpcServer, type WsRpcServerOptions } from '../../transport/server'
 import { WsRpcClient } from '../../transport/client'
 import { personMayCall } from '../../transport/person-channels'
-import { connectionModels, NO_MODEL_MESSAGE, piAiProviderIdFor, unconfiguredModels } from '../models'
+import { connectionModels, newestMidTier, NO_MODEL_MESSAGE, pickPlaybookConnection, pickPlaybookModel, piAiProviderIdFor, unconfiguredModels } from '../models'
 import { addMissingMetaPlaybooks, affectsIndex, findExampleProject, seedProject } from '../seed'
 import { createSessionToken, sessionPersonId } from '../../webui/auth'
 
@@ -167,6 +167,39 @@ describe('model roles', () => {
     expect(r.message).not.toContain('sk-test')
   })
 
+  it('playbook steps run on the newest Sonnet, not the connection\'s Opus, unless MEMWISE_PLAYBOOK_MODEL names one', async () => {
+    const ids = ['claude-haiku-4-5', 'claude-opus-5-5', 'claude-sonnet-4-5', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-6', 'claude-sonnet-5', 'claude-sonnet-5-5']
+    expect(newestMidTier('anthropic', ids)).toBe('claude-sonnet-5-5')
+    expect(newestMidTier('anthropic', ['claude-sonnet-4-5-20250929', 'claude-sonnet-4'])).toBe('claude-sonnet-4-5-20250929')
+    expect(pickPlaybookModel('anthropic', ids, 'claude-opus-5-5', '')).toBe('claude-sonnet-5-5')
+    expect(pickPlaybookModel('anthropic', ids, 'claude-opus-5-5', 'anthropic/claude-opus-5-5')).toBe('claude-opus-5-5')
+    // A name the catalog doesn't have is ignored; with no Sonnet at all the connection's model stays.
+    expect(pickPlaybookModel('anthropic', ids, undefined, 'claude-nonexistent')).toBe('claude-sonnet-5-5')
+    expect(pickPlaybookModel('anthropic', ['claude-opus-5-5', 'claude-haiku-4-5'], 'claude-opus-5-5', '')).toBe('claude-opus-5-5')
+    // OpenAI as before: the connection's model, else the preferred list.
+    expect(pickPlaybookModel('openai', ['gpt-4o', 'gpt-5', 'gpt-5.5'], 'gpt-5.5', '')).toBe('gpt-5.5')
+    expect(pickPlaybookModel('openai', ['gpt-4o', 'gpt-5', 'gpt-5.5'], undefined, '')).toBe('gpt-5')
+
+    const prev = process.env.MEMWISE_PLAYBOOK_MODEL
+    delete process.env.MEMWISE_PLAYBOOK_MODEL
+    try {
+      const r = await connectionModels({ roles }, { ...conn, defaultModel: 'claude-opus-5-5' })
+      expect(r.modelRoles.checker!.model).toMatch(/^claude-sonnet-/)
+      expect(r.message).toBe(`Agent steps use ${r.modelRoles.checker!.model} through "Anthropic".`)
+    } finally {
+      if (prev !== undefined) process.env.MEMWISE_PLAYBOOK_MODEL = prev
+    }
+  })
+
+  it('a subscription default leaves playbook steps to another connection with an API key', () => {
+    const max = { ...conn, slug: 'claude-max', name: 'Claude Max', authType: 'oauth', apiKey: null }
+    const backend = { ...conn, slug: 'backend', name: 'MemWise Backend' }
+    expect(pickPlaybookConnection(max, [backend])!.slug).toBe('backend')
+    expect(pickPlaybookConnection(conn, [backend])!.slug).toBe(conn.slug)
+    expect(pickPlaybookConnection(max, [{ ...backend, apiKey: null }])!.slug).toBe('claude-max')
+    expect(pickPlaybookConnection(null, [])).toBeNull()
+  })
+
   it('without a usable connection, every call says to connect a model', async () => {
     expect((await connectionModels({ roles }, null)).configured).toBe(false)
     expect((await connectionModels({ roles }, { ...conn, apiKey: null })).configured).toBe(false)
@@ -208,9 +241,12 @@ describe('project folder', () => {
     expect(addMissingMetaPlaybooks(project, example)).toEqual([])
   })
 
-  it('re-indexes only for domain/ and workflows/, never for drafts/', () => {
+  it('re-indexes for definitions (domain/, workflows/, domains/, plugins/, workspace.yaml), never for drafts/', () => {
     expect(affectsIndex('workflows/client-intake/steps/check.md')).toBe(true)
     expect(affectsIndex('domain/roles.yaml')).toBe(true)
+    expect(affectsIndex('domains/literature/entities/topic.yaml')).toBe(true)
+    expect(affectsIndex('plugins/claude__pubmed/1.0.0/memwise-plugin.yaml')).toBe(true)
+    expect(affectsIndex('workspace.yaml')).toBe(true)
     expect(affectsIndex('drafts/client-intake-abc/workflows/client-intake/steps/check.md')).toBe(false)
     expect(affectsIndex('drafts')).toBe(false)
     expect(affectsIndex('README.md')).toBe(false)

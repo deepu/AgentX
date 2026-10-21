@@ -6,18 +6,23 @@
 import type { TFunction } from 'i18next'
 import type {
   MwCaseValue,
+  MwChartData,
   MwDashboardBlock,
   MwInboxItem,
   MwPageBlock,
   MwPageLayout,
   MwRecordField,
   MwRecordFieldSource,
+  MwRecordKpi,
   MwRecordPage,
   MwRecordReview,
+  MwTextView,
   MwTransitionOption,
   MwTreeNode,
 } from '@memwise/shared/protocol'
-import { absoluteTime, formatMoney, formatValueInline, humanize, isDocumentValue, isMoney, isNegativeOutcome, sortInbox } from '../format'
+import type { KpiTile } from '@memwise/ui'
+import type { TextQuote } from './quote-highlight'
+import { absoluteTime, formatCell, formatMoney, formatValueInline, humanize, isDocumentValue, isMoney, isNegativeOutcome, isYearField, sortInbox } from '../format'
 
 // ---------------------------------------------------------------- values
 
@@ -56,6 +61,18 @@ export function baseType(type: string): string {
   return type.replace(/[<([].*$/, '').trim()
 }
 
+/** The choices of an `Enum[a, b]` type expression, else undefined. */
+export function enumChoices(type: string | undefined): string[] | undefined {
+  const m = type ? /^Enum\[(.*)\]$/.exec(type.trim()) : null
+  return m ? m[1]!.split(',').map(s => s.trim()).filter(Boolean) : undefined
+}
+
+/** A table review's edited cell, kept as its column's type: a number stays a number. */
+export function editedCell(type: string | undefined, text: string): unknown {
+  if (type && baseType(type) === 'Number' && text.trim() !== '' && Number.isFinite(Number(text))) return Number(text)
+  return text
+}
+
 /** A percent type: `Percentage` as the definitions write it (`Percent` is accepted too). */
 export function isPercentType(base: string): boolean {
   return base === 'Percentage' || base === 'Percent'
@@ -79,10 +96,11 @@ export function formatPercent(value: number, locale?: string): string {
 }
 
 /** One value by its declared type: percents, dates, money, references by title, documents by name. */
-export function formatTypedValue(type: string, value: unknown, t: TFunction, locale?: string, ref?: { title: string }): string {
+export function formatTypedValue(type: string, value: unknown, t: TFunction, locale?: string, ref?: { title: string }, name?: string): string {
   if (ref) return ref.title
   if (value === null || value === undefined || value === '') return t('memwise.case.noValue')
   const base = baseType(type)
+  if (typeof value === 'number' && Number.isInteger(value) && isYearField(name)) return String(value)
   if (isPercentType(base) && typeof value === 'number') return formatPercent(value, locale)
   if (base === 'Date' && typeof value === 'string') return formatDate(value, locale)
   if ((base === 'DateTime' || base === 'Timestamp') && typeof value === 'string') return absoluteTime(value, locale)
@@ -95,8 +113,8 @@ export function formatTypedValue(type: string, value: unknown, t: TFunction, loc
   return formatValueInline(value, t, locale)
 }
 
-export function formatFieldValue(field: Pick<MwRecordField, 'type' | 'value' | 'ref'>, t: TFunction, locale?: string): string {
-  return formatTypedValue(field.type, field.value, t, locale, field.ref)
+export function formatFieldValue(field: Pick<MwRecordField, 'type' | 'value' | 'ref'> & { name?: string }, t: TFunction, locale?: string): string {
+  return formatTypedValue(field.type, field.value, t, locale, field.ref, field.name)
 }
 
 // ---------------------------------------------------------------- sources
@@ -147,12 +165,15 @@ export function layoutColumns(layout: MwPageLayout): { columns: AreaName[]; belo
   return { columns, below: (layout.areas.below?.length ?? 0) > 0 }
 }
 
-/** The blocks of an area; `details` is added to the first area when the layout left it out (24 §6). */
+/**
+ * The blocks of an area; `details` is added to the first area when the layout left it out (24 §6),
+ * unless the page is a written one (a `markdown` block): that page is the record.
+ */
 export function areaBlocks(layout: MwPageLayout, area: AreaName): MwPageBlock[] {
   const blocks = layout.areas[area] ?? []
   const first = layoutColumns(layout).columns[0]
   const all = Object.values(layout.areas).flat()
-  if (area === first && !all.some(b => b?.kind === 'details')) return [...blocks, { kind: 'details' }]
+  if (area === first && !all.some(b => b?.kind === 'details' || b?.kind === 'markdown')) return [...blocks, { kind: 'details' }]
   return blocks
 }
 
@@ -180,12 +201,13 @@ export function blockFields(page: MwRecordPage, names: string[]): MwRecordField[
   return names.map(n => page.fields.find(f => f.name === n)).filter((f): f is MwRecordField => !!f)
 }
 
-/** `details`: every field not already shown by a `fields` block or the viewer. */
+/** `details`: every field not already shown by a `fields` block, the viewer or a KPI tile. */
 export function detailFields(page: MwRecordPage): MwRecordField[] {
   const shown = new Set<string>(['status'])
   for (const b of Object.values(page.layout.areas).flat()) {
     if (b?.kind === 'fields') b.fields.forEach(f => shown.add(f))
-    if (b?.kind === 'viewer') shown.add(b.field)
+    if (b?.kind === 'viewer' || b?.kind === 'markdown') shown.add(b.field)
+    if (b?.kind === 'kpis') b.fields.forEach(f => shown.add(f))
   }
   return page.fields.filter(f => !shown.has(f.name))
 }
@@ -195,13 +217,16 @@ export function detailFields(page: MwRecordPage): MwRecordField[] {
 export interface LifecycleStep { name: string; label: string; state: 'done' | 'current' | 'todo' }
 
 /** The lifecycle as a row of steps: the ones before the current state done, the rest to come. */
-export function lifecycleSteps(states: string[], current?: string): LifecycleStep[] {
+export function lifecycleSteps(states: string[], current?: string, passed?: string[]): LifecycleStep[] {
   const at = current ? states.indexOf(current) : -1
-  return states.map((name, i) => ({ name, label: statusLabel(name), state: at < 0 ? 'todo' : i < at ? 'done' : i === at ? 'current' : 'todo' }))
+  // With the way the record took (`passed`), a state it skipped isn't ticked (kept → rejected).
+  const done = (name: string, i: number) => (passed ? passed.includes(name) : i < at)
+  return states.map((name, i) => ({ name, label: statusLabel(name), state: at < 0 ? 'todo' : i === at ? 'current' : done(name, i) ? 'done' : 'todo' }))
 }
 
 /** "Move to Open" for a transition button. */
-export function transitionLabel(tr: Pick<MwTransitionOption, 'to' | 'label'>, t: TFunction): string {
+export function transitionLabel(tr: Pick<MwTransitionOption, 'to' | 'label' | 'custom'>, t: TFunction): string {
+  if (tr.custom) return tr.label
   return t('memwise.record.moveTo', { state: statusLabel(tr.to) })
 }
 
@@ -225,6 +250,27 @@ export function isStructuralCheck(rule: string): boolean {
   return rule === 'outcome is declared' || rule === 'required tools called' || rule.startsWith('writes.')
 }
 
+// ---------------------------------------------------------------- filter
+
+/**
+ * An example filter for the Records filter box, from the entity's own fields: its first status
+ * (`status = 'draft'`) and one of its choice or number fields (`study_type = 'randomised_trial'`,
+ * `year > 0`), so the hint never names a field the entity doesn't have.
+ */
+export function filterExample(type: { fields: { name: string; type: string }[]; lifecycle?: string[] }): string {
+  const parts: string[] = []
+  if (type.lifecycle?.[0]) parts.push(`status = '${type.lifecycle[0]}'`)
+  const choice = type.fields.find(f => f.name !== 'status' && enumChoices(f.type)?.length)
+  const number = type.fields.find(f => baseType(f.type) === 'Number')
+  if (choice) parts.push(`${choice.name} = '${enumChoices(choice.type)![0]}'`)
+  else if (number) parts.push(`${number.name} > 0`)
+  if (parts.length === 0) {
+    const text = type.fields.find(f => baseType(f.type) === 'Text')
+    if (text) parts.push(`${text.name} is set`)
+  }
+  return parts.slice(0, 2).join(' and ')
+}
+
 // ---------------------------------------------------------------- related
 
 /** Up to two columns for a related table: not the status (it has its pill), nor a value that only repeats the row's title. */
@@ -241,6 +287,61 @@ export function cardColumns<C extends { name: string }>(columns: C[], rows: { ti
     return v === undefined || v === null || v === '' || (typeof v === 'string' && r.title.includes(v))
   }
   return columns.filter(c => c.name !== group && !rows.every(r => inTitle(r, c.name))).slice(0, 2)
+}
+
+/** A value too long for a table cell: free text over this many characters (an abstract, a quote). */
+export const LONG_VALUE_CHARS = 120
+
+const isLongValue = (v: unknown): boolean =>
+  typeof v === 'string' ? v.length > LONG_VALUE_CHARS || v.includes('\n') : Array.isArray(v) ? v.some(isLongValue) : false
+
+/** A records table column: the query result's, or one the definition has that the result left out. */
+export interface RecordColumn { name: string; label: string; type: string; calculated?: boolean; followed?: boolean }
+
+/**
+ * Every column a records table can show, in the definition's order (fields, calculated fields,
+ * then the status when it has a lifecycle), whatever the last query asked for: the Columns menu
+ * lists them all, so a column turned off can be turned on again.
+ */
+export function recordColumns(
+  type: { fields: { name: string; type: string }[]; lifecycle?: string[]; definition?: { calculated?: { name: string }[] } },
+  result?: RecordColumn[] | null,
+): RecordColumn[] {
+  const from = new Map((result ?? []).map(c => [c.name, c]))
+  const out: RecordColumn[] = []
+  const add = (c: RecordColumn) => { if (!out.some(x => x.name === c.name)) out.push(from.get(c.name) ?? c) }
+  for (const f of type.fields) add({ name: f.name, label: humanize(f.name), type: f.type })
+  for (const c of type.definition?.calculated ?? []) add({ name: c.name, label: humanize(c.name), type: 'Number', calculated: true })
+  for (const c of result ?? []) if (c.name !== 'status') add(c)
+  if (type.lifecycle?.length || from.has('status')) add({ name: 'status', label: humanize('status'), type: 'Lifecycle' })
+  return out
+}
+
+/**
+ * The columns a records table shows when nobody chose any. The entity's `list:` when it has one;
+ * else up to `max` short fields in their order, leaving out long free text (any value over
+ * LONG_VALUE_CHARS), fields no row has a value for, and fields the row's title already shows
+ * (those in its `title:` template, or whose value is in every title), then its status. The
+ * Columns menu can add the rest.
+ */
+export function defaultColumns<C extends { name: string }>(
+  columns: C[], rows: { title: string; values: Record<string, unknown> }[], opts: { list?: string[]; title?: string; max?: number } = {},
+): C[] {
+  if (opts.list?.length) return opts.list.flatMap(n => columns.filter(c => c.name === n))
+  const max = opts.max ?? 6
+  const status = columns.filter(c => c.name === 'status')
+  const fields = columns.filter(c => c.name !== 'status')
+  const inTemplate = new Set(opts.title ? [...opts.title.matchAll(/\{([^{}]+)\}/g)].map(m => m[1]!.trim()) : [])
+  if (rows.length === 0) return [...fields.filter(c => !inTemplate.has(c.name)).slice(0, max - status.length), ...status]
+  const empty = (v: unknown) => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)
+  const short = fields.filter(c => {
+    if (inTemplate.has(c.name)) return false
+    const values = rows.map(r => r.values[c.name])
+    if (values.every(empty)) return false
+    if (values.some(isLongValue)) return false
+    return !rows.every(r => empty(r.values[c.name]) || (typeof r.values[c.name] === 'string' && r.title.includes(r.values[c.name] as string)))
+  })
+  return [...short.slice(0, max - status.length), ...status]
 }
 
 /**
@@ -281,6 +382,81 @@ export function chartData(page: MwRecordPage, block: Extract<MwPageBlock, { kind
   const f = page.fields.find(x => x.name === block.of)
   if (f && typeof f.value === 'number') return [{ label: f.label, value: f.value }]
   return []
+}
+
+/** A chart's rows as the kernel computed them (25 §5). */
+export type ChartView = MwChartData
+
+/** A KPI tile's value from the kernel (25 §5). */
+export type KpiView = MwRecordKpi
+
+/** The kit's rows for a chart: a row with its own unit (the chart has none) says it in its label. */
+export function chartRows(chart: ChartView): { label: string; value: number; low?: number; high?: number }[] {
+  return chart.data.map(d => {
+    // A group's raw value in snake case (an enum like "phase_3") reads as words: "Phase 3".
+    const label = d.key && d.label === d.key && /^[a-z0-9]+(_[a-z0-9]+)+$/.test(d.key) ? statusLabel(d.key) : d.label
+    return {
+      label: d.unit && !chart.unit ? `${label} (${d.unit})` : label,
+      value: d.value,
+      ...(d.low !== undefined && d.low !== null ? { low: d.low } : {}),
+      ...(d.high !== undefined && d.high !== null ? { high: d.high } : {}),
+    }
+  })
+}
+
+/** A record page `chart` block the server sent no rows for: its related rows counted by `by`. */
+export function fallbackChart(page: MwRecordPage, block: Extract<MwPageBlock, { kind: 'chart' }>): ChartView | null {
+  const kind = block.chart
+  if (kind !== 'bar' && kind !== 'line' && kind !== 'donut') return null
+  const data = chartData(page, block)
+  return { kind, data, total: data.reduce((s, d) => s + d.value, 0) }
+}
+
+/** The tiles of a `kpis` block: each field's label and value (the server's, else the page field's). */
+export function kpiTiles(page: MwRecordPage, fields: string[], kpis: Record<string, KpiView> | undefined, t: TFunction, locale?: string): KpiTile[] {
+  return fields.map(name => {
+    const field = page.fields.find(f => f.name === name)
+    const kpi = kpis?.[name]
+    const type = kpi?.type ?? field?.type ?? 'Number'
+    const raw = kpi ? kpi.value : field?.value
+    const label = field?.label ?? humanize(name)
+    if (field?.hidden) return { label, value: null, display: t('memwise.case.restrictedValue') }
+    if (typeof raw === 'number') return { label, value: raw, format: isPercentType(baseType(type)) ? 'percent' : 'number', detail: kpi?.description }
+    if (raw === null || raw === undefined || raw === '') return { label, value: null, detail: kpi?.description }
+    return { label, value: null, display: formatTypedValue(type, raw, t, locale), detail: kpi?.description }
+  })
+}
+
+// ---------------------------------------------------------------- text viewer (25 §4)
+
+/** A Text viewer's quotes from the kernel's highlights: the field in words, and the value or record it backs. */
+export function textQuotes(page: MwRecordPage, view: MwTextView, t: TFunction, locale?: string): TextQuote[] {
+  return view.highlights.map(h => {
+    const field = page.fields.find(f => f.name === h.field)
+    const valueText = h.kind === 'related'
+      ? h.record?.title
+      : h.value !== undefined && h.value !== null ? formatTypedValue(field?.type ?? '', h.value, t, locale) : undefined
+    return {
+      quote: h.quote,
+      label: h.label || field?.label || humanize(h.field),
+      field: h.field,
+      found: h.found,
+      ...(h.start !== undefined ? { start: h.start } : {}),
+      ...(h.end !== undefined ? { end: h.end } : {}),
+      ...(valueText ? { valueText } : {}),
+    }
+  })
+}
+
+/** The record's values that have a quote in one of its Text viewers: field → which viewer and highlight. */
+export function valueQuoteTargets(page: MwRecordPage): Map<string, { field: string; index: number }> {
+  const out = new Map<string, { field: string; index: number }>()
+  for (const [viewer, view] of Object.entries(page.texts ?? {})) {
+    view.highlights.forEach((h, index) => {
+      if (h.kind === 'value' && h.found && !out.has(h.field)) out.set(h.field, { field: viewer, index })
+    })
+  }
+  return out
 }
 
 // ---------------------------------------------------------------- review
@@ -381,6 +557,24 @@ export function tableColumns(rows: TableRow[]): string[] {
   const keys: string[] = []
   for (const r of rows) for (const k of Object.keys(r.value)) if (!META_KEYS.has(k) && !keys.includes(k)) keys.push(k)
   return keys
+}
+
+/**
+ * A list of records' columns for display: the row type's order when known (`itemTypes`; stored rows
+ * come back with their keys reordered), without a Ref column whose record titles the row's own
+ * `title` already shows (a screening's paper beside its title).
+ */
+export function orderRowColumns(keys: string[], rows: Record<string, unknown>[], itemTypes?: Record<string, string>, titles?: Record<string, string>): string[] {
+  const ordered = itemTypes ? [...Object.keys(itemTypes).filter(c => keys.includes(c)), ...keys.filter(c => !(c in itemTypes))] : keys
+  return ordered.filter(c => !(itemTypes?.[c]?.startsWith('Ref<') && keys.includes('title') && rows.length > 0
+    && rows.every(r => typeof r[c] === 'string' && !!titles?.[r[c] as string] && titles[r[c] as string] === r.title)))
+}
+
+/** One cell of a list of records: by its column's type when known, a Ref by its record's title, a year as a year. */
+export function formatRowCell(column: string, cell: unknown, t: TFunction, locale: string | undefined, itemTypes?: Record<string, string>, titles?: Record<string, string>): string {
+  const title = typeof cell === 'string' ? titles?.[cell] : undefined
+  if (itemTypes?.[column]) return formatTypedValue(itemTypes[column]!, cell, t, locale, title ? { title } : undefined, column)
+  return formatCell(column, title ?? cell, t, locale)
 }
 
 /** "Accept all at 90% or higher": accept every pending row at or above the threshold. */

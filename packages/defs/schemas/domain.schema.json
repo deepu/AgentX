@@ -52,6 +52,48 @@
         "address"
       ],
       "additionalProperties": false
+    },
+    "home": {
+      "description": "The domain's home: a question box. Asking opens a chat with a draft record beside it; recent drafts and the records being worked on are listed under the box.",
+      "type": "object",
+      "properties": {
+        "ask": {
+          "description": "The heading above the question box, e.g. \"What does the literature say?\".",
+          "type": "string"
+        },
+        "placeholder": {
+          "description": "The hint inside the question box.",
+          "type": "string"
+        },
+        "entity": {
+          "type": "string",
+          "description": "The entity a question becomes a draft of (a bare name in this domain), e.g. Topic. It needs a lifecycle."
+        },
+        "question": {
+          "type": "string",
+          "description": "The draft's Text field the question goes into."
+        },
+        "name": {
+          "description": "The draft's Text field for a short name; the chat writes a better one.",
+          "type": "string"
+        },
+        "page": {
+          "description": "The draft's Text field the chat writes its page into (markdown, laid out for the question, with chart blocks).",
+          "type": "string"
+        },
+        "suggested": {
+          "description": "Questions offered under the box.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "entity",
+        "question"
+      ],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

@@ -1,0 +1,40 @@
+entity: Topic
+title: "{name}"
+list: [next_check, last_checked, included, excluded, evidence_kept, status]
+fields:
+  name:         { type: Text, required: true, description: "A short name, like Oral GLP-1s for weight in T2D" }
+  question:     { type: Text, required: true, description: "The question the team wants answered, in plain words" }
+  query:        { type: Text, description: "The PubMed search that answers it, in PubMed syntax" }
+  inclusion:    { type: Text, description: "Which papers count: the population, intervention, comparator, outcomes and study types to include" }
+  answer:       { type: Text, description: "The topic's page: what the papers say about the question, in markdown laid out for it (direct answer, chart blocks, the studies with DOI links, what is unknown)" }
+  found_count:  { type: Number, description: How many papers PubMed finds for the search }
+  trials:       { type: Number, description: How many of the papers read are randomised trials }
+  last_checked: { type: DateTime, description: When PubMed was last searched for this topic }
+  next_check:   { type: Date, description: "The next weekly search; set it to today to check now" }
+relationships:
+  screenings: many Screening
+  evidence:   many Evidence
+calculated:
+  included:          { count: screenings, where: "decision = 'include'", description: Papers included (by the AI or a reviewer) }
+  excluded:          { count: screenings, where: "decision = 'exclude'", description: Papers excluded (by the AI or a reviewer) }
+  evidence_kept:     { count: evidence, where: "status = 'kept'", description: Findings kept and waiting for review }
+  evidence_reviewed: { count: evidence, where: "status = 'reviewed'", description: Findings a reviewer checked against the paper }
+lifecycle:
+  initial: draft
+  states:
+    draft:  { on: { activate: active, close: closed }, description: "A question being answered; not watched yet" }
+    active: { on: { pause: paused, close: closed }, description: Searched every week }
+    paused: { on: { resume: active, close: closed }, description: Not searched until resumed }
+    closed: { description: The question is answered or dropped; read only }
+  transitions:
+    activate: { by: [role:lead], label: "Keep watching, every week", primary: true }
+    pause:    { by: [role:lead] }
+    resume:   { by: [role:lead] }
+    close:    { by: [role:lead] }
+page:
+  layout: single
+  header: [title, status]
+  main:
+    - markdown: answer
+    - cases
+    - related: [screenings, evidence]

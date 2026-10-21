@@ -445,6 +445,7 @@ export const RPC_CHANNELS = {
     ENTITIES_TYPES: 'memwise:entities:types',
     FILES_UPLOAD: 'memwise:files:upload',
     CHAT_OPEN: 'memwise:chat:open',
+    ASK: 'memwise:ask',
     CHANGED: 'memwise:changed',
     // Phase 3 (docs/memwise/20-phase-3-interfaces.md)
     PLAYBOOKS_VERSIONS: 'memwise:playbooks:versions',
@@ -498,6 +499,8 @@ export const RPC_CHANNELS = {
     AUDIT_GET: 'memwise:audit:get',
     AUDIT_EXPORT: 'memwise:audit:export',
     FILES_READ: 'memwise:files:read',
+    // Literature (docs/memwise/25-literature-poc.md §6): rows kept from a record chat
+    RECORDS_KEEP: 'memwise:records:keep',
   },
   pages: {
     GET: 'pages:get',

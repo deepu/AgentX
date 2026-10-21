@@ -1,0 +1,148 @@
+name: first-check-finds-three-papers
+description: >
+  The first weekly check of "Oral GLP-1s for weight in T2D". PubMed finds three papers. All three
+  were stored and read last week by the topic "Orforglipron, all indications", so storing them again
+  gives back the same records and none is read twice. The screener suggests including ATTAIN-2 and
+  Example Trial A and excluding Example Review B (a review) and writes what they say so far; the
+  three screenings and the answer go on the topic at once, the two included papers (read before)
+  are not read again, the reviewer confirms, and the next check is set for a week later.
+records:
+  Topic:
+    - id: topi_glp1_weight
+      name: Oral GLP-1s for weight in T2D
+      question: How much weight do adults with type 2 diabetes lose on oral GLP-1 receptor agonists, compared with placebo?
+      query: '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND ("type 2 diabetes" OR "diabetes mellitus, type 2"[MeSH Terms]) AND (obesity OR weight)'
+      inclusion: Include randomised trials in adults with type 2 diabetes and overweight or obesity that compare an oral GLP-1 receptor agonist with placebo or another treatment and report the change in bodyweight. Exclude reviews, animal and laboratory studies, injectable GLP-1s, and trials without a weight outcome.
+      next_check: "2026-10-21"
+      status: active
+  Article:
+    - id: arti_attain2
+      pmid: "41275875"
+      doi: 10.1016/S0140-6736(25)02165-8
+      title: "Orforglipron, an oral small-molecule GLP-1 receptor agonist, for the treatment of obesity in people with type 2 diabetes (ATTAIN-2): a phase 3, double-blind, randomised, multicentre, placebo-controlled trial."
+      journal: Lancet
+      published: "2025-11-20"
+      year: 2025
+      study_type: randomised_trial
+      phase: phase_3
+      n: 1613
+      sponsor: Eli Lilly and Company
+      intervention: Orforglipron 6 mg, 12 mg or 36 mg once daily, by mouth
+      condition: Obesity in adults with type 2 diabetes
+      status: read
+    - id: arti_trial_a
+      pmid: "99000001"
+      doi: 10.0000/example.trial-a
+      pmc_id: PMC99000001
+      title: "Example Trial A: once-daily oral semaglutide 50 mg for weight management in adults with type 2 diabetes and overweight or obesity: a randomised, double-blind, placebo-controlled, phase 3 trial."
+      journal: Ex J Diabetes Obes
+      published: "2025-06-12"
+      year: 2025
+      study_type: randomised_trial
+      phase: phase_3
+      n: 412
+      sponsor: Example Pharma
+      intervention: Oral semaglutide 50 mg once daily
+      condition: Type 2 diabetes with overweight or obesity
+      status: read
+    - id: arti_review_b
+      pmid: "99000002"
+      doi: 10.0000/example.review-b
+      title: "Example Review B: oral GLP-1 receptor agonists for obesity in people with type 2 diabetes, a narrative review."
+      journal: Ex Rev Endocrinol
+      published: "2026-01-08"
+      year: 2026
+      study_type: review
+      status: read
+case:
+  topic: topi_glp1_weight
+tools:
+  PubMed.search_articles:
+    pmids: ["99000002", "41275875", "99000001"]
+    total_count: 3
+    returned_count: 3
+    query: '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND ("type 2 diabetes" OR "diabetes mellitus, type 2"[MeSH Terms]) AND (obesity OR weight)'
+    query_translation: '(orforglipron OR "oral semaglutide"[All Fields] OR "oral GLP-1"[All Fields]) AND ("type 2 diabetes"[All Fields] OR "diabetes mellitus, type 2"[MeSH Terms]) AND (obesity OR weight)'
+    has_more: false
+  PubMed.get_article_metadata:
+    count: 3
+    articles:
+      - identifiers: { pmid: "99000002", doi: 10.0000/example.review-b }
+        title: "Example Review B: oral GLP-1 receptor agonists for obesity in people with type 2 diabetes, a narrative review."
+        journal: { title: Example Reviews in Endocrinology, iso_abbreviation: Ex Rev Endocrinol }
+        publication_date: { year: "2026", month: "01", day: "08" }
+        article_types: [Journal Article, Review]
+      - identifiers: { pmid: "41275875", doi: 10.1016/S0140-6736(25)02165-8 }
+        title: "Orforglipron, an oral small-molecule GLP-1 receptor agonist, for the treatment of obesity in people with type 2 diabetes (ATTAIN-2): a phase 3, double-blind, randomised, multicentre, placebo-controlled trial."
+        journal: { title: "Lancet (London, England)", iso_abbreviation: Lancet }
+        publication_date: { year: "2025", month: "11", day: "20" }
+        article_types: [Journal Article, Randomized Controlled Trial, Multicenter Study, "Clinical Trial, Phase III"]
+      - identifiers: { pmid: "99000001", doi: 10.0000/example.trial-a, pmc: PMC99000001 }
+        title: "Example Trial A: once-daily oral semaglutide 50 mg for weight management in adults with type 2 diabetes and overweight or obesity: a randomised, double-blind, placebo-controlled, phase 3 trial."
+        journal: { title: Example Journal of Diabetes and Obesity, iso_abbreviation: Ex J Diabetes Obes }
+        publication_date: { year: "2025", month: "06", day: "12" }
+        article_types: [Journal Article, Randomized Controlled Trial, "Clinical Trial, Phase III"]
+model:
+  searcher:
+    - toolCalls:
+        - { name: literature.topic.get, args: { id: topi_glp1_weight } }
+    - toolCalls:
+        - { name: PubMed.search_articles, args: { query: '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND ("type 2 diabetes" OR "diabetes mellitus, type 2"[MeSH Terms]) AND (obesity OR weight)', sort: relevance, max_results: 20 } }
+    - toolCalls:
+        - { name: PubMed.get_article_metadata, args: { pmids: ["99000002", "41275875", "99000001"] } }
+    - toolCalls:
+        - name: literature.article.create
+          args: { pmid: "99000002", doi: 10.0000/example.review-b, title: "Example Review B: oral GLP-1 receptor agonists for obesity in people with type 2 diabetes, a narrative review.", journal: Ex Rev Endocrinol, published: "2026-01-08", year: 2026, article_types: [Journal Article, Review], authors: "Specimen D, Example A" }
+        - name: literature.article.create
+          args: { pmid: "41275875", doi: 10.1016/S0140-6736(25)02165-8, title: "Orforglipron, an oral small-molecule GLP-1 receptor agonist, for the treatment of obesity in people with type 2 diabetes (ATTAIN-2): a phase 3, double-blind, randomised, multicentre, placebo-controlled trial.", journal: Lancet, published: "2025-11-20", year: 2025, article_types: [Journal Article, Randomized Controlled Trial, Multicenter Study, "Clinical Trial, Phase III"], authors: "Horn DB, Ryan DH, Kis SG, et al." }
+        - name: literature.article.create
+          args: { pmid: "99000001", doi: 10.0000/example.trial-a, pmc_id: PMC99000001, title: "Example Trial A: once-daily oral semaglutide 50 mg for weight management in adults with type 2 diabetes and overweight or obesity: a randomised, double-blind, placebo-controlled, phase 3 trial.", journal: Ex J Diabetes Obes, published: "2025-06-12", year: 2025, article_types: [Journal Article, Randomized Controlled Trial, "Clinical Trial, Phase III"], authors: "Example A, Sample B, Placeholder C" }
+        - { name: literature.screening.list, args: { filter: "topic = 'topi_glp1_weight'" } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: found
+            writes:
+              query: '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND ("type 2 diabetes" OR "diabetes mellitus, type 2"[MeSH Terms]) AND (obesity OR weight)'
+              searched_from: ""
+              found_count: 3
+              new_articles: [arti_review_b, arti_attain2, arti_trial_a]
+            rationale: The first check, so no date limit. Three papers; all three were already stored, and none is screened for this topic yet.
+  screener:
+    - toolCalls:
+        - { name: literature.topic.get, args: { id: topi_glp1_weight } }
+        - { name: literature.article.get, args: { id: arti_review_b } }
+        - { name: literature.article.get, args: { id: arti_attain2 } }
+        - { name: literature.article.get, args: { id: arti_trial_a } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: suggested
+            writes:
+              screening:
+                - { article: arti_review_b, title: "Example Review B: oral GLP-1 receptor agonists for obesity in people with type 2 diabetes, a narrative review.", year: 2026, phase: not_a_trial, decision: exclude, reason: A narrative review with no new data; the rules exclude reviews., confidence: 0.97 }
+                - { article: arti_attain2, title: "Orforglipron, an oral small-molecule GLP-1 receptor agonist, for the treatment of obesity in people with type 2 diabetes (ATTAIN-2): a phase 3, double-blind, randomised, multicentre, placebo-controlled trial.", year: 2025, phase: phase_3, decision: include, reason: "A randomised phase 3 trial of oral orforglipron against placebo in adults with type 2 diabetes and obesity, reporting bodyweight.", confidence: 0.98 }
+                - { article: arti_trial_a, title: "Example Trial A: once-daily oral semaglutide 50 mg for weight management in adults with type 2 diabetes and overweight or obesity: a randomised, double-blind, placebo-controlled, phase 3 trial.", year: 2025, phase: phase_3, decision: include, reason: "A randomised phase 3 trial of oral semaglutide against placebo in adults with type 2 diabetes, reporting bodyweight.", confidence: 0.95 }
+              to_read: [arti_attain2, arti_trial_a]
+              answer: "From the abstracts so far: orforglipron (ATTAIN-2) and oral semaglutide 50 mg (Example Trial A) both lowered bodyweight against placebo in adults with type 2 diabetes (PMID 41275875, PMID 99000001)."
+            rationale: Two randomised trials meet every rule; the review is excluded as a review.
+  verifier:
+    - toolCalls:
+        - name: checkpoint.verdict
+          args:
+            results:
+              - { rule: 1, passed: true, reason: Three new papers and three rows. }
+              - { rule: 2, passed: true, reason: The one exclusion names the rule against reviews. }
+submit:
+  confirm: { outcome: confirmed }
+expect:
+  outcome: active
+  state: end
+  writes: { found_count: 3, new_articles: [arti_review_b, arti_attain2, arti_trial_a] }
+  effects: { literature.screening.create: 3, literature.topic.update: 1, literature.article.update: 0 }
+  entities:
+    Article: 3
+    Screening:
+      - { topic: topi_glp1_weight, article: arti_attain2, decision: include, by: ai, year: 2025, phase: phase_3 }
+      - { topic: topi_glp1_weight, article: arti_trial_a, decision: include, by: ai, year: 2025, phase: phase_3 }
+      - { topic: topi_glp1_weight, article: arti_review_b, decision: exclude, by: ai, year: 2026, phase: not_a_trial }

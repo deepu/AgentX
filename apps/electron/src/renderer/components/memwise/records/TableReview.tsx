@@ -14,9 +14,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { formatValueInline, humanize, outcomeLabel, resultMessage } from '../format'
+import { humanize, outcomeLabel, resultMessage } from '../format'
 import { Pill } from '../playbook/Tags'
-import { acceptAllAbove, reviewOutcomes, tableColumns, tableRows, tableSubmission, type RowDecision } from './record-model'
+import { acceptAllAbove, editedCell, enumChoices, formatRowCell, orderRowColumns, reviewOutcomes, statusLabel, tableColumns, tableRows, tableSubmission, type RowDecision } from './record-model'
 
 type ReviewItem = Extract<MwInboxItem, { kind: 'input' | 'decision' }>
 
@@ -32,7 +32,7 @@ export function TableReview({ item, submit, onDone }: TableReviewProps) {
   const field = item.review?.kind === 'table' ? item.review.items : ''
   const source = item.kind === 'input' ? item.prefill[field] : item.context[field]
   const rows = React.useMemo(() => tableRows(source), [source])
-  const columns = React.useMemo(() => tableColumns(rows), [rows])
+  const columns = React.useMemo(() => orderRowColumns(tableColumns(rows), rows.map(r => r.value), source?.itemTypes, source?.refTitles), [rows, source])
   const [decisions, setDecisions] = React.useState<Record<number, RowDecision>>({})
   const [edits, setEdits] = React.useState<Record<number, Record<string, unknown>>>({})
   const [editing, setEditing] = React.useState<number | null>(null)
@@ -89,20 +89,33 @@ export function TableReview({ item, submit, onDone }: TableReviewProps) {
                   <div className="min-w-0 flex-1 space-y-0.5">
                     {editing === r.index ? (
                       <div className="grid gap-1.5 sm:grid-cols-2">
-                        {columns.map(c => (
-                          <label key={c} className="text-label-sm text-secondary">
-                            {humanize(c)}
-                            <Input className="mt-0.5 h-7" value={value[c] === null || value[c] === undefined ? '' : String(value[c])}
-                              onChange={e => setEdits(prev => ({ ...prev, [r.index]: { ...(prev[r.index] ?? {}), [c]: e.target.value } }))} />
-                          </label>
-                        ))}
+                        {columns.map(c => {
+                          const type = source?.itemTypes?.[c]
+                          const choices = enumChoices(type)
+                          const setCell = (v: unknown) => setEdits(prev => ({ ...prev, [r.index]: { ...(prev[r.index] ?? {}), [c]: v } }))
+                          const text = value[c] === null || value[c] === undefined ? '' : String(value[c])
+                          return (
+                            <label key={c} className="text-label-sm text-secondary">
+                              {humanize(c)}
+                              {choices ? (
+                                // A choice column picks from its choices, by their labels
+                                <select className="mt-0.5 block h-7 w-full rounded-md bg-fill-hover px-2 text-label text-foreground" value={text} onChange={e => setCell(e.target.value)} data-choice={c}>
+                                  {!choices.includes(text) && <option value={text}>{text}</option>}
+                                  {choices.map(o => <option key={o} value={o}>{statusLabel(o)}</option>)}
+                                </select>
+                              ) : (
+                                <Input className="mt-0.5 h-7" value={text} onChange={e => setCell(editedCell(type, e.target.value))} />
+                              )}
+                            </label>
+                          )
+                        })}
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-x-3 text-label">
                         {columns.map((c, i) => (
                           <span key={c} className={i === 0 ? 'font-medium text-foreground' : 'text-secondary'}>
                             {i > 0 && <span className="text-tertiary">{humanize(c)}: </span>}
-                            {formatValueInline(value[c], t, i18n.language)}
+                            {formatRowCell(c, value[c], t, i18n.language, source?.itemTypes, source?.refTitles)}
                           </span>
                         ))}
                       </div>

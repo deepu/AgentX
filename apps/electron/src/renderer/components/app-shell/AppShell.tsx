@@ -361,7 +361,10 @@ function AppShellContent({
   // Pages behaves the same way: both the library grid and an open page render
   // full-width in the content area — there is no pages navigator list.
   // The domains navigator (Phase 6) has no list either: the sidebar's Domains section is its navigator.
+  // A chat beside a domain page (asked on a domain's home, or "Ask in chat"): the person is in the
+  // domain, so no session list either.
   const isPagesView = isPagesNavigation(navState) || isDomainsNavigation(navState)
+    || (panelStack.length > 1 && panelStack.some(p => p.route.startsWith('domains')))
 
   // Derive source filter from navigation state (only when in sources navigator)
   const sourceFilter: SourceFilter | null = isSourcesNavigation(navState) ? navState.filter ?? null : null

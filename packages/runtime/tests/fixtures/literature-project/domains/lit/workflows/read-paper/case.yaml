@@ -1,0 +1,5 @@
+case: paper_reading
+fields:
+  article: { type: Ref<Article>, required: true }
+  n:       Number
+  sponsor: Text

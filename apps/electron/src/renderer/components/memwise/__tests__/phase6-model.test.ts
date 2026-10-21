@@ -11,7 +11,7 @@ import type { MwDashboardBlock, MwInboxItem, MwTransitionOption } from '@memwise
 import {
   acceptAllAbove, areaBlocks, cardColumns, isStructuralCheck, splitRelated, chartData, changedReviewFields, confidenceLabel, detailFields, diffRows, fieldSourceLabel,
   fieldSourceTone, firstDocumentReview, formatTypedValue, headerFields, heatBucket, initialReviewDraft, isReviewItem, groupRows, kpiBelowTarget,
-  kpiValue, layoutColumns, lifecycleSteps, lockedMessage, missingReviewFields, nestTree, queueKeyAction, queueNeighbour,
+  chartRows, kpiValue, layoutColumns, lifecycleSteps, lockedMessage, missingReviewFields, nestTree, queueKeyAction, queueNeighbour,
   relatedColumns, retentionLabel, reviewOutcomes, sameKindItems, statusLabel, tableColumns, tableRows, tableSubmission, transitionBlockedReason, transitionLabel,
   treeNodeKey,
 } from '../records/record-model'
@@ -130,6 +130,10 @@ describe('layouts and blocks', () => {
   test('the lifecycle row marks done, current and to do', () => {
     expect(lifecycleSteps(['selected', 'activating', 'open'], 'activating').map(s => s.state)).toEqual(['done', 'current', 'todo'])
     expect(lifecycleSteps(['a', 'b'], undefined).map(s => s.state)).toEqual(['todo', 'todo'])
+    // A chart group's snake-case value reads as words; a Ref's title stays as it is.
+    expect(chartRows({ kind: 'donut', total: 2, data: [{ label: 'phase_3', key: 'phase_3', value: 2 }, { label: 'ATTAIN-2', key: 'arti_1', value: 1 }] }).map(d => d.label)).toEqual(['Phase 3', 'ATTAIN-2'])
+    // The way the record took: kept → rejected never ticks reviewed.
+    expect(lifecycleSteps(['kept', 'reviewed', 'rejected'], 'rejected', ['kept']).map(s => s.state)).toEqual(['done', 'todo', 'current'])
   })
 
   test('a blocked move says why', () => {

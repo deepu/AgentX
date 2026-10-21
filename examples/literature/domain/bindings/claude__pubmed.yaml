@@ -1,0 +1,27 @@
+# PubMed, bound for the workspace (bindings are workspace-wide for now). Every tool only reads.
+plugin: claude/pubmed
+plugin_version: 1.0.0
+plugin_hash: 1401404584580dd8f39409c88eeadde1403ed8d944fd771dd78343e1ac4890a8
+version: 1
+frozen:
+  by: example
+  at: 2026-10-21T09:00:00Z
+tools:
+  PubMed.convert_article_ids:
+    effect: read
+  PubMed.find_related_articles:
+    effect: read
+  PubMed.get_article_metadata:
+    effect: read
+  PubMed.get_copyright_status:
+    effect: read
+  PubMed.get_full_text_article:
+    effect: read
+  PubMed.lookup_article_by_citation:
+    effect: read
+  PubMed.search_articles:
+    effect: read
+capabilities: {}
+entities: {}
+roles: {}
+records: {}

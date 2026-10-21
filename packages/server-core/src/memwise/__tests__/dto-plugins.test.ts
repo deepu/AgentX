@@ -9,8 +9,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CaseTypeDef, WorkflowVersion } from '@memwise/defs'
+import { boundPluginTools, entityTools, loadProject, valueTypeToJsonSchema } from '@memwise/defs'
 import {
-  caseTitle, classFromAnnotations, identityFields, policyDocLines, recordTitle, toBinding, toBindingState, toBindingView, toEntityRecord,
+  caseTitle, classFromAnnotations, projectToolInfo, toStep, identityFields, policyDocLines, recordTitle, toBinding, toBindingState, toBindingView, toEntityRecord,
   toIdentityInboxItem, toPluginDetail, toPluginSummary, toVersion, toWorkflowOrigin, versionOrigin,
 } from '../dto'
 import { readPluginHead } from '../../handlers/rpc/memwise'
@@ -254,5 +255,28 @@ describe('Phase 4 walkthrough fixes', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('Literature walkthrough: tools on the playbook page', () => {
+  it('a step\'s plugin and entity tools have the class the kernel binds them with, not "can\'t be undone"', async () => {
+    const { project } = await loadProject(join(import.meta.dir, '..', '..', '..', '..', '..', 'examples', 'literature'))
+    const builtins = new Map([['PubMed.search_articles', { name: 'PubMed.search_articles', description: 'from the builtin', effect: 'irreversible' as const }]])
+    const tools = projectToolInfo(new Map(), builtins, entityTools(project.entities), boundPluginTools(project))
+    const wf = project.workflows['check-topic']!
+    const step = Object.values(wf.steps).find((s) => s.title === 'Search PubMed for new papers')!
+    const out = toStep({ project, diagnostics: [], tools, jsonSchema: valueTypeToJsonSchema }, wf, step)
+    const reads = out.tools.filter((t) => t.name === 'literature.topic.get' || t.name.startsWith('PubMed.'))
+    expect(reads.map((t) => [t.name, t.effect, t.classified])).toEqual([
+      ['literature.topic.get', 'read', true],
+      ['PubMed.search_articles', 'read', true],
+      ['PubMed.get_article_metadata', 'read', true],
+    ])
+    // The binding's class wins over a builtin of the same name; the plugin is named.
+    expect(reads[1]).toMatchObject({ plugin: 'claude/pubmed', required: true })
+    expect(tools.get('literature.topic.create')?.effect).toBe('write')
+    // A tool passed directly keeps its own entry.
+    const direct = projectToolInfo(new Map([['literature.topic.get', { name: 'literature.topic.get', effect: 'write' as const }]]), new Map(), entityTools(project.entities), {})
+    expect(direct.get('literature.topic.get')?.effect).toBe('write')
   })
 })

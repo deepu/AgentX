@@ -6,7 +6,7 @@
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import type {
   MwCase, MwCaseSummary, MwDecideApprovalInput, MwDocument, MwEntityRow, MwEntityType, MwExplainInput, MwExplanation,
-  MwInboxItem, MwReturnedNote, MwLiveCounts, MwOpenChatInput, MwPerson, MwPlaybook, MwPlaybookSummary, MwRole, MwRunStatus,
+  MwInboxItem, MwReturnedNote, MwLiveCounts, MwOpenChatInput, MwAskInput, MwAskResult, MwPerson, MwPlaybook, MwPlaybookSummary, MwRole, MwRunStatus,
   MwSendEventInput, MwStartCaseInput, MwStartCaseRefusal, MwStatus, MwStepRecord, MwSubmitResult, MwSubmitStepInput,
   MwBuildPlaybookInput, MwBuildPlaybookResult, MwCheckDraftInput, MwCreateDraftInput, MwDraft, MwDraftEditInput,
   MwDraftReport, MwDraftSummary, MwExampleFromCaseInput, MwExampleFromCaseResult, MwSubmitDraftResult, MwVersion,
@@ -18,6 +18,7 @@ import type {
   MwNotifySettings, MwRelayConfigureInput, MwRelayStatus, MwResendPreview,
   MwAuditExport, MwAuditExportInput, MwAuditTrail, MwSetPasswordInput, MwSetPasswordResult, MwDashboard, MwDashboardInput, MwDomain, MwFileData, MwRecordCreateInput,
   MwRecordPage, MwRecordPageInput, MwRecordQueryInput, MwRecordQueryResult, MwRecordTransitionInput, MwRecordUpdateInput,
+  MwRecordKeepInput, MwRecordKeepResult,
   MwRecordWriteResult, MwReleaseTriggerInput, MwSaveNoteInput, MwSaveViewInput, MwTreeInput, MwTreeNode, MwTrigger, MwView,
 } from '@memwise/shared/protocol'
 import type { ApprovalDecision, DraftDiff, DraftMeta } from '@memwise/defs'
@@ -29,11 +30,14 @@ import type {
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { resolveConfigDir } from '@memwise/shared/config/paths'
+import { getWorkspaceByNameOrId } from '@memwise/shared/config'
+import { loadSourceConfig, saveSourceConfig } from '@memwise/shared/sources'
 import { pushTyped, type RequestContext, type RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange } from '../../memwise/host'
 import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../memwise/service'
 import type { DraftFacts, DtoContext } from '../../memwise/dto'
+import { keepableEntities, recordDigest } from '../../memwise/chat-tools'
 import {
   authoringOf, conversationBlock, conversationState, draftForRun, isConversationStep, kickoffMessage, personName, plainValues,
   sendBackNote, sentBackMessage,
@@ -64,6 +68,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.ENTITIES_TYPES,
   RPC_CHANNELS.memwise.FILES_UPLOAD,
   RPC_CHANNELS.memwise.CHAT_OPEN,
+  RPC_CHANNELS.memwise.ASK,
   // Phase 3
   RPC_CHANNELS.memwise.PLAYBOOKS_VERSIONS,
   RPC_CHANNELS.memwise.PLAYBOOKS_BUILD,
@@ -104,6 +109,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.RECORDS_PAGE,
   RPC_CHANNELS.memwise.RECORDS_CREATE,
   RPC_CHANNELS.memwise.RECORDS_UPDATE,
+  RPC_CHANNELS.memwise.RECORDS_KEEP,
   RPC_CHANNELS.memwise.RECORDS_TRANSITION,
   RPC_CHANNELS.memwise.RECORDS_QUERY,
   RPC_CHANNELS.memwise.RECORDS_TREE,
@@ -122,6 +128,9 @@ export const HANDLED_CHANNELS = [
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 /** Cap on the hidden case digest an anchored chat starts with. */
 const DIGEST_MAX_CHARS = 16_000
+
+/** A chat about a case, step or playbook (a record chat is opened by `openRecordChat`). */
+type ExplainAnchor = Exclude<MwOpenChatInput['anchor'], { kind: 'record' }>
 /** Of that, the share a step's journal may take. */
 const DIGEST_JOURNAL_CHARS = 9_000
 
@@ -252,6 +261,58 @@ function domainsOf(svc: MemwiseService): DomainsService {
   const domains = (svc.kernel as { domains?: DomainsService }).domains
   if (!domains) throw new Error('Domains are not available in this version.')
   return domains
+}
+
+/** A question as a short name: its first clause, at most 60 characters on a word boundary. */
+export function shortQuestion(question: string): string {
+  const q = question.trim().replace(/\s+/g, ' ').replace(/[?.!]+$/, '')
+  const clause = q.split(/[,;:]/)[0]!.trim()
+  if (clause.length <= 60) return clause
+  const cut = clause.slice(0, 60)
+  const space = cut.lastIndexOf(' ')
+  return `${cut.slice(0, space > 30 ? space : 60)}…`
+}
+
+/**
+ * What a chat opened from a question box is told: answer now, like a good research assistant, then
+ * write the record's page for this question (sections chosen for it, not a template) and fill in
+ * the rest of the draft.
+ */
+export function askInstructions(
+  entityTitle: string,
+  home: { question: string; name?: string; page?: string },
+  fields: Record<string, { description?: string; typeSource?: string; required?: boolean }>,
+  hasSources: boolean,
+): string {
+  // Dates (when it was checked, when it is next due) belong to the playbooks that watch the record.
+  const others = Object.entries(fields)
+    .filter(([n, f]) => n !== home.question && n !== home.name && n !== home.page && !/^(Date|DateTime)$/.test(f.typeSource ?? ''))
+    .map(([n, f]) => `  - ${n}${f.typeSource ? ` (${f.typeSource})` : ''}${f.description ? `: ${f.description}` : ''}`)
+  const chart = '```chart\n{"kind": "interval", "title": "…", "unit": "kg", "reference": 0, "data": [{"label": "Drug 12 mg", "value": -6.1, "low": -7.0, "high": -5.2}], "source": "[Trial (Journal 2025)](https://doi.org/…)"}\n```'
+  return [
+    `The person just asked the question below (it is their first message) in the question box. A draft ${entityTitle.toLowerCase()} was made for it and is shown beside this chat; it is the record above.`,
+    '',
+    'Answer the question now, without asking anything first, and quickly: the person is watching, so aim for about a minute.',
+    hasSources
+      ? '- Search the sources you have, once or twice (for literature: one or two PubMed searches, favouring randomised trials and meta-analyses), then get the metadata and abstracts of the 6 to 8 most relevant papers in one call. Don\'t look studies up one by one, and don\'t use Bash or files. Use what the papers say, not memory; leave out what they don\'t give.'
+      : '- Use the records you can read; say plainly what you could not check.',
+    '- Write short paragraphs with the key numbers. Put each number\'s source right after it as a markdown link to its DOI, like [ATTAIN-2](https://doi.org/10.1016/…). Say when the papers disagree or a number is missing.',
+    `- When numbers compare, draw them in your answer with a chart block (kind bar, line, donut, or interval for effects with a confidence interval against a reference), e.g.\n${chart}`,
+    '',
+    `Then fill in the draft with record_update (one call, or a few):`,
+    ...(home.name ? [`- ${home.name}: a short name of three to six words.`] : []),
+    ...(home.page ? [
+      `- ${home.page}: the page for THIS question, in markdown, shown full width beside the chat. Lay it out for what was asked, not as a template. Usually:`,
+      '  a one-paragraph direct answer with the key numbers;',
+      '  chart blocks fitted to the question (for an effect against placebo: an interval chart per drug and dose);',
+      '  a table of the studies behind the numbers with DOI links: at most four short columns (study, design and n, duration, result), since the page is narrow;',
+      '  what is unknown or still coming (trials under way, open questions).',
+      '  Use ## headings, no title (the page has one).',
+    ] : []),
+    ...(others.length ? ['- any of these you can fill from what you found:', ...others] : []),
+    '',
+    `Finish the chat answer with one line saying the page beside it has the details, and that "Keep watching" there checks for new papers every week.`,
+  ].join('\n')
 }
 
 function recordsOf(svc: MemwiseService): RecordsService {
@@ -413,6 +474,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const wf = c.project.workflows[s.workflowId]
       const refs = d.caseRefs(s.values, wf?.caseType)
       for (const r of opts.all ? refs : refs.slice(0, 1)) want(r.entity, wf?.domain, r.id)
+      // A case's page also names the records its lists point at (new papers, a screening's paper).
+      if (opts.all) for (const r of d.caseNestedRefs(s.values, wf?.caseType)) want(r.entity, wf?.domain, r.id)
     }
     const out = new Map<string, string>()
     const records = (svc.kernel as { records?: RecordsService }).records
@@ -498,7 +561,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
             const fields = d.stepWriteFields(c, wf, step)
             const extract = d.toInboxExtract(step)
             out.push({
-              kind: 'input', ...common, fields, prefill: d.toCaseValues(values, fields.map((f) => f.name).filter((f) => f in values)),
+              kind: 'input', ...common, fields, prefill: d.withRefTitles(d.toCaseValues(values, fields.map((f) => f.name).filter((f) => f in values)), wf.caseType, subjects),
               ...(returned ? { returned } : {}), ...(binding ? { binding } : {}), ...(extract ? { extract } : {}),
             })
           } else {
@@ -609,7 +672,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     }
   }
 
-  async function caseDigest(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, anchor: MwOpenChatInput['anchor']): Promise<{ title: string; digest: string; caseId?: string }> {
+  async function caseDigest(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, anchor: ExplainAnchor): Promise<{ title: string; digest: string; caseId?: string }> {
     const clip = (v: unknown, n = 600) => {
       const s = typeof v === 'string' ? v : JSON.stringify(v)
       return s && s.length > n ? `${s.slice(0, n)}…` : s
@@ -668,7 +731,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
   }
 
   /** An ordinary chat about a case, step or playbook: its record goes into the chat's system prompt. */
-  async function openExplainChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, workspaceId: string, anchor: MwOpenChatInput['anchor']): Promise<string> {
+  async function openExplainChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, workspaceId: string, anchor: ExplainAnchor): Promise<string> {
     const { title, digest } = await caseDigest(svc, actor, c, d, anchor)
     const session = await deps.sessionManager.createSession(workspaceId, { name: `About ${title}` })
     const { PgChatAnchorStore } = await import('@memwise/db')
@@ -688,6 +751,117 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     })
     kickoff(session.id, 'explain')
     return session.id
+  }
+
+  /**
+   * A chat anchored to a record (doc 25 §6): its page as the person sees it goes into the
+   * chat's context, and the chat gets `record_get` / `record_query` (and `record_keep` when the
+   * record's domain has an entity with `keep_from_chat`), acting as the person.
+   */
+  async function openRecordChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, anchor: { entity: string; id: string }): Promise<string> {
+    if (!anchor.entity || !anchor.id) throw new Error(RECORD_MESSAGES.missing)
+    const page = await recordsOf(svc).page(anchor.entity, anchor.id, actor)
+    if (!page) throw new Error('That record was not found, or you may not see it.')
+    const keep = keepableEntities(c.project, page.domain)
+    // Keeping is always asked (the prompt showing the rows is the Keep button), so a chat that
+    // can keep opens in Ask mode whatever the workspace default: Explore would refuse to keep.
+    const session = await deps.sessionManager.createSession(workspaceId, { name: `About ${page.title}`, ...(keep.length ? { permissionMode: 'ask' as const } : {}) })
+    const { PgChatAnchorStore, recordAnchorId } = await import('@memwise/db')
+    await new PgChatAnchorStore().set(svc.kernel.pool, {
+      chatId: session.id, anchorKind: 'record', anchorId: recordAnchorId(page.entity, page.id), personId: actor.personId,
+    })
+    deps.sessionManager.setMemwiseContext(session.id, {
+      anchor: { kind: 'record', entity: page.entity, id: page.id },
+      ...(keep.length ? { keep } : {}),
+      block: [
+        recordDigest(page),
+        '',
+        `This chat is about the ${page.entityName.toLowerCase()} above, as it stands on its page. Look further with record_get and record_query; say "not recorded" when the records do not say.`,
+      ].join('\n'),
+      personName: (await personName(svc, actor.personId)) ?? undefined,
+    })
+    kickoff(session.id, 'explain')
+    return session.id
+  }
+
+  /**
+   * A question asked on a domain's home (domain.yaml `home:`): a draft of the home's entity holding
+   * the question, and a chat anchored to it that answers at once with the domain's plugin MCP
+   * servers (as workspace sources) and fills the draft in through `record_update`. The question is
+   * the chat's first, visible message.
+   */
+  async function askOnHome(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, workspaceId: string, input: MwAskInput): Promise<MwAskResult> {
+    const question = typeof input?.question === 'string' ? input.question.trim() : ''
+    if (!question) throw new Error('Type a question first.')
+    const homeDef = input?.domain ? c.project.domains?.[input.domain]?.home : undefined
+    const home = homeDef ? d.toDomainHome(c.project, input.domain) : undefined
+    if (!homeDef || !home) throw new Error('This domain has no question box.')
+    const records = recordsOf(svc)
+    const values: Record<string, unknown> = { [homeDef.question]: question }
+    if (homeDef.name) values[homeDef.name] = shortQuestion(question)
+    const created = await records.create({ entity: home.entity, values, reason: 'Asked on the home' }, actor)
+    if (!created.applied || !created.id) throw new Error(created.message ?? 'The question could not be saved.')
+    const page = await records.page(home.entity, created.id, actor)
+    if (!page) throw new Error('The question was saved, but its page could not be read.')
+    const sources = pluginSources(c.project, workspaceId)
+    const session = await deps.sessionManager.createSession(workspaceId, {
+      name: shortQuestion(question),
+      ...(sources.length ? { enabledSourceSlugs: sources } : {}),
+    })
+    const { PgChatAnchorStore, recordAnchorId } = await import('@memwise/db')
+    await new PgChatAnchorStore().set(svc.kernel.pool, {
+      chatId: session.id, anchorKind: 'record', anchorId: recordAnchorId(page.entity, page.id), personId: actor.personId,
+    })
+    const def = c.project.entities[home.entity]
+    deps.sessionManager.setMemwiseContext(session.id, {
+      anchor: { kind: 'record', entity: page.entity, id: page.id },
+      draft: true,
+      block: [recordDigest(page), '', askInstructions(home.entityTitle, homeDef, def?.fields ?? {}, sources.length > 0)].join('\n'),
+      personName: (await personName(svc, actor.personId)) ?? undefined,
+    })
+    deps.sessionManager.sendMessage(session.id, question).catch((e: unknown) => {
+      log.warn(`[memwise] asked chat ${session.id}: first turn failed: ${errText(e)}`)
+    })
+    return { sessionId: session.id, entity: home.entity, recordId: created.id }
+  }
+
+  /**
+   * The domain's bound plugins' URL MCP servers as workspace sources (made once, enabled, no auth),
+   * so a chat can call them too; plugins that name an app source give that source. Their slugs.
+   */
+  function pluginSources(project: DtoContext['project'], workspaceId: string): string[] {
+    const ws = getWorkspaceByNameOrId(workspaceId)
+    if (!ws) return []
+    const slugs: string[] = []
+    // The bound plugins' manifests, as `boundPlugins` (runtime) finds them; not imported here, so the
+    // app's main bundle doesn't take the kernel in.
+    const manifests = Object.values(project.bindings ?? {}).flatMap((b) => {
+      const p = project.pluginVersions?.[b.plugin]?.[b.pluginVersion]
+        ?? (project.plugins?.[b.plugin]?.manifest.version === b.pluginVersion ? project.plugins[b.plugin] : undefined)
+      return p ? [p.manifest] : []
+    })
+    for (const manifest of manifests) {
+      for (const [name, server] of Object.entries(manifest.mcpServers ?? {})) {
+        if ('source' in server) { slugs.push(server.source); continue }
+        if (!('url' in server)) continue
+        const slug = `${manifest.id}-${name}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+        if (!loadSourceConfig(ws.rootPath, slug)) {
+          try {
+            saveSourceConfig(ws.rootPath, {
+              id: slug, name: manifest.title ? `${manifest.title}` : name, slug, enabled: true, provider: manifest.id, type: 'mcp',
+              mcp: { transport: 'http', url: server.url, authType: 'none' },
+              ...(manifest.description ? { tagline: manifest.description } : {}),
+              createdAt: Date.now(), updatedAt: Date.now(),
+            })
+          } catch (e) {
+            log.warn(`[memwise] could not add ${name} from ${manifest.id} as a source: ${errText(e)}`)
+            continue
+          }
+        }
+        slugs.push(slug)
+      }
+    }
+    return [...new Set(slugs)]
   }
 
   /**
@@ -847,7 +1021,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           policies[step.id] = compilePolicy(layersFor({ ...(loaded.project.domainPolicy ? { domainPolicy: loaded.project.domainPolicy } : {}), plugins, workflow: wf, step }))
         } catch { /* shown without */ }
       }
-      const ctxD: DtoContext = { ...c, project: loaded.project, diagnostics: loaded.diagnostics }
+      const ctxD: DtoContext = { ...c, project: loaded.project, diagnostics: loaded.diagnostics, ...(c.toolsFor ? { tools: c.toolsFor(loaded.project) } : {}) }
       return { ...d.toPlaybook(ctxD, wf, policies), startFields: startFields(wf) }
     } catch {
       return undefined
@@ -958,7 +1132,20 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       ])
       const shown = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value]))
       const subjects = await subjectTitles(svc, actor, c, d, [{ workflowId: v.summary.workflowId, values: shown }], { all: true, ...(v.waiting ? { also: [v.waiting.record] } : {}) })
-      return d.toCase(c, v, { ...(links ? { links } : {}), ...(deliveries ? { deliveries } : {}), subjects })
+      // Linked cases by their own names too ("Called Read a paper · ATTAIN-2"), not only their playbook's
+      const linkTitles = new Map<string, string>()
+      if (v.links?.length) {
+        const linked = (await Promise.all(v.links.slice(0, 50).map((l) => svc.kernel.getCaseView(l.caseId, actor).catch(() => undefined))))
+          .filter((x): x is NonNullable<typeof x> => !!x)
+          .map((x) => ({ caseId: x.summary.caseId, workflowId: x.summary.workflowId, values: Object.fromEntries(Object.entries(x.values).map(([k, y]) => [k, y.hidden ? undefined : y.value])) }))
+        const titles = await subjectTitles(svc, actor, c, d, linked)
+        for (const l of linked) {
+          const caseType = c.project.workflows[l.workflowId]?.caseType
+          const subject = d.caseSubject(l.values, caseType)
+          linkTitles.set(l.caseId, d.caseTitle(l.values, l.caseId, caseType, c.project, subject && titles.get(subject.id)))
+        }
+      }
+      return d.toCase(c, v, { ...(links ? { links } : {}), ...(deliveries ? { deliveries } : {}), subjects, linkTitles })
     },
 
     async startCase(ctx: RequestContext, input: MwStartCaseInput): Promise<MwCaseSummary | MwStartCaseRefusal> {
@@ -1117,7 +1304,16 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           if (s.status === 'waiting') return { sessionId: await openConversationChat(svc, actor, c, workspaceId, s.stepRunId) }
         }
       }
+      if (input?.anchor?.kind === 'record') {
+        return { sessionId: await openRecordChat(svc, actor, c, workspaceId, input.anchor) }
+      }
+      if (!input?.anchor || !['case', 'step', 'workflow'].includes(input.anchor.kind)) throw new Error('Choose what the chat is about.')
       return { sessionId: await openExplainChat(svc, actor, c, d, workspaceId, input.anchor) }
+    },
+
+    async ask(ctx: RequestContext, workspaceId: string, input: MwAskInput): Promise<MwAskResult> {
+      const { svc, actor, c, d } = await begin(ctx)
+      return askOnHome(svc, actor, c, d, workspaceId, input)
     },
 
     // ---------------------------------------------------------------- Phase 3 (20 §6)
@@ -1640,6 +1836,28 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       return withRecordMessage(d.toRecordWriteResult(r))
     },
 
+    /**
+     * Literature (25 §6): rows a person keeps from a record chat, each created in the entity's
+     * initial state as them ("kept from chat <id>"), with whether its quote is in the source.
+     * Refused for an entity whose type doesn't say `keep_from_chat`.
+     */
+    async keepRecords(ctx: RequestContext, workspaceId: string, input: MwRecordKeepInput): Promise<MwRecordKeepResult> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.entity || !Array.isArray(input.rows) || !input.rows.length) throw new Error('Choose the rows to keep.')
+      if (typeof input.chatId !== 'string' || !input.chatId.trim()) throw new Error('Say which chat the rows come from.')
+      const chatId = input.chatId.trim()
+      // The chat names the rows' source on every version ("kept from chat <id>"): it must be a
+      // chat of this workspace about a record, not any id the client sends.
+      const session = await deps.sessionManager.getSession(chatId).catch(() => null)
+      if (!session || session.workspaceId !== workspaceId) throw new Error('Rows can only be kept from a chat in this workspace; that chat was not found here.')
+      const { PgChatAnchorStore } = await import('@memwise/db')
+      const anchor = await new PgChatAnchorStore().get(svc.kernel.pool, chatId)
+      if (anchor?.anchorKind !== 'record') throw new Error('Rows can only be kept from a chat about a record; that chat is not about one.')
+      const r = await recordsOf(svc).keep({ entity: input.entity, rows: input.rows, chatId }, actor)
+      if (r.rows.some((x) => x.id)) emitMemwiseChange({ kind: 'records', entity: r.entity })
+      return d.toKeepResult(r)
+    },
+
     async transitionRecord(ctx: RequestContext, input: MwRecordTransitionInput): Promise<MwRecordWriteResult> {
       const { svc, actor, d } = await begin(ctx)
       if (!input?.entity || !input.id || !input.transition) return recordRefusal('invalid')
@@ -1829,6 +2047,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.ENTITIES_TYPES, (ctx) => api.listEntityTypes(ctx))
   server.handle(ch.FILES_UPLOAD, (ctx, _ws: string, input) => api.uploadFile(ctx, input))
   server.handle(ch.CHAT_OPEN, (ctx, ws: string, input) => api.openChat(ctx, ws, input))
+  server.handle(ch.ASK, (ctx, ws: string, input) => api.ask(ctx, ws, input))
   // Phase 3
   server.handle(ch.PLAYBOOKS_VERSIONS, (ctx, _ws: string, workflowId: string) => api.listVersions(ctx, workflowId))
   server.handle(ch.PLAYBOOKS_BUILD, (ctx, ws: string, input) => api.buildPlaybook(ctx, ws, input ?? {}))
@@ -1869,6 +2088,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.RECORDS_PAGE, (ctx, _ws: string, input) => api.recordPage(ctx, input))
   server.handle(ch.RECORDS_CREATE, (ctx, _ws: string, input) => api.createRecord(ctx, input))
   server.handle(ch.RECORDS_UPDATE, (ctx, _ws: string, input) => api.updateRecord(ctx, input))
+  server.handle(ch.RECORDS_KEEP, (ctx, ws: string, input) => api.keepRecords(ctx, ws, input))
   server.handle(ch.RECORDS_TRANSITION, (ctx, _ws: string, input) => api.transitionRecord(ctx, input))
   server.handle(ch.RECORDS_QUERY, (ctx, _ws: string, input) => api.queryRecords(ctx, input))
   server.handle(ch.RECORDS_TREE, (ctx, _ws: string, input) => api.recordTree(ctx, input))

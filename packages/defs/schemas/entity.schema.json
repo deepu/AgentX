@@ -47,6 +47,11 @@
               "controlled": {
                 "description": "Phase 6: false exempts the field from the regulated reason rule (default true in a regulated domain).",
                 "type": "boolean"
+              },
+              "quote_of": {
+                "description": "A Text field whose value must be words of the referenced record's Text field, e.g. article.abstract; a value not found there raises a flag.",
+                "type": "string",
+                "pattern": "^\\s*[A-Za-z_]\\w*\\.[A-Za-z_]\\w*\\s*$"
               }
             },
             "required": [
@@ -364,6 +369,14 @@
                         "description": "Regulated domains: needs a matching signature on the record.",
                         "type": "boolean"
                       },
+                      "label": {
+                        "description": "The button's words, e.g. \"Keep watching, every Monday\".",
+                        "type": "string"
+                      },
+                      "primary": {
+                        "description": "Shown as the page's main button.",
+                        "type": "boolean"
+                      },
                       "description": {
                         "type": "string"
                       }
@@ -435,7 +448,7 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history."
+            "description": "fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
           }
         },
         "left": {
@@ -453,7 +466,7 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history."
+            "description": "fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
           }
         },
         "right": {
@@ -471,7 +484,7 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history."
+            "description": "fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
           }
         },
         "side": {
@@ -489,7 +502,7 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history."
+            "description": "fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
           }
         },
         "below": {
@@ -507,11 +520,36 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history."
+            "description": "fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
           }
         }
       },
       "additionalProperties": false
+    },
+    "key": {
+      "description": "Fields that identify a record (Text, Number or Ref, required): unique, and creating one that exists returns it.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "keep_from_chat": {
+      "description": "A chat anchored to a record may keep rows of this entity (with the person's permission).",
+      "type": "boolean"
+    },
+    "list": {
+      "description": "The columns of its records table by default: fields, calculated fields or status. Default: its short fields.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": [

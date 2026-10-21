@@ -79,8 +79,8 @@ import { listTaskSlugs, parseTaskSpec, uniqueTaskSlug } from '@memwise/shared/ta
 import { createTaskFromSpec, resolveCreateTaskProjectId } from '../tasks'
 import { buildPagesToolCallbacks } from '../pages/tool-callbacks'
 import { buildDecisionToolCallbacks } from '../decisions/tool-callbacks'
-import { buildMemwiseToolCallbacks } from '../memwise/chat-tools'
-import { sessionHasPlaybookTools, writeSessionMemwiseContext, type SessionMemwiseContext } from '@memwise/shared/sessions'
+import { buildMemwiseRecordToolCallbacks, buildMemwiseToolCallbacks } from '../memwise/chat-tools'
+import { sessionHasPlaybookTools, sessionHasRecordTools, writeSessionMemwiseContext, type SessionMemwiseContext } from '@memwise/shared/sessions'
 import { buildServersFromSources as buildServersFromSourcesShared } from '../sources/build-servers'
 import { buildMcpSourceToolCallbacks } from '../sources/mcp-source-tool-callbacks'
 import { ConfigWatcher, type ConfigWatcherCallbacks } from '@memwise/shared/config'
@@ -3074,6 +3074,11 @@ export class SessionManager implements ISessionManager {
         memwise: buildMemwiseToolCallbacks({ sessionId, log: (message: string) => sessionLog.info(message) }),
       })
     }
+    if (ctx.anchor.kind === 'record') {
+      mergeSessionScopedToolCallbacks(sessionId, {
+        memwiseRecords: buildMemwiseRecordToolCallbacks({ sessionId, log: (message: string) => sessionLog.info(message) }),
+      })
+    }
     return true
   }
 
@@ -5067,6 +5072,10 @@ export class SessionManager implements ISessionManager {
         // step (building or changing a playbook); the anchor is resolved at call time.
         ...(sessionHasPlaybookTools(managed.workspace.rootPath, managed.id)
           ? { memwise: buildMemwiseToolCallbacks({ sessionId: managed.id, log: (message: string) => sessionLog.info(message) }) }
+          : {}),
+        // MemWise record tools (record_*; doc 25 §6): only for a chat anchored to a record.
+        ...(sessionHasRecordTools(managed.workspace.rootPath, managed.id)
+          ? { memwiseRecords: buildMemwiseRecordToolCallbacks({ sessionId: managed.id, log: (message: string) => sessionLog.info(message) }) }
           : {}),
         getSessionInfoFn: (sessionId?: string) => {
           const targetId = sessionId ?? managed.id

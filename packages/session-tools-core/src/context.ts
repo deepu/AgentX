@@ -406,6 +406,16 @@ export interface SessionToolContext {
   memwise?: MemwiseToolCallbacks;
 
   // ============================================================
+  // MemWise records (record_get / record_query / record_keep)
+  // ============================================================
+
+  /**
+   * A chat anchored to a record (docs/memwise/25-literature-poc.md §6). Injected by
+   * SessionManager only for record chats; the callbacks act as the chat's person.
+   */
+  memwiseRecords?: MemwiseRecordToolCallbacks;
+
+  // ============================================================
   // Inter-Session Messaging
   // ============================================================
 
@@ -908,6 +918,55 @@ export interface MemwiseToolCallbacks {
   diff(): Promise<unknown>;
   check(input: PlaybookCheckInput): Promise<unknown>;
   finish(input: PlaybookFinishInput): Promise<{ applied: boolean; message?: string; [k: string]: unknown }>;
+}
+
+// ============================================================
+// MemWise record tool types (docs/memwise/25-literature-poc.md §6)
+// ============================================================
+
+export interface RecordGetInput {
+  entity: string;
+  id: string;
+}
+
+export interface RecordQueryInput {
+  entity: string;
+  filter?: string;
+  sort?: { field: string; desc?: boolean }[];
+  columns?: string[];
+  /** 1–200 (default 50). */
+  limit?: number;
+}
+
+export interface RecordKeepInput {
+  entity: string;
+  rows: Record<string, unknown>[];
+}
+
+/** Fill in the chat's own draft record (a chat opened from a domain's question box). */
+export interface RecordUpdateInput {
+  values: Record<string, unknown>;
+}
+
+/** One kept row: the new record's id, or why it wasn't kept. */
+export interface RecordKeepRowResult {
+  id?: string;
+  /** Whether its `quote_of` field was found in the source (absent: the entity has none). */
+  quoteFound?: boolean;
+  error?: string;
+}
+
+/**
+ * MemWise record tool callbacks, injected by SessionManager for chats anchored to a record.
+ * They act as the person in the chat, with their access. Results are plain JSON.
+ */
+export interface MemwiseRecordToolCallbacks {
+  get(input: RecordGetInput): Promise<unknown>;
+  query(input: RecordQueryInput): Promise<unknown>;
+  /** Absent when the anchored record's domain has no entity with `keep_from_chat`. */
+  keep?(input: RecordKeepInput): Promise<{ entity: string; rows: RecordKeepRowResult[]; [k: string]: unknown }>;
+  /** Absent unless the chat was opened on a draft (a domain's question box). */
+  update?(input: RecordUpdateInput): Promise<{ applied: boolean; message?: string; errors?: Record<string, string[]>; [k: string]: unknown }>;
 }
 
 export interface SessionInfo {

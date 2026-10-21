@@ -37,7 +37,7 @@ import { createBrowserTools, type BrowserPaneFns } from './browser-tools.ts';
 import { FEATURE_FLAGS } from '../feature-flags.ts';
 import { getBrowserToolEnabled } from '../config/storage.ts';
 import { isDecisionFeatureActive } from '../decisions/resolve.ts';
-import { sessionHasPlaybookTools } from '../sessions/memwise-context.ts';
+import { memwiseSessionToolOptions } from '../sessions/memwise-context.ts';
 
 // Re-export types for backward compatibility
 export type {
@@ -268,9 +268,9 @@ export function getSessionScopedTools(
       // `decide` is advertised only while the decision layer is on; the tool list
       // is built per agent, so toggling the setting applies to new sessions.
       includeDecide: isDecisionFeatureActive('decideTool'),
-      // playbook_* only in a chat anchored to a MemWise conversation step (per session;
-      // the context file is written before the session's first turn).
-      includePlaybookTools: sessionHasPlaybookTools(workspaceRootPath, sessionId),
+      // playbook_* only in a chat anchored to a MemWise conversation step, record_* only in a
+      // chat anchored to a record (per session; the context file is written before the first turn).
+      ...memwiseSessionToolOptions(workspaceRootPath, sessionId),
     })
       .filter(def => def.handler !== null) // Skip backend-specific tools (call_llm)
       .map(def => registryTool(def.name, def.inputSchema.shape));

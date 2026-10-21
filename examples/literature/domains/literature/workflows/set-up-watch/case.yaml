@@ -1,0 +1,3 @@
+case: literature_watch_setup
+fields:
+  topic: { type: Ref<Topic>, required: true, description: The topic being watched }

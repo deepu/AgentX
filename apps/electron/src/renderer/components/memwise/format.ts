@@ -18,7 +18,7 @@ import type {
 
 // ---------------------------------------------------------------- words
 
-const ACRONYMS = new Set(['gst', 'gstin', 'pan', 'crm', 'id', 'ifsc', 'vat', 'tds', 'kyc', 'pdf', 'url', 'api', 'qc', 'cv', 'tmf', 'cra', 'irb', 'edc', 'brsr', 'sso', 'mfa'])
+const ACRONYMS = new Set(['gst', 'gstin', 'pan', 'crm', 'id', 'ifsc', 'vat', 'tds', 'kyc', 'pdf', 'url', 'api', 'qc', 'cv', 'tmf', 'cra', 'irb', 'edc', 'brsr', 'sso', 'mfa', 'pmid', 'pmc', 'doi', 'ci', 'ai'])
 
 /** `client_name` → "Client name", `gst.validate_gstin` → "GST validate GSTIN". */
 export function humanize(name: string): string {
@@ -216,6 +216,17 @@ export function formatBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
+/** A field that holds a calendar year (`year`, `publication_year`): shown as 2025, never 2,025. */
+export function isYearField(name: string | undefined): boolean {
+  return !!name && /(^|_)year$/i.test(name)
+}
+
+/** A table cell: like formatValueInline, but a year column reads as a year. */
+export function formatCell(column: string, v: unknown, t: TFunction, locale?: string): string {
+  if (typeof v === 'number' && Number.isInteger(v) && isYearField(column)) return String(v)
+  return formatValueInline(v, t, locale)
+}
+
 /** A one-line rendering of any case value (lists and records are summarised). */
 export function formatValueInline(v: unknown, t: TFunction, locale?: string): string {
   if (v === null || v === undefined || v === '') return t('memwise.case.noValue')
@@ -268,6 +279,24 @@ export function absoluteTime(iso: string | undefined, locale?: string): string {
   const at = Date.parse(iso)
   if (Number.isNaN(at)) return iso
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(at)
+}
+
+/** A calendar date ("Oct 21, 2026"), for times that were set in a file rather than just now. */
+export function absoluteDate(iso: string | undefined, locale?: string): string {
+  if (!iso) return ''
+  const at = Date.parse(iso)
+  if (Number.isNaN(at)) return iso
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(at)
+}
+
+/**
+ * A content hash, short: the first 16 hex characters and an ellipsis, so a prefix that happens to
+ * be all digits still reads as part of a hash, not as a number.
+ */
+export function shortHash(hash: string | undefined): string {
+  if (!hash) return ''
+  const hex = hash.replace(/^sha256:/i, '').toLowerCase()
+  return hex.length > 16 ? `${hex.slice(0, 16)}…` : hex
 }
 
 export function formatDuration(ms: number | undefined): string {

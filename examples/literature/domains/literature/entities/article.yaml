@@ -1,0 +1,38 @@
+entity: Article
+title: "{title}"
+key: [pmid]                    # one record per paper, whichever topic found it first
+list: [journal, year, study_type, phase, n, status]   # the records table's columns; the abstract only on the page
+fields:
+  pmid:          { type: Text, required: true, description: The PubMed id }
+  doi:           { type: Text, description: "Link it as https://doi.org/<doi> when citing it" }
+  pmc_id:        { type: Text, description: "The PubMed Central id, when the full text is open access" }
+  title:         { type: Text, required: true }
+  journal:       Text
+  published:     Date
+  year:          Number
+  article_types: { type: List<Text>, description: "PubMed's publication types, like Randomized Controlled Trial" }
+  authors:       Text
+  abstract:      { type: Text, description: "The abstract exactly as PubMed has it" }
+  # What "Read a paper" reads from the abstract, each with the words it was read from.
+  study_type:    Enum[randomised_trial, non_randomised_trial, cohort, case_control, cross_sectional, systematic_review, review, preclinical, other]
+  phase:         Enum[phase_1, phase_2, phase_3, phase_4, not_a_trial]
+  n:             { type: Number, description: How many people were randomised or enrolled }
+  sponsor:       Text
+  intervention:  Text
+  condition:     Text
+relationships:
+  screenings: many Screening
+  evidence:   many Evidence
+lifecycle:
+  initial: found
+  states:
+    found: { on: { read: read }, description: "Stored from PubMed, not read yet" }
+    read:  { description: Its facts are read from the abstract }
+  transitions:
+    read: { by: [step] }
+page:
+  layout: split
+  header: [title, journal, year, status]
+  left:  [{ viewer: abstract }]
+  right: [{ fields: [study_type, phase, n, sponsor, intervention, condition] }, details, { related: [screenings, evidence] }]
+  below: [mentions, notes]

@@ -190,6 +190,10 @@ export interface MwCaseValue {
   hidden?: boolean
   /** Phase 6: a Ref value's record, by its title (`value` keeps the id). */
   refTitle?: string
+  /** Literature: the records a list of refs, or its rows' Ref columns, point at: id → title. */
+  refTitles?: Record<string, string>
+  /** Literature: a list of records' column types as written (`year: Number`, `phase: Enum[...]`). */
+  itemTypes?: Record<string, string>
 }
 
 /** A file attached to a case (`Document` and `File` values). */
@@ -575,9 +579,13 @@ export interface MwExplanation {
   at: string
 }
 
-/** Open the regular chat screen anchored to a case or step (09 §1). */
+/**
+ * Open the regular chat screen anchored to a case or step (09 §1), or (doc 25 §6) to a record:
+ * `entity` is the entity key (`literature.topic`). A record chat gets `record_get`,
+ * `record_query` and, when its domain has an entity with `keep_from_chat`, `record_keep`.
+ */
 export interface MwOpenChatInput {
-  anchor: { kind: 'case' | 'step' | 'workflow'; id: string }
+  anchor: { kind: 'case' | 'step' | 'workflow'; id: string } | { kind: 'record'; entity: string; id: string }
 }
 
 // ---------------------------------------------------------------- domain
@@ -1402,6 +1410,38 @@ export interface MwDomain {
   flags: number
   /** App addition: house rules and hand-off settings, for the domain page. */
   detail?: MwDomainDetail
+  /** The domain's home (`home:` in domain.yaml): a question box over its drafts and records. */
+  home?: MwDomainHome
+}
+
+/**
+ * A domain's home: asking (`memwise.ask`) makes a draft of `entity` and opens a chat on it with
+ * the draft beside it. Drafts (records still in `draftState`) are the recent questions; records
+ * past it, and not in an end state, are the ones being worked on.
+ */
+export interface MwDomainHome {
+  ask?: string
+  placeholder?: string
+  /** Entity key of the drafts (`literature.Topic`). */
+  entity: string
+  /** Its plural-free display name ("Topic"). */
+  entityTitle: string
+  draftState: string
+  /** States with no way out (closed): not listed. */
+  endStates: string[]
+  suggested: string[]
+}
+
+/** Ask a question on a domain's home: makes the draft and opens its chat. */
+export interface MwAskInput {
+  domain: string
+  question: string
+}
+
+export interface MwAskResult {
+  sessionId: string
+  entity: string
+  recordId: string
 }
 
 export type MwRecordFieldSource =
@@ -1436,16 +1476,24 @@ export type MwPageLayoutShape = 'single' | 'split' | 'sidebar'
 export type MwPageBlock =
   | { kind: 'fields'; fields: string[] }
   | { kind: 'details' }
+  /** A Document, File or Image field; Literature: a Text field, its data in `MwRecordPage.texts`. */
   | { kind: 'viewer'; field: string }
+  /** A Text field holding markdown (with ```chart blocks), shown full width; its value is in `fields`. */
+  | { kind: 'markdown'; field: string }
   | { kind: 'related'; relationships: string[] }
   | { kind: 'cases' }
   | { kind: 'lifecycle' }
-  | { kind: 'chart'; chart: 'bar' | 'line' | 'donut'; of: string; by?: string }
+  /** Its rows in `MwRecordPage.charts`, under `mwPageBlockKey(area, index)` (Literature adds `interval` and the optional keys). */
+  | MwChartBlock
   | { kind: 'checks' }
   | { kind: 'notes' }
   | { kind: 'mentions' }
   | { kind: 'start' }
   | { kind: 'history' }
+  /** Literature: tiles for these calculated or Number fields; values in `MwRecordPage.kpis`. */
+  | { kind: 'kpis'; fields: string[] }
+  /** Literature: "Ask about this record": opens a chat anchored to the record (no data). */
+  | { kind: 'chat' }
 
 export interface MwPageLayout {
   layout: MwPageLayoutShape
@@ -1462,6 +1510,12 @@ export interface MwTransitionOption {
   reason?: string
   guard?: { condition: string; holds: boolean }
   signed?: boolean
+  /** No person can make it (only a playbook step, a connector or MemWise): shown as a note, never a button. */
+  automatic?: boolean
+  /** `label` is the entity's own words for the button ("Keep watching, every Monday"), not the name humanized. */
+  custom?: boolean
+  /** The page's main button. */
+  primary?: boolean
 }
 
 export interface MwRecordFlag { id: string; entity: string; recordId: string; invariant: string; message: string; raisedAt: string; closedAt?: string }
@@ -1541,7 +1595,8 @@ export interface MwRecordPage {
   /** `types`: each row value's declared type, so a date or an enum reads as one. */
   related: Record<string, { entity: string; label: string; total: number; rows: (MwRecordRef & { values: Record<string, unknown> })[]; types?: Record<string, string> }>
   cases: { caseId: string; runId: string; workflowId: string; title: string; state: string; status: MwRunStatus; updatedAt: string; waitingOn?: string }[]
-  lifecycle?: { states: string[]; current?: string; transitions: MwTransitionOption[] }
+  /** `passed`: the states on the way to the current one; others before it in `states` were skipped. */
+  lifecycle?: { states: string[]; current?: string; passed?: string[]; transitions: MwTransitionOption[] }
   flags: MwRecordFlag[]
   signatures: MwSignature[]
   notes?: { body: string; version: number; by: string; at: string }
@@ -1550,6 +1605,12 @@ export interface MwRecordPage {
   documents: Record<string, MwDocument | null>
   history: MwRecordVersion[]
   review?: MwRecordReview
+  /** Literature: `kpis` blocks' tiles, by field name. */
+  kpis?: Record<string, MwRecordKpi>
+  /** Literature: `chart` blocks' rows, by `mwPageBlockKey(area, index)` (`main:1`). */
+  charts?: Record<string, MwChartData>
+  /** Literature: `viewer` blocks on a Text field: the text and its quotes, by field name. */
+  texts?: Record<string, MwTextView>
 }
 
 export interface MwRecordPageInput { entity: string; id: string; review?: { stepRunId: string } }
@@ -1618,6 +1679,8 @@ export type MwDashboardBlock =
   | { kind: 'table' | 'list'; title?: string; result: MwRecordQueryResult }
   | { kind: 'heatmap'; title?: string; columns: string[]; rows: { record: MwRecordRef; values: (number | null)[] }[] }
   | { kind: 'text'; markdown: string }
+  /** Literature: a free page's `chart:` block, computed in SQL. */
+  | { kind: 'chart'; chart: MwChartData }
 
 export interface MwDashboard {
   pageId: string
@@ -1654,6 +1717,8 @@ export interface MwCaseLink {
   title: string
   state: string
   status: MwRunStatus
+  /** The linked case's own name ("Read a paper" about ATTAIN-2), when it differs from `title`. */
+  caseTitle?: string
 }
 
 /** `types`: each value's declared type (a percent rollup is `Percentage`), so the screen formats it. */
@@ -1713,6 +1778,8 @@ export interface MwEntityDefinition {
   invariants: string[]
   /** Playbooks that read, write or start from this entity. */
   usedBy: { workflowId: string; title: string }[]
+  /** The records table's default columns (`list:`); absent: the table picks short fields. */
+  list?: string[]
 }
 
 /** Phase 6 domain additions the sidebar and the domain page use (`MwDomain` stays as agreed). */
@@ -1729,3 +1796,142 @@ export interface MwDomainDetail {
 // without one). Changing an existing one needs the current password.
 export interface MwSetPasswordInput { password: string; current?: string }
 export interface MwSetPasswordResult { applied: boolean; code?: 'password.current-wrong' | 'password.rule'; message?: string }
+
+// ================================================================ Literature (doc 25)
+// docs/memwise/25-literature-poc.md §4–§6 (D79–D86): charts on record pages and free pages, KPI
+// tiles, a Text viewer with its quotes, and rows kept from a record chat. Additive to Phase 6.
+// Shapes mirror the kernel's (packages/runtime/src/types.ts, "Literature").
+
+// memwise:records:keep          (workspaceId, MwRecordKeepInput)       → MwRecordKeepResult
+
+export type MwChartKind = 'bar' | 'line' | 'donut' | 'interval'
+
+/** A record page's `chart` block as written (`MwPageBlock`). */
+export interface MwChartBlock {
+  kind: 'chart'
+  /** bar/line/donut count related rows per value of `by`; interval draws one row per related record. */
+  chart: MwChartKind
+  /** The many relationship whose rows it draws. */
+  of: string
+  /** bar/line/donut: the field counted by. */
+  by?: string
+  /** A condition on the related rows (condition language). */
+  where?: string
+  /** The heading; absent: made from `of` and `by`. */
+  title?: string
+  /** interval: each row's label template, "{intervention} vs {comparator}". */
+  label?: string
+  /** interval: the field holding the value. */
+  value?: string
+  /** interval: the field holding the interval's low end. */
+  low?: string
+  /** interval: the field holding the interval's high end. */
+  high?: string
+  /** interval: the field holding the unit. */
+  unit?: string
+}
+
+/** The key of a page block's data in `MwRecordPage.charts`: its area and index there. */
+export function mwPageBlockKey(area: string, index: number): string {
+  return `${area}:${index}`
+}
+
+/** One row of a chart; the same as a chat ```chart block's `data` item, plus where it came from. */
+export interface MwChartDatum {
+  /** bar/line/donut: the `by` value as text (a Ref's record title; "Not set" for none); interval: the row's label. */
+  label: string
+  /** bar/line/donut: how many records; interval: the record's value. */
+  value: number
+  /** interval: the low end, when the record has one. */
+  low?: number
+  /** interval: the high end, when the record has one. */
+  high?: number
+  /** interval: this row's unit, only when the rows don't share one (`MwChartData.unit` absent). */
+  unit?: string
+  /** bar/line/donut: the stored value (null: not set), to filter a view by. */
+  key?: string | null
+  /** interval: the record the row is, to open it. */
+  record?: MwRecordRef
+}
+
+/** A chart's rows, computed by the kernel now (record page `chart` blocks and free page `chart:` blocks). */
+export interface MwChartData {
+  kind: MwChartKind
+  /** The block's title, when it has one. */
+  title?: string
+  /** interval: the unit every row shares. */
+  unit?: string
+  /** bar/line/donut: one row per value, numbers (years) in order and "Not set" last; interval: one per record. */
+  data: MwChartDatum[]
+  /** bar/line/donut: the records counted; interval: the rows drawn. */
+  total: number
+  /** interval: records left out because they have no value. */
+  skipped?: number
+}
+
+/** A `kpis` tile's value (labels are the fields' own, as in `MwRecordPage.fields`). */
+export interface MwRecordKpi {
+  /** The calculated or Number field. */
+  field: string
+  /** Its value now; null when not set or hidden from the viewer. */
+  value: number | null
+  /** Its type as written ("Number", "Percentage"), to format the value. */
+  type: string
+  /** The field's description, for the tile's detail line. */
+  description?: string
+}
+
+/** A quote to light up in a Text viewer. */
+export interface MwQuoteHighlight {
+  /** The words, as stored. */
+  quote: string
+  /** value: the record's field read from these words; related: the related record's quote field. */
+  field: string
+  /** The field's name in words ("Sample size"; "Quote" for a related record's). */
+  label: string
+  /** value: one of the record's values was read from these words; related: a related record quotes them. */
+  kind: 'value' | 'related'
+  /** value: the record's value it backs, to show on hover. */
+  value?: unknown
+  /** related: the record quoting the text (an Evidence row), to open it. */
+  record?: MwRecordRef
+  /** Whether the text holds the quote (the kernel's check: NFKC, case folded, `·` as `.`, dashes as `-`, whitespace collapsed). */
+  found: boolean
+  /** Where the quote is in `MwTextView.text` (UTF-16 offsets, `end` exclusive), when found. */
+  start?: number
+  end?: number
+}
+
+/** A `viewer` block on a Text field: the text and the quotes in it. */
+export interface MwTextView {
+  /** The field's text; null when not set or hidden from the viewer. */
+  text: string | null
+  /** In the order found: the record's own values first, then related records. */
+  highlights: MwQuoteHighlight[]
+}
+
+/** Rows a person keeps from a chat anchored to a record ("Keep as evidence"). */
+export interface MwRecordKeepInput {
+  /** The entity key (`literature.Evidence`); its type must say `keep_from_chat: true`. */
+  entity: string
+  /** Each row's field values; `id` and `status` are ignored (a kept row starts in the initial state). */
+  rows: Record<string, unknown>[]
+  /** The chat the rows came from; the reason on each record is "kept from chat <chatId>". */
+  chatId: string
+}
+
+/** Per row, in order: the new record, or why it wasn't kept. */
+export interface MwRecordKeepResult {
+  /** The entity key. */
+  entity: string
+  rows: {
+    /** The new record's id, when kept. */
+    id?: string
+    /** With a `quote_of` field: whether its quote is in the source (false: kept, and flagged "Quote not found in the source"). */
+    quoteFound?: boolean
+    /** Why the row wasn't kept, in plain words. */
+    error?: string
+    /** Per field, what needs fixing. */
+    errors?: Record<string, string[]>
+  }[]
+}

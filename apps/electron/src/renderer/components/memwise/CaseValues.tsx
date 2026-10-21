@@ -12,7 +12,7 @@ import type { MwCaseValue, MwField } from '@memwise/shared/protocol'
 import { Info_Badge } from '@/components/info/Info_Badge'
 import type { BadgeColor } from '@/components/info/Info_Badge'
 import { cn } from '@/lib/utils'
-import { formatTypedValue } from './records/record-model'
+import { formatRowCell, formatTypedValue, orderRowColumns } from './records/record-model'
 import {
   formatBytes,
   formatValueInline,
@@ -78,8 +78,18 @@ const looksLikeFileName = (v: unknown): v is string => typeof v === 'string' && 
  * A case value, laid out for reading: documents as chips, lists of records as a small table.
  * `fieldNames`: the case's fields, so a record naming one (a flag's `field: pan`) shows its label.
  */
-/** `type`: the field's declared type ("Date", "DateTime", "Enum[...]"), so a plain value reads as one. */
-export function CaseValueView({ value, fieldNames, type }: { value: unknown; fieldNames?: ReadonlySet<string>; type?: string }) {
+/**
+ * `type`: the field's declared type ("Date", "DateTime", "Enum[...]"), so a plain value reads as one.
+ * `titles`: the records a list of refs or its rows point at, by id; `itemTypes`: a list of records'
+ * column types, so its cells read by type (a choice, a year, a paper's title rather than its id).
+ */
+export function CaseValueView({ value, fieldNames, type, titles, itemTypes }: {
+  value: unknown
+  fieldNames?: ReadonlySet<string>
+  type?: string
+  titles?: Record<string, string>
+  itemTypes?: Record<string, string>
+}) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language
 
@@ -91,8 +101,18 @@ export function CaseValueView({ value, fieldNames, type }: { value: unknown; fie
         </div>
       )
     }
+    // A list of records by title, one per line
+    if (titles && value.every(v => typeof v === 'string' && titles[v])) {
+      return (
+        <ul className="space-y-0.5">
+          {(value as string[]).map((id, i) => <li key={i} className="[overflow-wrap:anywhere]" title={id}>{titles[id]}</li>)}
+        </ul>
+      )
+    }
     if (value.every(isRecord)) {
-      const columns = Array.from(new Set(value.flatMap(r => Object.keys(r as Record<string, unknown>))))
+      // The row type's own column order when known (stored rows come back with their keys reordered)
+      const seen = Array.from(new Set(value.flatMap(r => Object.keys(r as Record<string, unknown>))))
+      const columns = orderRowColumns(seen, value as Record<string, unknown>[], itemTypes, titles)
       return (
         <div className="overflow-x-auto">
           <table className="w-full text-label-sm">
@@ -114,7 +134,9 @@ export function CaseValueView({ value, fieldNames, type }: { value: unknown; fie
                         className={cn('py-1 pr-3 align-top text-foreground', file && 'max-w-[14rem] truncate whitespace-nowrap')}
                         title={file ? cell : undefined}
                       >
-                        {namesField ? humanize(cell as string) : formatValueInline(cell, t, locale)}
+                        {namesField
+                          ? humanize(cell as string)
+                          : formatRowCell(c, cell, t, locale, itemTypes, titles)}
                       </td>
                     )
                   })}
@@ -162,6 +184,19 @@ export function CaseFieldList({ values, fields, people, only, className }: CaseF
       {rows.map(name => {
         const cv = values[name]!
         const def = fields?.find(f => f.name === name)
+        // A list of records reads as a table across the card, under its label
+        const table = !cv.hidden && Array.isArray(cv.value) && cv.value.length > 0 && cv.value.every(isRecord)
+        if (table) {
+          return (
+            <div key={name} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 px-3.5 py-2.5 text-label" data-field={name}>
+              <dt className="text-secondary" title={def?.description}>{humanize(name)}</dt>
+              <div className="justify-self-end"><ProvenanceBadge value={cv} people={people} /></div>
+              <dd className="col-span-full min-w-0 text-foreground">
+                <CaseValueView value={cv.value} fieldNames={fieldNames} titles={cv.refTitles} itemTypes={cv.itemTypes} />
+              </dd>
+            </div>
+          )
+        }
         return (
           <div
             key={name}
@@ -170,7 +205,7 @@ export function CaseFieldList({ values, fields, people, only, className }: CaseF
           >
             <dt className="text-secondary" title={def?.description}>{humanize(name)}</dt>
             <dd className="min-w-0 text-foreground">
-              {cv.hidden ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span> : <CaseValueView value={cv.refTitle ?? cv.value} fieldNames={fieldNames} type={cv.refTitle ? undefined : def?.type} />}
+              {cv.hidden ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span> : <CaseValueView value={cv.refTitle ?? cv.value} fieldNames={fieldNames} type={cv.refTitle ? undefined : def?.type} titles={cv.refTitles} itemTypes={cv.itemTypes} />}
             </dd>
             {/* Nothing there: no "who set it" badge for an empty value */}
             {(cv.hidden || !isEmptyValue(cv.value)) && <div className="col-start-2 justify-self-start @lg/fields:col-start-3"><ProvenanceBadge value={cv} people={people} /></div>}

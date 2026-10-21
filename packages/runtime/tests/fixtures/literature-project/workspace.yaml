@@ -1,0 +1,4 @@
+workspace: Meridian
+roles:
+  lead:     { title: Lead, description: Owns the topics }
+  reviewer: { title: Reviewer, description: Reviews the evidence }

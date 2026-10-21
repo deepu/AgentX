@@ -8,11 +8,12 @@ import {
 } from '@memwise/db';
 import { hasRole, keyOf, rolesIn, type EntityTypeDef, type ViewDef } from '@memwise/defs';
 import { fieldErrors } from '../domain-tools.ts';
-import type { Actor, RecordFlag, RecordQueryResult, RecordsService, RecordWriteResult } from '../types.ts';
+import type { Actor, RecordFlag, RecordKeepResult, RecordQueryResult, RecordsService, RecordWriteResult } from '../types.ts';
 import { buildDashboard, buildTree, columnsOf, queryRecords } from './browse.ts';
 import { domainOfEntity, entityByName, isControlled, recordTitle, storeMentions, type RecordsDeps } from './context.ts';
 import { checkTransition } from './lifecycle.ts';
 import { buildPage } from './page.ts';
+import { checkQuotes, quoteFields } from './quotes.ts';
 
 const entityStore = new PgEntityStore();
 const notes = new PgNoteStore();
@@ -69,33 +70,43 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
     return withActor(deps.pool, actor, (db) => entityStore.get(db, def, id));
   }
 
+  /** Quote fields (25 §4) checked after a write, as the system: whether each quote is in its source. */
+  const checkQuotesOf = (def: EntityTypeDef, id: string): Promise<Record<string, boolean>> =>
+    quoteFields(def).length ? withActor(deps.pool, { kind: 'system' }, (db) => checkQuotes(db, deps.entities(), def, id)) : Promise.resolve({});
+
+  /** `create`, also saying whether each quote field's value is in its source. */
+  async function createRecord(input: Parameters<RecordsService['create']>[0], actor: Actor): Promise<{ result: RecordWriteResult; quotes: Record<string, boolean> }> {
+    const def = defOf(input.entity);
+    if (!mayWrite(deps, actor, domainOfEntity(def))) return { result: forbidden(def), quotes: {} };
+    const errors = fieldErrors(def, deps.entities(), input.values, { creating: true });
+    for (const f of hiddenFrom(def, input.values, actor)) (errors[f] ??= []).push('only some roles may see or change this field');
+    for (const [f, field] of Object.entries(def.fields)) {
+      const v = input.values[f];
+      if (field.required && (v === undefined || v === null || v === '')) (errors[f] ??= []).push('required');
+    }
+    if (Object.keys(errors).length) return { result: { applied: false, status: 'invalid', errors, message: 'some values need fixing' }, quotes: {} };
+    const missing = reasonMissing(deps, def, input.values, input.reason, actor);
+    if (missing.length) return { result: { applied: false, status: 'reason-required', message: `say why: ${missing.join(', ')} ${missing.length === 1 ? 'is a controlled field' : 'are controlled fields'} here` }, quotes: {} };
+    try {
+      const id = await withActor(deps.pool, actor, async (db) => {
+        await withRecordContext(db, { via: 'app', ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}) });
+        return entityStore.create(db, def, input.values, {
+          ...(input.status ? { lifecycle: input.status } : {}), ...(input.id ? { id: input.id } : {}),
+        });
+      });
+      const quotes = await checkQuotesOf(def, id);
+      changed(def, id);
+      return { result: { applied: true, status: 'applied', id, version: 1 }, quotes };
+    } catch (e) {
+      return { result: writeRefusal(e), quotes: {} };
+    }
+  }
+
   const service: RecordsService = {
     page: (entity, id, actor, opts) => buildPage(deps, defOf(entity), id, actor, opts),
 
     async create(input, actor) {
-      const def = defOf(input.entity);
-      if (!mayWrite(deps, actor, domainOfEntity(def))) return forbidden(def);
-      const errors = fieldErrors(def, deps.entities(), input.values, { creating: true });
-      for (const f of hiddenFrom(def, input.values, actor)) (errors[f] ??= []).push('only some roles may see or change this field');
-      for (const [f, field] of Object.entries(def.fields)) {
-        const v = input.values[f];
-        if (field.required && (v === undefined || v === null || v === '')) (errors[f] ??= []).push('required');
-      }
-      if (Object.keys(errors).length) return { applied: false, status: 'invalid', errors, message: 'some values need fixing' };
-      const missing = reasonMissing(deps, def, input.values, input.reason, actor);
-      if (missing.length) return { applied: false, status: 'reason-required', message: `say why: ${missing.join(', ')} ${missing.length === 1 ? 'is a controlled field' : 'are controlled fields'} here` };
-      try {
-        const id = await withActor(deps.pool, actor, async (db) => {
-          await withRecordContext(db, { via: 'app', ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}) });
-          return entityStore.create(db, def, input.values, {
-            ...(input.status ? { lifecycle: input.status } : {}), ...(input.id ? { id: input.id } : {}),
-          });
-        });
-        changed(def, id);
-        return { applied: true, status: 'applied', id, version: 1 };
-      } catch (e) {
-        return writeRefusal(e);
-      }
+      return (await createRecord(input, actor)).result;
     },
 
     async update(input, actor) {
@@ -111,6 +122,7 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
           await withRecordContext(db, { via: 'app', ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}) });
           return entityStore.update(db, def, input.id, input.values);
         });
+        if (r.changed.length) await checkQuotesOf(def, input.id);
         changed(def, input.id);
         return { applied: true, status: 'applied', id: input.id, version: r.version };
       } catch (e) {
@@ -195,6 +207,29 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
     async evaluate(entity, id, condition, actor) {
       const def = defOf(entity);
       return withActor(deps.pool, actor, (db) => evaluateCondition(db, def, deps.entities(), id, condition));
+    },
+
+    async keep(input, actor): Promise<RecordKeepResult> {
+      const def = defOf(input.entity);
+      if (!def.keepFromChat) throw new Error(`a ${def.entity} can't be kept from a chat (its entity type doesn't say \`keep_from_chat: true\`)`);
+      if (actor.kind !== 'person') throw new Error('only a person keeps rows from a chat');
+      const chatId = String(input.chatId ?? '').trim();
+      if (!chatId) throw new Error('say which chat the rows come from');
+      const quoted = quoteFields(def).map(([f]) => f);
+      const rows: RecordKeepResult['rows'] = [];
+      for (const raw of Array.isArray(input.rows) ? input.rows : []) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { rows.push({ error: 'a row is a map of field values' }); continue; }
+        // A kept row starts in the entity's initial state, as a new record: no id or status of its own.
+        const { id: _id, status: _status, ...values } = raw as Record<string, unknown>;
+        const r = await createRecord({ entity: input.entity, values, reason: `kept from chat ${chatId}` }, actor);
+        if (!r.result.applied) {
+          rows.push({ error: r.result.message ?? r.result.status, ...(r.result.errors ? { errors: r.result.errors } : {}) });
+          continue;
+        }
+        const checked = quoted.filter((f) => f in r.quotes);
+        rows.push({ id: r.result.id!, ...(checked.length ? { quoteFound: checked.every((f) => r.quotes[f]) } : {}) });
+      }
+      return { entity: keyOf(def), rows };
     },
   };
   return service;

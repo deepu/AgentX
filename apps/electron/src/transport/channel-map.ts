@@ -458,6 +458,7 @@ export const CHANNEL_MAP = {
   memwiseListEntityTypes: invoke(RPC_CHANNELS.memwise.ENTITIES_TYPES),
   memwiseUploadFile: invoke(RPC_CHANNELS.memwise.FILES_UPLOAD),
   memwiseOpenChat: invoke(RPC_CHANNELS.memwise.CHAT_OPEN),
+  memwiseAsk: invoke(RPC_CHANNELS.memwise.ASK),
   // Phase 3: drafts, versions, building by chat (docs/memwise/20-phase-3-interfaces.md §6)
   memwiseListVersions: invoke(RPC_CHANNELS.memwise.PLAYBOOKS_VERSIONS),
   memwiseBuildPlaybook: invoke(RPC_CHANNELS.memwise.PLAYBOOKS_BUILD),
@@ -498,6 +499,7 @@ export const CHANNEL_MAP = {
   memwiseGetRecordPage: invoke(RPC_CHANNELS.memwise.RECORDS_PAGE),
   memwiseCreateRecord: invoke(RPC_CHANNELS.memwise.RECORDS_CREATE),
   memwiseUpdateRecord: invoke(RPC_CHANNELS.memwise.RECORDS_UPDATE),
+  memwiseKeepRecords: invoke(RPC_CHANNELS.memwise.RECORDS_KEEP),
   memwiseTransitionRecord: invoke(RPC_CHANNELS.memwise.RECORDS_TRANSITION),
   memwiseQueryRecords: invoke(RPC_CHANNELS.memwise.RECORDS_QUERY),
   memwiseRecordTree: invoke(RPC_CHANNELS.memwise.RECORDS_TREE),

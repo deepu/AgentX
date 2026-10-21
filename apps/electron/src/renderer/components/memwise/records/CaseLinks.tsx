@@ -38,6 +38,7 @@ export function CaseLinksPanel({ links, onOpenCase }: { links?: MwCaseLink[]; on
                     <span className="text-secondary">{t(`memwise.case.links.${l.kind}`)} </span>
                     <span className="font-medium">{l.title}</span>
                   </span>
+                  {l.caseTitle && <span className="mt-0.5 block truncate text-label-sm text-secondary" title={l.caseTitle} data-case-title>{l.caseTitle}</span>}
                   {l.status === 'active' && <span className="mt-0.5 block text-label-sm text-tertiary">{t('memwise.record.now', { step: l.state })}</span>}
                 </span>
                 <Info_Badge color={STATUS_COLOR[l.status]} dot>{caseStatusLabel(l.status, t)}</Info_Badge>

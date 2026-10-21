@@ -1,0 +1,19 @@
+case: literature_check
+fields:
+  topic:         { type: Ref<Topic>, required: true, description: The topic checked }
+  query:         { type: Text, description: The PubMed search used this time }
+  searched_from: { type: Text, description: "The entry date searched from (YYYY/MM/DD); empty the first time" }
+  found_count:   { type: Number, description: How many papers PubMed added since the last check }
+  new_articles:  { type: List<Ref<Article>>, description: "The papers found that this topic hasn't screened yet" }
+  screening:     { type: List<ScreeningRow>, description: "Include or exclude, for each new paper" }
+  to_read:       { type: List<Ref<Article>>, description: "The new papers the screener included, to read" }
+  answer:        { type: Text, description: "What the included papers say so far about the question" }
+types:
+  ScreeningRow:
+    article:    Ref<Article>
+    title:      Text
+    year:       Number
+    phase:      Enum[phase_1, phase_2, phase_3, phase_4, not_a_trial]
+    decision:   Enum[include, exclude]
+    reason:     Text
+    confidence: Number

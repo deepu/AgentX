@@ -76,7 +76,9 @@ function summary(r: any, values: Record<string, CaseValue>, workflow?: WorkflowD
   const shown: Record<string, unknown> = {};
   const fields = workflow?.caseType.fields ?? {};
   const texty = (k: string) => { const t = fields[k]?.type; return t?.kind === 'scalar' && (t.name === 'PersonName' || t.name === 'Text'); };
-  const keys = Object.keys(values).sort((a, b) => Number(texty(b)) - Number(texty(a)));
+  // Then references: the record a case is about names it when its texts don't (a paper's reading).
+  const rank = (k: string) => (texty(k) ? 2 : fields[k]?.type.kind === 'ref' ? 1 : 0);
+  const keys = Object.keys(values).sort((a, b) => rank(b) - rank(a));
   for (const k of keys) {
     if (Object.keys(shown).length >= 4) break;
     if (!actor || maySee(actor, fields[k], workflow ? domainOf(workflow) : DEFAULT_DOMAIN)) shown[k] = values[k]!.value;

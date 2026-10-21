@@ -1,21 +1,22 @@
 /**
  * A dashboard page (24 §6, "TMF health"): KPI tiles with their targets, tables and lists of
- * records, a 0–100 heatmap with its legend, text, and when it was computed. Every number is
+ * records, a 0–100 heatmap with its legend, charts (25 §5, the @memwise/ui kit), text, and when
+ * it was computed. Every number is
  * computed by the server on read; the container refetches on record changes. Presentational.
  */
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, RefreshCw, Target } from 'lucide-react'
+import { LayoutDashboard, RefreshCw } from 'lucide-react'
 import type { MwDashboard, MwDashboardBlock, MwRecordQueryResult } from '@memwise/shared/protocol'
-import { Markdown } from '@memwise/ui'
+import { KpiTiles, Markdown } from '@memwise/ui'
 import { Info_Page } from '@/components/info/Info_Page'
 import { Info_Section } from '@/components/info/Info_Section'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { absoluteTime, relativeTime } from '../format'
-import { HEAT_CLASS, formatPercent, formatTypedValue, heatBucket, kpiBelowTarget, kpiValue, type HeatBucket } from '../records/record-model'
-import { StatusPill } from '../records/RecordBlocks'
+import { HEAT_CLASS, formatPercent, formatTypedValue, heatBucket, type HeatBucket } from '../records/record-model'
+import { ChartSection, StatusPill } from '../records/RecordBlocks'
 
 export interface DashboardViewProps {
   dashboard: MwDashboard
@@ -45,44 +46,19 @@ export function DashboardView({ dashboard, onOpenRecord, onRefresh, refreshing, 
             <Button variant="ghost" size="sm" onClick={onRefresh} disabled={refreshing}><RefreshCw className={cn(refreshing && 'animate-spin')} />{t('memwise.dashboard.refresh')}</Button>
           ) : undefined}
         />
-        {kpis.length > 0 && (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3" data-kpis>
-            {kpis.map((k, i) => <KpiTile key={i} block={k} />)}
-          </div>
-        )}
+        <KpiTiles items={kpis.map(k => ({ label: k.label, value: k.value, format: k.format, target: k.target, detail: k.detail }))} />
         {rest.map((b, i) => {
           switch (b.kind) {
             case 'heatmap': return <Heatmap key={i} block={b} onOpenRecord={onOpenRecord} />
             case 'table':
             case 'list': return <ResultBlock key={i} title={b.title} result={b.result} list={b.kind === 'list'} onOpenRecord={onOpenRecord} />
             case 'text': return <div key={i} className="text-label text-secondary" data-text-block><Markdown mode="minimal">{b.markdown}</Markdown></div>
+            case 'chart': return <ChartSection key={i} title={b.chart.title ?? t('chart.defaultTitle')} chart={b.chart} />
             default: return null
           }
         })}
       </div>
     </Info_Page.Content>
-  )
-}
-
-function KpiTile({ block }: { block: Extract<MwDashboardBlock, { kind: 'kpi' }> }) {
-  const { t, i18n } = useTranslation()
-  const below = kpiBelowTarget(block)
-  return (
-    <div className="rounded-lg bg-raised p-3.5 shadow-elev-1" data-kpi={block.label}>
-      <div className={cn('text-title tabular-nums', below ? 'text-destructive' : 'text-foreground')}>{kpiValue(block, t, i18n.language)}</div>
-      <div className="mt-0.5 text-label font-medium text-foreground">{block.label}</div>
-      {(block.detail || block.target !== undefined) && (
-        <div className="mt-1 space-y-0.5 text-label-sm text-tertiary">
-          {block.detail && <div>{block.detail}</div>}
-          {block.target !== undefined && (
-            <div className={cn('flex items-center gap-1', below && 'text-destructive')} data-target>
-              <Target className="size-3" />
-              {t('memwise.dashboard.target', { value: block.format === 'percent' ? formatPercent(block.target, i18n.language) : String(block.target) })}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -143,7 +119,7 @@ function ResultBlock({ title, result, list, onOpenRecord }: { title?: string; re
               <button type="button" className="flex w-full flex-col items-start px-3.5 py-2.5 text-left hover:bg-fill-hover disabled:hover:bg-transparent" onClick={() => onOpenRecord?.(row.entity, row.id)} disabled={!onOpenRecord}>
                 <span className="font-medium text-label text-foreground">{row.title}</span>
                 <span className="text-label-sm text-secondary">
-                  {result.columns.map(c => (row.hidden.includes(c.name) ? null : `${c.label}: ${formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}`)).filter(Boolean).join(' · ')}
+                  {result.columns.map(c => (row.hidden.includes(c.name) ? null : `${c.label}: ${formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name], c.name)}`)).filter(Boolean).join(' · ')}
                 </span>
               </button>
             </li>
@@ -166,7 +142,7 @@ function ResultBlock({ title, result, list, onOpenRecord }: { title?: string; re
                     <td key={c.name} className="px-3.5 py-2 text-secondary">
                       {row.hidden.includes(c.name) ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span>
                         : c.name === 'status' ? <StatusPill status={String(row.values[c.name] ?? '')} />
-                        : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}
+                        : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name], c.name)}
                     </td>
                   ))}
                 </tr>

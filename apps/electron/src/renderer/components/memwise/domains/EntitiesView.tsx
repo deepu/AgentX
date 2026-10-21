@@ -9,7 +9,7 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, ArrowUpDown, Boxes, Columns3, Database, Filter, Kanban, Link2, Save, Table2 } from 'lucide-react'
+import { AlertTriangle, ArrowUpDown, Boxes, Columns3, Database, Filter, Kanban, Link2, Plus, Save, Table2 } from 'lucide-react'
 import type { MwDomain, MwEntityType, MwRecordQueryInput, MwRecordQueryResult, MwSaveViewInput, MwView } from '@memwise/shared/protocol'
 import { Info_Alert } from '@/components/info/Info_Alert'
 import { Info_Badge } from '@/components/info/Info_Badge'
@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils'
 import { humanize } from '../format'
 import { Pill } from '../playbook/Tags'
 import { FieldSourceBadge, StatusPill } from '../records/RecordBlocks'
-import { cardColumns, entityTitle, formatTypedValue, groupRows, statusLabel } from '../records/record-model'
+import { cardColumns, defaultColumns, entityTitle, filterExample, formatTypedValue, groupRows, recordColumns, statusLabel } from '../records/record-model'
 import { LifecycleDiagram } from './LifecycleDiagram'
 
 // ---------------------------------------------------------------- home
@@ -125,9 +125,11 @@ export interface EntityViewProps {
   onOpenRecord?: (entity: string, id: string) => void
   onOpenPlaybook?: (workflowId: string) => void
   onSaveView?: (view: MwSaveViewInput['view']) => Promise<MwView>
+  /** "New <entity>": a person creates a record (NewRecordDialog). */
+  onCreate?: () => void
 }
 
-export function EntityView({ domain, type, tab, onTab, ...rest }: EntityViewProps) {
+export function EntityView({ domain, type, tab, onTab, onCreate, ...rest }: EntityViewProps) {
   const { t } = useTranslation()
   const summary = domain.entities.find(e => e.key === type.key)
   return (
@@ -135,6 +137,9 @@ export function EntityView({ domain, type, tab, onTab, ...rest }: EntityViewProp
       <Info_Page.Hero
         avatar={<div className="grid size-full place-items-center bg-fill-hover text-secondary"><Database className="size-4" /></div>}
         title={summary?.title ?? humanize(type.name)}
+        actions={onCreate && (
+          <Button size="sm" variant="secondary" onClick={onCreate}><Plus />{t('memwise.entities.newRecord', { entity: summary?.title ?? humanize(type.name) })}</Button>
+        )}
         meta={
           <>
             <span>{domain.name}</span>
@@ -169,9 +174,14 @@ export function EntityRecordsTab({ domain, type, views, state, onState, result, 
   const [saveError, setSaveError] = React.useState<string | null>(null)
   React.useEffect(() => setFilter(state.filter), [state.filter])
   const mine = views.filter(v => v.entity === (type.key ?? type.name))
-  const allColumns = result?.columns ?? type.fields.map(f => ({ name: f.name, label: humanize(f.name), type: f.type }))
-  const shownColumns = state.columns ? allColumns.filter(c => state.columns!.includes(c.name)) : allColumns
+  // Every column the entity has, not only those the last query asked for (the Columns menu lists them all).
+  const allColumns = recordColumns(type, result?.columns)
+  // Nobody chose columns: the entity's `list:`, else its short fields (no abstracts), so every row stays one line high.
+  const chosen = state.columns ?? defaultColumns(allColumns, result?.rows ?? [], { list: type.definition?.list, title: type.definition?.title }).map(c => c.name)
+  const shownColumns = chosen.flatMap(n => allColumns.filter(c => c.name === n))
   const apply = () => onState({ ...state, filter, viewId: undefined })
+  // The filter box's hint names this entity's own fields (`status = 'draft'`), never another domain's.
+  const example = filterExample(type)
 
   const save = async () => {
     if (!onSaveView || !saving?.trim()) return
@@ -221,7 +231,7 @@ export function EntityRecordsTab({ domain, type, views, state, onState, result, 
       <div className="flex flex-wrap items-center gap-2" data-view-controls>
         <form className="flex min-w-[16rem] flex-1 items-center gap-2" onSubmit={e => { e.preventDefault(); apply() }}>
           <Filter className="size-4 shrink-0 text-tertiary" />
-          <Input className="h-8 flex-1 font-mono text-label-sm" value={filter} onChange={e => setFilter(e.target.value)} placeholder={t('memwise.entities.filterPlaceholder')} aria-label={t('memwise.entities.filter')} aria-invalid={!!error || undefined} data-filter />
+          <Input className="h-8 flex-1 font-mono text-label-sm" value={filter} onChange={e => setFilter(e.target.value)} placeholder={example ? t('memwise.entities.filterPlaceholderFor', { example }) : t('memwise.entities.filterPlaceholder')} aria-label={t('memwise.entities.filter')} aria-invalid={!!error || undefined} data-filter />
           {filter !== state.filter && <Button size="sm" type="submit" variant="secondary">{t('memwise.entities.applyFilter')}</Button>}
         </form>
         <Select value={state.sort?.field ?? NONE} onValueChange={v => onState({ ...state, viewId: undefined, sort: v === NONE ? undefined : { field: v, desc: state.sort?.desc } })}>
@@ -254,14 +264,14 @@ export function EntityRecordsTab({ domain, type, views, state, onState, result, 
       {choosingColumns && (
         <div className="flex flex-wrap gap-x-4 gap-y-1.5 rounded-md bg-fill-hover/50 px-3 py-2" data-column-chooser>
           {allColumns.map(c => {
-            const on = !state.columns || state.columns.includes(c.name)
+            const on = chosen.includes(c.name)
             return (
               <label key={c.name} className="flex items-center gap-1.5 text-label-sm text-foreground">
                 <input
                   type="checkbox"
                   checked={on}
                   onChange={() => {
-                    const current = state.columns ?? allColumns.map(x => x.name)
+                    const current = chosen
                     const next = on ? current.filter(n => n !== c.name) : [...current, c.name]
                     onState({ ...state, viewId: undefined, columns: next })
                   }}
@@ -289,9 +299,9 @@ export function EntityRecordsTab({ domain, type, views, state, onState, result, 
           <table className="w-full text-label" data-records-table={type.key}>
             <thead>
               <tr className="border-b border-separator text-left text-label-sm text-tertiary">
-                <th className="px-4 py-2 font-medium">{humanize(type.name)}</th>
+                <th className="min-w-[14rem] whitespace-nowrap px-4 py-2 font-medium">{humanize(type.name)}</th>
                 {shownColumns.map(c => (
-                  <th key={c.name} className="px-4 py-2 font-medium">
+                  <th key={c.name} className="whitespace-nowrap px-4 py-2 font-medium">
                     {c.label}
                     {'calculated' in c && c.calculated ? <span className="ml-1 font-normal">· {t('memwise.record.source.calculated').toLowerCase()}</span> : null}
                   </th>
@@ -310,15 +320,25 @@ export function EntityRecordsTab({ domain, type, views, state, onState, result, 
                     </tr>
                   )}
                   {g.rows.map(row => (
-                    <tr key={row.id} className={cn('border-b border-separator last:border-0', onOpenRecord && 'cursor-pointer hover:bg-fill-hover')} onClick={() => onOpenRecord?.(row.entity, row.id)} data-row={row.id}>
-                      <td className="px-4 py-2 font-medium text-foreground">{row.title}</td>
-                      {shownColumns.map(c => (
-                        <td key={c.name} className="px-4 py-2 text-secondary">
-                          {row.hidden.includes(c.name) ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span>
-                            : c.type === 'Lifecycle' || c.name === 'status' ? <StatusPill status={(row.values[c.name] ?? (c.name === 'status' ? row.status : undefined)) as string | undefined} />
-                            : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}
-                        </td>
-                      ))}
+                    // One line per row: every cell is cut with an ellipsis, its whole value in the tooltip.
+                    <tr key={row.id} className={cn('border-b border-separator align-middle last:border-0', onOpenRecord && 'cursor-pointer hover:bg-fill-hover')} onClick={() => onOpenRecord?.(row.entity, row.id)} data-row={row.id}>
+                      <td className="min-w-[14rem] px-4 py-2 font-medium text-foreground">
+                        <div className="max-w-[28rem] truncate" title={row.title}>{row.title}</div>
+                      </td>
+                      {shownColumns.map(c => {
+                        if (row.hidden.includes(c.name)) {
+                          return <td key={c.name} className="whitespace-nowrap px-4 py-2 text-tertiary">{t('memwise.case.restrictedValue')}</td>
+                        }
+                        if (c.type === 'Lifecycle' || c.name === 'status') {
+                          return <td key={c.name} className="whitespace-nowrap px-4 py-2"><StatusPill status={(row.values[c.name] ?? (c.name === 'status' ? row.status : undefined)) as string | undefined} /></td>
+                        }
+                        const text = formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name], c.name)
+                        return (
+                          <td key={c.name} className="px-4 py-2 text-secondary" data-cell={c.name}>
+                            <div className="max-w-[16rem] truncate" title={text}>{text}</div>
+                          </td>
+                        )
+                      })}
                     </tr>
                   ))}
                 </React.Fragment>
@@ -348,9 +368,10 @@ function Board({ result, group, columns, onOpenRecord }: { result: MwRecordQuery
             {rows.map(row => (
               <button key={row.id} type="button" className="block w-full rounded-md bg-raised p-2.5 text-left shadow-elev-1 hover:bg-fill-hover" onClick={() => onOpenRecord?.(row.entity, row.id)}>
                 <span className="block text-label font-medium text-foreground">{row.title}</span>
-                {extra.map(c => (
-                  <span key={c.name} className="block text-label-sm text-secondary">{row.hidden.includes(c.name) ? t('memwise.case.restrictedValue') : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}</span>
-                ))}
+                {extra.map(c => {
+                  const text = row.hidden.includes(c.name) ? t('memwise.case.restrictedValue') : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name], c.name)
+                  return <span key={c.name} className="block truncate text-label-sm text-secondary" title={text}>{text}</span>
+                })}
               </button>
             ))}
           </div>

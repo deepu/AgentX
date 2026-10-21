@@ -1,7 +1,8 @@
 /**
  * The blocks a record page is made of (24 §6): fields and details with a source badge each
- * and in-place editing, related tables, cases, the lifecycle, a chart, checks, notes, mentions,
- * "start a playbook here" and the history with its signatures. Presentational.
+ * and in-place editing, related tables, cases, the lifecycle, charts and KPI tiles (drawn with
+ * the @memwise/ui chart kit, 25 §5), "ask about this record", checks, notes, mentions, "start a
+ * playbook here" and the history with its signatures. Presentational.
  */
 
 import * as React from 'react'
@@ -20,15 +21,17 @@ import {
   ExternalLink,
   Link2,
   Lock,
+  MessageSquare,
   Pencil,
   Play,
   Plug,
   ShieldAlert,
+  TextQuote,
   User,
   X,
 } from 'lucide-react'
 import type { MwPageBlock, MwRecordField, MwRecordFieldSource, MwRecordPage, MwRecordWriteResult, MwTransitionOption } from '@memwise/shared/protocol'
-import { Markdown } from '@memwise/ui'
+import { Chart, KpiTiles, Markdown } from '@memwise/ui'
 import { Info_Alert } from '@/components/info/Info_Alert'
 import { Info_Badge } from '@/components/info/Info_Badge'
 import { Info_Section } from '@/components/info/Info_Section'
@@ -42,19 +45,23 @@ import {
   SOURCE_TONE_CLASS,
   TONE_PILL,
   baseType,
-  chartData,
+  chartRows,
+  fallbackChart,
   fieldSourceLabel,
   fieldSourceTone,
   formatFieldValue,
   formatTypedValue,
   isPercentType,
   isStructuralCheck,
+  kpiTiles,
   lifecycleSteps,
   relatedColumns,
   statusLabel,
   statusTone,
   transitionBlockedReason,
   transitionLabel,
+  type ChartView,
+  type KpiView,
 } from './record-model'
 
 // ---------------------------------------------------------------- actions
@@ -95,9 +102,10 @@ const SOURCE_ICON: Record<MwRecordFieldSource['kind'], React.ReactNode> = {
 export function FieldSourceBadge({ source }: { source: MwRecordFieldSource }) {
   const { t } = useTranslation()
   return (
-    <Pill className={SOURCE_TONE_CLASS[fieldSourceTone(source)]} title={t('memwise.record.source.title')}>
+    // In a narrow column the label is cut with an ellipsis rather than running past the card.
+    <Pill className={cn(SOURCE_TONE_CLASS[fieldSourceTone(source)], 'max-w-full min-w-0 shrink')} title={`${fieldSourceLabel(source, t)} · ${t('memwise.record.source.title')}`}>
       {SOURCE_ICON[source.kind]}
-      <span data-source={source.kind}>{fieldSourceLabel(source, t)}</span>
+      <span className="truncate" data-source={source.kind}>{fieldSourceLabel(source, t)}</span>
     </Pill>
   )
 }
@@ -220,11 +228,14 @@ function FieldEditor({ field, onSave, onCancel, busy }: { field: MwRecordField; 
   )
 }
 
-export function FieldRows({ fields, regulated, actions, emptyText }: {
+export function FieldRows({ fields, regulated, actions, emptyText, quotedFields, onShowQuote }: {
   fields: MwRecordField[]
   regulated: boolean
   actions?: RecordPageActions
   emptyText?: string
+  /** Values read from a quote in one of the page's Text viewers (25 §4): each can scroll to it. */
+  quotedFields?: Set<string>
+  onShowQuote?: (field: string) => void
 }) {
   const { t } = useTranslation()
   const [editing, setEditing] = React.useState<string | null>(null)
@@ -257,6 +268,11 @@ export function FieldRows({ fields, regulated, actions, emptyText }: {
                 ) : (
                   <>
                     <FieldValue field={f} onOpenRecord={actions?.openRecord} />
+                    {onShowQuote && quotedFields?.has(f.name) && (
+                      <button type="button" className="mt-0.5 shrink-0 text-tertiary hover:text-foreground" onClick={() => onShowQuote(f.name)} aria-label={t('memwise.record.showQuote', { field: f.label })} title={t('memwise.record.showQuote', { field: f.label })} data-action="show-quote">
+                        <TextQuote className="size-3.5" />
+                      </button>
+                    )}
                     {canEdit && (
                       <button type="button" className="mt-0.5 shrink-0 text-tertiary hover:text-foreground" onClick={() => { setEditing(f.name); w.clear() }} aria-label={t('memwise.record.editField', { field: f.label })} data-action="edit-field">
                         <Pencil className="size-3.5" />
@@ -265,7 +281,7 @@ export function FieldRows({ fields, regulated, actions, emptyText }: {
                   </>
                 )}
               </dd>
-              <div className="col-start-2 flex flex-wrap gap-1 justify-self-start @2xl/fields:col-start-3">
+              <div className="col-start-2 flex min-w-0 max-w-full flex-wrap gap-1 justify-self-start @2xl/fields:col-start-3">
                 {/* Nothing there: no "where it came from" badge (a calculated field still says so). */}
                 {(f.hidden || f.calculated || !(f.value === null || f.value === undefined || f.value === '')) && <FieldSourceBadge source={f.source} />}
                 {f.followed && <Pill className="bg-fill-hover text-secondary" title={t('memwise.record.followedHint')}>{t('memwise.record.followed')}</Pill>}
@@ -288,7 +304,8 @@ export function RelatedBlock({ page, names, actions }: { page: MwRecordPage; nam
     <>
       {names.map(name => {
         const rel = page.related[name]
-        if (!rel) return null
+        // Nothing linked: no empty section (a page shows only what it has).
+        if (!rel || rel.total === 0) return null
         const columns = relatedColumns(rel.rows)
         return (
           <Info_Section
@@ -316,7 +333,7 @@ export function RelatedBlock({ page, names, actions }: { page: MwRecordPage; nam
                       >
                         <td className="px-3.5 py-2 font-medium text-foreground">{row.title}</td>
                         {columns.map(c => (
-                          <td key={c} className="px-3.5 py-2 text-secondary">{formatTypedValue(rel.types?.[c] ?? '', row.values[c], t, i18n.language)}</td>
+                          <td key={c} className="px-3.5 py-2 text-secondary">{formatTypedValue(rel.types?.[c] ?? '', row.values[c], t, i18n.language, undefined, c)}</td>
                         ))}
                         <td className="px-3.5 py-2 text-right"><StatusPill status={row.status} /></td>
                       </tr>
@@ -339,12 +356,11 @@ export function RelatedBlock({ page, names, actions }: { page: MwRecordPage; nam
 
 export function CasesBlock({ page, actions, now }: { page: MwRecordPage; actions?: RecordPageActions; now?: number }) {
   const { t, i18n } = useTranslation()
+  // No cases yet: no empty section (a page shows only what it has).
+  if (page.cases.length === 0) return null
   return (
     <Info_Section title={t('memwise.record.cases')} count={page.cases.length}>
-      {page.cases.length === 0 ? (
-        <p className="px-3.5 py-3 text-label text-tertiary">{t('memwise.record.noCases')}</p>
-      ) : (
-        <ul className="divide-y divide-separator" data-record-cases>
+      <ul className="divide-y divide-separator" data-record-cases>
           {page.cases.map(c => (
             <li key={c.caseId}>
               <button
@@ -367,7 +383,6 @@ export function CasesBlock({ page, actions, now }: { page: MwRecordPage; actions
             </li>
           ))}
         </ul>
-      )}
     </Info_Section>
   )
 }
@@ -382,15 +397,20 @@ export function TransitionButtons({ transitions, onTransition, busy, size = 'sm'
 }) {
   const { t } = useTranslation()
   if (transitions.length === 0) return null
+  // A move only a playbook step (or a connector) makes is no button of a person's: it is said in words.
+  // The page's main button (`primary`), when it has one, is the only one: one clear thing to do.
+  const manual = transitions.filter(tr => !tr.automatic)
+  const buttons = manual.some(tr => tr.primary && tr.allowed) ? manual.filter(tr => tr.primary) : manual
+  const automatic = transitions.filter(tr => tr.automatic)
   return (
     <div className="flex flex-wrap items-start gap-2" data-transitions>
-      {transitions.map(tr => {
+      {buttons.map(tr => {
         const why = transitionBlockedReason(tr, t)
         return (
           <span key={tr.name} className="inline-flex flex-col items-start gap-0.5">
             <Button
               size={size}
-              variant={tr.allowed ? 'secondary' : 'ghost'}
+              variant={tr.allowed ? (tr.primary ? 'default' : 'secondary') : 'ghost'}
               disabled={!tr.allowed || !onTransition || busy}
               title={why}
               onClick={() => onTransition?.(tr)}
@@ -403,6 +423,11 @@ export function TransitionButtons({ transitions, onTransition, busy, size = 'sm'
           </span>
         )
       })}
+      {automatic.map(tr => (
+        <span key={tr.name} className="max-w-[20rem] text-label-sm text-tertiary" data-automatic={tr.name}>
+          {transitionBlockedReason({ ...tr, allowed: false }, t)}
+        </span>
+      ))}
     </div>
   )
 }
@@ -411,7 +436,7 @@ export function LifecycleBlock({ page, onTransition, busy }: { page: MwRecordPag
   const { t } = useTranslation()
   const lc = page.lifecycle
   if (!lc) return null
-  const steps = lifecycleSteps(lc.states, lc.current ?? page.status)
+  const steps = lifecycleSteps(lc.states, lc.current ?? page.status, lc.passed)
   const guards = lc.transitions.filter(tr => tr.guard)
   return (
     <Info_Section title={t('memwise.record.lifecycle')}>
@@ -453,78 +478,53 @@ export function LifecycleBlock({ page, onTransition, busy }: { page: MwRecordPag
   )
 }
 
-// ---------------------------------------------------------------- chart
+// ---------------------------------------------------------------- chart, kpis, chat (25 §5)
 
-const CHART_COLORS = ['var(--accent)', 'var(--info)', 'var(--success)', 'var(--destructive)', 'var(--secondary)']
-
-export function ChartBlock({ page, block }: { page: MwRecordPage; block: Extract<MwPageBlock, { kind: 'chart' }> }) {
+/**
+ * A chart in a section, drawn with the kit (@memwise/ui charts): the rows the server computed
+ * for it, or nothing-to-chart. Record pages and dashboards both use it.
+ */
+export function ChartSection({ title, chart }: { title: string; chart: ChartView | null }) {
   const { t } = useTranslation()
-  const data = chartData(page, block)
-  const title = page.related[block.of]?.label ?? humanize(block.of)
-  const by = block.by ?? 'status'
-  const total = data.reduce((s, d) => s + d.value, 0)
-  const max = Math.max(1, ...data.map(d => d.value))
+  const data = chart ? chartRows(chart) : []
   return (
-    <Info_Section title={t('memwise.record.chartTitle', { of: title, by: humanize(by).toLowerCase() })}>
-      <div className="p-3.5" data-chart={block.chart}>
-        {data.length === 0 ? (
+    <Info_Section title={title} count={chart && chart.kind !== 'interval' && chart.total > 0 ? chart.total : undefined}>
+      <div className="p-3.5" data-chart={chart?.kind ?? ''}>
+        {!chart || data.length === 0 ? (
           <p className="text-label text-tertiary">{t('memwise.record.noChartData')}</p>
-        ) : block.chart === 'donut' ? (
-          <div className="flex items-center gap-4">
-            <Donut data={data} />
-            <Legend data={data} total={total} />
-          </div>
-        ) : block.chart === 'line' ? (
-          <svg viewBox={`0 0 ${Math.max(1, data.length - 1) * 40} 60`} className="h-24 w-full" preserveAspectRatio="none" role="img" aria-label={title}>
-            <polyline fill="none" stroke="var(--accent)" strokeWidth="2" points={data.map((d, i) => `${i * 40},${60 - (d.value / max) * 56}`).join(' ')} />
-          </svg>
         ) : (
-          <ul className="space-y-1.5">
-            {data.map((d, i) => (
-              <li key={d.label} className="grid grid-cols-[minmax(0,8rem)_1fr_auto] items-center gap-2 text-label-sm">
-                <span className="truncate text-secondary">{d.label}</span>
-                <span className="h-2 rounded-full bg-fill-hover">
-                  <span className="block h-2 rounded-full" style={{ width: `${(d.value / max) * 100}%`, background: CHART_COLORS[i % CHART_COLORS.length] }} />
-                </span>
-                <span className="tabular-nums text-foreground">{d.value}</span>
-              </li>
-            ))}
-          </ul>
+          <Chart kind={chart.kind} data={data} title={title} unit={chart.unit} />
         )}
+        {!!chart?.skipped && <p className="mt-2 text-label-sm text-tertiary" data-chart-skipped={chart.skipped}>{t('memwise.record.chartSkipped', { count: chart.skipped })}</p>}
       </div>
     </Info_Section>
   )
 }
 
-function Donut({ data }: { data: { label: string; value: number }[] }) {
-  const total = data.reduce((s, d) => s + d.value, 0) || 1
-  const r = 15.9155
-  let offset = 25
-  return (
-    <svg viewBox="0 0 42 42" className="size-20 shrink-0" role="img" aria-hidden>
-      <circle cx="21" cy="21" r={r} fill="none" stroke="var(--fill-hover, #eee)" strokeWidth="6" />
-      {data.map((d, i) => {
-        const pct = (d.value / total) * 100
-        const el = <circle key={d.label} cx="21" cy="21" r={r} fill="none" stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth="6" strokeDasharray={`${pct} ${100 - pct}`} strokeDashoffset={offset} />
-        offset -= pct
-        return el
-      })}
-    </svg>
-  )
+/** A `chart` block: the rows the kernel computed for it, else its related rows counted here. */
+export function ChartBlock({ page, block, chart }: { page: MwRecordPage; block: Extract<MwPageBlock, { kind: 'chart' }>; chart?: ChartView | null }) {
+  const { t } = useTranslation()
+  const view = chart ?? fallbackChart(page, block)
+  const of = page.related[block.of]?.label ?? humanize(block.of)
+  const title = view?.title ?? block.title ?? t('memwise.record.chartTitle', { of, by: humanize(block.by ?? 'status').toLowerCase() })
+  return <ChartSection title={title} chart={view} />
 }
 
-function Legend({ data, total }: { data: { label: string; value: number }[]; total: number }) {
+/** A `kpis` block: one tile per field, with the field's label. */
+export function KpisBlock({ page, fields, kpis }: { page: MwRecordPage; fields: string[]; kpis?: Record<string, KpiView> }) {
+  const { t, i18n } = useTranslation()
+  return <KpiTiles items={kpiTiles(page, fields, kpis, t, i18n.language)} />
+}
+
+/** A `chat` block: "Ask about this topic", opening a chat anchored to the record beside the page. */
+export function ChatBlock({ page, onOpenChat }: { page: MwRecordPage; onOpenChat?: () => void }) {
+  const { t } = useTranslation()
+  if (!onOpenChat) return null
   return (
-    <ul className="space-y-1 text-label-sm">
-      {data.map((d, i) => (
-        <li key={d.label} className="flex items-center gap-2">
-          <span className="size-2.5 rounded-full" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
-          <span className="text-secondary">{d.label}</span>
-          <span className="tabular-nums text-foreground">{d.value}</span>
-          <span className="text-tertiary tabular-nums">{Math.round((d.value / (total || 1)) * 100)}%</span>
-        </li>
-      ))}
-    </ul>
+    <Button variant="secondary" className="w-full justify-start" onClick={onOpenChat} data-action="ask-about-record">
+      <MessageSquare />
+      {t('memwise.record.askAbout', { entity: page.entityName.toLowerCase() })}
+    </Button>
   )
 }
 
