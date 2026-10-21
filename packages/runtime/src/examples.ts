@@ -13,6 +13,7 @@ import { boundPlugins, pluginTool, toolClass } from './plugins/tools.ts';
 import { createKernel } from './kernel.ts';
 import { entityByName } from './records/context.ts';
 import { sampleTools } from './sample-tools.ts';
+import { projectTools } from './projects/tools.ts';
 import type { Actor, Kernel, RunRecord } from './types.ts';
 
 export type ExampleResult =
@@ -43,7 +44,7 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
     // The playbooks.* and plugins.* definitions too, so meta-playbook examples can stub them.
     const tools = new Map<string, ToolDefinition>();
     const base = (opts.tools ?? ((url) => sampleTools({ databaseUrl: url })))(db.url);
-    for (const t of [...base, ...authoringToolDefinitions(), ...bindingToolDefinitions()]) {
+    for (const t of [...base, ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...projectTools()]) {
       if (!tools.has(t.name)) tools.set(t.name, t);
     }
     // `external.invite` is the kernel's own, sending through the (sample or stubbed) channel

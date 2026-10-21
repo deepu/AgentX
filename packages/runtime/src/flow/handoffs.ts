@@ -64,13 +64,13 @@ const queue = (db: Queryable, runId: string, kind: string, payload: Record<strin
   db.query(`insert into mw.run_outbox (run_id, kind, payload) values ($1, $2, $3)`, [runId, kind, JSON.stringify(payload)]);
 
 interface OutboxRow { id: string; run_id: string; kind: string; payload: any; status: string; attempts: number }
-interface RunNow { id: string; case_id: string; workflow_id: string; workflow_hash: string; state: string; status: RunStatus; entered_seq: number }
+interface RunNow { id: string; case_id: string; workflow_id: string; workflow_hash: string; state: string; status: RunStatus; entered_seq: number; project?: string }
 
 export function createHandoffs(deps: FlowDeps) {
   const { pool, client } = deps;
 
   const runNow = async (db: Queryable, runId: string, lock = false): Promise<RunNow | undefined> =>
-    (await db.query(`select id, case_id, workflow_id, workflow_hash, state, status, entered_seq from mw.runs where id = $1${lock ? ' for update' : ''}`, [runId])).rows[0];
+    (await db.query(`select id, case_id, workflow_id, workflow_hash, state, status, entered_seq, project from mw.runs where id = $1${lock ? ' for update' : ''}`, [runId])).rows[0];
   /** The run is still in the entry the row was queued for. */
   const stillIn = (run: RunNow | undefined, state: string, enteredSeq: number): run is RunNow =>
     !!run && run.status === 'active' && run.state === state && run.entered_seq === enteredSeq;
@@ -126,6 +126,8 @@ export function createHandoffs(deps: FlowDeps) {
       try {
         const { caseId } = await deps.start({
           workflowId: target.id, workflowHash: target.hash, case: handoffValues(block.with, values, items[i]), runId: childRunId, by: `case:${run.case_id}`,
+          // Stage 3: work handed on inside the app stays in the parent's project.
+          ...(from === to && run.project ? { project: run.project } : {}),
         });
         await pool.query(`update mw.case_links set child_case_id = $2 where child_run_id = $1`, [childRunId, caseId]);
       } catch (e) {

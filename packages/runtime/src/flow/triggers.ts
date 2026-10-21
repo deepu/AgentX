@@ -9,6 +9,7 @@ import { derivedRunId, type FlowDeps } from './context.ts';
 import { describeTrigger } from './describe.ts';
 import type { EventConsumer } from './dispatcher.ts';
 import { storeMessage } from './messages.ts';
+import { projectScoped } from '@memwise/db';
 import { columnOf, q, recordRef, tableOf } from './records.ts';
 import { dueSlot, firstSlot } from './schedule.ts';
 import { entityKeyFor, triggerValues, type TriggerSource } from './values.ts';
@@ -60,7 +61,10 @@ export function createTriggers(deps: FlowDeps, more: { settle: TriggersService['
   async function startFiring(row: any): Promise<TriggerFiring> {
     try {
       const { caseId } = await deps.start(
-        { workflowId: row.workflow_id, case: row.values ?? {}, runId: row.run_id, by: `trigger:${row.trigger_id}`, ...(row.workflow_hash ? { workflowHash: row.workflow_hash } : {}) },
+        {
+          workflowId: row.workflow_id, case: row.values ?? {}, runId: row.run_id, by: `trigger:${row.trigger_id}`,
+          ...(row.workflow_hash ? { workflowHash: row.workflow_hash } : {}), ...(row.project ? { project: row.project } : {}),
+        },
         row.acts_for ? { actsFor: row.acts_for } : {});
       const { rows } = await pool.query(`update mw.trigger_firings set case_id = $2 where key = $1 returning *`, [row.key, caseId]);
       return firingOf(rows[0]);
@@ -75,7 +79,7 @@ export function createTriggers(deps: FlowDeps, more: { settle: TriggersService['
    * One firing, once per key. Above the storm limit within a minute it is held instead, for the
    * owner to start or discard.
    */
-  async function fire(t: LiveTrigger, key: string, source: TriggerSource & { record?: { entity: string; id: string } }, record?: string): Promise<TriggerFiring> {
+  async function fire(t: LiveTrigger, key: string, source: TriggerSource & { record?: { entity: string; id: string }; project?: string }, record?: string): Promise<TriggerFiring> {
     const existing = (await pool.query(`select * from mw.trigger_firings where key = $1`, [key])).rows[0];
     if (existing) {
       if (existing.status === 'started' && !existing.case_id) return startFiring({ ...existing, workflow_hash: t.workflow.hash });
@@ -95,10 +99,10 @@ export function createTriggers(deps: FlowDeps, more: { settle: TriggersService['
           where trigger_id = $1 and status in ('started', 'held') and at > now() - interval '1 minute'`, [t.id]);
       const held = recent.rows[0].n >= limit;
       const ins = await client.query(
-        `insert into mw.trigger_firings (key, trigger_id, workflow_id, trigger_index, kind, record, run_id, status, "values", acts_for)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (key) do nothing returning *`,
+        `insert into mw.trigger_firings (key, trigger_id, workflow_id, trigger_index, kind, record, run_id, status, "values", acts_for, project)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (key) do nothing returning *`,
         [key, t.id, t.workflow.id, t.index, t.def.kind, record ?? source.record?.id ?? null,
-          held ? null : derivedRunId(key), held ? 'held' : 'started', JSON.stringify(values), role ?? null]);
+          held ? null : derivedRunId(key), held ? 'held' : 'started', JSON.stringify(values), role ?? null, source.project ?? null]);
       row = ins.rows[0] ?? (await client.query(`select * from mw.trigger_firings where key = $1`, [key])).rows[0];
       await client.query('commit');
     } catch (e) {
@@ -127,7 +131,9 @@ export function createTriggers(deps: FlowDeps, more: { settle: TriggersService['
     async handle(event) {
       for (const t of await live()) {
         if (!entityMatch(t, event)) continue;
-        await fire(t, `${t.def.kind}:${t.id}:${event.id}`, { record: { entity: event.entity, id: event.recordId } });
+        // Stage 3: a record's change starts the case in the record's project, if that project runs the playbook.
+        if (event.project && deps.projectRuns && !(await deps.projectRuns(event.project, t.workflow.id))) continue;
+        await fire(t, `${t.def.kind}:${t.id}:${event.id}`, { record: { entity: event.entity, id: event.recordId }, ...(event.project ? { project: event.project } : {}) });
       }
     },
   };
@@ -152,15 +158,19 @@ export function createTriggers(deps: FlowDeps, more: { settle: TriggersService['
     const target = dateTarget(t);
     if (!target) return [];
     const prefix = `date:${t.id}:`;
+    const project = projectScoped(target.def) ? 'r.project' : 'null::text';
     const { rows } = await pool.query(
-      `select r.id, (${target.column})::date::text as d from ${tableOf(target.def)} r
+      `select r.id, (${target.column})::date::text as d, ${project} as project from ${tableOf(target.def)} r
         where ${target.column} is not null and ${dueExpr(target.column, t.def)} <= ($1::timestamptz)::date
           and not exists (select 1 from mw.trigger_firings f
                            where f.key = $3 || r.id || ':' || (${target.column})::date::text
                              and (f.case_id is not null or f.status <> 'started'))
         order by ${target.column}, r.id limit 1000`, [now.toISOString(), t.def.offsetMs, prefix]);
     const out: TriggerFiring[] = [];
-    for (const r of rows) out.push(await fire(t, `${prefix}${r.id}:${r.d}`, { record: { entity: target.key, id: r.id } }));
+    for (const r of rows) {
+      if (r.project && deps.projectRuns && !(await deps.projectRuns(r.project, t.workflow.id))) continue;
+      out.push(await fire(t, `${prefix}${r.id}:${r.d}`, { record: { entity: target.key, id: r.id }, ...(r.project ? { project: r.project } : {}) }));
+    }
     return out;
   }
 

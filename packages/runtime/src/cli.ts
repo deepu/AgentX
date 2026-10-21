@@ -28,6 +28,7 @@ import { runExample, type ExampleResult } from './examples.ts';
 import { DEFAULT_ENGINE_VERSION } from './kernel.ts';
 import { renderValidationReport } from './regulated/validation-report.ts';
 import { sampleTools } from './sample-tools.ts';
+import { projectTools } from './projects/tools.ts';
 import { policySourcesOf, projectPolicyLayers } from './runs.ts';
 
 const USAGE = `usage:
@@ -52,7 +53,7 @@ const USAGE = `usage:
  */
 function boundTools(project?: ProjectDefs): Record<string, { effect?: import('@memwise/defs').EffectClass; inputSchema?: Record<string, unknown> }> {
   const noReader = {} as StepRecordReader; // only names, classes and schemas are read, never executed
-  const defs: ToolDefinition[] = [...sampleTools(), ...recallTools(noReader), ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...externalToolDefinitions(), ...domainTools(project?.entities ?? {})];
+  const defs: ToolDefinition[] = [...sampleTools(), ...recallTools(noReader), ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...externalToolDefinitions(), ...projectTools(), ...domainTools(project?.entities ?? {})];
   const out: ReturnType<typeof boundTools> = Object.fromEntries(defs.map((t) => [t.name, { effect: typeof t.effect === 'string' ? t.effect : undefined, inputSchema: t.inputSchema }]));
   if (project) for (const [name, t] of Object.entries(pluginToolEnvironment(boundPlugins(project)))) out[name] ??= t;
   return out;
