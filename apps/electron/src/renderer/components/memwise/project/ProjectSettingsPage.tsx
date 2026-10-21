@@ -13,6 +13,7 @@ import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { getSessionTitle } from '@/utils/session'
 import { Info_Page } from '@/components/info/Info_Page'
 import { DomainView } from '../domains/DomainView'
+import { InspectorSetup, RegulatedDomainLinks } from '../regulated'
 import { AutomationsPage } from '../domains/DomainsPages'
 import { relativeTime } from '../format'
 import { useNow } from '../use-now'
@@ -20,18 +21,23 @@ import type { ShellProject } from './project-model'
 import { saveShellLayout, shellLayoutAtom } from './useProjectShell'
 import { setShellRouteRewriter } from './shell-routes'
 
-const TABS = ['project', 'automations', 'advanced'] as const
+const TABS = ['project', 'automations', 'inspectors', 'audit', 'advanced'] as const
 type Tab = typeof TABS[number]
+/** Tabs only a regulated project has (Stage 5): inspector access, and the audit trail (its own page). */
+const REGULATED_TABS: readonly Tab[] = ['inspectors', 'audit']
 const CHATS_SHOWN = 60
 
 export function ProjectSettingsPage({ project, tab }: { project: ShellProject; tab?: string }) {
   const { t } = useTranslation()
-  const current: Tab = (TABS as readonly string[]).includes(tab ?? '') ? tab as Tab : tab === 'rules' ? 'project' : 'project'
-  const go = (next: Tab) => navigate(routes.view.project(project.id, { type: 'settings', ...(next === 'project' ? {} : { tab: next }) }))
+  const tabs = TABS.filter(k => project.regulated || !REGULATED_TABS.includes(k))
+  const current: Tab = (tabs as readonly string[]).includes(tab ?? '') ? tab as Tab : 'project'
+  const go = (next: Tab) => navigate(next === 'audit'
+    ? routes.view.project(project.id, { type: 'audit' })
+    : routes.view.project(project.id, { type: 'settings', ...(next === 'project' ? {} : { tab: next }) }))
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="project-settings">
       <div className="flex shrink-0 gap-1 border-b border-foreground/6 px-6 pt-3">
-        {TABS.map(k => (
+        {tabs.map(k => (
           <button
             key={k}
             type="button"
@@ -45,6 +51,7 @@ export function ProjectSettingsPage({ project, tab }: { project: ShellProject; t
       <div className="min-h-0 flex-1">
         {current === 'project' && <ProjectTab project={project} rules={tab === 'rules'} />}
         {current === 'automations' && <AutomationsPage domainId={project.id} />}
+        {current === 'inspectors' && <InspectorSetup projectId={project.id} />}
         {current === 'advanced' && <AdvancedTab />}
       </div>
     </div>
@@ -65,6 +72,7 @@ function ProjectTab({ project, rules }: { project: ShellProject; rules: boolean 
           onOpenEntities={entity => entity && navigate(routes.view.project(project.id, { type: 'records', entity }))}
           onOpenPlaybook={workflowId => navigate(routes.view.project(project.id, { type: 'playbook', workflowId }))}
           onOpenPage={pageId => navigate(routes.view.project(project.id, { type: 'dashboard', domain: domain.id, pageId }))}
+          regulated={<RegulatedDomainLinks domain={domain} />}
         />
       )}
     </Info_Page>

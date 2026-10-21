@@ -195,6 +195,21 @@ export function defaultInspectorEnd(now: number = Date.now()): string {
 
 // ---------------------------------------------------------------- the TMF index
 
+/** The TMF Reference Model's eleven zones, by number (their names are translated by id). */
+export const TMF_ZONES: readonly { number: string; id: string; name: string }[] = [
+  { number: '01', id: 'trial-management', name: 'Trial Management' },
+  { number: '02', id: 'central-trial-documents', name: 'Central Trial Documents' },
+  { number: '03', id: 'regulatory', name: 'Regulatory' },
+  { number: '04', id: 'irb-iec-approvals', name: 'IRB or IEC and other Approvals' },
+  { number: '05', id: 'site-management', name: 'Site Management' },
+  { number: '06', id: 'ip-trial-supplies', name: 'IP and Trial Supplies' },
+  { number: '07', id: 'safety-reporting', name: 'Safety Reporting' },
+  { number: '08', id: 'central-local-testing', name: 'Central and Local Testing' },
+  { number: '09', id: 'third-parties', name: 'Third Parties' },
+  { number: '10', id: 'data-management', name: 'Data Management' },
+  { number: '11', id: 'statistics', name: 'Statistics' },
+]
+
 /** A zone's name in the reader's language (the Reference Model's English name otherwise). */
 export function zoneName(zone: Pick<MwTmfZoneRow, 'id' | 'name'>, t: TFunction): string {
   return t(`memwise.regulated.tmf.zone.${zone.id}`, { defaultValue: zone.name })

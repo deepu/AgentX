@@ -27,6 +27,9 @@ import { ProjectShellContext } from './shell-context'
 import { chatAnchorFor, pickProject, pluralTitle, type ShellProject } from './project-model'
 import { readLastProject, useProjectShellEnabled, useShellProjects, writeLastProject } from './useProjectShell'
 import { WaitingPage } from './WaitingPage'
+import { AuditTrailScreen, ChangeRequestScreen, TmfIndexScreen, type RegulatedNavigation } from '../regulated'
+import { zoneName } from '../regulated/regulated-model'
+import { useProjectShell } from './shell-context'
 import { PANEL_GAP, RADIUS_INNER } from '../../app-shell/panel-constants'
 
 export const CHAT_COLUMN_WIDTH = 488
@@ -99,6 +102,9 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
       case 'records': return pluralTitle(domain?.entities.find(e => e.key === details.entity)?.title ?? details.entity)
       case 'settings': return t('memwise.shell.projectSettings')
       case 'page': return t('memwise.shell.page')
+      case 'change': return t('memwise.regulated.change.title', { label: details.crId })
+      case 'audit': return t('memwise.regulated.audit.title')
+      case 'tmf': return details.zone ? zoneName({ id: details.zone, name: details.zone }, t) : t('memwise.regulated.tmf.title')
     }
   }
 
@@ -143,6 +149,9 @@ function placeholderFor(type: string, all: boolean, t: (k: string) => string): s
   if (type === 'record') return t('memwise.shell.askRecord')
   if (type === 'playbook') return t('memwise.shell.askPlaybook')
   if (type === 'run') return t('memwise.shell.askRun')
+  if (type === 'change') return t('memwise.regulated.shell.askChange')
+  if (type === 'audit') return t('memwise.regulated.shell.askAudit')
+  if (type === 'tmf') return t('memwise.regulated.shell.askTmf')
   return t('memwise.shell.askPage')
 }
 
@@ -164,6 +173,7 @@ function PageColumn({ view, project, projects }: { view: ProjectView; project: S
   const domains = useAtomValue(memwiseDomainsAtom)
   const domain = domains?.find(d => d.id === project.id) ?? null
   const d = view.details
+  const regulated = useRegulatedNavigation()
   if (view.projectId === ALL_PROJECTS) return <WaitingPage projectId={ALL_PROJECTS} projects={projects} />
   switch (d.type) {
     case 'home': return <HomePinnedPage project={project} domain={domain} />
@@ -175,5 +185,17 @@ function PageColumn({ view, project, projects }: { view: ProjectView; project: S
     case 'records': return <EntitiesPage key={`${project.id}:${d.entity}`} domainId={project.id} entity={d.entity} />
     case 'settings': return <ProjectSettingsPage project={project} {...(d.tab ? { tab: d.tab } : {})} />
     case 'page': return <div className="flex h-full items-center justify-center p-8 text-label text-tertiary">{t('memwise.shell.pageMissing')}</div>
+    case 'change': return <ChangeRequestScreen key={d.crId} projectId={project.id} crId={d.crId} navigation={regulated} />
+    case 'audit': return <AuditTrailScreen key={`${d.entity ?? ''}:${d.recordId ?? ''}`} projectId={project.id} {...(d.entity && d.recordId ? { entity: d.entity, recordId: d.recordId } : {})} navigation={regulated} />
+    case 'tmf': return <TmfIndexScreen projectId={project.id} zoneId={d.zone ?? null} navigation={regulated} />
   }
+}
+
+/**
+ * The Stage 5 screens' way around inside the shell: the routes they would open are rewritten to the
+ * project's (shell-routes), and a change request's chat shows in the chat column.
+ */
+function useRegulatedNavigation(): RegulatedNavigation | undefined {
+  const shell = useProjectShell()
+  return React.useMemo(() => (shell ? { openSession: shell.showChat } : undefined), [shell])
 }

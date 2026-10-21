@@ -172,7 +172,8 @@ export function anchorKeyOf(anchor: MwChatAnchor): string {
 /**
  * What the chat beside a page is about (doc 26 §2): Home and the project's lists talk about the
  * project; Waiting for you about what waits; an item about its step; a dashboard, playbook, run
- * or record about itself. Stage 2 adds written pages.
+ * or record about itself; a change request, the audit trail and the TMF index about themselves.
+ * Stage 2 adds written pages.
  */
 export function chatAnchorFor(projectId: string, details: ProjectDetails, item?: MwInboxItem | null): MwChatAnchor {
   switch (details.type) {
@@ -186,6 +187,10 @@ export function chatAnchorFor(projectId: string, details: ProjectDetails, item?:
     case 'playbook': return { kind: 'workflow', id: details.workflowId }
     case 'run': return { kind: 'case', id: details.caseId }
     case 'record': return { kind: 'record', entity: details.entity, id: details.recordId }
+    // Stage 5 (doc 26 §8): a change request's chat edits it; the trail and the index have their own.
+    case 'change': return { kind: 'change', id: details.crId }
+    case 'audit': return { kind: 'audit', id: projectId }
+    case 'tmf': return { kind: 'tmf', id: projectId }
     default: return { kind: 'project', id: projectId }
   }
 }
