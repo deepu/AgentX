@@ -24,3 +24,12 @@ model's. Everything else (the kernel, Postgres, the playbooks, the screens) is r
 `shell-etmf.mjs` seeds the eTMF example through the app's own calls (`seed-etmf.mjs`) and goes Home → asks →
 Waiting for you → opens and approves the activation → a page from the tree → a playbook → a record.
 `shell-literature.mjs` asks on the Literature example's Home.
+
+`stage3-projects.mjs` (Stage 3, replies in `stage3-replies.json`) needs the eTMF example's seeds, which
+run only when the project folder is made from the example at start: set
+`MEMWISE_EXAMPLE_PROJECT_DIR=$PWD/examples/etmf` and give a `<projectDir>` that doesn't exist yet. Its
+config needs a workspace already listed, or the first run drops the connection. It goes through the
+switcher, a study's Home and Project settings, publishes template v5 and reviews it (MW-301 already
+does it; MW-207 tested and taken), Waiting for you across projects, the app home, New project from a
+template card, and New project described in chat (the scripted model calls `project_draft`), then
+Start study.
