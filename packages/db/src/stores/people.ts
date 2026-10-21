@@ -174,16 +174,19 @@ export class PgPeopleStore {
 
   /**
    * Logs a signing attempt or a lock. A `locked` event with `detail.until` (ISO time) also sets
-   * the person's `locked_until`.
+   * the person's `locked_until`. `tx`: write it in the caller's transaction (a good signature is
+   * logged with the signature it made, or not at all).
    */
-  async recordAuthEvent(personId: string, kind: AuthEventKind, detail: Record<string, unknown> = {}): Promise<void> {
-    await withTransaction(this.pool, async (db) => {
+  async recordAuthEvent(personId: string, kind: AuthEventKind, detail: Record<string, unknown> = {}, tx?: Queryable): Promise<void> {
+    const write = async (db: Queryable) => {
       await db.query('insert into mw.auth_events (id, person_id, kind, detail) values ($1, $2, $3, $4)',
         [`auth_${ulid()}`, personId, kind, json(detail)]);
       if (kind === 'locked' && typeof detail.until === 'string') {
         await db.query('update mw.people set locked_until = $2 where id = $1', [personId, detail.until]);
       }
-    });
+    };
+    if (tx) await write(tx);
+    else await withTransaction(this.pool, write);
   }
 
   /** Sets or clears (null) the time a person is locked until. */

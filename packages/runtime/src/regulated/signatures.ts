@@ -4,7 +4,8 @@
 // when (server time), the meaning, and the content hash of the record it covers, as the record
 // will be once the step's values are on it. Agents never sign: no tool signs, and only a person
 // step can be signed.
-import { contentHash, PgEntityStore, PgSignatureStore, type PgPeopleStore, type Queryable } from '@memwise/db';
+import { contentHash, PgEntityStore, PgSignatureStore, withRecordContext, type PgPeopleStore, type Queryable } from '@memwise/db';
+import { isDeepStrictEqual } from 'node:util';
 import { DEFAULT_DOMAIN, keyOf, type EntityTypeDef, type ProjectDefs, type StepDef, type WorkflowDef } from '@memwise/defs';
 import { caseFieldOf, isDocumentLike, refTarget, stepReview } from '../records/review.ts';
 import { CHANGE_PLAYBOOK, type PersonActor, type SignatureInput, type SubmitResult } from '../types.ts';
@@ -108,9 +109,23 @@ export async function writeSignature(db: Queryable, deps: SigningDeps, input: {
   let target = input.caseId;
   let hash: { hash: string; manifest: Record<string, unknown> };
   if (covered && typeof recordId === 'string') {
-    const row = await new PgEntityStore().get(db, covered.def, recordId);
+    const store = new PgEntityStore();
+    const row = await store.get(db, covered.def, recordId);
     const merged: Record<string, unknown> = { ...(row?.values ?? {}) };
-    for (const [k, v] of Object.entries(input.values)) if (k in covered.def.fields) merged[k] = v;
+    const corrected: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(input.values)) {
+      if (!(k in covered.def.fields)) continue;
+      merged[k] = v;
+      if (row && !isDeepStrictEqual(row.values[k] ?? null, v ?? null)) corrected[k] = v;
+    }
+    // What the person corrected while reviewing goes onto the record now, in the same transaction,
+    // so the record is what they signed (a later signed transition checks it against the record).
+    if (row && Object.keys(corrected).length) {
+      const reason = `corrected at review, signed "${step.sign}"`;
+      await withRecordContext(db, { by: input.by.personId, via: input.stepRunId, reason });
+      await store.update(db, covered.def, recordId, corrected, { reason });
+      await withRecordContext(db, { by: undefined, via: undefined, reason: undefined });
+    }
     entity = keyOf(covered.def);
     target = recordId;
     hash = recordContentHash(covered.def, recordId, merged);
@@ -122,6 +137,6 @@ export async function writeSignature(db: Queryable, deps: SigningDeps, input: {
     stepRunId: input.stepRunId, caseId: input.caseId, personId: input.by.personId, name: person?.name ?? input.by.personId,
     meaning: step.sign, entity, recordId: target, contentHash: hash.hash, manifest: hash.manifest,
   });
-  await deps.people.recordAuthEvent(input.by.personId, 'signature-ok', { stepRunId: input.stepRunId, signatureId: id });
+  await deps.people.recordAuthEvent(input.by.personId, 'signature-ok', { stepRunId: input.stepRunId, signatureId: id }, db);
   return id;
 }

@@ -4,7 +4,7 @@
 import { DBOS, DBOSClient } from '@dbos-inc/dbos-sdk';
 import { NodePostgresDataSource } from '@dbos-inc/node-pg-datasource';
 import {
-  actorLabel, applyDomainSchema, createPool, domainCreators, entityTableName, evaluateCondition, migrate, PgApprovalStore, PgCaseStore,
+  actorLabel, applyDomainSchema, createPool, domainCreators, domainUpdaters, entityTableName, evaluateCondition, migrate, PgApprovalStore, PgCaseStore,
   PgDefinitionStore, PgEffectLedger, PgEntityStore, PgExplanationStore, PgFileStore, PgPeopleStore, PgRateCounter,
   PgStepRecorder, PgStepRecordReader, PgVersionStore, withActor, withTransaction,
 } from '@memwise/db';
@@ -363,9 +363,13 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       await new PgDefinitionStore(pool).upsert([policiesRow, sourcesRow] as unknown as IndexedDefinition[], []);
       await people.syncRoles(project.roles);
       const creators = domainCreators(project.entities, project.workflows);
-      const schemaKey = JSON.stringify([project.entities, creators]);
+      // Phase 6 (24 §3): only steps whose tools update or move an entity may update its table, and
+      // a regulated domain's reason rule is compiled into the row trigger.
+      const updaters = domainUpdaters(project.entities, project.workflows);
+      const domains = project.domains ?? {};
+      const schemaKey = JSON.stringify([project.entities, creators, updaters, Object.fromEntries(Object.entries(domains).map(([id, d]) => [id, !!d.regulated]))]);
       if (appliedSchema?.key !== schemaKey) {
-        appliedSchema = { key: schemaKey, notes: await applyDomainSchema(pool, project.entities, { creators }) };
+        appliedSchema = { key: schemaKey, notes: await applyDomainSchema(pool, project.entities, { creators, updaters, domains }) };
       }
       // The domain tools capture each entity's definition (its fields, the create tool's schema):
       // rebuild them when any entity type is added, removed or changed, not only added; and the
@@ -469,7 +473,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       // Phase 6: open flags, for the owners of their domains.
       items.push(...(await flagInboxItems(recordsDeps, actor)));
       // Phase 6: firings the storm guard held, for the workflow's owner role (24 §7).
-      items.push(...(await heldTriggerItems(pool, defs, actor)));
+      const domainDefs = indexed?.project.domains ?? (await indexedDomains(pool));
+      items.push(...(await heldTriggerItems(pool, defs, actor, (d) => domainDefs[d]?.owner)));
       // Phase 4: uncertain identity matches, for the people who own plugin bindings.
       for (const candidate of (await pluginServices?.identityInbox(actor)) ?? []) {
         items.push({ kind: 'identity', id: `identity:${candidate.id}`, candidate, since: candidate.createdAt });

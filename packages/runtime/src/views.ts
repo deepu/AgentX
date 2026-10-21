@@ -278,7 +278,7 @@ export function visibleValues(values: Record<string, CaseValue>, fields: Record<
  * Phase 6 (24 §7): one item per trigger whose firings the storm guard held, for the workflow's
  * owner role ("300 cases would start from Activate a site").
  */
-export async function heldTriggerItems(pool: pg.Pool, defs: DefinitionCache, actor: Actor): Promise<InboxItem[]> {
+export async function heldTriggerItems(pool: pg.Pool, defs: DefinitionCache, actor: Actor, domainOwner: (domain: string) => string | undefined = () => undefined): Promise<InboxItem[]> {
   if (!isPerson(actor)) return [];
   const { rows } = await pool.query(
     `select trigger_id, workflow_id, count(*)::int as n, min(at) as since from mw.trigger_firings
@@ -286,8 +286,10 @@ export async function heldTriggerItems(pool: pg.Pool, defs: DefinitionCache, act
   const out: InboxItem[] = [];
   for (const r of rows) {
     const wf = await defs.latest(r.workflow_id);
-    const role = wf?.owner;
-    if (role && !hasRole(actor, role, wf?.domain)) continue;
+    // As `triggers.release` decides: the playbook's owner role, else its domain's owner.
+    const domain = wf?.domain ?? DEFAULT_DOMAIN;
+    const role = wf?.owner ?? domainOwner(domain);
+    if (role && !hasRole(actor, role, domain)) continue;
     out.push({
       kind: 'trigger-hold', id: `trigger-hold:${r.trigger_id}`, triggerId: r.trigger_id, workflowId: r.workflow_id, held: r.n,
       description: heldWords(r.n, wf?.title ?? r.workflow_id), since: iso(r.since),

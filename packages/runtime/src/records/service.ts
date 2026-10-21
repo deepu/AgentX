@@ -6,7 +6,7 @@ import {
   ConditionCompileError, evaluateCondition, PgEntityEvents, PgEntityStore, PgFlagStore, PgNoteStore, PgViewStore,
   RecordWriteError, withActor, withRecordContext, withTransaction,
 } from '@memwise/db';
-import { keyOf, rolesIn, type EntityTypeDef, type ViewDef } from '@memwise/defs';
+import { hasRole, keyOf, rolesIn, type EntityTypeDef, type ViewDef } from '@memwise/defs';
 import { fieldErrors } from '../domain-tools.ts';
 import type { Actor, RecordFlag, RecordQueryResult, RecordsService, RecordWriteResult } from '../types.ts';
 import { buildDashboard, buildTree, columnsOf, queryRecords } from './browse.ts';
@@ -38,6 +38,16 @@ export function mayWrite(deps: RecordsDeps, actor: Actor, domain: string): boole
   return !roles || !Object.keys(roles).length || rolesIn(actor, domain).length > 0;
 }
 
+/** Fields among `values` with an `access:` list the person holds none of: they can't read them, so they may not write them. */
+function hiddenFrom(def: EntityTypeDef, values: Record<string, unknown>, actor: Actor): string[] {
+  if (actor.kind !== 'person') return [];
+  const domain = domainOfEntity(def);
+  return Object.keys(values).filter((f) => {
+    const access = def.fields[f]?.access;
+    return !!access?.length && !access.some((r) => hasRole(actor, r, domain));
+  });
+}
+
 /** The fields among `values` that need a reason (regulated domain, controlled), when none is given. */
 function reasonMissing(deps: RecordsDeps, def: EntityTypeDef, values: Record<string, unknown>, reason: string | undefined, actor: Actor): string[] {
   if (actor.kind !== 'person' || reason?.trim()) return [];
@@ -66,6 +76,7 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
       const def = defOf(input.entity);
       if (!mayWrite(deps, actor, domainOfEntity(def))) return forbidden(def);
       const errors = fieldErrors(def, deps.entities(), input.values, { creating: true });
+      for (const f of hiddenFrom(def, input.values, actor)) (errors[f] ??= []).push('only some roles may see or change this field');
       for (const [f, field] of Object.entries(def.fields)) {
         const v = input.values[f];
         if (field.required && (v === undefined || v === null || v === '')) (errors[f] ??= []).push('required');
@@ -91,6 +102,7 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
       const def = defOf(input.entity);
       if (!mayWrite(deps, actor, domainOfEntity(def))) return forbidden(def);
       const errors = fieldErrors(def, deps.entities(), input.values);
+      for (const f of hiddenFrom(def, input.values, actor)) (errors[f] ??= []).push('only some roles may see or change this field');
       if (Object.keys(errors).length) return { applied: false, status: 'invalid', errors, message: 'some values need fixing' };
       const missing = reasonMissing(deps, def, input.values, input.reason, actor);
       if (missing.length) return { applied: false, status: 'reason-required', message: `say why: ${missing.join(', ')} ${missing.length === 1 ? 'is a controlled field' : 'are controlled fields'} here` };

@@ -2,7 +2,7 @@
 // counts under the viewer's row rules, playbooks, pages, views, open flags), the workspace itself,
 // and people's grants (a role in one domain, optionally limited to records).
 import { PgFlagStore, PgGrantStore, PgPageStore, viewOf, withActor } from '@memwise/db';
-import { DEFAULT_DOMAIN, keyOf, type Grant } from '@memwise/defs';
+import { DEFAULT_DOMAIN, hasRole, keyOf, type Grant } from '@memwise/defs';
 import type { Actor, DomainsService, DomainSummary } from '../types.ts';
 import { domainDef, domainOfEntity, type RecordsDeps } from './context.ts';
 
@@ -80,6 +80,17 @@ export function createDomainsService(deps: RecordsDeps): DomainsService {
       for (const g of grants) {
         if (domains.size && !domains.has(g.domain)) throw new Error(`there is no domain ${g.domain}`);
         if (Object.keys(roles).length && !roles[g.role]) throw new Error(`there is no role ${g.role}`);
+      }
+      // A person changes grants only in domains they own (the domain's owner role), both the
+      // grants they give and the ones they take away.
+      if (by.kind === 'person') {
+        const before = await grantStore.list(deps.pool, personId);
+        for (const domain of new Set([...grants, ...before].map((g) => g.domain))) {
+          const owner = project?.domains?.[domain]?.owner;
+          if (!owner || !hasRole(by, owner, domain)) {
+            throw new Error(`only the owner of ${project?.domains?.[domain]?.name ?? domain}${owner ? ` (${owner})` : ''} changes who has which role there`);
+          }
+        }
       }
       const saved = await grantStore.set(deps.pool, personId, grants);
       deps.emit({ kind: 'inbox' });

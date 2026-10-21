@@ -143,6 +143,8 @@ describe('entity checks', () => {
     expect(await checkMulti(account('    won: { guard: "order_count > 0" }', '    won: { guard: "order_count > 0" }\n    refund: {}'))).toEqual([`warning unused-transition ${ACCOUNT} lifecycle.transitions.refund`]);
     expect(await checkMulti(account('    active: { on: { lost: lead } }', '    active: { on: { lost: lead } }\n    archived: {}'))).toEqual([`warning unreachable-lifecycle-state ${ACCOUNT} lifecycle.states.archived`]);
     expect(await checkMulti(account('    active: { on: { lost: lead } }', '    active: { on: { lost: lead }, after: { 30d: { transition: won } } }'))).toEqual([`error lifecycle-unknown-transition ${ACCOUNT} lifecycle.states.active.after`]);
+    // A timer moves the record as the system: its transition must allow `system`.
+    expect(await checkMulti(account('    active: { on: { lost: lead } }', '    active: { on: { lost: lead }, after: { 30d: { transition: lost } } }'))).toEqual([`error timer-not-allowed ${ACCOUNT} lifecycle.states.active.after`]);
   });
 
   test('unknown-role and unknown-domain in transitions; signed-not-regulated', async () => {

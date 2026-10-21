@@ -86,14 +86,28 @@ export async function storeMessage(deps: FlowDeps, domain: string, body: Inbound
  */
 export function emailInbound(deps: Pick<FlowDeps, 'pool' | 'log'>, receive: (domain: string, body: InboundMessageBody) => Promise<unknown>) {
   const CONSUMER = 'email-inbound';
+  const MAX_TRIES = 5;
+  // Failed tries per message in this process: one that keeps failing is given up on (recorded with
+  // its error) rather than retried by every sweep for good.
+  const failures = new Map<string, number>();
+  const record = (eventId: string, error: string | undefined) => deps.pool.query(
+    `insert into mw.event_deliveries (event_id, consumer, error) values ($1, $2, $3) on conflict do nothing`, [eventId, CONSUMER, error ?? null]);
   async function handle(eventId: string, purpose: string, body: unknown): Promise<void> {
     const domain = purpose.slice(EMAIL_PURPOSE.length);
-    let error: string | undefined;
     const problems = messageProblems(body);
-    if (problems.length) error = problems.join('; ');
-    else await receive(domain, body as InboundMessageBody); // throws: retried by the sweep
-    await deps.pool.query(`insert into mw.event_deliveries (event_id, consumer, error) values ($1, $2, $3) on conflict do nothing`,
-      [eventId, CONSUMER, error ?? null]);
+    if (problems.length) { await record(eventId, problems.join('; ')); return; }
+    try {
+      await receive(domain, body as InboundMessageBody);
+    } catch (e) {
+      const tries = (failures.get(eventId) ?? 0) + 1;
+      failures.set(eventId, tries);
+      if (tries < MAX_TRIES) throw e; // retried by the sweep
+      failures.delete(eventId);
+      await record(eventId, `gave up after ${tries} tries: ${e instanceof Error ? e.message : String(e)}`);
+      throw e;
+    }
+    failures.delete(eventId);
+    await record(eventId, undefined);
   }
   return {
     /** For kernel.channels.onInbound. */

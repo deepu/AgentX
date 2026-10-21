@@ -220,6 +220,9 @@ function checkEntity(add: Add, project: ProjectDefs, def: EntityTypeDef, roles: 
         if (timer.remind && roles && !roles.has(timer.remind)) at('error', 'unknown-role', `\`${name}\`: remind \`${timer.remind}\` is not a role`, ['lifecycle', 'states', name, 'after']);
         if (timer.transition && !(timer.transition in s.on)) {
           at('error', 'lifecycle-unknown-transition', `\`${name}\`: the timer makes \`${timer.transition}\`, which is not a transition out of \`${name}\` (${Object.keys(s.on).join(', ') || 'none'})`, ['lifecycle', 'states', name, 'after']);
+        } else if (timer.transition && chart.transitions[timer.transition] && !chart.transitions[timer.transition]!.by.some((b) => b.kind === 'system')) {
+          // A timer moves the record as the system, which only a transition with `system` in its `by` allows.
+          at('error', 'timer-not-allowed', `\`${name}\`: the timer makes \`${timer.transition}\`, which the system may not make; add \`system\` to its \`by\``, ['lifecycle', 'states', name, 'after']);
         }
       }
     }

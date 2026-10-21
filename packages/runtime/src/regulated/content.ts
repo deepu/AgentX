@@ -10,9 +10,15 @@ const isFileType = (def: EntityTypeDef, field: string) => {
   return t?.kind === 'scalar' && (t.name === 'Document' || t.name === 'File' || t.name === 'Image');
 };
 
-/** The record's own fields, with nothing in them left out (so a cleared and a never-set field hash alike). */
+/**
+ * The record's own fields, with nothing in them left out (so a cleared and a never-set field hash
+ * alike). Fields with an `access:` list are left out too: not everyone who checks a signature (a
+ * system step moving the record, another role viewing it) can read them, and the same record
+ * must hash alike for all of them.
+ */
 export function signableValues(def: EntityTypeDef, values: Record<string, unknown>): Record<string, unknown> {
-  const own = new Set([...Object.keys(def.fields), ...Object.entries(def.relationships).filter(([, r]) => r.cardinality === 'one').map(([n]) => n)]);
+  const open = Object.entries(def.fields).filter(([, f]) => !f.access?.length).map(([n]) => n);
+  const own = new Set([...open, ...Object.entries(def.relationships).filter(([, r]) => r.cardinality === 'one').map(([n]) => n)]);
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(values)) if (own.has(k) && v !== null && v !== undefined && v !== '') out[k] = v;
   return out;

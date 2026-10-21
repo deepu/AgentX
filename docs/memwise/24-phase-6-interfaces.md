@@ -421,7 +421,7 @@ Example cases settle block states through the flow's dispatcher.
 - Creating a record that has a lifecycle also emits `entered` (from null), so `entered:` triggers fire for records created in that state. A `changed` list names the lifecycle `status`. A rollup parent's `changed` list includes the formulas that depend on that rollup.
 - The reason rule (regulated domains) applies only to a person's update of a controlled field. Fields are controlled unless `controlled: false`. Transitions and system writes need no reason.
 - Record scope applies when every one of the person's grants in that domain is scoped. A scoped entity is filtered by its own id. Step tokens are not scoped.
-- A new `domain_step_update` policy lets steps update records (`RlsOptions.updaters`, `domainUpdaters()`).
+- A new `domain_step_update` policy lets steps update records. The kernel passes `updaters: domainUpdaters()`, so only steps whose tools include `.update` or `.transition` for an entity may update its table. It also passes the domains, so a regulated domain's reason rule is compiled into the row trigger as well as checked in TypeScript.
 - Conditions:
   - `!=` compiles to `is distinct from`, and `x = null` to `is null`;
   - dividing by zero gives null;
@@ -436,6 +436,12 @@ Example cases settle block states through the flow's dispatcher.
 - A dashboard's table or list is narrowed by each page parameter that names one of the entity's fields.
 - Link pairing with no match makes no candidate; the records pair later, when a matching record appears. Several matches each go to the domain owner as an identity candidate.
 - A signed step with no record to cover signs the case answer (`entity: 'case'`). Only person steps sign.
+- Values a person corrects while reviewing are written onto the reviewed record in the same transaction as the signature, with the reason "corrected at review", so the record is what they signed.
+- What a signature covers leaves out fields with an `access:` list. Not everyone who checks a signature can read those fields, and the same record must hash the same way for all of them.
+- A person may write a field with an `access:` list only when they hold one of its roles.
+- A person changes grants only in domains they own (the domain's owner role).
+- Signing locks after 5 wrong passwords within 15 minutes, a sliding window: someone guessing slowly is not locked out.
+- The `signature-ok` sign-in event is written in the submit transaction.
 - The page tree shows entity types that have no parent and no children as top-level groups. A group of more than 25 records opens a view.
 - Mentions are written on the kernel's own connection.
 - Passwords are at least 12 characters in a regulated workspace.
@@ -460,7 +466,9 @@ Example cases settle block states through the flow's dispatcher.
 - `mw_changes` gains the kind `flow`. `StepToken` gains `actsFor`. The machine's states gain the kind `block`.
 - A `changed` trigger fires when any field it lists changed, or on any change when it lists none.
 - A child's outcome that the parent's state can't take stops the parent with a plain reason. A child busy in a long agent step stops at its next wait.
-- Incoming email has its own ledger consumer (`email-inbound`), plus a sweep after a crash.
+- Incoming email has its own ledger consumer (`email-inbound`), plus a sweep after a crash. A message that keeps failing is given up on after 5 tries in a process, and its error is recorded.
+- A lifecycle timer's transition must allow `system` in its `by` (`memwise check`: `timer-not-allowed`).
+- Held firings show in the inbox for the playbook's owner role, else for its domain's owner, the same rule `triggers.release` uses.
 - A kernel with no project folder reads domains from the indexed definitions.
 - Identity links for entities in a named domain are keyed by the entity key (`etmf.Site`), in Phase 4's code too.
 

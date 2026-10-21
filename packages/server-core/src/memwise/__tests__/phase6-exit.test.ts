@@ -226,7 +226,8 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
     expect(page.review?.sign?.meaning).toBe('Reviewed and approved for filing')
     expect(page.documents.file?.name).toBe('vogel-cv.pdf')
 
-    const values = Object.fromEntries(page.review!.proposed.map((p) => [p.field, p.value]))
+    // The specialist corrects one value while reviewing: the record takes it with the signature.
+    const values = { ...Object.fromEntries(page.review!.proposed.map((p) => [p.field, p.value])), version: '2026-03 (signed copy)' }
     const unsigned = await api.call(specialist, ch.INBOX_SUBMIT, { stepRunId: item.stepRunId, outcome: 'approved', values })
     expect(unsigned).toMatchObject({ applied: false, code: 'submit.signature-required' })
     const wrong = await api.call(specialist, ch.INBOX_SUBMIT, { stepRunId: item.stepRunId, outcome: 'approved', values, signature: { password: 'not it' } })
@@ -241,6 +242,7 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
     expect(page.status).toBe('filed')
     expect(page.signatures).toHaveLength(1)
     expect(page.signatures[0]).toMatchObject({ name: 'Priya Shah', meaning: 'Reviewed and approved for filing', changedSince: false })
+    expect(page.fields.find((f) => f.name === 'version')?.value).toBe('2026-03 (signed copy)')
     const trail = await api.call<MwAuditTrail>(specialist, ch.AUDIT_GET, { entity: 'etmf.Document', id: documentId })
     expect(trail.chain.ok).toBe(true)
     expect(trail.versions.length).toBeGreaterThanOrEqual(3)
