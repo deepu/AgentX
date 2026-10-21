@@ -388,4 +388,109 @@ Tables owned by the flow piece (migration `0007_flow.sql`): `mw.event_deliveries
 
 ## 17. As built
 
-(Filled in at the end of the phase: where the code differs from this contract.)
+Built as five parallel pieces (definitions, storage, records, flow, app) against this contract. Every kernel test, the server-core suite, the eight eTMF example cases (`memwise test examples/etmf`) and the exit test pass. Where the code differs from the sections above:
+
+**Exit test.** It follows §15 with two changes. The nine documents filed before MemWise are created already `filed`, because only a playbook step may file an expected document. The scripted classifier names the test's own record ids, not the example's fixed ones. The CV's expiry is `cv_expires` on the Person. Writing the test found a Phase 5 bug: the relay dropped every `x-memwise-*` request header, so `hmac-sha256` webhooks were refused once they came through it. The relay now passes `x-memwise-signature` on.
+
+**Definitions (§2, §4, §5, §7, §8).**
+- `file-document` has two more system steps, `index` and `send_to_qc`, plus a `study` field. `file` ends with outcome `filed`.
+- The Site's `approved` guard is only `start_up_pack_complete = 100%`. The invariant is `status = 'open' implies start_up_pack_complete = 100%`.
+- A dashboard `percent`'s `of` is the denominator set.
+- `returns:` maps parent field ← child field.
+- A bare `item` in a hand-off means `{ item: '' }`.
+- A plain status list becomes a lifecycle with a `to_<state>` transition per state.
+- A transition with no `by` defaults to `[step, role:owner]`.
+- `related` also accepts `versions` and `signatures`.
+- The duration unit `y` is a year of 365 days.
+- `memwise check` always binds the entity tools, and it warns that per-domain plugin bindings are not supported yet.
+- Index ids are `<domain>/<id>`. Policy ids are `workspace`, `domain` and `domain:<id>`.
+- `loadWorkflow` keeps `starts_on`.
+
+**Start fields.** A case may start with three kinds of field:
+- fields people write;
+- the one Ref no step writes (the record the case is about);
+- any field a step reads that no step writes, such as the file a router hands on.
+
+Example cases settle block states through the flow's dispatcher.
+
+**Storage (§3, §16).**
+- A field named `version` or `updated_by` is stored in column `fld_<name>`.
+- The app role may only select `mw.record_versions` and `mw.entity_events`. A `SECURITY DEFINER` row trigger writes them, so nothing else can forge a version. The primary key of `mw.record_versions` is `(entity, record_id, version)`.
+- The hash and `verifyChain` are computed in Postgres (`mw.record_hash`, `mw.canonical_json`). The signature's `contentHash` is computed in TypeScript.
+- `mw.by` wins over the actor. A step's write without a reason gets "step <run>".
+- Creating a record that has a lifecycle also emits `entered` (from null), so `entered:` triggers fire for records created in that state. A `changed` list names the lifecycle `status`. A rollup parent's `changed` list includes the formulas that depend on that rollup.
+- The reason rule (regulated domains) applies only to a person's update of a controlled field. Fields are controlled unless `controlled: false`. Transitions and system writes need no reason.
+- Record scope applies when every one of the person's grants in that domain is scoped. A scoped entity is filtered by its own id. Step tokens are not scoped.
+- A new `domain_step_update` policy lets steps update records (`RlsOptions.updaters`, `domainUpdaters()`).
+- Conditions:
+  - `!=` compiles to `is distinct from`, and `x = null` to `is null`;
+  - dividing by zero gives null;
+  - `date + number` adds days;
+  - a rollup `percent` is unrounded, and null when there are no rows.
+- Followed fields carry `_link__<table>`, which surfaces as `StoredEntityRow.followed`.
+- `PgFlagStore.list(db, filter)` takes a connection. `raise` returns `{ id, raised }`. Flags carry their domain.
+
+**Records, regulated mode and audit (§6, §9, §12).**
+- It is `kernel.audit.trail()`, not `audit.record()`.
+- The per-domain policy applied at run time is read from a row the kernel writes at index (`domain_policies`), so removing a policy file takes effect.
+- A dashboard's table or list is narrowed by each page parameter that names one of the entity's fields.
+- Link pairing with no match makes no candidate; the records pair later, when a matching record appears. Several matches each go to the domain owner as an identity candidate.
+- A signed step with no record to cover signs the case answer (`entity: 'case'`). Only person steps sign.
+- The page tree shows entity types that have no parent and no children as top-level groups. A group of more than 25 records opens a view.
+- Mentions are written on the kernel's own connection.
+- Passwords are at least 12 characters in a regulated workspace.
+- Publishing a playbook of a regulated domain needs change-playbook's approving review to be signed.
+- `memwise validation-report <project>` writes the validation pack.
+- The audit PDF comes from a small writer with no dependencies.
+
+**Flow (§7, §8, §10).**
+- The dispatcher is a loop whose state is in tables, not a DBOS workflow, so the DBOS journal doesn't grow without end:
+  - the cursor is in `mw.trigger_state`, under `dispatcher`;
+  - each consumer is recorded in the `mw.event_deliveries` ledger, with 5 tries;
+  - an advisory lock means one dispatcher per database.
+
+  Exactly once comes from the ledger, idempotent keys and run ids derived from them.
+- The order of consumers is records (link pairing, invariant flags), then waits, timers and triggers.
+- Extra columns:
+  - `trigger_firings`: `values`, `acts_for`, `decided_at`;
+  - `case_links`: `outcome`, `ended_at`, `child_workflow`;
+  - `event_deliveries`: `error`;
+  - `notifications`: `entity` and `record_id`, with a nullable `run_id`;
+  - `runs`: `acts_for`.
+- `mw_changes` gains the kind `flow`. `StepToken` gains `actsFor`. The machine's states gain the kind `block`.
+- A `changed` trigger fires when any field it lists changed, or on any change when it lists none.
+- A child's outcome that the parent's state can't take stops the parent with a plain reason. A child busy in a long agent step stops at its next wait.
+- Incoming email has its own ledger consumer (`email-inbound`), plus a sweep after a crash.
+- A kernel with no project folder reads domains from the indexed definitions.
+- Identity links for entities in a named domain are keyed by the entity key (`etmf.Site`), in Phase 4's code too.
+
+**App (§13, §14).**
+- One channel was added, `memwise:files:read`. The protocol also gained `MwEntityType.definition`, `MwDomain.detail`, `domain` on playbook and case summaries, `MwSubmitResult.retryAfter`, and the client-side code `sign.cancelled`.
+- Navigation:
+  - The top items are Inbox, Cases, Playbooks, Pages, Automations and Chats.
+  - The domain filter on the inbox, cases and playbooks shows only when a list spans more than one domain.
+  - The Domains section has no middle list. When a project has only the default domain, the Domains section and the filters stay hidden.
+- The top "Pages" item opens a cross-domain overview that includes the workspace's own pages. "Automations" opens the playbook triggers; the earlier chat automations moved under it.
+- Document review shows inside the inbox, with no new route. The queue groups items by review kind, playbook and step.
+- Diff review is a stand-in: the inbox item carries no record versions yet, so it compares a form step's prefill with what the step read.
+- Small gaps:
+  - a record group such as "Sites · 7" opens the entity's full list without the parent filter;
+  - "Ask in chat" on a record isn't wired;
+  - starting a playbook from a record doesn't prefill the record;
+  - only the first viewer block's file loads.
+
+**Not done yet.**
+- Record reminders are written but not shown in the inbox.
+- After an `any` or N join is met, the remaining `for_each` children keep running.
+- Followed fields used in a rollup's `where` don't send parent events when the linked record changes.
+- Record scope doesn't follow the parent chain.
+- Deletes write no version.
+- Mentions from step rationales and chats are not stored.
+- Personal sign-in doesn't expire after 12 hours idle.
+- Playbooks drafted inside `domains/` are not covered by Phase 3 authoring yet.
+- Per-domain plugin bindings are not supported.
+- These need real accounts or decisions:
+  - incoming email on a real address (a Cloudflare Email Worker in front of the relay webhook);
+  - SSO with MFA for signing;
+  - WORM storage for regulated files;
+  - a TMF exchange format for import and export.
