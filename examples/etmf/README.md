@@ -63,3 +63,26 @@ CVs expiring this month, a heatmap of the sites' start-up packs and the missing 
 
 Example cases seed the records they need (`records:`, by entity, with fixed ids such as `site_us012`) and
 script the model roles (`router`, `classifier`, `verifier`) and the people (`submit:`).
+
+## Projects (Stage 3, docs/memwise/26-projects-and-pages.md §3)
+
+The eTMF domain is an app (`domains/etmf/app.yaml`): each study is a project made from one of its
+templates, **Phase 3 study** or **Phase 1 study** (which leaves out `chase-missing`). The app home is
+"TMF across studies", with a column per `home.columns` entry and each study's next milestone.
+
+- `projects/mw301/`: Study MW-301, from the Phase 3 template at version 4. It overrides **Chase missing
+  documents** to wait 5 days between reminders (`overrides/workflows/chase-missing/workflow.yaml`), and names
+  its people (Anika Rao, study manager and owner; Priya Shah, CRA; Tom Okafor, TMF specialist), connections
+  and settings.
+- `projects/mw207/`: Study MW-207, from the same template, with no overrides.
+- `projects/mw310/`: Study MW-310, copied from MW-301 (its way of working, never its records), a draft
+  until someone presses Start.
+- `seed.yaml` in MW-301 and MW-207: walkthrough records (sites, staff, the start-up pack, documents waiting
+  for QC), made once into that study when it has none. EDC sites are made in EDC's own project.
+- `domains/etmf/workflows/create-project` (**New study**): the app's own playbook behind "Describe it in
+  chat". Its conversation step gives the chat `project_options` and `project_draft`; the first draft makes the
+  study as a draft. Its runs live in the app's own project (id `etmf`).
+
+Publishing a template update (`memwise:apps:publishTemplate`) keeps version 4 under
+`domains/etmf/versions/4/` and gives each study a "Review template update": MW-301's review says it already
+waits 5 days, MW-207 takes it.
