@@ -135,6 +135,11 @@ describe.skipIf(!postgresAvailable())('projects in the database (D92)', () => {
     // Roles hold per project.
     const roleIn = (p: string) => as(priya, async (c) => (await c.query(`select mw.actor_has_role_in_project('cra', 'etmf', $1) as ok`, [p])).rows[0].ok);
     expect([await roleIn('mw301'), await roleIn('mw207')]).toEqual([true, false]);
+    // The app's own project (id = the app id: what came before projects, app playbooks' runs) is
+    // shared: any grant in the app sees it and holds its roles there.
+    expect(await roleIn('etmf')).toBe(true);
+    expect(await as(priya, async (c) => (await c.query(`select mw.project_visible('etmf') as a, mw.project_visible('mw207') as b`)).rows[0]))
+      .toEqual({ a: true, b: false });
   });
 
   test("a step writes in its run's project", async () => {

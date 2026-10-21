@@ -17,6 +17,8 @@ export interface ProjectRow {
   templateVersion: number;
   study?: string;
   settings: Record<string, unknown>;
+  /** The app version whose "Review template update" the project skipped (none is offered again until a newer one). */
+  skippedVersion?: number;
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
@@ -24,13 +26,14 @@ export interface ProjectRow {
 
 type DbRow = {
   id: string; app: string; name: string; status: ProjectStatus; from: ProjectSource | null; template_version: number; study: string | null;
-  settings: Record<string, unknown> | null; created_by: string | null; created_at: Date; updated_at: Date;
+  settings: Record<string, unknown> | null; skipped_version: number | null; created_by: string | null; created_at: Date; updated_at: Date;
 };
 
 const toRow = (r: DbRow): ProjectRow => ({
   id: r.id, app: r.app, name: r.name, status: r.status, templateVersion: r.template_version, settings: r.settings ?? {},
   createdAt: iso(r.created_at), updatedAt: iso(r.updated_at),
   ...(r.from ? { from: r.from } : {}), ...(r.study ? { study: r.study } : {}), ...(r.created_by ? { createdBy: r.created_by } : {}),
+  ...(r.skipped_version ? { skippedVersion: r.skipped_version } : {}),
 });
 
 export class PgProjectStore {
@@ -71,6 +74,11 @@ export class PgProjectStore {
     const { rows } = await db.query<DbRow>(
       'update mw.projects set status = $2, updated_at = now() where id = $1 returning *', [id, status]);
     return rows[0] && toRow(rows[0]);
+  }
+
+  /** Skip the template update to app version `version` (null: offer updates again). */
+  async skipVersion(db: Queryable, id: string, version: number | null): Promise<void> {
+    await db.query('update mw.projects set skipped_version = $2, updated_at = now() where id = $1', [id, version]);
   }
 
   /** Removes a draft project's row (Discard). Refuses anything but a draft. */

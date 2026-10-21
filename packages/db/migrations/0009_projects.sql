@@ -20,6 +20,7 @@ create table mw.projects (
   template_version  int not null default 1,        -- the app version its template was taken from
   study             text,                          -- the study key linking projects across apps (26 §9)
   settings          jsonb not null default '{}'::jsonb,
+  skipped_version   int,                           -- the app version whose template update the project skipped
   created_by        text,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
@@ -31,6 +32,8 @@ create index projects_study on mw.projects (study) where study is not null;
 alter table mw.cases add column if not exists project text;
 alter table mw.runs add column if not exists project text;
 alter table mw.step_runs add column if not exists project text;
+-- A trigger fired by a record starts its case in the record's project.
+alter table mw.trigger_firings add column if not exists project text;
 
 -- The domain a workflow belongs to, from its latest indexed definition ('domain' when unknown).
 create or replace function mw.workflow_domain(p_workflow text) returns text
@@ -56,7 +59,9 @@ create or replace function mw.project_app(p_project text) returns text
 -- Whether a person's grants let them see project `p_project` of domain `p_domain` (D92): anyone
 -- who isn't a person; a person with no grant in the domain (workspace-wide roles, as before
 -- projects); a person with a grant in that project or in every project of the domain.
--- `p_project` null (an app-scoped record, shared by every project) needs any grant in the domain.
+-- `p_project` null (an app-scoped record, shared by every project) needs any grant in the domain;
+-- so does the app's own project (id = the domain id: data from before projects, and runs acting
+-- on the app itself, like create-project).
 create or replace function mw.domain_project_visible(p_domain text, p_project text) returns boolean
   language sql stable as $$
     select coalesce(mw.actor_kind(), '') <> 'person'
@@ -64,7 +69,7 @@ create or replace function mw.domain_project_visible(p_domain text, p_project te
       or exists (
         select 1 from jsonb_array_elements(mw.actor_grants()) g
         where g ->> 'domain' = p_domain
-          and (p_project is null or g ->> 'project' is null or g ->> 'project' = p_project))
+          and (p_project is null or p_project = p_domain or g ->> 'project' is null or g ->> 'project' = p_project))
   $$;
 
 -- The same for a row that names only its project (runs, cases, pages, chats).
@@ -84,7 +89,7 @@ create or replace function mw.row_visible(p_domain text, p_project text, p_row j
       or exists (
         select 1 from jsonb_array_elements(mw.actor_grants()) g
         where g ->> 'domain' = p_domain
-          and (p_project is null or g ->> 'project' is null or g ->> 'project' = p_project)
+          and (p_project is null or p_project = p_domain or g ->> 'project' is null or g ->> 'project' = p_project)
           and (jsonb_typeof(g -> 'scope') is distinct from 'object' or g -> 'scope' = '{}'::jsonb
                or not exists (
                  select 1 from jsonb_each(g -> 'scope') s(k, ids)
@@ -98,7 +103,7 @@ create or replace function mw.actor_has_role_in_project(role text, p_domain text
     select mw.actor_has_role(role) or exists (
       select 1 from jsonb_array_elements(mw.actor_grants()) g
       where g ->> 'role' = role and g ->> 'domain' = p_domain
-        and (p_project is null or g ->> 'project' is null or g ->> 'project' = p_project))
+        and (p_project is null or p_project = p_domain or g ->> 'project' is null or g ->> 'project' = p_project))
   $$;
 
 -- The project a write lands in when the writer doesn't say: `mw.project` (withRecordContext,
