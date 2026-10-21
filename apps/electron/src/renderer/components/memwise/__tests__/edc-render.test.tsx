@@ -18,6 +18,7 @@ const { EdcHomeView, AlsoInOtherAppsView } = await import('../edc/EdcHomeView')
 const { RecordFactsByAppView, OwnerTag, OpenInAppButton } = await import('../edc/OwnerTags')
 const { factsByApp, otherApps, ownerTone, barWidth } = await import('../edc/edc-model')
 const { isEdcApp, queriesPageId } = await import('../edc/EdcProjectHome')
+const { fieldSourceLabel } = await import('../records/record-model')
 
 beforeAll(() => {
   setI18n(setupI18n([initReactI18next]))
@@ -163,6 +164,11 @@ describe('one site in two apps', () => {
     expect(html).toContain('Open in EDC')
     // A record in one app only shows nothing extra.
     expect(render(<RecordFactsByAppView page={{ ...page, fields: [page.fields[1]!] }} linked={[]} onOpenRecord={() => {}} />)).toBe('')
+  })
+
+  test('a Rave field on a record Rave never linked says "Not yet in Medidata Rave"', () => {
+    expect(fieldSourceLabel({ kind: 'plugin', plugin: RAVE, title: 'Medidata Rave', unlinked: true }, i18n.t)).toBe('Not yet in Medidata Rave')
+    expect(fieldSourceLabel({ kind: 'plugin', plugin: RAVE, title: 'Medidata Rave', asOf: '2026-10-21T09:00:00Z' }, i18n.t)).toBe('Medidata Rave')
   })
 
   test('the tag and the button on their own', () => {

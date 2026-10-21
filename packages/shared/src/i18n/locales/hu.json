@@ -1740,6 +1740,7 @@
   "memwise.record.source.calculated": "Számított",
   "memwise.record.source.link": "Innen: {{domain}}",
   "memwise.record.source.memwise": "MemWise",
+  "memwise.record.source.notYetIn": "Még nincs a(z) {{source}} rendszerben",
   "memwise.record.source.person": "Valaki",
   "memwise.record.source.step": "Ügynök, innen: {{playbook}}",
   "memwise.record.source.stepAny": "Ügynök",

@@ -644,7 +644,7 @@ import type {
 export type RecordFieldSource =
   | { kind: 'domain' }
   /** `asOf`: a synced binding's copy (D110), read from the plugin at this time. */
-  | { kind: 'plugin'; plugin: string; asOf?: string }
+  | { kind: 'plugin'; plugin: string; asOf?: string; /** The connector hasn't linked this record: its fields aren't from it (yet). */ unlinked?: true }
   | { kind: 'link'; domain: string; entity: string; recordId?: string }
   | { kind: 'calculated' }
   /** The version that last changed it was written by this step run, person or source. */

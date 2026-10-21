@@ -1740,6 +1740,7 @@
   "memwise.record.source.calculated": "計算値",
   "memwise.record.source.link": "{{domain}} から",
   "memwise.record.source.memwise": "MemWise",
+  "memwise.record.source.notYetIn": "{{source}} にはまだありません",
   "memwise.record.source.person": "担当者",
   "memwise.record.source.step": "エージェント({{playbook}})",
   "memwise.record.source.stepAny": "エージェント",

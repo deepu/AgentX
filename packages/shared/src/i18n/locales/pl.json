@@ -1798,6 +1798,7 @@
   "memwise.record.source.calculated": "Obliczone",
   "memwise.record.source.link": "Z: {{domain}}",
   "memwise.record.source.memwise": "MemWise",
+  "memwise.record.source.notYetIn": "Jeszcze nie ma w {{source}}",
   "memwise.record.source.person": "Ktoś",
   "memwise.record.source.step": "Agent, z: {{playbook}}",
   "memwise.record.source.stepAny": "Agent",

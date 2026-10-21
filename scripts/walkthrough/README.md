@@ -21,6 +21,10 @@ model's. Everything else (the kernel, Postgres, the playbooks, the screens) is r
      node scripts/walkthrough/launch.mjs <configDir> <projectDir> <outDir> $PWD/scripts/walkthrough/shell-etmf.mjs
    ```
 
+Both eTMF flows need the fake Rave too (EDC's sites come only from Rave): start
+`bun packages/runtime/tests/fixtures/fake-rave-http.ts --port 4790 --user rave --password rave` and launch with
+`RAVE_URL=http://127.0.0.1:4790/RaveWebServices RAVE_USER=rave RAVE_PASSWORD=rave`.
+
 `shell-etmf.mjs` seeds the eTMF example through the app's own calls (`seed-etmf.mjs`) and goes Home → asks →
 Waiting for you → opens and approves the activation → a page from the tree → a playbook → a record.
 `shell-literature.mjs` asks on the Literature example's Home.

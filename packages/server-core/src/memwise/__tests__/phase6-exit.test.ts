@@ -97,6 +97,9 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
     dir = mkdtempSync(join(tmpdir(), 'mw-exit6-'))
     projectDir = join(dir, 'project')
     cpSync(join(REPO, 'examples', 'etmf'), projectDir, { recursive: true })
+    // Phase 6's scenario, from before EDC read Medidata Rave (Stage 6): without the Rave binding,
+    // EDC's sites are made by hand. With it, only Rave may give their facts (one owner per fact).
+    rmSync(join(projectDir, 'domain', 'bindings', 'memwise__medidata-rave.yaml'))
     mkdirSync(join(dir, 'relay'), { recursive: true })
     writeFileSync(join(dir, 'relay', 'settings.json'), JSON.stringify({ enabled: true, relayUrl: relay.url }))
     svc = (await startMemwiseService({

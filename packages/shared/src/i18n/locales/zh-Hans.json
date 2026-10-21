@@ -1740,6 +1740,7 @@
   "memwise.record.source.calculated": "计算得出",
   "memwise.record.source.link": "来自{{domain}}",
   "memwise.record.source.memwise": "MemWise",
+  "memwise.record.source.notYetIn": "尚未在 {{source}} 中",
   "memwise.record.source.person": "某人",
   "memwise.record.source.step": "代理，来自{{playbook}}",
   "memwise.record.source.stepAny": "代理",

@@ -1740,6 +1740,7 @@
   "memwise.record.source.calculated": "Calculado",
   "memwise.record.source.link": "De {{domain}}",
   "memwise.record.source.memwise": "MemWise",
+  "memwise.record.source.notYetIn": "Aún no está en {{source}}",
   "memwise.record.source.person": "Una persona",
   "memwise.record.source.step": "Agente, de {{playbook}}",
   "memwise.record.source.stepAny": "Agente",

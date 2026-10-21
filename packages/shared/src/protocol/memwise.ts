@@ -1471,7 +1471,7 @@ export interface MwAskResult {
 export type MwRecordFieldSource =
   | { kind: 'domain' }
   /** `asOf` (Stage 6, D110): a read-only copy kept by a synced connector, as read at this time ("as of 09:15"). */
-  | { kind: 'plugin'; plugin: string; title?: string; asOf?: string }
+  | { kind: 'plugin'; plugin: string; title?: string; asOf?: string; /** Not linked to a record in the connector yet: "not yet in Medidata Rave". */ unlinked?: true }
   | { kind: 'link'; domain: string; domainName?: string; entity: string; recordId?: string }
   | { kind: 'calculated' }
   | { kind: 'step'; stepRunId: string; workflowId?: string; label?: string }
