@@ -1,0 +1,4 @@
+title: Sites
+entity: Site
+sort: [site_number]
+columns: [site_number, name, status, principal_investigator, start_up_pack_complete]

@@ -1,0 +1,14 @@
+workflow: watch-expiries
+version: 1
+title: Watch for expiries
+owner: study_manager
+# One case per person, a month before the CV on file expires.
+start: ask_for_new_cv
+starts_on:
+  - before: { field: Person.cv_expires, by: 30d }
+    with: { person: record }
+    as: tmf_specialist
+steps:
+  ask_for_new_cv:
+    on: { requested: end }
+    wait: { remind: 7d, timeout: 30d → end }

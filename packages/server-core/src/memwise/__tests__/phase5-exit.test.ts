@@ -41,6 +41,7 @@ import { channelTools, EMAIL_SMTP_BUILTIN, WHATSAPP_CLOUD_BUILTIN } from '../cha
 import { resetMemwiseHost } from '../host'
 import { scriptedModels } from '../models'
 import { startMemwiseService, type MemwiseService } from '../service'
+import { pdfWith } from './pdf-fixture'
 
 const REPO = join(import.meta.dir, '..', '..', '..', '..', '..')
 const FORM_APP = join(REPO, 'apps', 'external-form')
@@ -49,26 +50,6 @@ const PAN = 'AAACA1234A'
 const GSTIN = '29AAACA1234A1Z5'
 const BUSINESS = 'Acme & Co.'
 const SHOTS = process.env.MEMWISE_WALKTHROUGH_DIR
-
-/** A small real PDF whose page shows `lines` (uncompressed text operators, as generated documents have). */
-export function pdfWith(lines: string[]): Uint8Array {
-  const esc = (s: string) => s.replace(/[\\()]/g, (c) => `\\${c}`)
-  const content = `BT /F1 16 Tf 72 760 Td ${lines.map((l) => `(${esc(l)}) Tj 0 -28 Td`).join(' ')} ET`
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
-    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-  ]
-  let out = '%PDF-1.4\n'
-  const offsets: number[] = []
-  objects.forEach((o, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n` })
-  const xref = out.length
-  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`
-  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
-  return new TextEncoder().encode(out)
-}
 
 const PAN_CARD = pdfWith(['INCOME TAX DEPARTMENT', 'Permanent Account Number Card', `PAN: ${PAN}`, 'Name: ACME TRADERS PRIVATE LIMITED'])
 const GST_CERT = pdfWith(['Government of India', 'Form GST REG-06', 'Registration Certificate', `GSTIN: ${GSTIN}`, 'Legal Name: Acme Traders Private Limited'])

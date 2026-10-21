@@ -72,6 +72,8 @@ export interface MwPlaybookSummary {
   done: number
   /** Phase 4: a plugin's workflow (referenced through its binding) or a fork of one. */
   origin?: MwWorkflowOrigin
+  /** Phase 6: the domain it belongs to (for the sidebar's domain filter). */
+  domain?: string
 }
 
 export interface MwField {
@@ -102,7 +104,8 @@ export interface MwPolicyRule {
   /** Its value in plain words: "needs approval", "40,000", "denied". */
   value: string
   /** The layer it came from. */
-  layer: 'platform' | 'plugin' | 'domain' | 'workflow' | 'step'
+  /** Phase 6 adds `workspace` (house rules above every domain). */
+  layer: 'platform' | 'plugin' | 'workspace' | 'domain' | 'workflow' | 'step'
   layerName: string
   source?: string
   /** Shown but not enforced. */
@@ -185,6 +188,8 @@ export interface MwCaseValue {
   tainted?: boolean
   /** The viewer may not see this field; `value` is null. */
   hidden?: boolean
+  /** Phase 6: a Ref value's record, by its title (`value` keeps the id). */
+  refTitle?: string
 }
 
 /** A file attached to a case (`Document` and `File` values). */
@@ -210,9 +215,12 @@ export interface MwCaseSummary {
   status: MwRunStatus
   stopReason?: string
   /** Who the current state waits on, if anyone. */
-  waitingOn?: { kind: 'role' | 'agent' | 'system'; role?: string }
+  /** `condition`: a `wait_until` block, waiting on a record's data rather than on anyone. */
+  waitingOn?: { kind: 'role' | 'agent' | 'system' | 'condition'; role?: string }
   createdAt: string
   updatedAt: string
+  /** Phase 6: the playbook's domain (for the domain filter). */
+  domain?: string
 }
 
 export interface MwStepRunSummary {
@@ -256,6 +264,11 @@ export interface MwCase extends MwCaseSummary {
   links?: MwExternalLink[]
   /** Phase 5: messages sent for this case (invites, reminders), newest first. */
   deliveries?: MwDelivery[]
+  /** Phase 6: parent, called and started cases (24 §8). */
+  caseLinks?: MwCaseLink[]
+  /** Phase 6: what a `wait_until` state waits for, with the record's current values. */
+  waiting?: MwWaitingCondition
+  domain?: string
 }
 
 /** Why a case is back at a step it already did: the step that sent it back, its outcome and words. */
@@ -339,6 +352,10 @@ export type MwInboxItem =
       returned?: MwReturnedNote
       /** Phase 4: a bind-plugin step (`fix`): the screens show the binding review instead of a form. */
       binding?: MwInboxBinding
+      /** Phase 6: the domain, how it is reviewed (document review opens the record page) and the signature it needs. */
+      domain?: string
+      review?: MwInboxReview['review']
+      sign?: MwInboxReview['sign']
     }
   /** A person step that only decides (approval card: approve / send back with a comment). */
   | {
@@ -360,6 +377,10 @@ export type MwInboxItem =
       returned?: MwReturnedNote
       /** Phase 4: a bind-plugin step (`fix`, `review`): the screens show the binding review. */
       binding?: MwInboxBinding
+      /** Phase 6, as on `input`. */
+      domain?: string
+      review?: MwInboxReview['review']
+      sign?: MwInboxReview['sign']
     }
   /** An agent step wants to run an effect that needs approval (e.g. sending an email). */
   | {
@@ -464,6 +485,33 @@ export type MwInboxItem =
       fields: string[]
       since: string
     }
+  /** Phase 6: a record broke one of its entity's invariants (24 §4); opens the record. No case. */
+  | {
+      kind: 'flag'
+      id: string
+      caseId?: undefined
+      runId?: undefined
+      workflowId?: undefined
+      caseTitle: string
+      stepTitle: string
+      domain: string
+      flag: MwRecordFlag
+      since: string
+    }
+  /** Phase 6: the storm guard held firings of a trigger (24 §7): start them or discard them. No case. */
+  | {
+      kind: 'trigger-hold'
+      id: string
+      caseId?: undefined
+      runId?: undefined
+      caseTitle: string
+      stepTitle: string
+      triggerId: string
+      workflowId: string
+      held: number
+      description: string
+      since: string
+    }
 
 export interface MwSubmitStepInput {
   stepRunId: string
@@ -472,6 +520,8 @@ export interface MwSubmitStepInput {
   comment?: string
   /** Phase 5: field -> suggestion id (memwise:external:extract) for values kept as read from a document. */
   sources?: Record<string, string>
+  /** Phase 6: a step with `sign:` needs the person's password (re-authentication, 24 §9). */
+  signature?: { password: string }
 }
 
 export interface MwSubmitResult {
@@ -482,6 +532,8 @@ export interface MwSubmitResult {
   message?: string
   /** Why it was refused, e.g. `submit.stale`, `approval.forbidden`, `event.use_submit` (screens translate `memwise.result.<code>`). */
   code?: string
+  /** Phase 6 (app addition): `submit.locked`: when the person may try signing again. */
+  retryAfter?: string
 }
 
 /** `memwise:cases:start` refused the starting values: field -> problems, as MwSubmitResult. */
@@ -534,6 +586,10 @@ export interface MwEntityType {
   name: string
   fields: MwField[]
   lifecycle?: string[]
+  /** Phase 6 (the Entities page's Definition tab): the entity key, its domain and definition in display form. */
+  key?: string
+  domain?: string
+  definition?: MwEntityDefinition
 }
 
 export interface MwEntityRow {
@@ -561,8 +617,10 @@ export interface MwChange {
    * `drafts`: a draft was created, edited, checked, published or discarded (`id` = draft id).
    * `plugins` (Phase 4): a plugin was installed, or a binding or identity link changed.
    */
-  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins' | 'external' | 'relay'
-  /** The run id for `run` changes. */
+  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins' | 'external' | 'relay' | 'records' | 'triggers'
+  /** Phase 6 `records`: the entity key and record id that changed. */
+  entity?: string
+  /** The run id for `run` changes; the record id for `records`. */
   id?: string
   /** The case the changed run belongs to (`run` changes). */
   caseId?: string
@@ -1305,3 +1363,369 @@ export interface MwResendInput {
 }
 
 export interface MwResendResult extends MwSubmitResult { delivery?: MwDelivery }
+
+// ================================================================ Phase 6 (docs/memwise/24-phase-6-interfaces.md)
+// PHASE 6 CONTRACT: domains, record pages, views, dashboards, triggers, regulated mode, review.
+// Change only additively. Shapes mirror the kernel's (packages/runtime/src/types.ts, KernelPhase6).
+
+// memwise:domains:list          (workspaceId)                          → MwDomain[]
+// memwise:records:page          (workspaceId, MwRecordPageInput)       → MwRecordPage | null
+// memwise:records:create        (workspaceId, MwRecordCreateInput)     → MwRecordWriteResult
+// memwise:records:update        (workspaceId, MwRecordUpdateInput)     → MwRecordWriteResult
+// memwise:records:transition    (workspaceId, MwRecordTransitionInput) → MwRecordWriteResult
+// memwise:records:query         (workspaceId, MwRecordQueryInput)      → MwRecordQueryResult
+// memwise:records:tree          (workspaceId, MwTreeInput)             → MwTreeNode[]
+// memwise:records:notes:save    (workspaceId, MwSaveNoteInput)         → MwRecordWriteResult
+// memwise:pages:dashboard       (workspaceId, MwDashboardInput)        → MwDashboard
+// memwise:views:list            (workspaceId, { domain, entity? })     → MwView[]
+// memwise:views:save            (workspaceId, MwSaveViewInput)         → MwView
+// memwise:triggers:list         (workspaceId)                          → MwTrigger[]
+// memwise:triggers:release      (workspaceId, MwReleaseTriggerInput)   → MwSubmitResult & { started?: number }
+// memwise:audit:get             (workspaceId, { entity, id })          → MwAuditTrail | null
+// memwise:audit:export          (workspaceId, MwAuditExportInput)      → MwAuditExport
+// memwise:cases:submit          takes `signature?: { password }` (MwSubmitStepInput) and may answer
+//                               status 'signature-required' | 'signature-failed' | 'locked' | 'password-not-set'.
+
+export interface MwDomain {
+  id: string
+  name: string
+  description?: string
+  regulated: boolean
+  owner?: string
+  /** Days, for display ("Kept 25 years"). */
+  retentionDays?: number
+  entities: { key: string; entity: string; title: string; count: number; parent?: string; lifecycle?: string[] }[]
+  /** Playbook ids in this domain. */
+  workflows: string[]
+  pages: { id: string; title: string; under?: { entity: string } }[]
+  views: { id: string; title: string; entity: string }[]
+  flags: number
+  /** App addition: house rules and hand-off settings, for the domain page. */
+  detail?: MwDomainDetail
+}
+
+export type MwRecordFieldSource =
+  | { kind: 'domain' }
+  | { kind: 'plugin'; plugin: string; title?: string }
+  | { kind: 'link'; domain: string; domainName?: string; entity: string; recordId?: string }
+  | { kind: 'calculated' }
+  | { kind: 'step'; stepRunId: string; workflowId?: string; label?: string }
+  | { kind: 'person'; personId: string; name?: string }
+  | { kind: 'source'; source: string }
+
+export interface MwRecordField {
+  name: string
+  label: string
+  type: string
+  value: unknown
+  hidden?: boolean
+  ref?: MwRecordRef
+  source: MwRecordFieldSource
+  editable: boolean
+  calculated?: boolean
+  followed?: boolean
+  required?: boolean
+  description?: string
+  controlled?: boolean
+}
+
+export interface MwRecordRef { entity: string; id: string; title: string; status?: string }
+
+export type MwPageLayoutShape = 'single' | 'split' | 'sidebar'
+
+export type MwPageBlock =
+  | { kind: 'fields'; fields: string[] }
+  | { kind: 'details' }
+  | { kind: 'viewer'; field: string }
+  | { kind: 'related'; relationships: string[] }
+  | { kind: 'cases' }
+  | { kind: 'lifecycle' }
+  | { kind: 'chart'; chart: 'bar' | 'line' | 'donut'; of: string; by?: string }
+  | { kind: 'checks' }
+  | { kind: 'notes' }
+  | { kind: 'mentions' }
+  | { kind: 'start' }
+  | { kind: 'history' }
+
+export interface MwPageLayout {
+  layout: MwPageLayoutShape
+  header: string[]
+  areas: Partial<Record<'main' | 'left' | 'right' | 'side' | 'below', MwPageBlock[]>>
+  isDefault?: boolean
+}
+
+export interface MwTransitionOption {
+  name: string
+  label: string
+  to: string
+  allowed: boolean
+  reason?: string
+  guard?: { condition: string; holds: boolean }
+  signed?: boolean
+}
+
+export interface MwRecordFlag { id: string; entity: string; recordId: string; invariant: string; message: string; raisedAt: string; closedAt?: string }
+
+export interface MwSignature {
+  id: string
+  stepRunId: string
+  caseId: string
+  personId: string
+  name: string
+  meaning: string
+  at: string
+  entity: string
+  recordId: string
+  contentHash: string
+  changedSince: boolean
+}
+
+export interface MwRecordVersion {
+  version: number
+  at: string
+  by: string
+  byLabel?: string
+  via?: string
+  reason?: string
+  changed: string[]
+  hash: string
+}
+
+export interface MwMention { sourceKind: 'note' | 'chat' | 'step' | 'comment' | 'page'; sourceId: string; label: string; at: string; caseId?: string }
+
+export interface MwProposedValue {
+  field: string
+  label: string
+  type: string
+  value: unknown
+  provenance?: MwProvenance
+  confidence?: number
+  page?: number
+  quote?: string
+  document?: string
+  required?: boolean
+  /** A proposed reference's record, by its title (`value` keeps the id). */
+  ref?: MwRecordRef
+}
+
+export interface MwCheckResult { rule: string; verdict: string; note?: string; stepRunId: string }
+
+/** A record page in review mode (24 §11): the open person step drawn on the record it reviews. */
+export interface MwRecordReview {
+  stepRunId: string
+  runId: string
+  caseId: string
+  workflowId: string
+  stepId: string
+  title: string
+  instructions?: string
+  proposed: MwProposedValue[]
+  checks: MwCheckResult[]
+  outcomes: string[]
+  sign?: { meaning: string; as: { personId: string; name: string; roles: string[] } }
+  returnedComments?: { by: string; comment: string; at: string }[]
+}
+
+export interface MwRecordPage {
+  entity: string
+  domain: string
+  domainName: string
+  entityName: string
+  regulated: boolean
+  id: string
+  title: string
+  status?: string
+  layout: MwPageLayout
+  fields: MwRecordField[]
+  parents: MwRecordRef[]
+  /** `types`: each row value's declared type, so a date or an enum reads as one. */
+  related: Record<string, { entity: string; label: string; total: number; rows: (MwRecordRef & { values: Record<string, unknown> })[]; types?: Record<string, string> }>
+  cases: { caseId: string; runId: string; workflowId: string; title: string; state: string; status: MwRunStatus; updatedAt: string; waitingOn?: string }[]
+  lifecycle?: { states: string[]; current?: string; transitions: MwTransitionOption[] }
+  flags: MwRecordFlag[]
+  signatures: MwSignature[]
+  notes?: { body: string; version: number; by: string; at: string }
+  mentions: MwMention[]
+  start: { workflowId: string; title: string }[]
+  documents: Record<string, MwDocument | null>
+  history: MwRecordVersion[]
+  review?: MwRecordReview
+}
+
+export interface MwRecordPageInput { entity: string; id: string; review?: { stepRunId: string } }
+export interface MwRecordCreateInput { entity: string; values: Record<string, unknown>; status?: string; reason?: string }
+export interface MwRecordUpdateInput { entity: string; id: string; values: Record<string, unknown>; reason?: string }
+export interface MwRecordTransitionInput { entity: string; id: string; transition: string; reason?: string }
+
+export interface MwRecordWriteResult {
+  applied: boolean
+  status: 'applied' | 'forbidden' | 'invalid' | 'guard' | 'reason-required' | 'signature-required' | 'missing' | 'stale'
+  message?: string
+  errors?: Record<string, string[]>
+  id?: string
+  version?: number
+}
+
+export interface MwRecordQueryInput {
+  entity: string
+  domain?: string
+  filter?: string
+  sort?: { field: string; desc?: boolean }[]
+  group?: string
+  columns?: string[]
+  limit?: number
+  offset?: number
+}
+
+export interface MwRecordQueryResult {
+  entity: string
+  columns: { name: string; label: string; type: string; calculated?: boolean; followed?: boolean }[]
+  /** `refs`: the records a row's Ref fields point at, by title (absent when none). */
+  rows: (MwRecordRef & { values: Record<string, unknown>; hidden: string[]; refs?: Record<string, MwRecordRef> })[]
+  total: number
+  /** The groups in order, with counts (and the title, when grouped by a Ref). */
+  groups?: { key: string | null; count: number; title?: string }[]
+}
+
+export interface MwTreeInput { domain: string; parent?: { entity: string; id: string } }
+
+export type MwTreeNode =
+  | { kind: 'record'; entity: string; id: string; title: string; status?: string; hasChildren: boolean }
+  | { kind: 'group'; entity: string; parent?: { entity: string; id: string }; title: string; count: number; viewFilter?: string }
+  | { kind: 'page'; pageId: string; title: string; params: Record<string, string> }
+
+export interface MwSaveNoteInput { entity: string; id: string; body: string; reason?: string }
+
+export interface MwView {
+  id: string
+  title: string
+  domain: string
+  entity: string
+  filter?: string
+  sort?: { field: string; desc?: boolean }[]
+  group?: string
+  columns?: string[]
+  layout: 'table' | 'board'
+  personal: boolean
+}
+
+export interface MwSaveViewInput { domain: string; view: Omit<MwView, 'personal' | 'domain'> }
+
+export interface MwDashboardInput { domain: string; pageId: string; params?: Record<string, string> }
+
+export type MwDashboardBlock =
+  | { kind: 'kpi'; label: string; value: number | null; target?: number; format?: 'number' | 'percent'; detail?: string }
+  | { kind: 'table' | 'list'; title?: string; result: MwRecordQueryResult }
+  | { kind: 'heatmap'; title?: string; columns: string[]; rows: { record: MwRecordRef; values: (number | null)[] }[] }
+  | { kind: 'text'; markdown: string }
+
+export interface MwDashboard {
+  pageId: string
+  domain: string
+  title: string
+  description?: string
+  params: Record<string, string>
+  computedAt: string
+  blocks: MwDashboardBlock[]
+}
+
+export type MwTriggerKind = 'entered' | 'created' | 'changed' | 'date' | 'every' | 'message'
+
+export interface MwTrigger {
+  id: string
+  workflowId: string
+  workflowTitle: string
+  domain: string
+  kind: MwTriggerKind
+  description: string
+  lastFiredAt?: string
+  nextDue?: { at: string; record?: MwRecordRef }
+  firings: number
+  held: number
+}
+
+export interface MwReleaseTriggerInput { trigger: string; decision: 'start' | 'discard' }
+
+export interface MwCaseLink {
+  kind: 'started' | 'called' | 'started_by' | 'called_by'
+  caseId: string
+  runId: string
+  workflowId: string
+  title: string
+  state: string
+  status: MwRunStatus
+}
+
+/** `types`: each value's declared type (a percent rollup is `Percentage`), so the screen formats it. */
+export interface MwWaitingCondition { record: MwRecordRef; condition: string; holds: boolean; values: Record<string, unknown>; types?: Record<string, string> }
+
+export interface MwAuditTrail {
+  entity: string
+  id: string
+  title: string
+  domain: string
+  regulated: boolean
+  retentionDays?: number
+  values: Record<string, unknown>
+  versions: (MwRecordVersion & { values: Record<string, unknown>; prevHash: string })[]
+  chain: { ok: boolean; brokenAt?: number; message?: string }
+  signatures: MwSignature[]
+  cases: { caseId: string; workflowId: string; title: string; stepRuns: { stepRunId: string; stepId: string; performer: string; outcome?: string; decidedBy?: string; at: string }[] }[]
+  flags: MwRecordFlag[]
+  exportedAt: string
+}
+
+export interface MwAuditExportInput { entity: string; id: string; format: 'json' | 'pdf' }
+export interface MwAuditExport { name: string; mime: string; dataBase64: string }
+
+/** Phase 6 inbox additions (`MwInboxItem` kinds `input`/`decision` gain these optional fields). */
+export interface MwInboxReview {
+  domain?: string
+  review?: { kind: 'document'; entity: string; recordId?: string } | { kind: 'table'; items: string } | { kind: 'diff' } | { kind: 'form' }
+  sign?: { meaning: string }
+}
+
+// ---------------------------------------------------------------- Phase 6 app additions
+// Additive to the contract above, made while building the screens (24 §17 "As built").
+
+// memwise:files:read            (workspaceId, fileId)                  → MwFileData   (the record page's viewer)
+
+/** A stored file's bytes, for the record page's document viewer. */
+export interface MwFileData { id: string; name: string; mime: string; dataBase64: string }
+
+/** An entity's definition as the Entities page shows it (`MwEntityType.definition`). */
+export interface MwEntityDefinition {
+  /** How a record is named: `{site_number} · {name}`. */
+  title?: string
+  /** The page-tree parent relationship and the entity it points at. */
+  parent?: { relationship: string; entity: string }
+  /** Where each field's value comes from (fields, calculated and followed ones). */
+  sources: Record<string, MwRecordFieldSource>
+  relationships: { name: string; cardinality: 'one' | 'many'; target: string; via?: string }[]
+  calculated: { name: string; kind: 'rollup' | 'formula'; summary: string; description?: string }[]
+  links: { target: string; match: Record<string, string>; follow: string[] }[]
+  lifecycle?: {
+    initial: string
+    states: { name: string; label: string; on: { transition: string; to: string }[]; timers: string[] }[]
+    transitions: { name: string; label: string; by: string[]; guard?: string; signed?: boolean }[]
+    fromList?: boolean
+  }
+  invariants: string[]
+  /** Playbooks that read, write or start from this entity. */
+  usedBy: { workflowId: string; title: string }[]
+}
+
+/** Phase 6 domain additions the sidebar and the domain page use (`MwDomain` stays as agreed). */
+export interface MwDomainDetail {
+  /** The domain's house rules in plain words (policy.yaml), and the workspace's above them. */
+  houseRules: MwPolicyLine[]
+  workspaceRules: MwPolicyLine[]
+  acceptsFrom: string[]
+  intake?: string
+}
+
+// memwise:people:password:set   (workspaceId, MwSetPasswordInput) → MwSetPasswordResult
+// The signed-in person's own password, to sign in a regulated domain (the desktop owner starts
+// without one). Changing an existing one needs the current password.
+export interface MwSetPasswordInput { password: string; current?: string }
+export interface MwSetPasswordResult { applied: boolean; code?: 'password.current-wrong' | 'password.rule'; message?: string }

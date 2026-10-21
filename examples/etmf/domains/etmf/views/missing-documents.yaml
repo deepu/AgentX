@@ -1,0 +1,6 @@
+title: Missing documents
+entity: ExpectedDocument
+filter: "status = 'missing'"
+group: site
+sort: [artifact]
+columns: [artifact, site, phase]

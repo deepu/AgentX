@@ -1,0 +1,29 @@
+name: sent-back-unsigned
+description: >
+  QC finds the PI CV isn't signed, so the specialist sends it back with a note: the document is marked
+  sent back and "Fix a rejected document" starts with that note.
+startAt: qc
+records:
+  Sponsor:
+    - { id: spon_aster, name: Aster Bio }
+  Study:
+    - { id: stud_ast301, code: AST-301, sponsor: spon_aster }
+  Site:
+    - { id: site_us012, site_number: US-012, study: stud_ast301, status: activating }
+  Document:
+    - { id: docu_vogel_cv, file: vogel-cv.pdf, artifact: Investigator CV, study: stud_ast301, site: site_us012, status: in_qc }
+case:
+  original: vogel-cv.pdf
+  document: docu_vogel_cv
+  artifact: Investigator CV
+  study: stud_ast301
+  site: site_us012
+submit:
+  qc:
+    outcome: sent_back
+    values:
+      qc_comment: The CV isn't signed. Please ask Dr. Vogel to sign and date the last page and send it again.
+expect:
+  outcome: sent_back
+  state: end
+  effects: { etmf.document.transition: 1 }

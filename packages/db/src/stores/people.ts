@@ -7,14 +7,28 @@
  * cannot read password hashes or tokens at all.
  */
 import crypto from 'node:crypto';
+import type { Grant } from '@memwise/defs';
 import type pg from 'pg';
 import type { Actor } from '../actor.ts';
 import { ulid } from '../ids.ts';
 import type { Queryable } from '../pool.ts';
 import { withTransaction } from '../pool.ts';
-import { compact, iso } from '../rows.ts';
+import { compact, iso, json } from '../rows.ts';
+import { PgGrantStore } from './grants.ts';
 
-export interface Person { id: string; name: string; email: string; roles: string[]; disabled?: boolean; createdAt: string }
+export interface Person {
+  id: string; name: string; email: string; roles: string[]; disabled?: boolean; createdAt: string;
+  /** Phase 6: roles granted in one domain (24 §2). */
+  grants?: Grant[];
+  /** Phase 6: locked after failed signatures until then (24 §9). */
+  lockedUntil?: string;
+}
+
+/** Sign-in events kept for regulated accounts (24 §9). */
+export type AuthEventKind = 'signature-ok' | 'signature-failed' | 'locked';
+
+/** Failed signatures count within this window (the kernel decides what to do with the count). */
+export const AUTH_FAILURE_WINDOW_MS = 15 * 60_000;
 export interface Role { id: string; title: string; description?: string }
 
 export const newPersonId = () => `person_${ulid()}`;
@@ -70,6 +84,12 @@ export class PgPeopleStore {
   async setPassword(personId: string, password: string): Promise<void> {
     const r = await this.pool.query('update mw.people set password_hash = $2 where id = $1', [personId, await hashPassword(password)]);
     if (!r.rowCount) throw new Error(`No person ${personId}`);
+  }
+
+  /** Whether the person has a password (signing in a regulated domain needs one). */
+  async hasPassword(personId: string): Promise<boolean> {
+    const { rows } = await this.pool.query('select password_hash is not null as has from mw.people where id = $1', [personId]);
+    return !!rows[0]?.has;
   }
 
   /** The person when the password matches and they are not disabled. */
@@ -142,17 +162,83 @@ export class PgPeopleStore {
     const p = await this.get(personId);
     if (!p) throw new Error(`No person ${personId}`);
     if (p.disabled) throw new Error(`${p.name} is disabled`);
-    return { kind: 'person', personId: p.id, roles: p.roles };
+    return { kind: 'person', personId: p.id, roles: p.roles, ...(p.grants?.length ? { grants: p.grants } : {}) };
+  }
+
+  // ---------------------------------------------------------------- Phase 6 (24 §2, §9)
+
+  async grants(personId: string): Promise<Grant[]> {
+    return new PgGrantStore().list(this.pool, personId);
+  }
+
+  async setGrants(personId: string, grants: Grant[]): Promise<Grant[]> {
+    return withTransaction(this.pool, async (db) => {
+      await this.mustExist(db, personId);
+      return new PgGrantStore().set(db, personId, grants);
+    });
+  }
+
+  /**
+   * Logs a signing attempt or a lock. A `locked` event with `detail.until` (ISO time) also sets
+   * the person's `locked_until`. `tx`: write it in the caller's transaction (a good signature is
+   * logged with the signature it made, or not at all).
+   */
+  async recordAuthEvent(personId: string, kind: AuthEventKind, detail: Record<string, unknown> = {}, tx?: Queryable): Promise<void> {
+    const write = async (db: Queryable) => {
+      await db.query('insert into mw.auth_events (id, person_id, kind, detail) values ($1, $2, $3, $4)',
+        [`auth_${ulid()}`, personId, kind, json(detail)]);
+      if (kind === 'locked' && typeof detail.until === 'string') {
+        await db.query('update mw.people set locked_until = $2 where id = $1', [personId, detail.until]);
+      }
+    };
+    if (tx) await write(tx);
+    else await withTransaction(this.pool, write);
+  }
+
+  /** Sets or clears (null) the time a person is locked until. */
+  async setLockedUntil(personId: string, until: string | Date | null): Promise<void> {
+    await this.pool.query('update mw.people set locked_until = $2 where id = $1', [personId, until]);
+  }
+
+  /**
+   * Whether the person is locked now, and how many signatures failed in the last 15 minutes
+   * since their last good one.
+   */
+  async lockState(personId: string): Promise<{ lockedUntil?: string; recentFailures: number }> {
+    const { rows } = await this.pool.query<{ locked_until: Date | null; failures: number }>(
+      `select case when p.locked_until > now() then p.locked_until end as locked_until,
+              (select count(*)::int from mw.auth_events e
+                where e.person_id = p.id and e.kind = 'signature-failed' and e.at > now() - $2::interval
+                  and e.at > coalesce((select max(o.at) from mw.auth_events o where o.person_id = p.id and o.kind = 'signature-ok'), '-infinity')) as failures
+       from mw.people p where p.id = $1`, [personId, `${AUTH_FAILURE_WINDOW_MS} milliseconds`]);
+    const r = rows[0];
+    if (!r) throw new Error(`No person ${personId}`);
+    return { ...(r.locked_until ? { lockedUntil: iso(r.locked_until) } : {}), recentFailures: r.failures };
+  }
+
+  /** The sign-in events of a person, newest first (the audit export). */
+  async authEvents(personId: string, limit = 100): Promise<{ id: string; kind: AuthEventKind; detail: Record<string, unknown>; at: string }[]> {
+    const { rows } = await this.pool.query<{ id: string; kind: AuthEventKind; detail: Record<string, unknown>; at: Date }>(
+      'select id, kind, detail, at from mw.auth_events where person_id = $1 order by at desc, id desc limit $2', [personId, limit]);
+    return rows.map((r) => ({ id: r.id, kind: r.kind, detail: r.detail, at: iso(r.at) }));
   }
 
   private async select(where: string, values: unknown[] = []): Promise<Person[]> {
-    const { rows } = await this.pool.query<{ id: string; name: string; email: string; disabled: boolean; created_at: Date; roles: string[] }>(
+    const { rows } = await this.pool.query<{
+      id: string; name: string; email: string; disabled: boolean; created_at: Date; roles: string[]; grants: Grant[]; locked_until: Date | null;
+    }>(
       `select p.id, p.name, p.email, p.disabled, p.created_at,
-              coalesce(array(select role_id from mw.person_roles r where r.person_id = p.id order by role_id), '{}') as roles
+              coalesce(array(select role_id from mw.person_roles r where r.person_id = p.id order by role_id), '{}') as roles,
+              coalesce((select jsonb_agg(jsonb_strip_nulls(jsonb_build_object('role', g.role_id, 'domain', g.domain, 'scope', g.scope))
+                                   order by g.domain, g.role_id, g.id)
+                        from mw.grants g where g.person_id = p.id), '[]'::jsonb) as grants,
+              case when p.locked_until > now() then p.locked_until end as locked_until
        from mw.people p where ${where}`, values);
     return rows.map((r) => ({
       id: r.id, name: r.name, email: r.email, roles: r.roles, createdAt: iso(r.created_at),
       ...(r.disabled ? { disabled: true } : {}),
+      ...(r.grants.length ? { grants: r.grants } : {}),
+      ...(r.locked_until ? { lockedUntil: iso(r.locked_until) } : {}),
     }));
   }
 

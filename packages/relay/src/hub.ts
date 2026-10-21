@@ -144,7 +144,7 @@ function connectionListed(headers: Headers): Set<string> {
 
 /**
  * Headers forwarded to a core: no hop-by-hop headers, cookies, `cf-*` or forwarding headers
- * the client sent (the relay sets its own), and no `accept-encoding` (bodies cross the tunnel
+ * the client sent (the relay sets its own; a webhook's `x-memwise-signature` is kept), and no `accept-encoding` (bodies cross the tunnel
  * as they are; the host compresses if it wants).
  */
 export function filterRequestHeaders(
@@ -157,7 +157,8 @@ export function filterRequestHeaders(
     const name = key.toLowerCase();
     if (HOP_BY_HOP.has(name) || listed.has(name)) return;
     if (name === 'cookie' || name === 'accept-encoding' || name === 'forwarded' || name === 'x-real-ip') return;
-    if (name.startsWith('cf-') || name.startsWith('x-forwarded-') || name.startsWith('x-memwise-')) return;
+    // `x-memwise-signature` is a sender's webhook signature (hmac-sha256 hooks), checked by the core.
+    if (name.startsWith('cf-') || name.startsWith('x-forwarded-') || (name.startsWith('x-memwise-') && name !== 'x-memwise-signature')) return;
     if (name.startsWith('sec-websocket-')) return;
     out.push([name, value]);
   });

@@ -81,9 +81,11 @@ describe('resolving plugin workflows through a binding', () => {
     // The plugin's own copy is untouched, and the whole thing checks clean in the domain.
     expect(original.steps.onboard!.tools.allowed).toEqual(['domain.client.create']);
     expect(brief(checkProject(project, KERNEL_ENV))).toEqual([]);
-    // Lines still point into the plugin's files.
-    const bad = checkProject(project, { tools: {} }).find((d) => d.code === 'unknown-tool' && d.file?.endsWith('onboard.md'));
-    expect(bad).toMatchObject({ line: 7, path: 'tools.allowed.0' });
+    // Lines still point into the plugin's files. (Phase 6: the entity tools always count as bound.)
+    const unbound = checkProject(project, { tools: {} });
+    expect(unbound.find((d) => d.code === 'unknown-tool' && d.file?.endsWith('onboard.md'))).toBeUndefined();
+    const bad = checkProject(project, { tools: {}, roles: ['nobody'] }).find((d) => d.code === 'unknown-role' && d.file?.endsWith('approve.md'));
+    expect(bad).toMatchObject({ line: 4, path: 'assignee' });
   });
 
   test('resolveWorkflow is pure and its hash covers the binding', async () => {

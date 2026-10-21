@@ -1,0 +1,20 @@
+name: question-goes-to-a-person
+description: The Lyon site asks when the next monitoring visit is; a TMF specialist answers it.
+case:
+  sender: crc@lyon-site.example
+  subject: "FR-201: next monitoring visit?"
+  body: Hello, could you tell us when the next monitoring visit is planned? Thank you.
+  documents: []
+  received_at: "2026-10-20T09:40:00Z"
+model:
+  router:
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: question
+            writes: { kind: question }
+            rationale: The site asks a question and attaches nothing.
+expect:
+  outcome: question
+  state: needs_person
+  writes: { kind: question }

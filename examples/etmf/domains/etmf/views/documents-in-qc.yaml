@@ -1,0 +1,5 @@
+title: Documents waiting for QC
+entity: Document
+filter: "status = 'in_qc'"
+sort: [-received_at]
+columns: [artifact, site, about, sender, received_at]

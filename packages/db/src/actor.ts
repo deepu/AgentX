@@ -2,14 +2,17 @@
  * Actors (19 §2, D32): everything the kernel does for someone runs under one, and Postgres
  * row rules read it from transaction-local settings. `withActor` is the only place those
  * settings are made, so the database, not the app, decides what a person or an agent sees.
+ * Phase 6 adds `mw.grants` (a person's grants as JSON); the write context (`mw.reason`, `mw.via`,
+ * `mw.transition`, `mw.by`) is `withRecordContext`'s.
  */
-import type { StepToken } from '@memwise/defs';
+import type { Grant, StepToken } from '@memwise/defs';
 import type pg from 'pg';
 import { withTransaction } from './pool.ts';
 
 /** Who is acting. Same shape as `Actor` in @memwise/runtime (which re-exports this one). */
 export type Actor =
-  | { kind: 'person'; personId: string; roles: string[] }
+  /** Phase 6: `roles` are workspace-wide; `grants` are roles in one domain, maybe limited to records (24 §2). */
+  | { kind: 'person'; personId: string; roles: string[]; grants?: Grant[] }
   | { kind: 'step'; token: StepToken }
   | { kind: 'system' };
 
@@ -34,19 +37,23 @@ export async function setActor(client: pg.ClientBase, actor: Actor): Promise<voi
   const s = actorSettings(actor);
   await client.query(
     `select set_config('mw.actor_kind', $1, true), set_config('mw.person', $2, true),
-            set_config('mw.roles', $3, true), set_config('mw.step_token', $4, true)`,
-    [s.kind, s.person, s.roles, s.stepToken],
+            set_config('mw.roles', $3, true), set_config('mw.step_token', $4, true),
+            set_config('mw.grants', $5, true)`,
+    [s.kind, s.person, s.roles, s.stepToken, s.grants],
   );
 }
 
-export function actorSettings(actor: Actor): { kind: string; person: string; roles: string; stepToken: string } {
+export function actorSettings(actor: Actor): { kind: string; person: string; roles: string; stepToken: string; grants: string } {
   switch (actor.kind) {
     case 'person':
-      return { kind: 'person', person: actor.personId, roles: actor.roles.filter((r) => !r.includes(',')).join(','), stepToken: '' };
+      return {
+        kind: 'person', person: actor.personId, roles: actor.roles.filter((r) => !r.includes(',')).join(','), stepToken: '',
+        grants: actor.grants?.length ? JSON.stringify(actor.grants) : '',
+      };
     case 'step':
-      return { kind: 'step', person: actor.token.onBehalfOf ?? '', roles: '', stepToken: JSON.stringify(actor.token) };
+      return { kind: 'step', person: actor.token.onBehalfOf ?? '', roles: '', stepToken: JSON.stringify(actor.token), grants: '' };
     case 'system':
-      return { kind: 'system', person: '', roles: '', stepToken: '' };
+      return { kind: 'system', person: '', roles: '', stepToken: '', grants: '' };
   }
 }
 

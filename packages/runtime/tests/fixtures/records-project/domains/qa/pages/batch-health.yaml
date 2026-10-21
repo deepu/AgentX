@@ -1,0 +1,23 @@
+title: Batch health
+description: How far a batch's reports are.
+under: Batch
+params:
+  batch: Ref<Batch>
+blocks:
+  - kpi:
+      label: Released
+      value: { percent: Report, of: "batch = params.batch", where: "status = 'released'" }
+      target: 100
+  - kpi:
+      label: Reports
+      value: { count: Report, where: "batch = params.batch" }
+  - table:
+      title: Open reports
+      view: open-reports
+  - heatmap:
+      title: Batches
+      rows: { entity: Batch, label: "{code}" }
+      columns:
+        - { label: Released, value: released_pct }
+        - { label: Reports, value: report_count }
+  - text: Reports are released once QA signs them.

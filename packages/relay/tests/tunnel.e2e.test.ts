@@ -63,19 +63,22 @@ describe('forwarding through the tunnel', () => {
   test('the core takes bodies only up to its own limit, and holds only so much at once', async () => {
     const r = relay();
     cleanup.push(() => r.stop());
-    const t = await tunnel(r.url, async (req) => new Response(String((await req.arrayBuffer()).byteLength)), undefined, { maxRequestBodyBytes: 1024 * 1024, maxBufferedBytes: 2 * 1024 * 1024 });
+    // Small limits, so a refused body still fits in the sockets' buffers: a client still sending a
+    // large body the core already refused can stall under load (Bun 1.3, CI).
+    const t = await tunnel(r.url, async (req) => new Response(String((await req.arrayBuffer()).byteLength)), undefined, { maxRequestBodyBytes: 64 * 1024, maxBufferedBytes: 128 * 1024 });
     cleanup.push(() => t.tunnel.close());
     const base = `${r.url}/x/${t.identity.installId}`;
-    // Over the core's limit: refused by the core, though the relay would carry it.
-    expect((await fetch(`${base}/f/t/api/files`, { method: 'POST', body: bytes(1024 * 1024 + 1) })).status).toBe(413);
-    expect(await (await fetch(`${base}/f/t/api/files`, { method: 'POST', body: bytes(1024 * 1024) })).text()).toBe(String(1024 * 1024));
+    // Over the core's limit: refused by the core, though the relay would carry it. Fresh
+    // connections: a refusal sent before the body is read leaves the connection unusable.
+    expect((await fetch(`${base}/f/t/api/files`, { method: 'POST', body: bytes(64 * 1024 + 1), keepalive: false })).status).toBe(413);
+    expect(await (await fetch(`${base}/f/t/api/files`, { method: 'POST', body: bytes(64 * 1024), keepalive: false })).text()).toBe(String(64 * 1024));
     // Bodies still arriving count against the total; the handler has them once complete.
     const streaming = (n: number) => new ReadableStream<Uint8Array>({
-      async start(c) { for (let i = 0; i < n; i++) { c.enqueue(bytes(256 * 1024)); await Bun.sleep(5); } c.close(); },
+      async start(c) { for (let i = 0; i < n; i++) { c.enqueue(bytes(16 * 1024)); await Bun.sleep(5); } c.close(); },
     });
     const statuses = await Promise.all([0, 1, 2, 3, 4].map(() =>
-      fetch(`${base}/f/t/api/files`, { method: 'POST', body: streaming(4), duplex: 'half' } as RequestInit).then((x) => x.status)));
-    // Five 1 MiB bodies at once against 2 MiB: some wait their turn (503), the rest arrive whole.
+      fetch(`${base}/f/t/api/files`, { method: 'POST', body: streaming(4), duplex: 'half', keepalive: false } as RequestInit).then((x) => x.status)));
+    // Five 64 KiB bodies at once against 128 KiB: some wait their turn (503), the rest arrive whole.
     expect(statuses).toContain(200);
     expect(statuses).toContain(503);
     expect(statuses.every((s) => s === 200 || s === 503)).toBe(true);

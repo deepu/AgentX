@@ -129,6 +129,7 @@ import {
   isCasesNavigation,
   isPlaybooksNavigation,
   isPluginsNavigation,
+  isDomainsNavigation,
   type NavigationState,
 } from "@/contexts/NavigationContext"
 import {
@@ -141,6 +142,7 @@ import {
   SidebarStatusNotice,
 } from "@/components/memwise"
 import { isMetaPlaybook } from "@/components/memwise/draft"
+import { useDomainSidebarItems } from "@/components/memwise/domains/DomainsSidebar"
 import { memwiseInboxCountAtom, memwiseCasesAtom, memwisePlaybooksAtom, memwisePluginsAtom, memwiseStartCaseDialogAtom, memwiseNewPlaybookDialogAtom, memwiseInstallPluginDialogAtom, memwiseCaseFilterAtom, memwisePeopleOnlyAtom, memwiseStatusAtom } from "@/atoms/memwise"
 import type { SettingsSubpage } from "../../../shared/types"
 import { SourcesListPanel } from "./SourcesListPanel"
@@ -358,7 +360,8 @@ function AppShellContent({
 
   // Pages behaves the same way: both the library grid and an open page render
   // full-width in the content area — there is no pages navigator list.
-  const isPagesView = isPagesNavigation(navState)
+  // The domains navigator (Phase 6) has no list either: the sidebar's Domains section is its navigator.
+  const isPagesView = isPagesNavigation(navState) || isDomainsNavigation(navState)
 
   // Derive source filter from navigation state (only when in sources navigator)
   const sourceFilter: SourceFilter | null = isSourcesNavigation(navState) ? navState.filter ?? null : null
@@ -1630,7 +1633,7 @@ function AppShellContent({
   // Land on the inbox, and stay off screens that would only be refused
   useEffect(() => {
     if (!peopleOnly) return
-    const allowed = isInboxNavigation(navState) || isCasesNavigation(navState) || isPlaybooksNavigation(navState)
+    const allowed = isInboxNavigation(navState) || isCasesNavigation(navState) || isPlaybooksNavigation(navState) || isDomainsNavigation(navState)
       || (isSettingsNavigation(navState) && (!navState.subpage || PEOPLE_ONLY_SETTINGS.includes(navState.subpage)))
     if (!allowed) navigate(routes.view.inbox())
   }, [peopleOnly, navState])
@@ -2052,6 +2055,7 @@ function AppShellContent({
     if (isCasesNavigation(navState)) return t("memwise.nav.cases")
     if (isPlaybooksNavigation(navState)) return t("memwise.nav.playbooks")
     if (isPluginsNavigation(navState)) return t("memwise.nav.plugins")
+    if (isDomainsNavigation(navState)) return t("memwise.nav.domains")
 
     // Sources navigator
     if (isSourcesNavigation(navState)) {
@@ -2163,6 +2167,9 @@ function AppShellContent({
   }, [sessionFilter, labelCounts, activeWorkspace?.id, handleLabelClick, isExpanded, toggleExpanded, openConfigureLabels, handleAddLabel, handleDeleteLabel])
 
 
+  // Phase 6: the Domains section (empty for a project with only the default domain)
+  const domainSidebarItems = useDomainSidebarItems(navState, t)
+
   // Sidebar navigation (scrolls) and the pinned footer (Settings, What's New — always visible).
   const allSidebarLinks: SidebarNavItem[] = [
     // --- MemWise: what's waiting on me, the cases, the playbooks ---
@@ -2190,6 +2197,78 @@ function AppShellContent({
       icon: BookOpen,
       variant: isPlaybooksNavigation(navState) ? "default" : "ghost",
       onClick: handlePlaybooksClick,
+    },
+    // --- Phase 6: cross-domain pages and the playbooks' automations (24 §14) ---
+    {
+      id: "nav:pages",
+      title: t("sidebar.pages"),
+      icon: PanelsTopLeft,
+      // The Pages overview: every domain's pages, then the workspace's own (the library)
+      variant: (isDomainsNavigation(navState) && !navState.details) || (isPagesNavigation(navState) && !navState.details) ? "default" : "ghost",
+      onClick: () => navigate(routes.view.domains()),
+      expandable: pages.length > 0,
+      expanded: isExpanded('nav:pages'),
+      onToggle: () => toggleExpanded('nav:pages'),
+      items: pages.map(p => ({
+        id: `nav:pages:${p.config.id}`,
+        title: p.config.name,
+        icon: PanelsTopLeft,
+        variant: (isPagesNavigation(navState) && navState.details?.pageSlug === p.config.slug) ? "default" as const : "ghost" as const,
+        onClick: () => navigate(routes.view.pages(p.config.slug)),
+      })),
+    },
+    {
+      id: "nav:automations",
+      title: t("sidebar.automations"),
+      icon: ListTodo,
+      // The playbooks' triggers; the chat automations (scheduled, event-based, agentic) sit under it
+      variant: (isDomainsNavigation(navState) && navState.details?.type === 'automations') ? "default" : "ghost",
+      onClick: () => navigate(routes.view.domains({ type: 'automations' })),
+      expandable: true,
+      expanded: isExpanded('nav:automations'),
+      onToggle: () => toggleExpanded('nav:automations'),
+      contextMenu: {
+        type: 'automations' as const,
+        onAddAutomation: openAddAutomation,
+      },
+      items: [
+        {
+          id: "nav:automations:chat",
+          title: t("memwise.automations.chatAutomations"),
+          label: String(automations.length),
+          icon: Bot,
+          variant: (isAutomationsNavigation(navState) && !automationFilter) ? "default" : "ghost",
+          onClick: handleAutomationsClick,
+          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
+        },
+        {
+          id: "nav:automations:scheduled",
+          title: t("sidebar.scheduled"),
+          label: String(automationTypeCounts.scheduled),
+          icon: Clock,
+          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'scheduled') ? "default" : "ghost",
+          onClick: handleAutomationsScheduledClick,
+          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
+        },
+        {
+          id: "nav:automations:event",
+          title: t("sidebar.eventBased"),
+          label: String(automationTypeCounts.event),
+          icon: Radio,
+          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'event') ? "default" : "ghost",
+          onClick: handleAutomationsEventClick,
+          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
+        },
+        {
+          id: "nav:automations:agentic",
+          title: t("sidebar.agentic"),
+          label: String(automationTypeCounts.agentic),
+          icon: Bot,
+          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'agentic') ? "default" : "ghost",
+          onClick: handleAutomationsAgenticClick,
+          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
+        },
+      ],
     },
     {
       id: "nav:plugins",
@@ -2290,6 +2369,8 @@ function AppShellContent({
       },
       items: buildLabelSidebarItems(labelTree),
     },
+    // --- Phase 6: the domains, each expanding into its pages, playbooks, entities and house rules ---
+    ...domainSidebarItems,
     // --- Workspace section ---
     { id: "section:workspace", type: "section", title: t("sidebar.workspaceSection") },
     // --- Sources & Skills Section ---
@@ -2386,73 +2467,10 @@ function AppShellContent({
         onClick: () => handleJumpToProjectSessions(p.config.id),
       })),
     },
-    {
-      id: "nav:pages",
-      title: t("sidebar.pages"),
-      label: String(pages.length),
-      icon: PanelsTopLeft,
-      // Highlight on the library grid only, not when a page is open (mirrors Projects)
-      variant: (isPagesNavigation(navState) && !navState.details) ? "default" : "ghost",
-      onClick: handlePagesClick,
-      expandable: pages.length > 0,
-      expanded: isExpanded('nav:pages'),
-      onToggle: () => toggleExpanded('nav:pages'),
-      items: pages.map(p => ({
-        id: `nav:pages:${p.config.id}`,
-        title: p.config.name,
-        icon: PanelsTopLeft,
-        variant: (isPagesNavigation(navState) && navState.details?.pageSlug === p.config.slug) ? "default" as const : "ghost" as const,
-        onClick: () => navigate(routes.view.pages(p.config.slug)),
-      })),
-    },
-    {
-      id: "nav:automations",
-      title: t("sidebar.automations"),
-      label: String(automations.length),
-      icon: ListTodo,
-      variant: (isAutomationsNavigation(navState) && !automationFilter) ? "default" : "ghost",
-      onClick: handleAutomationsClick,
-      expandable: true,
-      expanded: isExpanded('nav:automations'),
-      onToggle: () => toggleExpanded('nav:automations'),
-      contextMenu: {
-        type: 'automations' as const,
-        onAddAutomation: openAddAutomation,
-      },
-      items: [
-        {
-          id: "nav:automations:scheduled",
-          title: t("sidebar.scheduled"),
-          label: String(automationTypeCounts.scheduled),
-          icon: Clock,
-          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'scheduled') ? "default" : "ghost",
-          onClick: handleAutomationsScheduledClick,
-          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
-        },
-        {
-          id: "nav:automations:event",
-          title: t("sidebar.eventBased"),
-          label: String(automationTypeCounts.event),
-          icon: Radio,
-          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'event') ? "default" : "ghost",
-          onClick: handleAutomationsEventClick,
-          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
-        },
-        {
-          id: "nav:automations:agentic",
-          title: t("sidebar.agentic"),
-          label: String(automationTypeCounts.agentic),
-          icon: Bot,
-          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'agentic') ? "default" : "ghost",
-          onClick: handleAutomationsAgenticClick,
-          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
-        },
-      ],
-    },
   ]
-  // A person's own sign-in: Inbox, Cases and Playbooks only
+  // A person's own sign-in: Inbox, Cases, Playbooks and the domains' pages only
   const sidebarLinks = peopleOnly
-    ? allSidebarLinks.filter(item => item.id === 'nav:inbox' || item.id === 'nav:cases' || item.id === 'nav:playbooks')
+    ? allSidebarLinks.filter(item => item.id === 'nav:inbox' || item.id === 'nav:cases' || item.id === 'nav:playbooks' || item.id === 'section:domains' || item.id.startsWith('nav:dom:'))
     : allSidebarLinks
   const sidebarFooterLinks: SidebarNavItem[] = [
     // --- Who is signed in (a person's own sign-in on a server) ---

@@ -18,6 +18,7 @@ import { CaseFieldList } from './CaseValues'
 import { ClientLinkPanel, type ClientLinkActions } from './ClientLinkPanel'
 import { openClientLink } from './client-link-model'
 import { WorkflowMap } from './map'
+import { CaseLinksPanel, WaitingPanel } from './records/CaseLinks'
 import { stateTitle as playbookStateTitle } from './playbook/labels'
 import {
   absoluteTime,
@@ -43,12 +44,16 @@ export interface CaseViewProps {
   onOpenChat?: () => void
   /** Phase 5: Copy link, Send again and Revoke on the "Client link" panel (absent: the panel only reads). */
   linkActions?: ClientLinkActions
+  /** Phase 6: open a linked case (parent, called, started). */
+  onOpenCase?: (caseId: string) => void
+  /** Phase 6: open the record a `wait_until` state waits on. */
+  onOpenRecord?: (entity: string, id: string) => void
   now?: number
 }
 
 const STATUS_COLOR = { active: 'default', done: 'success', stopped: 'destructive' } as const
 
-export function CaseView({ kase, playbook, playbookTitle, people = {}, roles, onOpenStep, onOpenPlaybook, onOpenChat, linkActions, now }: CaseViewProps) {
+export function CaseView({ kase, playbook, playbookTitle, people = {}, roles, onOpenStep, onOpenPlaybook, onOpenChat, linkActions, onOpenCase, onOpenRecord, now }: CaseViewProps) {
   const { t, i18n } = useTranslation()
   const [mapNote, setMapNote] = React.useState<string | null>(null)
   React.useEffect(() => { setMapNote(null) }, [kase.caseId])
@@ -93,11 +98,15 @@ export function CaseView({ kase, playbook, playbookTitle, people = {}, roles, on
         </Info_Alert>
       )}
 
+      <WaitingPanel waiting={kase.waiting} onOpenRecord={onOpenRecord} />
+
       <Info_Section title={t('memwise.case.fields')} count={Object.keys(kase.values).length}>
         <CaseFieldList values={kase.values} fields={kase.fields} people={people} />
       </Info_Section>
 
       <ClientLinkPanel kase={kase} actions={linkActions} people={people} now={now} />
+
+      <CaseLinksPanel links={kase.caseLinks} onOpenCase={onOpenCase} />
 
       <Info_Section title={t('memwise.case.map')} description={t('memwise.case.mapDescription')}>
         {playbook ? (

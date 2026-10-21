@@ -19,7 +19,7 @@ export { PgApprovalStore, type ApprovalRecord } from './stores/approvals.ts';
 export { withActor, setActor, actorSettings, actorLabel, APP_ROLE, type Actor } from './actor.ts';
 export { ulid } from './ids.ts';
 export {
-  PgPeopleStore, newPersonId, hashPassword, checkPassword, sha256, type Person, type Role,
+  PgPeopleStore, newPersonId, hashPassword, checkPassword, sha256, AUTH_FAILURE_WINDOW_MS, type Person, type Role, type AuthEventKind,
 } from './stores/people.ts';
 export { PgNotificationStore, type Notification, type NewNotification } from './stores/notifications.ts';
 export { PgExplanationStore, type StoredExplanation, type ExplanationCite } from './stores/explanations.ts';
@@ -40,3 +40,30 @@ export {
   PgPluginStore, PgBindingVersionStore, PgIdentityStore, type PluginRow, type BindingVersionRow, type NewIdentityLink,
   type NewIdentityCandidate,
 } from './stores/plugins.ts';
+
+// ---------------------------------------------------------------- Phase 6 (docs/memwise/24-phase-6-interfaces.md)
+export {
+  RECORD_COLUMNS, tableOf, viewOf, domainUpdaters, type DomainSchemaOptions, type EntityRef,
+} from './domain/tables.ts';
+export {
+  withRecordContext, RecordWriteError, type RecordContext, type RecordWriteErrorCode, type EntityQuery, type EntityQueryResult,
+  type EntityAggregate,
+} from './domain/entities.ts';
+export {
+  compileCondition, compileConditionSource, conditionType, evaluateCondition, ConditionCompileError, bindTo, literal,
+  type ConditionContext, type ConditionType,
+} from './conditions.ts';
+export {
+  recordColumns, inverseOf, targetOf, linkPairing, linkColumn, conditionTypeOf, type RecordColumn,
+} from './domain/model.ts';
+export { compileReadViews, compileRecordTriggers, scopePredicate, viewContext, ROLLUP_EVENT_DEPTH } from './domain/records-sql.ts';
+export {
+  PgRecordVersions, PgSignatureStore, PgEntityEvents, contentHash, canonicalJson, type RecordVersionRow, type ChainCheck,
+  type NewSignature, type SignatureRow,
+} from './stores/records.ts';
+export { PgGrantStore } from './stores/grants.ts';
+export {
+  PgNoteStore, PgMentionStore, mentionTokens, type RecordNote, type NewMention, type MentionRow, type MentionSourceKind,
+} from './stores/notes.ts';
+export { PgFlagStore, type FlagRow } from './stores/flags.ts';
+export { PgViewStore, PgPageStore, type WrittenPage, type WrittenPageVersion } from './stores/pages.ts';

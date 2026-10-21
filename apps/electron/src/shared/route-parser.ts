@@ -17,6 +17,7 @@ import type {
   RightSidebarPanel,
 } from './types'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
+import { DOMAINS_DETAIL_TYPES, packDomainsDetail, unpackDomainsDetail } from './domains-route'
 
 // =============================================================================
 // Route Types
@@ -35,7 +36,7 @@ export interface ParsedRoute {
 // Compound Route Types (new format)
 // =============================================================================
 
-export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'pages' | 'settings' | 'inbox' | 'cases' | 'playbooks' | 'plugins'
+export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'pages' | 'settings' | 'inbox' | 'cases' | 'playbooks' | 'plugins' | 'domains'
 
 export interface ParsedCompoundRoute {
   /** The navigator type */
@@ -64,7 +65,7 @@ export interface ParsedCompoundRoute {
  */
 const COMPOUND_ROUTE_PREFIXES = [
   'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'sources', 'skills', 'automations', 'projects', 'pages', 'settings',
-  'inbox', 'cases', 'playbooks', 'plugins',
+  'inbox', 'cases', 'playbooks', 'plugins', 'domains',
 ]
 
 /**
@@ -241,6 +242,15 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
     return null
   }
 
+  // MemWise domains (Phase 6): `domains` or `domains/{type}/{packed id}`
+  if (first === 'domains') {
+    if (segments.length === 1) return { navigator: 'domains', details: null }
+    if (segments.length !== 3 || !(DOMAINS_DETAIL_TYPES as readonly string[]).includes(segments[1])) return null
+    const id = safeDecode(segments[2])
+    if (!id || !unpackDomainsDetail(segments[1], id)) return null
+    return { navigator: 'domains', details: { type: segments[1], id } }
+  }
+
   // MemWise sections: inbox, cases, playbooks
   if (isMemwiseNavigator(first)) {
     if (segments.length === 1) {
@@ -395,6 +405,11 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
     return `pages/page/${parsed.details.id}`
   }
 
+  if (parsed.navigator === 'domains') {
+    if (!parsed.details) return 'domains'
+    return `domains/${parsed.details.type}/${encodeURIComponent(parsed.details.id)}`
+  }
+
   if (isMemwiseNavigator(parsed.navigator)) {
     if (!parsed.details) return parsed.navigator
     const extra = memwiseExtraDetail(parsed.navigator)
@@ -542,6 +557,12 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
       return { type: 'view', name: 'pages', params: {} }
     }
     return { type: 'view', name: 'page-info', id: compound.details.id, params: {} }
+  }
+
+  // MemWise domains (Phase 6)
+  if (compound.navigator === 'domains') {
+    if (!compound.details) return { type: 'view', name: 'domains', params: {} }
+    return { type: 'view', name: 'domains-info', id: compound.details.id, params: { type: compound.details.type } }
   }
 
   // MemWise sections
@@ -715,6 +736,11 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
     }
   }
 
+  // MemWise domains (Phase 6)
+  if (compound.navigator === 'domains') {
+    return { navigator: 'domains', details: compound.details ? unpackDomainsDetail(compound.details.type, compound.details.id) : null }
+  }
+
   // MemWise sections
   if (isMemwiseNavigator(compound.navigator)) {
     if (compound.navigator === 'playbooks' && compound.details?.type === MEMWISE_DRAFT_DETAIL) {
@@ -838,6 +864,10 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
       return parsed.id
         ? { navigator: 'plugins', details: { type: 'records', entity: parsed.id } }
         : { navigator: 'plugins', details: null }
+    case 'domains':
+      return { navigator: 'domains', details: null }
+    case 'domains-info':
+      return { navigator: 'domains', details: parsed.id && parsed.params.type ? unpackDomainsDetail(parsed.params.type, parsed.id) : null }
     case 'draft-info':
       return parsed.id
         ? { navigator: 'playbooks', details: { type: 'draft', draftId: parsed.id } }
@@ -989,6 +1019,9 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
       return { navigator: 'playbooks', details: { type: MEMWISE_DRAFT_DETAIL, id: state.details.draftId } }
     }
     return { navigator: 'playbooks', details: state.details ? { type: 'playbook', id: state.details.playbookId } : null }
+  }
+  if (state.navigator === 'domains') {
+    return { navigator: 'domains', details: state.details ? packDomainsDetail(state.details) : null }
   }
   if (state.navigator === 'plugins') {
     if (state.details?.type === 'records') {

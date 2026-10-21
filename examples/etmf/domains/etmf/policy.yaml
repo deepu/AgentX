@@ -1,0 +1,8 @@
+policy: etmf-domain
+effects:
+  outbound: approve
+  irreversible: deny
+budgets:
+  tokens: 200000
+  modelCalls: 60
+modelRoles: [router, classifier, checker, verifier, extractor, explainer]
