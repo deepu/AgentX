@@ -201,6 +201,8 @@ export async function studyApps(svc: MemwiseService, actor: Actor, project: Proj
 export async function linkedRecords(svc: MemwiseService, actor: Actor, project: ProjectDefs, input: { entity: string; id: string }, names?: Map<string, string>): Promise<MwLinkedRecord[]> {
   const pool = (svc.kernel as { pool?: { query: (sql: string, params: unknown[]) => Promise<{ rows: Record<string, string>[] }> } }).pool
   if (!pool || !project.entities[input.entity]) return []
+  // Only for a record the viewer may see: the links would otherwise say it exists, and what it is paired with.
+  if (!(await recordsOf(svc).page(input.entity, input.id, actor).catch(() => undefined))) return []
   const pairs: { entity: string; id: string }[] = []
   // It follows another record (etmf.Site → edc.Site) …
   const out = await pool.query(`select plugin, source, external_id from mw.identity_links where entity = $1 and record_id = $2 and plugin like 'domain:%'`, [input.entity, input.id])
