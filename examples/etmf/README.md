@@ -84,5 +84,6 @@ templates, **Phase 3 study** or **Phase 1 study** (which leaves out `chase-missi
   study as a draft. Its runs live in the app's own project (id `etmf`).
 
 Publishing a template update (`memwise:apps:publishTemplate`) keeps version 4 under
-`domains/etmf/versions/4/` and gives each study a "Review template update": MW-301's review says it already
-waits 5 days, MW-207 takes it.
+`domains/etmf/versions/4/` and gives each study a "Review template update". When version 5 makes **Chase
+missing documents** wait 5 days (as the Stage 3 exit test does), MW-301's review says it already does that and
+MW-207's says it takes it.
