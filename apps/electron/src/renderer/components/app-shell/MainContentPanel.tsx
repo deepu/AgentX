@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAtomValue } from 'jotai'
 import { useTranslation } from 'react-i18next'
 import { Panel } from './Panel'
+import { cn } from '@/lib/utils'
 import { MultiSelectPanel } from './MultiSelectPanel'
 import { DetailEmptyState, SessionsEmptyState } from './DetailEmptyState'
 import { useAppShellContext } from '@/context/AppShellContext'
@@ -39,6 +40,7 @@ import {
   isPlaybooksNavigation,
   isPluginsNavigation,
   isDomainsNavigation,
+  isProjectShellNavigation,
 } from '@/contexts/NavigationContext'
 import { useSessionSelection, useIsMultiSelectActive, useSelectedIds, useSelectionCount } from '@/hooks/useSession'
 import { sourceSelection, skillSelection, automationSelection } from '@/hooks/useEntitySelection'
@@ -54,6 +56,7 @@ import { PagesHome } from '../pages/PagesHome'
 import { PageView } from '../pages/PageView'
 import { InboxDetailPage, CasePage, PlaybookPage, DraftPage, PluginPage, RecordsPage } from '../memwise'
 import { DomainsPage } from '../memwise/domains/DomainsPages'
+import { ProjectScreen } from '../memwise/project/ProjectScreen'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -361,6 +364,15 @@ export function MainContentPanel({
         {/* "None configured" next to a list of automations contradicted the list */}
         <DetailEmptyState message={automations.length > 0 ? t("automations.selectAutomation") : t("automations.noAutomationsConfigured")} />
       </Panel>
+    )
+  }
+
+  // MemWise's project shell: the chat and the page, as two cards (doc 26 §2)
+  if (isProjectShellNavigation(navState)) {
+    return wrapWithStoplight(
+      <div className={cn('h-full min-w-0', className)}>
+        <ProjectScreen view={navState.view} />
+      </div>
     )
   }
 

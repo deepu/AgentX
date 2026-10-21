@@ -7,7 +7,12 @@
 import type { Queryable } from '../pool.ts';
 import { compact, iso } from '../rows.ts';
 
-export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record';
+/**
+ * The project shell (doc 26 §2) adds chats about a whole project (its Home), its Waiting for you
+ * page and a dashboard: `project` and `waiting` anchor ids are the project id, `dashboard` ids
+ * are `<domain>:<page id>`.
+ */
+export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record' | 'project' | 'waiting' | 'dashboard';
 
 /** The `anchor_id` of a record anchor: `literature.topic:rec_1`. Entity keys have no colon. */
 export function recordAnchorId(entity: string, id: string): string {

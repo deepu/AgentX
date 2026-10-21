@@ -143,6 +143,8 @@ export function PanelSlot({
   }
   // In a split view the focused panel is lifted; the others stay flat.
   const isLifted = !isOnly && isFocusedPanel
+  // The project shell draws its own two cards (chat and page) inside one panel.
+  const isBare = navState?.navigator === 'mw'
 
   return (
     <>
@@ -165,7 +167,7 @@ export function PanelSlot({
             : {}
           ),
           // Joined to the list: pull left over the flex gap so the two cards meet.
-          ...(isJoinedToNavigator ? { marginLeft: -PANEL_GAP } : {}),
+          ...(isJoinedToNavigator && !isBare ? { marginLeft: -PANEL_GAP } : {}),
           ...(isOnly
             ? { flexGrow: 1, minWidth: 0 }
             : { flexGrow: proportion, flexShrink: 1, flexBasis: 0, minWidth: PANEL_MIN_WIDTH }
@@ -177,12 +179,13 @@ export function PanelSlot({
           ref={materialRef}
           aria-hidden="true"
           className={cn(
-            'shell-card absolute inset-0 -z-10 pointer-events-none bg-paper',
-            isLifted ? 'shadow-elev-2' : 'shadow-elev-0',
+            'absolute inset-0 -z-10 pointer-events-none',
+            !isBare && 'shell-card bg-paper',
+            !isBare && (isLifted ? 'shadow-elev-2' : 'shadow-elev-0'),
           )}
           style={radii}
         />
-        <div className="h-full flex flex-col overflow-hidden" style={radii}>
+        <div className="h-full flex flex-col overflow-hidden" style={isBare ? undefined : radii}>
           <AppShellProvider value={contextOverride}>
             <MainContentPanel
               navStateOverride={navState}

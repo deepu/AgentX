@@ -80,6 +80,7 @@ import { CompactSessionListFilter } from "./CompactSessionListFilter"
 import type { ChatDisplayHandle } from "./ChatDisplay"
 import type { SidebarItem as SidebarNavItem } from "./LeftSidebar"
 import { SidebarPane } from "./SidebarPane"
+import { ProjectShellSidebar, useProjectShellRouting } from "../memwise/project/ProjectShellHost"
 import { SessionFilterMenu } from "./SessionFilterMenu"
 import { ShellResizeHandle } from "./ShellResizeHandle"
 import { useSession } from "@/hooks/useSession"
@@ -130,6 +131,7 @@ import {
   isPlaybooksNavigation,
   isPluginsNavigation,
   isDomainsNavigation,
+  isProjectShellNavigation,
   type NavigationState,
 } from "@/contexts/NavigationContext"
 import {
@@ -363,7 +365,8 @@ function AppShellContent({
   // The domains navigator (Phase 6) has no list either: the sidebar's Domains section is its navigator.
   // A chat beside a domain page (asked on a domain's home, or "Ask in chat"): the person is in the
   // domain, so no session list either.
-  const isPagesView = isPagesNavigation(navState) || isDomainsNavigation(navState)
+  // The project shell (doc 26 §2) has no list either: its sidebar is the navigator.
+  const isPagesView = isPagesNavigation(navState) || isDomainsNavigation(navState) || isProjectShellNavigation(navState)
     || (panelStack.length > 1 && panelStack.some(p => p.route.startsWith('domains')))
 
   // Derive source filter from navigation state (only when in sources navigator)
@@ -648,6 +651,8 @@ function AppShellContent({
   }, [skills, setSkillsAtom])
   // Automations — state, handlers, loading, subscriptions
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
+  // MemWise's project shell (doc 26 §2): on when MemWise runs here, unless the classic layout was chosen.
+  const projectShellOn = useProjectShellRouting(navState, activeWorkspace?.name)
 
   // Send to Workspace dialog state (driven by sendToWorkspaceAtom set from SessionMenu/BatchSessionMenu)
   const sendToWorkspaceIds = useAtomValue(sendToWorkspaceAtom)
@@ -2555,7 +2560,11 @@ function AppShellContent({
         }}
       >
         <PanelStackContainer
-          sidebarSlot={
+          sidebarSlot={projectShellOn !== false && isProjectShellNavigation(navState) ? (
+            <div ref={sidebarRef} style={{ width: sidebarWidth }} className="h-full min-w-0">
+              <ProjectShellSidebar navState={navState} workspaceName={activeWorkspace?.name} />
+            </div>
+          ) : (
             <SidebarPane
               paneRef={sidebarRef}
               width={sidebarWidth}
@@ -2575,7 +2584,7 @@ function AppShellContent({
               newSessionLabel={t("session.newSession")}
               newSessionHotkey={newChatHotkey}
             />
-          }
+          )}
           sidebarWidth={effectiveSidebarAndNavigatorHidden ? 0 : (isSidebarVisible ? sidebarWidth : 0)}
           navigatorSlot={
             <div

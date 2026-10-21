@@ -23,7 +23,14 @@ export const MEMWISE_CONTEXT_MAX_CHARS = 24_000;
 /** What a chat is anchored to. A record anchor names its entity key (`literature.topic`). */
 export type MemwiseChatAnchor =
   | { kind: 'case' | 'step' | 'workflow'; id: string }
-  | { kind: 'record'; entity: string; id: string };
+  | { kind: 'record'; entity: string; id: string }
+  /** The project shell (doc 26 §2): a project's Home or Waiting for you (id: the project), a dashboard (`<domain>:<page>`). */
+  | { kind: 'project' | 'waiting' | 'dashboard'; id: string };
+
+/** Anchors whose chat may look records up (`record_get`, `record_query`): a record, and the project shell's pages. */
+export function anchorReadsRecords(kind: MemwiseChatAnchor['kind'] | undefined): boolean {
+  return kind === 'record' || kind === 'project' || kind === 'waiting' || kind === 'dashboard';
+}
 
 export interface SessionMemwiseContext {
   /** What the chat is anchored to. A conversation step is a `step` anchor with `conversation`. */
@@ -89,10 +96,10 @@ export function sessionHasPlaybookTools(workspaceRootPath: string | undefined, s
   return readSessionMemwiseContext(workspaceRootPath, sessionId)?.conversation === true;
 }
 
-/** Whether the session is a chat anchored to a record (offers `record_get` and `record_query`). */
+/** Whether the session is a chat anchored to a record or a project page (offers `record_get` and `record_query`). */
 export function sessionHasRecordTools(workspaceRootPath: string | undefined, sessionId: string | undefined): boolean {
   if (!workspaceRootPath || !sessionId) return false;
-  return readSessionMemwiseContext(workspaceRootPath, sessionId)?.anchor.kind === 'record';
+  return anchorReadsRecords(readSessionMemwiseContext(workspaceRootPath, sessionId)?.anchor.kind);
 }
 
 /**
@@ -110,7 +117,7 @@ export function memwiseSessionToolOptions(workspaceRootPath: string | undefined,
   const record = ctx?.anchor.kind === 'record';
   return {
     includePlaybookTools: ctx?.conversation === true,
-    includeRecordTools: record,
+    includeRecordTools: anchorReadsRecords(ctx?.anchor.kind),
     includeRecordKeep: record && !!ctx?.keep?.length,
     includeRecordUpdate: record && ctx?.draft === true,
   };
