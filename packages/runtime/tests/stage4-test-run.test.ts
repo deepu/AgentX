@@ -158,7 +158,7 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     const first = authoring.testRun(other.id, { entity: 'etmf.Site', id: siteId }, manager);
     await expect(authoring.testRun(other.id, { entity: 'etmf.Site', id: siteId }, manager)).rejects.toThrow('already running');
     await Bun.sleep(1500); // the throwaway database is being made
-    await authoring.discardDraft(other.id);
+    await authoring.discardDraft(other.id, manager);
     await first.catch(() => undefined);
     expect(existsSync(join(root, 'drafts', other.id, 'test-run.json'))).toBe(false);
     expect(await authoring.lastTestRun(other.id, manager)).toBeUndefined();
