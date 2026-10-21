@@ -134,7 +134,7 @@ export default async ({ win, shot }) => {
   console.log('validation 1', first.status, first.passed, '/', first.total)
 
   // The change request's page, with its first (failed) validation, and its chat.
-  await go(win, `mw/etmf/change/${cr.label}`); await wait(win, 3500)
+  await go(win, `mw/etmf/cr/${cr.label}`); await wait(win, 3500)
   await shot('01-change-failed')
   const box = win.locator('[data-testid="shell-composer"] textarea')
   if (await box.count()) {
@@ -148,7 +148,7 @@ export default async ({ win, shot }) => {
   const second = await call(win, 'memwiseValidateChangeRequest', { crId: cr.id })
   console.log('validation 2', second.status, second.passed, '/', second.total)
   await go(win, 'mw/etmf'); await wait(win, 1000)
-  await go(win, `mw/etmf/change/${cr.label}`); await wait(win, 3500)
+  await go(win, `mw/etmf/cr/${cr.label}`); await wait(win, 3500)
   await shot('03-change-passed')
   await win.locator('[data-change-request]').first().screenshot({ path: `${process.argv[4]}/EChange.png` }).catch(e => console.log('EChange element shot', e.message))
 
@@ -157,7 +157,7 @@ export default async ({ win, shot }) => {
   await shot('04-waiting-signoff')
 
   // The raiser signs it to QA (Part 11: password and meaning).
-  await go(win, `mw/etmf/change/${cr.label}`); await wait(win, 3000)
+  await go(win, `mw/etmf/cr/${cr.label}`); await wait(win, 3000)
   await win.locator('[data-action="send"]').first().click(); await wait(win, 1200)
   await shot('05-sign-dialog')
   await win.locator('input[type="password"]').last().fill(PASSWORD)

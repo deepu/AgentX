@@ -13,7 +13,7 @@ import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { getSessionTitle } from '@/utils/session'
 import { Info_Page } from '@/components/info/Info_Page'
 import { DomainView } from '../domains/DomainView'
-import { InspectorSetup, RegulatedDomainLinks } from '../regulated'
+import { AuditTrailScreen, InspectorSetup, RegulatedDomainLinks } from '../regulated'
 import { AutomationsPage } from '../domains/DomainsPages'
 import { relativeTime } from '../format'
 import { useNow } from '../use-now'
@@ -23,7 +23,7 @@ import { setShellRouteRewriter } from './shell-routes'
 
 const TABS = ['project', 'automations', 'inspectors', 'audit', 'advanced'] as const
 type Tab = typeof TABS[number]
-/** Tabs only a regulated project has (Stage 5): inspector access, and the audit trail (its own page). */
+/** Tabs only a regulated project has (Stage 5): inspector access and the audit trail. */
 const REGULATED_TABS: readonly Tab[] = ['inspectors', 'audit']
 const CHATS_SHOWN = 60
 
@@ -31,9 +31,7 @@ export function ProjectSettingsPage({ project, tab }: { project: ShellProject; t
   const { t } = useTranslation()
   const tabs = TABS.filter(k => project.regulated || !REGULATED_TABS.includes(k))
   const current: Tab = (tabs as readonly string[]).includes(tab ?? '') ? tab as Tab : 'project'
-  const go = (next: Tab) => navigate(next === 'audit'
-    ? routes.view.project(project.id, { type: 'audit' })
-    : routes.view.project(project.id, { type: 'settings', ...(next === 'project' ? {} : { tab: next }) }))
+  const go = (next: Tab) => navigate(routes.view.project(project.id, { type: 'settings', ...(next === 'project' ? {} : { tab: next }) }))
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="project-settings">
       <div className="flex shrink-0 gap-1 border-b border-foreground/6 px-6 pt-3">
@@ -52,6 +50,7 @@ export function ProjectSettingsPage({ project, tab }: { project: ShellProject; t
         {current === 'project' && <ProjectTab project={project} rules={tab === 'rules'} />}
         {current === 'automations' && <AutomationsPage domainId={project.id} />}
         {current === 'inspectors' && <InspectorSetup projectId={project.id} />}
+        {current === 'audit' && <AuditTrailScreen projectId={project.id} />}
         {current === 'advanced' && <AdvancedTab />}
       </div>
     </div>

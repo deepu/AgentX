@@ -24,7 +24,7 @@ const CASES: ProjectDetails[] = [
   { type: 'settings' },
   { type: 'settings', tab: 'advanced' },
   // Stage 5
-  { type: 'change', crId: 'CR-014' },
+  { type: 'cr', crId: 'CR-014' },
   { type: 'audit' },
   { type: 'audit', entity: 'etmf.Document', recordId: 'doc:101' },
   { type: 'tmf' },

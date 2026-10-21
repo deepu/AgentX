@@ -14,7 +14,7 @@
  *   record     `{entity}:{recordId}`     (entity keys never hold a colon)
  *   records    `{entity}`
  *   settings   `{tab}`                   (none: the first tab)
- *   change     `{crId}`                  (Stage 5: a change request, by id or label `CR-014`)
+ *   cr         `{crId}`                  (Stage 5: a change request, by id or label `CR-014`)
  *   audit      `{entity}:{recordId}`     (Stage 5: the audit trail; none: the whole project's)
  *   tmf        `{zone}`                  (Stage 5: the TMF index; a zone's sub-page)
  * `*` as the project is "all projects" (Waiting for you across every project).
@@ -32,11 +32,11 @@ export type ProjectDetails =
   | { type: 'record'; entity: string; recordId: string }
   | { type: 'records'; entity: string }
   | { type: 'settings'; tab?: string }
-  | { type: 'change'; crId: string }
+  | { type: 'cr'; crId: string }
   | { type: 'audit'; entity?: string; recordId?: string }
   | { type: 'tmf'; zone?: string }
 
-export const PROJECT_DETAIL_TYPES = ['home', 'waiting', 'page', 'dashboard', 'playbook', 'run', 'record', 'records', 'settings', 'change', 'audit', 'tmf'] as const
+export const PROJECT_DETAIL_TYPES = ['home', 'waiting', 'page', 'dashboard', 'playbook', 'run', 'record', 'records', 'settings', 'cr', 'audit', 'tmf'] as const
 
 /** Types whose id may be left out. */
 const OPTIONAL_ID: readonly string[] = ['home', 'waiting', 'settings', 'audit', 'tmf']
@@ -68,7 +68,7 @@ export function packProjectDetail(d: ProjectDetails): string {
     case 'record': return `${d.entity}:${d.recordId}`
     case 'records': return d.entity
     case 'settings': return d.tab ?? ''
-    case 'change': return d.crId
+    case 'cr': return d.crId
     case 'audit': return d.entity && d.recordId ? `${d.entity}:${d.recordId}` : ''
     case 'tmf': return d.zone ?? ''
   }
@@ -96,7 +96,7 @@ export function unpackProjectDetail(type: string, id: string): ProjectDetails | 
     }
     case 'records': return { type: 'records', entity: id }
     case 'settings': return id ? { type: 'settings', tab: id } : { type: 'settings' }
-    case 'change': return { type: 'change', crId: id }
+    case 'cr': return { type: 'cr', crId: id }
     case 'audit': {
       if (!id) return { type: 'audit' }
       const [entity, recordId] = splitFirst(id, ':')

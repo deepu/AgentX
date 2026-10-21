@@ -188,8 +188,11 @@ export function chatAnchorFor(projectId: string, details: ProjectDetails, item?:
     case 'run': return { kind: 'case', id: details.caseId }
     case 'record': return { kind: 'record', entity: details.entity, id: details.recordId }
     // Stage 5 (doc 26 §8): a change request's chat edits it; the trail and the index have their own.
-    case 'change': return { kind: 'change', id: details.crId }
+    // A label (`CR-014`) is per project, so the anchor carries the project.
+    case 'cr': return { kind: 'change', id: details.crId, project: projectId }
     case 'audit': return { kind: 'audit', id: projectId }
+    // Project settings' Audit trail tab is the same page, with the same chat.
+    case 'settings': return details.tab === 'audit' ? { kind: 'audit', id: projectId } : { kind: 'project', id: projectId }
     case 'tmf': return { kind: 'tmf', id: projectId }
     default: return { kind: 'project', id: projectId }
   }

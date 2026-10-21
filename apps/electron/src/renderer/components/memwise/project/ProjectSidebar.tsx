@@ -52,7 +52,7 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
   const records = projectRecordTypes(domain)
   const me = status?.me
   // Stage 5: a change request is under its playbook; the TMF index is a live page with a sub-page per zone.
-  const { data: openChange } = useMemwiseChangeRequest(details.type === 'change' ? project.id : null, details.type === 'change' ? details.crId : null)
+  const { data: openChange } = useMemwiseChangeRequest(details.type === 'cr' ? project.id : null, details.type === 'cr' ? details.crId : null)
   const [tmfOpen, setTmfOpen] = React.useState(details.type === 'tmf' && !!details.zone)
   const tmf = !!domain && keepsTmf(domain)
 
@@ -107,7 +107,7 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
             icon={BookOpen}
             label={p.title}
             tag={playbookStartTag(p.id, triggers)}
-            active={(details.type === 'playbook' && details.workflowId === p.id) || (details.type === 'change' && openChange?.workflowId === p.id)}
+            active={(details.type === 'playbook' && details.workflowId === p.id) || (details.type === 'cr' && openChange?.workflowId === p.id)}
             onClick={() => go({ type: 'playbook', workflowId: p.id })}
           />
         ))}

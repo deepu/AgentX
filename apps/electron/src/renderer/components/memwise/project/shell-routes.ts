@@ -57,7 +57,7 @@ export function shellRouteFor(state: NavigationState, data: ShellRouteData): str
         case 'domain': return at(d.domain, d.tab ? { type: 'settings', tab: d.tab } : undefined)
         // Stage 5: a change request, the audit trail, inspector access, the TMF index.
         case 'regulated': {
-          if (d.screen === 'change') return at(d.domain, { type: 'change', crId: d.id! })
+          if (d.screen === 'change') return at(d.domain, { type: 'cr', crId: d.id! })
           if (d.screen === 'inspectors') return at(d.domain, { type: 'settings', tab: 'inspectors' })
           if (d.screen === 'tmf') return at(d.domain, d.id ? { type: 'tmf', zone: d.id } : { type: 'tmf' })
           const i = d.id ? d.id.indexOf(':') : -1

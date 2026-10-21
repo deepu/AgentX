@@ -100,7 +100,7 @@ describe('the chat beside each page', () => {
     expect(chatAnchorFor('etmf', { type: 'record', entity: 'etmf.Site', recordId: 's1' })).toEqual({ kind: 'record', entity: 'etmf.Site', id: 's1' })
     expect(anchorKeyOf({ kind: 'record', entity: 'etmf.Site', id: 's1' })).toBe('record:etmf.Site:s1')
     // Stage 5: a change request's chat edits it; the audit trail and the TMF index have their own.
-    expect(chatAnchorFor('etmf', { type: 'change', crId: 'CR-014' })).toEqual({ kind: 'change', id: 'CR-014' })
+    expect(chatAnchorFor('etmf', { type: 'cr', crId: 'CR-014' })).toEqual({ kind: 'change', id: 'CR-014', project: 'etmf' })
     expect(chatAnchorFor('etmf', { type: 'audit', entity: 'etmf.Document', recordId: 'd1' })).toEqual({ kind: 'audit', id: 'etmf' })
     expect(chatAnchorFor('etmf', { type: 'tmf', zone: 'site-management' })).toEqual({ kind: 'tmf', id: 'etmf' })
   })
@@ -131,7 +131,7 @@ describe('older routes open inside a project', () => {
   })
 
   test('the regulated screens (Stage 5): a change request, the audit trail, inspector access, the TMF index', () => {
-    expect(to(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'change', id: 'CR-014' }))).toBe('mw/etmf/change/CR-014')
+    expect(to(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'change', id: 'CR-014' }))).toBe('mw/etmf/cr/CR-014')
     expect(to(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'audit' }))).toBe('mw/etmf/audit')
     expect(to(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'audit', id: 'etmf.Document:d1' }))).toBe('mw/etmf/audit/etmf.Document%3Ad1')
     expect(to(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'inspectors' }))).toBe('mw/etmf/settings/inspectors')
