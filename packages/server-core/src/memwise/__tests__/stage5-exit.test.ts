@@ -176,7 +176,7 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     const cr = await api.call<MwChangeRequest>(anikaCtx, ch.CHANGES_GET, { crId: 'CR-014', project: 'etmf' })
     expect(cr).toMatchObject({ id: crId, regulated: true, liveVersion: 1, nextVersion: 2, can: { edit: true, send: false } })
     // A regulated playbook isn't changed through a change run or a direct publish.
-    expect(await api.call(anikaCtx, ch.DRAFTS_SUBMIT, cr.draftId)).toMatchObject({ applied: false, code: 'draft.change_request', message: expect.stringContaining('CR-014') })
+    expect(await api.call(anikaCtx, ch.DRAFTS_SUBMIT, cr.draftId)).toMatchObject({ applied: false, code: 'draft.change_request', message: expect.stringContaining('CR-014'), changeRequest: { id: crId, label: 'CR-014', project: 'etmf' } })
   })
 
   it('CR-014 is edited from its chat: validation fails 2 of 3, the fix passes 3 of 3, and the chat cannot finish it', async () => {

@@ -200,7 +200,9 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     async signChange(ctx: RequestContext, input: { crId: string; password: string }): Promise<MwChangeSignResult> {
       const { svc, actor, r } = await begin(ctx)
       const v = await requireView(svc, actor, input?.crId)
-      return toChangeSignResult(await r.changes.sign(v.id, { password: typeof input.password === 'string' ? input.password : '' }, actor))
+      const result = toChangeSignResult(await r.changes.sign(v.id, { password: typeof input.password === 'string' ? input.password : '' }, actor))
+      const retryAfter = result.status === 'locked' ? (await svc.kernel.people.get(actor.personId).catch(() => undefined))?.lockedUntil : undefined
+      return retryAfter ? { ...result, retryAfter } : result
     },
 
     async withdrawChange(ctx: RequestContext, input: { crId: string; reason?: string }): Promise<MwChangeRequest> {

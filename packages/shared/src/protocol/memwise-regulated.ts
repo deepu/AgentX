@@ -170,6 +170,8 @@ export interface MwChangeSignResult {
   /** `applied`, or why not: `signature-failed`, `locked`, `password-not-set`, `not-validated`, `stale`, `no-reason`, `not-your-turn`, `forbidden`, `conflict`, `failed`. */
   status: string
   message?: string
+  /** `locked`: when signing opens again (ISO). */
+  retryAfter?: string
   changeRequest?: MwChangeRequest
   published?: { workflowId: string; version: number; hash: string }
 }

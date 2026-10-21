@@ -1490,8 +1490,15 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (!got) return { applied: false, code: 'draft.missing', message: DRAFT_MESSAGES.missing }
       if (got.meta.status !== 'open') return { applied: false, code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
       // Stage 5: a regulated playbook's draft is a change request; it goes to QA from there (26 §8).
-      const cr = await (svc.kernel as { changes?: { forDraft(id: string): Promise<{ label: string } | undefined> } }).changes?.forDraft(draftId).catch(() => undefined)
-      if (cr) return { applied: false, code: 'draft.change_request', message: `${DRAFT_MESSAGES.change_request} (${cr.label})` }
+      const cr = await (svc.kernel as { changes?: { forDraft(id: string): Promise<{ id: string; label: string; project: string } | undefined> } }).changes?.forDraft(draftId).catch(() => undefined)
+      if (cr) {
+        return {
+          applied: false,
+          code: 'draft.change_request',
+          message: `${DRAFT_MESSAGES.change_request} (${cr.label})`,
+          changeRequest: { id: cr.id, label: cr.label, project: cr.project },
+        }
+      }
       const facts = await draftLookup(svc, actor, c).facts(got.meta, { got })
       if (facts.run?.status === 'active') {
         // Still in its chat (the meta playbook's conversation step), or past it on the way to review.

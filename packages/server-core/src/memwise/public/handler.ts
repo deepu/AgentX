@@ -293,7 +293,7 @@ export function createPublicHandler(opts: PublicHandlerOptions): PublicHandler {
         if (!file) return missing()
         if ('refused' in file) return json(file)
         const name = (cleanFileName(file.name) ?? 'document').replace(/["\\]/g, '_')
-        return new Response(file.data, {
+        return new Response(file.data as unknown as ConstructorParameters<typeof Response>[0], {
           status: 200,
           headers: headersFor({
             'content-type': file.mime || 'application/octet-stream',

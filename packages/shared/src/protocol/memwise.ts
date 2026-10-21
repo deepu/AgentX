@@ -867,6 +867,8 @@ export interface MwSubmitDraftResult {
   caseId?: string
   code?: string
   message?: string
+  /** Stage 5, `draft.change_request`: the change request the draft is (it goes to QA from its page). */
+  changeRequest?: { id: string; label: string; project: string }
 }
 
 export interface MwVersion {
