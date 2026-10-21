@@ -137,3 +137,35 @@ One chart kit in `packages/ui/src/components/charts/` (hand-drawn SVG, theme col
 ## 10. Not in the proof of concept
 
 Full text from PMC, Embase or ClinicalTrials.gov, two reviewers and conflicts, a PRISMA diagram, signed screening (regulated mode works but the example isn't regulated), a Question entity with evidence for and against, standing questions added from chat, per-domain bindings, and a Claude sign-in for agent steps (they still need an API key).
+
+## 11. As built
+
+**Example (`examples/literature`).**
+- "Read a paper" starts with a system step that reads the article's status (`outcomeFrom`): `found` goes on to `extract`, `read` ends the case without a model call. Its outcome is `read`, not `already_read`.
+- `ScreeningRow` carries `phase` too, so `record` copies it onto the Screening (`item.phase`). Charts filter Screenings on `decision = 'include'` (Screening has no lifecycle).
+- "Check a topic" has `mark_checked` for the nothing-new path (only updates the topic) and a `needs_person` state for the lead. "Set up a watch" carries the lead's redo note back to the searcher in `query_comment`.
+- The ATTAIN-2 abstract in the fixtures ends with its real last line, "Eli Lilly and Company.", so the sponsor can be quoted under `quotes: required`. Only ATTAIN-2 is real; the other papers (PMIDs 99000…, DOIs `10.0000/example.…`) are made up.
+- `plugins/` holds the PubMed plugin (manifest made the way the installer does, tools discovered from the fake server, real URL kept) and the data plugin 1.1.0 (Apache-2.0, not bound: it is there for its skills).
+
+**Kernel.**
+- New check codes: `key-unknown-field`, `key-field-not-required`, `quote-of-not-text`, `quote-of-unknown-field`, `map-each-not-list`, `map-item-without-each`, `each-write-not-list`, `quotes-ignored`.
+- `each:` with an empty or unset list makes no calls and writes `[]`; a value that isn't a list goes to a person. `{ today: n }` uses the step's start time and the kernel process's local time zone.
+- The key index is synced as `<table>__key`; when existing rows clash, the key is left unenforced and the sync returns a note. A person creating a duplicate key gets a readable error; only steps get `existed: true`.
+- The quote normaliser is one function in `packages/defs/src/quotes.ts`, used by the step engine, the records service and the renderer's fallback highlighting. A quote for a field the step didn't write also fails.
+- Quote flags are keyed `quote_of:<field>`; a records consumer re-checks when the quoting record or its source text changes.
+- Interval chart rows are capped at 200 (with a skipped count). Record page charts are keyed by `mwPageBlockKey(area, index)`.
+
+**Chat.**
+- Record chats open in Ask mode when the record's domain has a `keep_from_chat` entity. `record_get` and `record_query` are allowed in Explore; `record_keep` is blocked there and asked in every other mode, never "Always allow". The prompt lists each row with its fields and quote. Results are wrapped as untrusted record data.
+- `record_query` returns 1–200 rows (default 50) and cuts long text; `record_get` returns it whole. `record_keep` takes at most 50 rows.
+- The record anchor is stored as `anchor_kind = 'record'`, `anchor_id = "<entity>:<id>"`; no migration (the column is plain text).
+- Plugin skills: newest version per plugin, named `<plugin>:<skill>`; the MemWise note is added to the "read these skill files" directive and to skill suggestions, not to the Read tool's result.
+
+**Models.** Playbook steps use the default connection when it has an API key, else the first other connection that does, so a Claude subscription can stay the default for chat (`pickPlaybookConnection`, models.ts).
+
+**Open.**
+- Charts aren't clickable (interval rows don't open their record; bars don't filter a view), though the data carries `record` and `key`.
+- No highlight for values that came through an `each`-mapped argument, or that an agent wrote straight onto a record without a case write of the same name.
+- An interval label field with no value renders empty; a record-page chart `of:` a calculated field draws nothing.
+- The renderer has no client wrapper for `memwise:records:keep` (chat keeps through the session tool).
+- `packages/ui/eslint.config.mjs` registers its style plugin as `craft-styles` while the rules are named `memwise-styles/…`, so `bun run lint:ui` can't run as the repo stands.
