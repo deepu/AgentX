@@ -1,0 +1,4 @@
+[
+  {"match": "stop oral glp|side effects|discontinu", "reply": "About **6 to 10%** of people on oral GLP-1s stop because of side effects in the trials, mostly nausea and other stomach upset in the first weeks.\n\nThe topic page on the right holds the numbers per trial and the quotes they come from. Keep it and it stays up to date."},
+  {"match": ".", "reply": "I'll look that up in PubMed and our own papers, and put what I find on the page beside this chat."}
+]

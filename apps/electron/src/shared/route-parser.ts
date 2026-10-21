@@ -18,6 +18,7 @@ import type {
 } from './types'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
 import { DOMAINS_DETAIL_TYPES, packDomainsDetail, unpackDomainsDetail } from './domains-route'
+import { fromCompoundDetails, parseProjectSegments, projectRoute, toCompoundDetails } from './project-route'
 
 // =============================================================================
 // Route Types
@@ -36,7 +37,7 @@ export interface ParsedRoute {
 // Compound Route Types (new format)
 // =============================================================================
 
-export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'pages' | 'settings' | 'inbox' | 'cases' | 'playbooks' | 'plugins' | 'domains'
+export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'pages' | 'settings' | 'inbox' | 'cases' | 'playbooks' | 'plugins' | 'domains' | 'mw'
 
 export interface ParsedCompoundRoute {
   /** The navigator type */
@@ -65,7 +66,7 @@ export interface ParsedCompoundRoute {
  */
 const COMPOUND_ROUTE_PREFIXES = [
   'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'sources', 'skills', 'automations', 'projects', 'pages', 'settings',
-  'inbox', 'cases', 'playbooks', 'plugins', 'domains',
+  'inbox', 'cases', 'playbooks', 'plugins', 'domains', 'mw',
 ]
 
 /**
@@ -242,6 +243,12 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
     return null
   }
 
+  // MemWise project shell (doc 26 §2): `mw/{project}` or `mw/{project}/{type}[/{packed id}]`
+  if (first === 'mw') {
+    const view = parseProjectSegments(segments)
+    return view ? { navigator: 'mw', details: toCompoundDetails(view) } : null
+  }
+
   // MemWise domains (Phase 6): `domains` or `domains/{type}/{packed id}`
   if (first === 'domains') {
     if (segments.length === 1) return { navigator: 'domains', details: null }
@@ -405,6 +412,11 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
     return `pages/page/${parsed.details.id}`
   }
 
+  if (parsed.navigator === 'mw') {
+    const view = fromCompoundDetails(parsed.details)
+    return view ? projectRoute(view.projectId, view.details) : 'mw'
+  }
+
   if (parsed.navigator === 'domains') {
     if (!parsed.details) return 'domains'
     return `domains/${parsed.details.type}/${encodeURIComponent(parsed.details.id)}`
@@ -557,6 +569,11 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
       return { type: 'view', name: 'pages', params: {} }
     }
     return { type: 'view', name: 'page-info', id: compound.details.id, params: {} }
+  }
+
+  // MemWise project shell
+  if (compound.navigator === 'mw') {
+    return { type: 'view', name: 'mw', id: compound.details?.id, params: { type: compound.details?.type ?? 'home' } }
   }
 
   // MemWise domains (Phase 6)
@@ -736,6 +753,11 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
     }
   }
 
+  // MemWise project shell
+  if (compound.navigator === 'mw') {
+    return { navigator: 'mw', view: fromCompoundDetails(compound.details) }
+  }
+
   // MemWise domains (Phase 6)
   if (compound.navigator === 'domains') {
     return { navigator: 'domains', details: compound.details ? unpackDomainsDetail(compound.details.type, compound.details.id) : null }
@@ -864,6 +886,8 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
       return parsed.id
         ? { navigator: 'plugins', details: { type: 'records', entity: parsed.id } }
         : { navigator: 'plugins', details: null }
+    case 'mw':
+      return { navigator: 'mw', view: parsed.id ? fromCompoundDetails({ type: parsed.params.type ?? 'home', id: parsed.id }) : null }
     case 'domains':
       return { navigator: 'domains', details: null }
     case 'domains-info':
@@ -1022,6 +1046,9 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
   }
   if (state.navigator === 'domains') {
     return { navigator: 'domains', details: state.details ? packDomainsDetail(state.details) : null }
+  }
+  if (state.navigator === 'mw') {
+    return { navigator: 'mw', details: state.view ? toCompoundDetails(state.view) : null }
   }
   if (state.navigator === 'plugins') {
     if (state.details?.type === 'records') {

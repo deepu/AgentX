@@ -445,6 +445,8 @@ export const RPC_CHANNELS = {
     ENTITIES_TYPES: 'memwise:entities:types',
     FILES_UPLOAD: 'memwise:files:upload',
     CHAT_OPEN: 'memwise:chat:open',
+    // The project shell (docs/memwise/26-projects-and-pages.md §2): the chat already on an anchor
+    CHAT_FIND: 'memwise:chat:find',
     ASK: 'memwise:ask',
     CHANGED: 'memwise:changed',
     // Phase 3 (docs/memwise/20-phase-3-interfaces.md)

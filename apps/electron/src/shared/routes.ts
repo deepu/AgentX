@@ -18,6 +18,7 @@
 import type { SettingsSubpage } from './settings-registry'
 import type { PermissionMode } from '@memwise/shared/agent/mode-types'
 import { domainsRoute, type DomainsDetails } from './domains-route'
+import { projectRoute, type ProjectDetails } from './project-route'
 
 // Helper to build query strings from params
 function toQueryString(params?: Record<string, string | undefined>): string {
@@ -232,6 +233,9 @@ export const routes = {
 
     /** A record's page (Phase 6) */
     record: (entity: string, recordId: string) => domainsRoute({ type: 'record', entity, recordId }) as `domains/record/${string}`,
+
+    /** A screen of the MemWise project shell (doc 26 §2): Home when no details are given */
+    project: (projectId: string, details?: ProjectDetails | null) => projectRoute(projectId, details) as `mw/${string}`,
 
     /** Kanban board view (sessions navigator, board view mode, all sessions) */
     board: () => 'board' as const,
