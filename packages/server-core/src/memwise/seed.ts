@@ -96,10 +96,10 @@ export function seedProject(projectDir: string, exampleDir: string | undefined):
 
 /**
  * The meta playbooks shipped with the example project: building and changing playbooks (20 §3)
- * and binding plugins (22 §4). Mirrors `META_PLAYBOOKS` of `@memwise/defs`, which the service
+ * binding plugins (22 §4) and refreshing a kept page (26 §4). Mirrors `META_PLAYBOOKS` of `@memwise/defs`, which the service
  * passes in as well (this module stays free of the kernel packages).
  */
-export const META_PLAYBOOK_DIRS: readonly string[] = ['create-playbook', 'change-playbook', 'bind-plugin']
+export const META_PLAYBOOK_DIRS: readonly string[] = ['create-playbook', 'change-playbook', 'bind-plugin', 'refresh-page']
 
 /**
  * Adds the meta playbooks to a project that lacks them (installs seeded in Phase 2 got only

@@ -42,6 +42,9 @@ const outcomesOf = (step: StepDef) => (step.performer === 'system' && !step.outc
 export const isConversationStep = (step: StepDef): boolean => step.performer === 'agent' && step.engine === 'open';
 
 /** Steps the run waits on: a person, someone outside the business, or a chat. */
+/** Built-in playbooks whose person steps the kernel routes itself (no `assignee`). */
+export const KERNEL_ROUTED_PLAYBOOKS = ['refresh-page'] as const;
+
 const waitsOnSomeone = (step: StepDef) => step.performer === 'person' || step.performer === 'external' || isConversationStep(step);
 
 class Diagnostics {
@@ -202,7 +205,9 @@ function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, ste
   if (waitsOnSomeone(step)) {
     const roles = env.roles;
     const kind = conversation ? 'conversation' : step.performer;
-    if (roles && step.assignee === undefined) {
+    // "Refresh a page" (26 §4) asks the page's owner or the domain's `pages.reviewer`: the kernel
+    // routes its review, so the built-in names no role an app may not have.
+    if (roles && step.assignee === undefined && !(KERNEL_ROUTED_PLAYBOOKS as readonly string[]).includes(workflow.id)) {
       at('error', 'missing-assignee', `a ${kind} step names the role that does it, e.g. \`assignee: ${roles[0] ?? 'staff'}\``, []);
     } else if (roles && step.assignee !== undefined && !roles.includes(step.assignee)) {
       at('error', 'unknown-role', `assignee \`${step.assignee}\` is not a role in domain/roles.yaml (roles: ${roles.join(', ') || 'none'})`, ['assignee']);

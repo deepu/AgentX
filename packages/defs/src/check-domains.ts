@@ -98,6 +98,11 @@ const templateNames = (title: string) => [...title.matchAll(/\{\s*([A-Za-z_][\w.
 /** `home:`: its entity is in the domain and has a lifecycle (a draft is its first state); its fields are Text. */
 function checkHome(add: ReturnType<typeof collector>['add'], project: ProjectDefs, domain: DomainDef, file: string): void {
   const home = domain.home!;
+  // No entity: a question makes a draft page (26 §4), and there is nothing more to check.
+  if (home.entity === undefined) return;
+  if (home.question === undefined) {
+    add('error', 'home-needs-question', 'home.question: with home.entity, name the Text field the question goes into', file, domain, ['home', 'question']);
+  }
   const def = resolveEntity(project.entities, domain.id, home.entity);
   if (!def) {
     add('error', 'unknown-entity', `home.entity: there is no entity \`${home.entity}\` in the ${domain.name} domain`, file, domain, ['home', 'entity']);
@@ -134,6 +139,13 @@ export function checkDomains(project: ProjectDefs, roles: string[] | undefined):
       else intake.set(domain.intake.address, domain.id);
     }
     if (domain.home) checkHome(add, project, domain, file);
+    // Pages (26 §4): the app's refresh playbook is one of its playbooks; the reviewer a role.
+    if (domain.pageRules?.refresh !== undefined && !project.workflows[domain.pageRules.refresh]) {
+      add('error', 'unknown-workflow', `pages.refresh: there is no playbook \`${domain.pageRules.refresh}\``, file, domain, ['pages', 'refresh']);
+    }
+    if (roleSet && domain.pageRules?.reviewer !== undefined && !roleSet.has(domain.pageRules.reviewer)) {
+      add('error', 'unknown-role', `pages.reviewer: \`${domain.pageRules.reviewer}\` is not a role (roles: ${roleList()})`, file, domain, ['pages', 'reviewer']);
+    }
     if (domain.id !== DEFAULT_DOMAIN && domain.policy?.approvals?.by && roleSet) {
       const policy = domain.policy;
       policy.approvals!.by!.forEach((role, i) => {

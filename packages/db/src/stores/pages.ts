@@ -281,6 +281,8 @@ export interface PageChangeSummary {
   numbers?: { added: string[]; removed: string[] };
   /** For the history: what changed, in a few words ("ATTAIN-MAINTAIN added"). */
   title?: string;
+  /** What the reviewer's chat said it changed in the update ("added a note under the chart"). */
+  chatNote?: string;
   /** What started the refresh: `schedule` (with the weekday), `manual`, `summary` (a sub-page changed). */
   from?: { kind: 'schedule' | 'manual' | 'summary'; every?: string; by?: string };
 }

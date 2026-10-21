@@ -41,8 +41,10 @@ export function createDomainsService(deps: RecordsDeps): DomainsService {
           }
           const written = await pageStore.list(db, id);
           const flags = await flagStore.list(db, { domain: id, open: true, limit: 1000 });
-          const workflows = d.workflows.length ? d.workflows
-            : Object.values(project?.workflows ?? {}).filter((w) => (w.domain ?? DEFAULT_DOMAIN) === id).map((w) => w.id);
+          // The app's own "Refresh a page" keeps pages current; it is not a playbook people start (26 §5).
+          const refresh = d.pageRules?.refresh;
+          const workflows = (d.workflows.length ? d.workflows
+            : Object.values(project?.workflows ?? {}).filter((w) => (w.domain ?? DEFAULT_DOMAIN) === id).map((w) => w.id)).filter((w) => w !== refresh);
           // A project of named domains has no default one of its own: the meta playbooks the app adds
           // (building and changing playbooks, binding plugins) don't make one appear in the sidebar.
           const onlyMeta = workflows.every((w) => (META_PLAYBOOKS as readonly string[]).includes(w));
@@ -58,6 +60,7 @@ export function createDomainsService(deps: RecordsDeps): DomainsService {
             ],
             views: Object.values(d.views).map((v) => ({ id: v.id, title: v.title, entity: v.entity })),
             flags: flags.length,
+            ...(refresh ? { pageRefresh: refresh } : {}),
           });
         }
       });

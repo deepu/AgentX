@@ -1,0 +1,29 @@
+name: sent-back
+description: >
+  The refresh changes the answer but the reviewer sends it back: the page keeps its body.
+case:
+  page: page_weight_loss
+  reason: manual
+  asked_by: per_maya
+submit:
+  review: { outcome: sent_back, comment: That abstract is not a trial. }
+tools:
+  page.get:
+    page: page_weight_loss
+    body: "People lose 15% of their weight on average across 9 trials."
+  page.compare: { outcome: material, change: pch_02 }
+  page.send_back_change: { done: true }
+model:
+  writer:
+    - toolCalls:
+        - { name: page.get, args: { page: page_weight_loss } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: written
+            writes: { body: "People lose 16% of their weight on average across 10 trials.", label: 1 new trial }
+            rationale: Counted a new abstract.
+expect:
+  outcome: written
+  state: end
+  effects: { page.accept_change: 0, page.send_back_change: 1 }

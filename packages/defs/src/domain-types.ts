@@ -41,8 +41,10 @@ export interface DomainDef {
   acceptsFrom?: string[];
   /** Incoming messages (24 §10). */
   intake?: { address: string };
-  /** The domain's home: a question box that opens a chat with a draft record beside it. */
+  /** The domain's home: a question box that opens a chat with a draft record (or page) beside it. */
   home?: DomainHomeDef;
+  /** Pages built from questions (26 §4): the app's own "Refresh a page" playbook and who reviews answer changes. */
+  pageRules?: DomainPagesDef;
   /** The domain's policy layer (`policy.yaml`). */
   policy?: PolicyDoc;
   /** Folder relative to the project root (`domains/etmf`, or `domain` for the default domain). */
@@ -66,13 +68,27 @@ export interface DomainDef {
 export interface DomainHomeDef {
   ask?: string;
   placeholder?: string;
-  /** Entity name as written (bare in its own domain, or a key). */
-  entity: string;
-  question: string;
+  /**
+   * Entity name as written (bare in its own domain, or a key). Without one, asking makes a draft
+   * page for the question (26 §4) instead of a draft record.
+   */
+  entity?: string;
+  question?: string;
   name?: string;
   /** Text field the chat writes the record's page into (markdown with chart blocks). */
   page?: string;
   suggested: string[];
+}
+
+/**
+ * `pages:` in domain.yaml (26 §4). A kept page is refreshed by `refresh` (a playbook of this
+ * app, started with `{ page, reason }`), else by the built-in "Refresh a page"; `reviewer` is the
+ * role that reviews answer changes besides the page's owner; `every` the default schedule.
+ */
+export interface DomainPagesDef {
+  refresh?: string;
+  reviewer?: string;
+  every?: string;
 }
 
 /** A role granted in one domain, optionally limited to records (24 §2). */

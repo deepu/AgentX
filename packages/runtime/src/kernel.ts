@@ -52,6 +52,8 @@ import type { RecordsDeps } from './records/context.ts';
 import { createDomainsService } from './records/domains.ts';
 import { flagInboxItems } from './records/inbox.ts';
 import { createRecordsService } from './records/service.ts';
+import { createPagesService, pageChangeRefs, type PagesCore } from './pages/service.ts';
+import { pageTools } from './pages/tools.ts';
 import { recordTypesFor, submitStep } from './submit.ts';
 import { defaultTestRunner } from './test-runner.ts';
 import type { Actor, Authoring, EntityRow, Explanation, InboxItem, Kernel, KernelOptions, RunRecord, StartRunInput } from './types.ts';
@@ -152,6 +154,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     execute: (args, ctx) => external!.inviteTool.execute(args as never, ctx),
   };
   const pluginKernelTools = options.projectDir ? bindingTools(() => pluginServices?.ops) : [];
+  // Pages (26 §4): the `page.*` tools "Refresh a page" calls, made with the pages service below.
+  let pagesCore: PagesCore | undefined;
+  const pageKernelTools = pageTools(() => pagesCore);
 
   // Phase 4: builtins for `run: { builtin }` (the caller's, and the kernel's real extractor), MCP
   // connections opened lazily and closed at shutdown, and the frozen bindings bound now.
@@ -172,7 +177,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   // so a plugin tool routed to that builtin runs the same code whether or not a plugin binds it.
   const boundExtractor = builtins.get(extractor.name) ?? extractor;
   const buildTools = () => {
-    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => entityToolRuntime), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools]);
+    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => entityToolRuntime), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools, ...pageKernelTools]);
     const taken = new Map(base.map((t) => [t.name, t]));
     const fromPlugins = options.projectDir
       ? pluginTools(bound, taken, { root: options.projectDir, builtins, mcp })
@@ -324,6 +329,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     transition: (input) => kernel.records.transition(input, { kind: 'system' }),
     emit: (change) => feed.emit(change),
     log: (m) => { if ((options.logLevel ?? process.env.DBOS_LOG ?? 'warn') !== 'error') console.warn(`[memwise] ${m}`); },
+    extraSweep: (now) => pagesCore?.sweep(now) ?? Promise.resolve(),
   }, () => phase6Consumers());
   /** The records piece's event consumers (link pairing, invariant flags), run before the flow's own. */
   const recordEventConsumers = recordConsumers({ pool, entities: () => entities, emit: (change) => feed.emit(change) });
@@ -342,11 +348,19 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     return ids ? liveCache.workflows.filter((w) => ids.has(w.id)) : liveCache.workflows;
   }
 
+  pagesCore = createPagesService({
+    pool, project: () => indexed?.project, people, records: () => phase6.records,
+    start: (input, opts) => start(input, true, opts),
+    submitStep: (input) => submitStep(submitDeps, input),
+    emit: (c) => feed.emit(c),
+  });
+
   const kernel: Kernel = {
     pool,
     people: withPasswordRule(people, () => indexed?.project),
     ...phase6,
     triggers: flow.triggers,
+    pages: pagesCore,
 
     async index() {
       if (!options.projectDir) throw new Error('createKernel({ projectDir }) is needed to index');
@@ -469,7 +483,17 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     submitStep: (input) => submitStep(submitDeps, input),
 
     async inbox(actor) {
-      const items: InboxItem[] = await inbox(pool, defs, actor, entities);
+      const items: InboxItem[] = [];
+      // Pages (26 §4): "Review an answer change" says which page and what changed, and goes only to
+      // the page's owner or the app's reviewer role.
+      const steps = await inbox(pool, defs, actor, entities);
+      const refs = await pageChangeRefs(pool, steps.flatMap((i) => (i.kind === 'decision' || i.kind === 'input' ? [i.runId] : [])));
+      for (const item of steps) {
+        const ref = (item.kind === 'decision' || item.kind === 'input') ? refs.get(item.runId) : undefined;
+        if (!ref) { items.push(item); continue; }
+        if (!(await pagesCore!.reviewable(ref.pageId, actor))) continue;
+        items.push({ ...item, pageChange: ref } as InboxItem);
+      }
       // Phase 6: open flags, for the owners of their domains.
       items.push(...(await flagInboxItems(recordsDeps, actor)));
       // Phase 6: firings the storm guard held, for the workflow's owner role (24 §7).
