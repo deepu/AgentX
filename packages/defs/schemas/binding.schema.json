@@ -201,6 +201,19 @@
                               "template"
                             ],
                             "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "link": {
+                                "type": "string",
+                                "description": "The value is the id of a record of this record source; it becomes the domain record linked to it (for Ref fields)."
+                              }
+                            },
+                            "required": [
+                              "link"
+                            ],
+                            "additionalProperties": false
                           }
                         ]
                       }
@@ -499,6 +512,20 @@
         "hash",
         "passed",
         "summary"
+      ],
+      "additionalProperties": false
+    },
+    "sync": {
+      "description": "Read the mapped record sources again this often, refreshing the fields the plugin owns.",
+      "type": "object",
+      "properties": {
+        "every": {
+          "type": "string",
+          "description": "How often, e.g. 15m or 1h."
+        }
+      },
+      "required": [
+        "every"
       ],
       "additionalProperties": false
     }

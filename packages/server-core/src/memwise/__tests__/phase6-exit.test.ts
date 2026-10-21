@@ -294,7 +294,7 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
 
   it('the owner works in eTMF themselves: every role, and a signing password they choose', async () => {
     // No "act as" in a regulated domain, so the install's owner holds the project's roles.
-    expect([...svc.owner.roles].sort()).toEqual(['cra', 'study_manager', 'tmf_specialist'])
+    expect([...svc.owner.roles].sort()).toEqual(['cra', 'data_manager', 'study_manager', 'tmf_specialist'])
     expect(await api.call(ownerCtx, ch.RECORDS_CREATE, { entity: 'etmf.Sponsor', values: { name: 'Owner Bio' }, reason: 'trying it out' }))
       .toMatchObject({ applied: true })
     // They start with no password; the first one needs nothing more, a change needs the current one.

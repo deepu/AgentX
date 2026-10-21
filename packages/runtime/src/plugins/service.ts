@@ -727,7 +727,8 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
         if (!Array.isArray(items)) throw new Error(`${def.list.tool} returned no list${def.list.items ? ` at ${def.list.items}` : ''}`);
         const map = compileRecordMapping(rb, def, ns, entity);
         const mapped = await resolveLinkedRefs(pluginId, rb, items.map((i) => map((i ?? {}) as Record<string, unknown>)));
-        const owned = ownedFields(entity, bp.manifest, ns, name, rb);
+        // Only a binding with `sync:` keeps a copy of what the plugin owns (D110); others read it through.
+        const owned = everyMs ? ownedFields(entity, bp.manifest, ns, name, rb) : [];
         const counts = await resolveSource(pluginId, name, rb, entity, mapped, { owned, title: bp.manifest.title });
         for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += counts[k];
       }
