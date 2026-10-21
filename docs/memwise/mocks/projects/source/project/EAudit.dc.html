@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audit trail</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#5B34C9}a:hover{color:#43239E}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; background: #F4F4F6; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif; color: #1C1C1E; display: flex; flex-direction: column;">
+  <div style="height: 44px; flex: 0 0 44px; display: flex; align-items: center; gap: 16px; padding: 0 18px; font-size: 15px;">
+    <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#52525B" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path></svg>
+    <span style="font-weight: 800; color: #6E47D1; font-size: 18px;">M</span>
+    <span style="color: #6B6B72;">‹  ›</span>
+    <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 500;"><span style="width: 22px; height: 22px; border-radius: 6px; background: #4F7A3A; color: #FFFFFF; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;">M</span>My Workspace ⌄</span>
+    <span style="flex: 1 1 auto;"></span>
+    <span style="color: #52525B; font-size: 18px;">+</span>
+  </div>
+  <div style="flex: 1 1 auto; display: flex; min-height: 0; padding: 0 8px 8px 0; gap: 8px;">
+    <dc-import name="Sidebar" active="settings" project="mw301" hint-size="236px,856px"></dc-import>
+    <section aria-label="Chat" style="width: 488px; flex: 0 0 488px; background: #FFFFFF; border: 1px solid #E5E5EA; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden;">
+      <div style="padding: 14px 24px; border-bottom: 1px solid #F0F0F2; display: flex; align-items: center; gap: 8px; font-size: 14px;">
+        <span style="font-weight: 600;">Audit trail</span>
+        <span style="flex: 1 1 auto;"></span>
+        <span style="color: #6B6B72; font-size: 13px;">Chat about the page →</span>
+      </div>
+      <div style="flex: 1 1 auto; overflow: hidden; padding: 18px 24px; display: flex; flex-direction: column; gap: 16px; font-size: 14.5px; line-height: 1.5;">
+        <div style="align-self: flex-end; max-width: 400px; background: #F4F4F6; border-radius: 14px; padding: 10px 14px;">Who touched the protocol signature page for site 101?</div>
+        <div style="display: flex; flex-direction: column; gap: 10px;"><p style="margin: 0;">Four people and the AI, in 9 entries. The site uploaded it twice. The AI flagged version 1 for the old protocol, Tom sent it back, and he signed version 2 on 6 Oct.</p><p style="margin: 0;">Every AI entry shows the model and the sentence it relied on, the same as a person's reason.</p></div>
+
+      </div>
+      <div style="padding: 0 20px 18px;">
+        <div style="border: 1.5px solid #E0E0E5; border-radius: 14px; padding: 12px 14px 10px; display: flex; flex-direction: column; gap: 12px;">
+          <label for="e4" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Ask about the audit trail</label>
+          <textarea id="e4" rows="1" placeholder="Ask about the audit trail" style="border: 0; outline: none; resize: none; font: inherit; font-size: 15px; background: transparent; color: #1C1C1E;"></textarea>
+          <div style="display: flex; align-items: center; gap: 8px; color: #52525B; font-size: 13px;">
+            <span style="flex: 1 1 auto;"></span>
+            <span>Sonnet 5.5 ⌄</span>
+            <span style="width: 30px; height: 30px; border-radius: 50%; background: #D4D4D8; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center;"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg></span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <main style="flex: 1 1 auto; min-width: 0; background: #FFFFFF; border: 1px solid #E5E5EA; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden;">
+      <div style="padding: 16px 28px 4px; font-size: 13px; color: #52525B;">Study MW-301  ›  Project settings  ›  Audit trail</div>
+      <div style="padding: 6px 28px 20px; display: flex; flex-direction: column; gap: 18px; flex: 1 1 auto; min-height: 0;">
+<div style="display: flex; align-items: flex-start; gap: 10px;"><div style="flex: 1 1 auto; display: flex; flex-direction: column; gap: 5px;"><h2 style="margin: 0; font-size: 23px; font-weight: 600; line-height: 1.25;">Audit trail</h2><span style="font-size: 13px; color: #52525B;">Every change in Study MW-301, by people and AI · append-only, each entry chained to the one before</span></div><a href="#" style="align-self: flex-start; flex: 0 0 auto; white-space: nowrap; padding: 7px 12px; border-radius: 8px; border: 1px solid #D4D4D8; color: #1C1C1E; text-decoration: none; font-size: 13.5px; background: #FFFFFF;">Export for inspectors</a></div><div style="display: flex; gap: 8px; font-size: 13px;"><span style="padding: 4px 10px; border-radius: 999px; background: #F5F1FF; color: #43239E;">Protocol signature page, site 101 ×</span><span style="padding: 4px 10px; border-radius: 999px; background: #F4F4F6;">People and AI</span></div><div style="border: 1px solid #E5E5EA; border-radius: 10px; font-size: 13px;"><div style="display: grid; grid-template-columns: 92px 170px 1fr; gap: 10px; padding: 9px 14px; font-size: 12px; font-weight: 600; color: #52525B; border-bottom: 1px solid #F0F0F2;"><span>When</span><span>Who</span><span>What</span></div><div style="display: grid; grid-template-columns: 92px 170px 1fr; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>29 Sep 11:02</span><span><span style="display: inline-flex; align-items: center; gap: 6px;">Site coordinator, 101</span></span><span>Uploaded v1 by link</span></div><div style="display: grid; grid-template-columns: 92px 170px 1fr; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>29 Sep 11:03</span><span><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="padding: 1px 6px; border-radius: 4px; background: #F5F1FF; color: #43239E; font-size: 11px; font-weight: 600;">AI</span>AI check · Sonnet 5.5</span></span><span>Flagged v1: “Protocol version 2.0” does not match 3.0</span></div><div style="display: grid; grid-template-columns: 92px 170px 1fr; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>2 Oct 09:15</span><span><span style="display: inline-flex; align-items: center; gap: 6px;">Tom Okafor</span></span><span>Sent v1 back · reason: signed against protocol 2.0</span></div><div style="display: grid; grid-template-columns: 92px 170px 1fr; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>3 Oct 14:40</span><span><span style="display: inline-flex; align-items: center; gap: 6px;">Site coordinator, 101</span></span><span>Uploaded v2 by link</span></div><div style="display: grid; grid-template-columns: 92px 170px 1fr; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>5 Oct 16:10</span><span><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="padding: 1px 6px; border-radius: 4px; background: #F5F1FF; color: #43239E; font-size: 11px; font-weight: 600;">AI</span>AI check · Sonnet 5.5</span></span><span>Checked v2: 3 of 3 checks passed, with quotes</span></div><div style="display: grid; grid-template-columns: 92px 170px 1fr; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>6 Oct 10:42</span><span><span style="display: inline-flex; align-items: center; gap: 6px;">Tom Okafor</span></span><span><strong>Signed v2</strong> · approved for filing · Part 11</span></div><div style="display: grid; grid-template-columns: 92px 170px 1fr; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>6 Oct 10:42</span><span><span style="display: inline-flex; align-items: center; gap: 6px;">System</span></span><span>Filed v2 to zone 05 · v2 locked</span></div><div style="display: grid; grid-template-columns: 92px 170px 1fr; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>14 Oct 15:31</span><span><span style="display: inline-flex; align-items: center; gap: 6px;">Priya Shah</span></span><span>Viewed v2 during the monitoring visit</span></div><div style="display: grid; grid-template-columns: 92px 170px 1fr; gap: 10px; padding: 9px 14px;"><span>21 Oct 09:05</span><span><span style="display: inline-flex; align-items: center; gap: 6px;">Anika Rao</span></span><span>Exported this trail for the inspection folder</span></div></div><span style="font-size: 12.5px; color: #6B6B72;">Entries can't be edited or deleted. The export is signed, and any later change to an entry would show.</span>
+      </div>
+    </main>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

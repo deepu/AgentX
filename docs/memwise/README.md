@@ -47,6 +47,7 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 | 23 | [Phase 5 interfaces](23-phase-5-interfaces.md) | The relay, external links, channel delivery, extraction in the form |
 | 24 | [Phase 6 interfaces](24-phase-6-interfaces.md) | Domains and grants, record tables and history, conditions, record pages, triggers, hand-offs, regulated mode, incoming email, review screens |
 | 25 | [Literature watch](25-literature-poc.md) | PubMed proof of concept: the Literature domain, keyed records, checked quotes, record chat and Keep as evidence, charts |
+| 26 | [Projects, pages and apps](26-projects-and-pages.md) | The simplified app: apps holding projects, the project switcher, chat beside a page, pages built from questions, regulated projects, EDC; mocks and the six-stage build plan |
 
 ## Status labels
 
@@ -56,4 +57,4 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 
 ## Next
 
-The [build plan](17-build-plan.md): Phase 4, plugins and bindings.
+The simplified app in [26](26-projects-and-pages.md): six stages, starting with the shell and pages.

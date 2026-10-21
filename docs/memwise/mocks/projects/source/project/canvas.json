@@ -1,0 +1,427 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-21T16:55:00Z"
+  },
+  "title": "MemWise projects",
+  "launch": {
+    "view": "focused",
+    "file": "XSwitch.dc.html"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Home: ask on the left, the pinned page on the right",
+      "is_interactive": true
+    },
+    "Ask.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Ask: the answer comes with a page built for the question",
+      "is_interactive": true
+    },
+    "Waiting.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Waiting for you: one built-in page for every playbook",
+      "is_interactive": true
+    },
+    "Sign.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Sign: the review on the right, ask about it on the left",
+      "is_interactive": true
+    },
+    "TmfBoard.dc.html": {
+      "x": 0,
+      "y": 1260,
+      "w": 1440,
+      "h": 900,
+      "title": "A page: a live view across records, changed by chat",
+      "is_interactive": true
+    },
+    "Sites.dc.html": {
+      "x": 1520,
+      "y": 1260,
+      "w": 1440,
+      "h": 900,
+      "title": "Records as a list, filtered from chat",
+      "is_interactive": true
+    },
+    "Documents.dc.html": {
+      "x": 3040,
+      "y": 1260,
+      "w": 1440,
+      "h": 900,
+      "title": "Records as cards by status: drag one to move it on",
+      "is_interactive": true
+    },
+    "Site.dc.html": {
+      "x": 4560,
+      "y": 1260,
+      "w": 1440,
+      "h": 900,
+      "title": "A record page: what is missing, its runs, its pages",
+      "is_interactive": true
+    },
+    "Document.dc.html": {
+      "x": 6080,
+      "y": 1260,
+      "w": 1440,
+      "h": 900,
+      "title": "A regulated record: AI checks, signature, versions, audit trail",
+      "is_interactive": true
+    },
+    "Playbook.dc.html": {
+      "x": 0,
+      "y": 2520,
+      "w": 1440,
+      "h": 900,
+      "title": "A playbook: when it starts, its steps, its runs; changed by chat",
+      "is_interactive": true
+    },
+    "Run.dc.html": {
+      "x": 1520,
+      "y": 2520,
+      "w": 1440,
+      "h": 900,
+      "title": "A run: each step, and the one waiting for you",
+      "is_interactive": true
+    },
+    "Upload.dc.html": {
+      "x": 3040,
+      "y": 2520,
+      "w": 390,
+      "h": 844,
+      "title": "The site's view: upload by link, no account",
+      "is_interactive": true
+    },
+    "NewProject.dc.html": {
+      "x": 0,
+      "y": 3780,
+      "w": 1440,
+      "h": 900,
+      "title": "New study in the eTMF app: from a study template or a copy",
+      "is_interactive": true
+    },
+    "Settings.dc.html": {
+      "x": 1520,
+      "y": 3780,
+      "w": 1440,
+      "h": 900,
+      "title": "Project settings: template, people, connections, rules",
+      "is_interactive": true
+    },
+    "Sidebar.dc.html": {
+      "x": 3040,
+      "y": 3780,
+      "w": 236,
+      "h": 856,
+      "title": "The project sidebar"
+    },
+    "LHome.dc.html": {
+      "x": 0,
+      "y": 5040,
+      "w": 1440,
+      "h": 900,
+      "title": "Home: ask a question, see what changed in the answers",
+      "is_interactive": true
+    },
+    "LAsk.dc.html": {
+      "x": 1520,
+      "y": 5040,
+      "w": 1440,
+      "h": 900,
+      "title": "Ask: the answer comes with a page built for that question",
+      "is_interactive": true
+    },
+    "LChange.dc.html": {
+      "x": 6080,
+      "y": 5040,
+      "w": 1440,
+      "h": 900,
+      "title": "Review a change to the answer, not every paper",
+      "is_interactive": true
+    },
+    "LBoard.dc.html": {
+      "x": 4560,
+      "y": 5040,
+      "w": 1440,
+      "h": 900,
+      "title": "A kept page: refreshes weekly, columns added from chat, history",
+      "is_interactive": true
+    },
+    "LPlaybook.dc.html": {
+      "x": 0,
+      "y": 6300,
+      "w": 1440,
+      "h": 900,
+      "title": "A playbook for work that leaves the building: answering doctors",
+      "is_interactive": true
+    },
+    "LRun.dc.html": {
+      "x": 1520,
+      "y": 6300,
+      "w": 1440,
+      "h": 900,
+      "title": "One enquiry: the reply waits for the medical lead's signature",
+      "is_interactive": true
+    },
+    "LLibrary.dc.html": {
+      "x": 3040,
+      "y": 6300,
+      "w": 1440,
+      "h": 900,
+      "title": "Papers: a shared library, read once, columns grown on demand",
+      "is_interactive": true
+    },
+    "LPaper.dc.html": {
+      "x": 4560,
+      "y": 6300,
+      "w": 1440,
+      "h": 900,
+      "title": "A paper's page: what was pulled from it, where it says so",
+      "is_interactive": true
+    },
+    "LSettings.dc.html": {
+      "x": 6080,
+      "y": 6300,
+      "w": 1440,
+      "h": 900,
+      "title": "Project settings: template, people, sources, rules",
+      "is_interactive": true
+    },
+    "LTopic.dc.html": {
+      "x": 3040,
+      "y": 5040,
+      "w": 1440,
+      "h": 900,
+      "title": "A page with sub-pages: GLP-1 sums up what is under it",
+      "is_interactive": true
+    },
+    "EIndex.dc.html": {
+      "x": 0,
+      "y": 7560,
+      "w": 1440,
+      "h": 900,
+      "title": "TMF index: a live page with one sub-page per zone",
+      "is_interactive": true
+    },
+    "EInspection.dc.html": {
+      "x": 1520,
+      "y": 7560,
+      "w": 1440,
+      "h": 900,
+      "title": "Inspection readiness: a page built from one sentence",
+      "is_interactive": true
+    },
+    "EInspector.dc.html": {
+      "x": 3040,
+      "y": 7560,
+      "w": 1440,
+      "h": 900,
+      "title": "The inspector's view on 16 Nov: read-only, every view logged",
+      "is_interactive": true
+    },
+    "EChange.dc.html": {
+      "x": 4560,
+      "y": 7560,
+      "w": 1440,
+      "h": 900,
+      "title": "Change control: a chat edit needs a validation run and QA's signature",
+      "is_interactive": true
+    },
+    "EAudit.dc.html": {
+      "x": 6080,
+      "y": 7560,
+      "w": 1440,
+      "h": 900,
+      "title": "Audit trail: people and AI side by side, append-only",
+      "is_interactive": true
+    },
+    "EPortfolio.dc.html": {
+      "x": 7600,
+      "y": 7560,
+      "w": 1440,
+      "h": 900,
+      "title": "The eTMF app home: every study, in place of All projects",
+      "is_interactive": true
+    },
+    "XWaitingAll.dc.html": {
+      "x": 0,
+      "y": 8820,
+      "w": 1440,
+      "h": 900,
+      "title": "Waiting for you across every project, from the top of the switcher",
+      "is_interactive": true
+    },
+    "XEdcHome.dc.html": {
+      "x": 1520,
+      "y": 8820,
+      "w": 1440,
+      "h": 900,
+      "title": "The EDC app: Study MW-301, connected to Medidata Rave",
+      "is_interactive": true
+    },
+    "XQueries.dc.html": {
+      "x": 3040,
+      "y": 8820,
+      "w": 1440,
+      "h": 900,
+      "title": "EDC: a page built from a question, feeding a playbook",
+      "is_interactive": true
+    },
+    "XSite.dc.html": {
+      "x": 4560,
+      "y": 8820,
+      "w": 1440,
+      "h": 900,
+      "title": "One site in two apps: each fact owned by one app",
+      "is_interactive": true
+    },
+    "XSwitch.dc.html": {
+      "x": 4560,
+      "y": 3780,
+      "w": 1440,
+      "h": 900,
+      "title": "The project switcher: every project, grouped by app, with what is waiting",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Ask.dc.html",
+    "Waiting.dc.html",
+    "Sign.dc.html",
+    "TmfBoard.dc.html",
+    "Sites.dc.html",
+    "Documents.dc.html",
+    "Site.dc.html",
+    "Document.dc.html",
+    "Playbook.dc.html",
+    "Run.dc.html",
+    "Upload.dc.html",
+    "NewProject.dc.html",
+    "Settings.dc.html",
+    "Sidebar.dc.html",
+    "XSwitch.dc.html",
+    "LHome.dc.html",
+    "LAsk.dc.html",
+    "LTopic.dc.html",
+    "LBoard.dc.html",
+    "LChange.dc.html",
+    "LPlaybook.dc.html",
+    "LRun.dc.html",
+    "LLibrary.dc.html",
+    "LPaper.dc.html",
+    "LSettings.dc.html",
+    "EIndex.dc.html",
+    "EInspection.dc.html",
+    "EInspector.dc.html",
+    "EChange.dc.html",
+    "EAudit.dc.html",
+    "EPortfolio.dc.html",
+    "XWaitingAll.dc.html",
+    "XEdcHome.dc.html",
+    "XQueries.dc.html",
+    "XSite.dc.html"
+  ],
+  "notes": {
+    "r1": {
+      "x": 0,
+      "y": -300,
+      "text": "Every day in Study MW-301",
+      "kind": "title1",
+      "maxW": 6000
+    },
+    "r2": {
+      "x": 0,
+      "y": 960,
+      "text": "Pages and records",
+      "kind": "title1",
+      "maxW": 7520
+    },
+    "r3": {
+      "x": 0,
+      "y": 2220,
+      "text": "Playbooks and runs",
+      "kind": "title1",
+      "maxW": 3430
+    },
+    "r4": {
+      "x": 0,
+      "y": 3480,
+      "text": "Setting up a project",
+      "kind": "title1",
+      "maxW": 6000
+    },
+    "sample": {
+      "x": 6080,
+      "y": 0,
+      "w": 380,
+      "text": "One project, every kind of screen. The switcher at the top of the sidebar changes project (grouped by app); below it, Home, Waiting for you, then the project's Pages, Playbooks and Records. Right = the page; left = a chat about that page. All names, sites and numbers are sample data for a made-up study.",
+      "fill": "gray"
+    },
+    "r5": {
+      "x": 0,
+      "y": 4740,
+      "text": "Literature search: one project, topics as pages with sub-pages",
+      "kind": "title1",
+      "maxW": 7520
+    },
+    "r6": {
+      "x": 0,
+      "y": 6000,
+      "text": "Literature: enquiries, papers and setup",
+      "kind": "title1",
+      "maxW": 7520
+    },
+    "lit": {
+      "x": 7600,
+      "y": 5040,
+      "w": 380,
+      "fill": "purple",
+      "text": "Literature, rethought from the job. One Literature search project for the whole team: the paper library is shared, so a paper read once serves every topic. Topics are pages with sub-pages (GLP-1 \u203a Weight loss, Side effects); a parent page sums up its kept sub-pages. Ask a question and you get a page built for it. Keep it and it refreshes every week; you review changes to the answer, not every paper screened. Playbooks are only for work that repeats or leaves the building, like replying to doctors. There are no Topic, Screening or Evidence types. Numbers and quotes are real, from PubMed abstracts; people, enquiries and dates are made up (early June 2026, when the newest two papers came out)."
+    },
+    "r7": {
+      "x": 0,
+      "y": 7260,
+      "text": "eTMF stress test: Study MW-301 gets inspected",
+      "kind": "title1",
+      "maxW": 9040
+    },
+    "etmf": {
+      "x": 9120,
+      "y": 7560,
+      "w": 380,
+      "fill": "orange",
+      "text": "What the eTMF stress test showed. Held: the same sidebar, chat on the left, pages built from a question (Inspection readiness), playbooks, Waiting for you. Bent, in four places. 1) One project per study, not per team: sites, people and sign-offs differ by study, and a workspace page reads across them. 2) Record types and lifecycles come fixed from the template. In a regulated project, a chat edit becomes a change request with a validation run and a QA signature. 3) Outsiders get a different, read-only view. Inspectors see filed documents, signatures and the audit trail, never drafts, chats or AI suggestions, and their questions go to people. 4) The AI is in the audit trail like a person, with the model and the sentence it relied on."
+    },
+    "r8": {
+      "x": 0,
+      "y": 8520,
+      "text": "Apps and projects, one switcher: eTMF, EDC, Literature",
+      "kind": "title1",
+      "maxW": 7520
+    },
+    "apps": {
+      "x": 6080,
+      "y": 8820,
+      "w": 380,
+      "fill": "teal",
+      "text": "Apps live in the project switcher. One switcher at the top of the sidebar lists every project grouped by app (eTMF, EDC, Literature), each with its waiting count, plus Waiting for you across all projects at the top. In eTMF each study is a project, and All studies is the app home in place of All projects. EDC is a connected app: data entry stays in Medidata Rave, and MemWise reads it, builds pages from questions and runs playbooks like chasing old queries. One study lives in both apps: MW-301 in eTMF and MW-301 in EDC share sites, staff and visit dates. Each fact has one owner app; the other shows it read only, with a jump back. Not mocked: study-first (MW-301 \u203a eTMF, EDC, Safety) instead of app-first."
+    }
+  },
+  "designSystems": []
+}

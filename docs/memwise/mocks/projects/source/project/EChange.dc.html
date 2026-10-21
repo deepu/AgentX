@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Change control</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#5B34C9}a:hover{color:#43239E}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; background: #F4F4F6; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif; color: #1C1C1E; display: flex; flex-direction: column;">
+  <div style="height: 44px; flex: 0 0 44px; display: flex; align-items: center; gap: 16px; padding: 0 18px; font-size: 15px;">
+    <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#52525B" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path></svg>
+    <span style="font-weight: 800; color: #6E47D1; font-size: 18px;">M</span>
+    <span style="color: #6B6B72;">‹  ›</span>
+    <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 500;"><span style="width: 22px; height: 22px; border-radius: 6px; background: #4F7A3A; color: #FFFFFF; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;">M</span>My Workspace ⌄</span>
+    <span style="flex: 1 1 auto;"></span>
+    <span style="color: #52525B; font-size: 18px;">+</span>
+  </div>
+  <div style="flex: 1 1 auto; display: flex; min-height: 0; padding: 0 8px 8px 0; gap: 8px;">
+    <dc-import name="Sidebar" active="p-file" project="mw301" hint-size="236px,856px"></dc-import>
+    <section aria-label="Chat" style="width: 488px; flex: 0 0 488px; background: #FFFFFF; border: 1px solid #E5E5EA; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden;">
+      <div style="padding: 14px 24px; border-bottom: 1px solid #F0F0F2; display: flex; align-items: center; gap: 8px; font-size: 14px;">
+        <span style="font-weight: 600;">Change request CR-014</span>
+        <span style="flex: 1 1 auto;"></span>
+        <span style="color: #6B6B72; font-size: 13px;">Chat about the change →</span>
+      </div>
+      <div style="flex: 1 1 auto; overflow: hidden; padding: 18px 24px; display: flex; flex-direction: column; gap: 16px; font-size: 14.5px; line-height: 1.5;">
+        <div style="align-self: flex-end; max-width: 400px; background: #F4F4F6; border-radius: 14px; padding: 10px 14px;">Stop the QC step for CVs. The AI check is enough.</div>
+        <div style="display: flex; flex-direction: column; gap: 10px;"><div style="display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: #F5F1FF; border: 1px solid #DCD0FA; font-size: 13.5px;"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6E47D1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg><span>Drafted a change: <strong>File a document</strong>, step 3</span> <a href="#" style="font-weight: 500;">Undo</a></div><p style="margin: 0;">Drafted. This project is regulated, so the change can't go live straight from chat. It needs a reason, a validation run and QA's signature.</p><p style="margin: 0;">I re-filed last month's 42 CVs with the new steps. <strong>One result differs:</strong> a CV for site 109 that the AI passed was sent back by QC because it wasn't signed.</p></div>
+        <div style="align-self: flex-end; max-width: 400px; background: #F4F4F6; border-radius: 14px; padding: 10px 14px;">Add a check that the CV is signed and dated, then run it again</div>
+        <div style="display: flex; flex-direction: column; gap: 10px;"><div style="display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: #F5F1FF; border: 1px solid #DCD0FA; font-size: 13.5px;"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6E47D1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg><span>Changed the draft: AI check now includes signature and date</span> <a href="#" style="font-weight: 500;">Undo</a></div><p style="margin: 0;">Run again: 42 of 42 now match QC. Ready to send to Grace Lee (QA) for signature.</p></div>
+
+      </div>
+      <div style="padding: 0 20px 18px;">
+        <div style="border: 1.5px solid #E0E0E5; border-radius: 14px; padding: 12px 14px 10px; display: flex; flex-direction: column; gap: 12px;">
+          <label for="e3" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Ask about this change</label>
+          <textarea id="e3" rows="1" placeholder="Ask about this change" style="border: 0; outline: none; resize: none; font: inherit; font-size: 15px; background: transparent; color: #1C1C1E;"></textarea>
+          <div style="display: flex; align-items: center; gap: 8px; color: #52525B; font-size: 13px;">
+            <span style="flex: 1 1 auto;"></span>
+            <span>Sonnet 5.5 ⌄</span>
+            <span style="width: 30px; height: 30px; border-radius: 50%; background: #D4D4D8; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center;"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg></span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <main style="flex: 1 1 auto; min-width: 0; background: #FFFFFF; border: 1px solid #E5E5EA; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden;">
+      <div style="padding: 16px 28px 4px; font-size: 13px; color: #52525B;">Playbooks  ›  File a document  ›  Change request CR-014</div>
+      <div style="padding: 6px 28px 20px; display: flex; flex-direction: column; gap: 18px; flex: 1 1 auto; min-height: 0;">
+<div style="display: flex; align-items: flex-start; gap: 10px;"><div style="flex: 1 1 auto; display: flex; flex-direction: column; gap: 5px;"><h2 style="margin: 0; font-size: 23px; font-weight: 600; line-height: 1.25;">Change request CR-014</h2><span style="font-size: 13px; color: #52525B;">File a document · regulated project (Part 11) · drafted from chat</span></div></div><section style="display: flex; flex-direction: column; gap: 8px;"><h3 style="margin: 0; font-size: 14px; font-weight: 600;">What changes</h3><div style="border: 1px solid #E5E5EA; border-radius: 10px; font-size: 13px;"><div style="display: grid; grid-template-columns: 28px 1fr 110px; gap: 10px; padding: 9px 14px; font-size: 12px; font-weight: 600; color: #52525B; border-bottom: 1px solid #F0F0F2;"><span></span><span>Step</span><span>Who</span></div><div style="display: grid; grid-template-columns: 28px 1fr 110px; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2; background: #FBF9FF;"><span>2</span><span>AI checks: right document type, site, version, expiry<span style="background: #EFEAFD; color: #43239E; padding: 0 3px; border-radius: 3px;">, and for CVs, signed and dated</span></span><span>Agent</span></div><div style="display: grid; grid-template-columns: 28px 1fr 110px; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2; background: #FBF9FF;"><span>3</span><span><span style="color: #8A8A92; text-decoration: line-through;">QC by the TMF lead</span> <span style="background: #EFEAFD; color: #43239E; padding: 0 3px; border-radius: 3px;">QC by the TMF lead, except CVs that pass every AI check</span></span><span>TMF lead</span></div><div style="display: grid; grid-template-columns: 28px 1fr 110px; gap: 10px; padding: 9px 14px;"><span>4</span><span>Approve for filing (Part 11 signature)</span><span>TMF lead</span></div></div></section><section style="display: flex; flex-direction: column; gap: 8px;"><h3 style="margin: 0; font-size: 14px; font-weight: 600;">Reason</h3><span style="font-size: 13.5px; line-height: 1.5;">QC of CVs repeats the AI check and holds up site activation. CVs that fail any AI check still go to QC.</span></section><section style="display: flex; flex-direction: column; gap: 8px;"><h3 style="margin: 0; font-size: 14px; font-weight: 600;">Validation</h3><div style="border: 1px solid #E5E5EA; border-radius: 10px; font-size: 13px;"><div style="display: grid; grid-template-columns: 1fr 120px; gap: 10px; padding: 9px 14px; font-size: 12px; font-weight: 600; color: #52525B; border-bottom: 1px solid #F0F0F2;"><span>Validation run, on 42 CVs filed in September</span><span>Result</span></div><div style="display: grid; grid-template-columns: 1fr 120px; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>First run</span><span><span style="color: #8A4B00; font-weight: 500;">41 of 42 match QC</span></span></div><div style="display: grid; grid-template-columns: 1fr 120px; gap: 10px; padding: 9px 14px;"><span>Second run, with the signature and date check</span><span><span style="color: #1B6B3A;">42 of 42 match QC</span></span></div></div></section><section style="display: flex; flex-direction: column; gap: 8px;"><h3 style="margin: 0; font-size: 14px; font-weight: 600;">Sign-off</h3><div style="border: 1px solid #E5E5EA; border-radius: 10px; font-size: 13px;"><div style="display: grid; grid-template-columns: 1fr 170px; gap: 10px; padding: 9px 14px; font-size: 12px; font-weight: 600; color: #52525B; border-bottom: 1px solid #F0F0F2;"><span>Sign-off</span><span>Status</span></div><div style="display: grid; grid-template-columns: 1fr 170px; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>Anika Rao · study manager · raised the change</span><span><span style="color: #1B6B3A;">Signed 21 Oct</span></span></div><div style="display: grid; grid-template-columns: 1fr 170px; gap: 10px; padding: 9px 14px;"><span>Grace Lee · QA</span><span><span style="color: #8A4B00; font-weight: 500;">Waiting</span></span></div></div></section><div style="margin-top: auto; display: flex; gap: 10px; align-items: center; padding-top: 14px; border-top: 1px solid #F0F0F2;"><span style="font-size: 13px; color: #52525B; flex: 1 1 auto;">Goes live as version 3 once QA signs. Version 2 keeps running until then.</span><a href="#" style="align-self: flex-start; flex: 0 0 auto; white-space: nowrap; padding: 7px 12px; border-radius: 8px; border: 1px solid #D4D4D8; color: #1C1C1E; text-decoration: none; font-size: 13.5px; background: #FFFFFF;">Withdraw</a><a href="EAudit.dc.html" style="align-self: flex-start; flex: 0 0 auto; white-space: nowrap; padding: 8px 13px; border-radius: 8px; background: #1C1C1E; color: #FFFFFF; text-decoration: none; font-size: 13.5px; font-weight: 500;">Send to QA</a></div>
+      </div>
+    </main>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
