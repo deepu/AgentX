@@ -39,7 +39,7 @@ export { indexProject, DOMAIN_POLICY_ID, WORKSPACE_POLICY_ID, domainPolicyId } f
 export { lineDiff, structuralDiff, describeStructuralDiff, stepParts, splitLines, type DiffNameKind } from './diff.ts';
 export {
   createDraft, listDrafts, readDraft, updateDraftMeta, writeDraftFiles, setDraftEditStatus, discardDraftEdit,
-  draftContentHash, loadDraft, diffDraft, applyDraft, writeDraftReport, draftDir, badDraftPath, setWorkflowVersion,
+  draftContentHash, loadDraft, diffDraft, applyDraft, writeDraftReport, draftDir, badDraftPath, setWorkflowVersion, draftPlaybookFolder, findPlaybookFolder, readDraftTestRun, writeDraftTestRun,
   DraftConflictError, DraftStaleError, WORKFLOW_ID_PATTERN, type CreateDraftInput, type DraftFiles, type WriteDraftOptions,
   createBindingDraft, type CreateBindingDraftInput,
 } from './drafts.ts';

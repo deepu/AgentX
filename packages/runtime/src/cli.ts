@@ -32,7 +32,7 @@ import { projectPolicyLayers } from './runs.ts';
 
 const USAGE = `usage:
   memwise check <project>
-  memwise test <project> [--workflow <id>] [--example <name>] [--examples-file <file.json>] [--json] [--database-url <admin-url>]
+  memwise test <project> [--workflow <id>] [--example <name>] [--examples-file <file.json>] [--json] [--trace] [--database-url <admin-url>]
   memwise record <step-run-id> --database-url <url>
   memwise policy <project> <workflow> <step>
   memwise init <dir> [--template empty|intake] [--from <sample-project>]
@@ -105,9 +105,10 @@ function printResult(r: ExampleResult, out: (line: string) => void = console.log
   }
 }
 
-const toOutcome = (r: ExampleResult): ExampleOutcome => r.status === 'skip'
+/** An outcome as JSON; what the run did (its trace) only with --trace (a draft's test run). */
+const toOutcome = (r: ExampleResult, withTrace = false): ExampleOutcome => r.status === 'skip'
   ? { name: r.example, status: 'skip', differences: [], reason: r.reason }
-  : { name: r.example, status: r.status, differences: r.differences };
+  : { name: r.example, status: r.status, differences: r.differences, ...(withTrace && r.trace ? { trace: r.trace } : {}) };
 
 /** Extra example cases from a JSON file (past cases replayed, for the TestRunner); `file` may be absent. */
 async function readExamplesFile(path: string, workflow: WorkflowDef): Promise<ExampleCase[]> {
@@ -120,7 +121,7 @@ async function readExamplesFile(path: string, workflow: WorkflowDef): Promise<Ex
   });
 }
 
-interface TestOptions { example?: string; databaseUrl?: string; workflow?: string; json?: boolean; examplesFile?: string }
+interface TestOptions { example?: string; databaseUrl?: string; workflow?: string; json?: boolean; examplesFile?: string; trace?: boolean }
 
 async function test(dir: string, opts: TestOptions): Promise<number> {
   // With --json, stdout carries only the JSON array; everything else (kernel logs included) goes to stderr.
@@ -152,7 +153,7 @@ async function test(dir: string, opts: TestOptions): Promise<number> {
   } finally {
     restore();
   }
-  if (opts.json) process.stdout.write(`${JSON.stringify(results.map(toOutcome))}\n`);
+  if (opts.json) process.stdout.write(`${JSON.stringify(results.map((r) => toOutcome(r, !!opts.trace)))}\n`);
   return code;
 }
 
@@ -447,7 +448,7 @@ export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   const flags: Record<string, string> = {};
   const positional: string[] = [];
-  const BOOLEAN = new Set(['json', 'new', 'draft']);
+  const BOOLEAN = new Set(['json', 'new', 'draft', 'trace']);
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i]!;
     if (a.startsWith('--')) flags[a.slice(2)] = BOOLEAN.has(a.slice(2)) ? 'true' : (rest[++i] ?? '');
@@ -458,7 +459,7 @@ export async function main(argv: string[]): Promise<number> {
       case 'check': if (positional[0]) return await check(positional[0]); break;
       case 'test': if (positional[0]) {
         return await test(positional[0], {
-          example: flags.example, databaseUrl: flags['database-url'], workflow: flags.workflow, json: flags.json === 'true', examplesFile: flags['examples-file'],
+          example: flags.example, databaseUrl: flags['database-url'], workflow: flags.workflow, json: flags.json === 'true', examplesFile: flags['examples-file'], trace: flags.trace === 'true',
         });
       } break;
       case 'record': {

@@ -49,6 +49,13 @@ export interface DraftMeta {
   createdAt: string;
   /** The meta-playbook run building or changing it (create-playbook / change-playbook), if any. */
   runId?: string;
+  /** Stage 4 (26 §5): the chat that started it, when a playbook's own chat drafted the change. */
+  chatId?: string;
+  /**
+   * Stage 4: the playbook's folder when it lives in a domain's folder (`domains/etmf/workflows/chase-missing`);
+   * absent for `workflows/<id>`. Such a draft also copies `workspace.yaml` and the domains' definitions.
+   */
+  folder?: string;
   /** Set when published. */
   publishedVersion?: number;
   publishedAt?: string;
@@ -129,6 +136,44 @@ export interface ExampleOutcome {
   status: 'pass' | 'fail' | 'skip';
   differences: string[];
   reason?: string;
+  /** Stage 4 (26 §5): what the run did, for a test run's result. */
+  trace?: ExampleTrace;
+}
+
+/** What an example's run did: the steps it went through, the calls it made and where it stopped. */
+export interface ExampleTrace {
+  /** Step runs in order: the state, its step's title and performer, how it ended. */
+  steps: { state: string; title?: string; performer?: string; status: string; outcome?: string }[];
+  /** The state the run stopped in, and the run's status there. */
+  state: string;
+  status: string;
+  /** Tool calls in order: the step they were made in, the tool, the arguments, and whether it was a stub. */
+  calls: { state: string; tool: string; args: Record<string, unknown>; stubbed?: boolean; error?: string }[];
+  /** The case values when the run stopped. */
+  values: Record<string, unknown>;
+}
+
+/**
+ * Stage 4 (26 §5, D121): the last test run of a draft on one record, `drafts/<id>/test-run.json`.
+ * It belongs to the content it ran on (`hash`): a later edit makes it stale.
+ */
+export interface DraftTestRun {
+  draftId: string;
+  workflowId: string;
+  hash: string;
+  at: string;
+  /** Person id. */
+  by: string;
+  record: { entity: string; id: string; title: string };
+  /** `pass`: it ran with no problem; `skip`: it couldn't run (`reason`). */
+  status: 'pass' | 'fail' | 'skip';
+  differences: string[];
+  reason?: string;
+  trace?: ExampleTrace;
+  /** The case whose model turns were replayed, when the record had one. */
+  replayedCase?: string;
+  /** Records copied into the throwaway database, by entity key. */
+  copied: Record<string, number>;
 }
 
 /** A past case replayed on the draft ("try it on past cases"). */

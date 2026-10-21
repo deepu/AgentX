@@ -317,7 +317,7 @@ export interface KernelPhase2 {
 // PHASE 3 CONTRACT. `@memwise/server-core` codes against these; change only additively.
 
 import type {
-  DiffHunk as _DiffHunk, Diagnostic as _Diagnostic, DraftDiff, DraftEdit, DraftMeta, DraftReport, ExampleCase, ExampleOutcome,
+  DiffHunk as _DiffHunk, Diagnostic as _Diagnostic, DraftDiff, DraftEdit, DraftMeta, DraftReport, DraftTestRun, ExampleCase, ExampleOutcome,
   WorkflowVersion,
 } from '@memwise/defs';
 
@@ -334,6 +334,8 @@ export type TestRunner = (req: {
   workflowId: string;
   /** Extra examples to run too (past cases replayed), not written into the project. */
   extraExamples?: ExampleCase[];
+  /** Stage 4: run only the example of this name (a test run). */
+  only?: string;
 }) => Promise<ExampleOutcome[]>;
 
 /** What a playbook may use, for the authoring chat and the editor (05 §10: only what's available). */
@@ -366,7 +368,7 @@ export interface Authoring {
   listDrafts(filter?: { workflowId?: string; status?: DraftMeta['status'] }): Promise<DraftMeta[]>;
   getDraft(draftId: string): Promise<{ meta: DraftMeta; edits: DraftEdit[]; report?: DraftReport; contentHash: string } | undefined>;
   /** A change draft copies the live playbook; a create draft starts empty (workflowId must be new). */
-  createDraft(input: { workflowId: string; title: string; kind?: DraftMeta['kind']; runId?: string }, by: Actor): Promise<DraftMeta>;
+  createDraft(input: { workflowId: string; title: string; kind?: DraftMeta['kind']; runId?: string; chatId?: string; domain?: string }, by: Actor): Promise<DraftMeta>;
   /** Files of the live project (no draftId) or of a draft: without `path` the list, with it the content. */
   read(input: { draftId?: string; workflowId?: string; path?: string }): Promise<{ files: string[] } | { path: string; content: string | null }>;
   /** Write (or delete, content null) whole files in a draft; records one edit; returns the checks after it. */
@@ -388,6 +390,14 @@ export interface Authoring {
   startBuild(input: { workflowId?: string; request?: string; title?: string }, by: Extract<Actor, { kind: 'person' }>): Promise<{ runId: string; caseId: string; stepRunId: string }>;
   /** Send an edited draft to review: change-playbook started at its check step with the draft. */
   submitDraft(draftId: string, by: Extract<Actor, { kind: 'person' }>): Promise<{ runId: string; caseId: string }>;
+  /**
+   * Stage 4 (26 §5, D121): run the draft on one record in a throwaway database (its records copied
+   * in as the person sees them, the record's last case's model turns replayed, person steps answered
+   * with their first outcome, outbound effects stubbed); kept as the draft's last test run.
+   */
+  testRun(draftId: string, record: { entity: string; id: string }, by: Extract<Actor, { kind: 'person' }>): Promise<DraftTestRun>;
+  /** The draft's last test run, if any. */
+  lastTestRun(draftId: string): Promise<DraftTestRun | undefined>;
   /** Turn a recorded case into an example case in a draft (a correction becomes a test, 05 §12). */
   exampleFromCase(input: {
     caseId: string; name?: string; correction?: { step: string; outcome: string; note?: string }; draftId?: string;

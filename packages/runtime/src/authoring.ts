@@ -4,10 +4,10 @@
 // version index, and the change runs themselves (create-playbook, change-playbook).
 import { actorLabel, PgVersionStore } from '@memwise/db';
 import {
-  applyDraft, checkProject, createDraft, describeStructuralDiff, diffDraft, discardDraftEdit, DraftConflictError, draftContentHash,
+  applyDraft, checkProject, createDraft, draftPlaybookFolder, findPlaybookFolder, readDraftTestRun, writeDraftTestRun, describeStructuralDiff, diffDraft, discardDraftEdit, DraftConflictError, draftContentHash,
   draftDir, DraftStaleError, exampleToYaml, listDrafts, loadDraft, loadWorkflow, readDraft, SCALAR_TYPES, setDraftEditStatus,
   updateDraftMeta, WORKFLOW_ID_PATTERN, writeDraftFiles, writeDraftReport,
-  type CheckEnvironment, type Diagnostic, type DraftReport, type ExampleCase, type ExampleOutcome, type Impact,
+  type CheckEnvironment, type Diagnostic, type DraftReport, type DraftTestRun, type EffectClass, type ExampleCase, type ExampleOutcome, type Impact,
   type DiffNameKind, type ImpactTool, type PastCaseOutcome, type ProjectDefs, type StructuralDiff, type WorkflowDef,
 } from '@memwise/defs';
 import type { ToolGateway } from '@memwise/gateway';
@@ -21,9 +21,11 @@ import { PUBLISH_DRAFT_TOOL } from './authoring-tools.ts';
 import { boundPlugins, pluginPolicies, pluginToolEnvironment } from './plugins/tools.ts';
 import { newRunId } from './ids.ts';
 import { exampleNameFor } from './replay.ts';
+import { recordCaseField, TEST_RUN_EXAMPLE, testRunExample } from './test-run.ts';
 import { getTransitions, latestWorkflowDef, projectPolicyLayers } from './runs.ts';
 import {
-  CHANGE_PLAYBOOK, CREATE_PLAYBOOK, type Actor, type Authoring, type KernelChange, type RunRecord, type StartRunInput, type TestRunner,
+  CHANGE_PLAYBOOK, CREATE_PLAYBOOK, type Actor, type Authoring, type KernelChange, type RecordQuery, type RecordQueryResult, type RunRecord,
+  type StartRunInput, type TestRunner,
   type Vocabulary,
 } from './types.ts';
 import { maySee, pathOf } from './views.ts';
@@ -41,6 +43,10 @@ export interface AuthoringDeps {
   caseToExample(caseId: string, opts?: { name?: string; correction?: { step: string; outcome: string; note?: string } }): Promise<ExampleCase>;
   testRunner: TestRunner;
   emit(change: KernelChange): void;
+  /** Stage 4: records as a person sees them, for a test run's copy. */
+  queryRecords?(q: RecordQuery, by: Actor): Promise<RecordQueryResult>;
+  /** Stage 4: a bound tool's effect class (a test run stubs what would leave the building). */
+  toolEffect?(name: string): EffectClass | undefined;
 }
 
 /** Past cases replayed by a check, by default. */
@@ -57,7 +63,7 @@ const VALUE_FORMS = ['Identifier(<scheme>)', 'Quantity(<unit>)', 'Enum[<a>, <b>]
 /** A project-relative path a draft or the live project may be read at. */
 function readablePath(path: string): boolean {
   const parts = path.split('/');
-  return (parts[0] === 'domain' || parts[0] === 'workflows') && parts.length > 1
+  return (parts[0] === 'domain' || parts[0] === 'workflows' || parts[0] === 'domains' || path === 'workspace.yaml') && (parts.length > 1 || path === 'workspace.yaml')
     && !parts.some((p) => p === '' || p === '.' || p === '..' || p.startsWith('.')) && !path.includes('\\');
 }
 
@@ -201,8 +207,10 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       }
     }
     // Only what this draft is about: its playbook's folder and the domain.
-    const mine = (file?: string) => !file || file.startsWith('domain/') || file === 'domain' || file.startsWith(`workflows/${meta.workflowId}/`)
-      || file === `workflows/${meta.workflowId}`;
+    const folder = draftPlaybookFolder(meta);
+    const domainFolder = /^(domains\/[^/]+)\//.exec(folder)?.[1];
+    const mine = (file?: string) => !file || file.startsWith('domain/') || file === 'domain' || file.startsWith(`${folder}/`)
+      || file === folder || (!!domainFolder && file.startsWith(`${domainFolder}/`) && !file.startsWith(`${domainFolder}/workflows/`));
     return all.filter((d) => mine(d.file));
   }
 
@@ -374,7 +382,10 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async createDraft(input, by) {
-      const meta = await createDraft(root, { workflowId: input.workflowId, title: input.title, kind: input.kind, createdBy: byLabel(by), ...(input.runId ? { runId: input.runId } : {}) });
+      const meta = await createDraft(root, {
+        workflowId: input.workflowId, title: input.title, kind: input.kind, createdBy: byLabel(by),
+        ...(input.runId ? { runId: input.runId } : {}), ...(input.chatId ? { chatId: input.chatId } : {}), ...(input.domain ? { domain: input.domain } : {}),
+      });
       emit(meta.id);
       return meta;
     },
@@ -384,21 +395,26 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       if (workflowId !== undefined && !WORKFLOW_ID_PATTERN.test(workflowId)) throw new Error(`\`${workflowId}\` is not a playbook id`);
       let base = root;
       let workflow = workflowId;
+      let folder = workflowId ? await findPlaybookFolder(root, workflowId) : undefined;
       if (draftId) {
         const { meta } = await requireDraft(draftId);
         base = draftDir(root, draftId);
         workflow = meta.workflowId;
+        folder = draftPlaybookFolder(meta);
       }
       if (path === undefined) {
+        const domainFolder = folder ? /^(domains\/[^/]+)\//.exec(folder)?.[1] : undefined;
         const files = [
           ...(await listFiles(join(base, 'domain'))).map((f) => `domain/${f}`),
-          ...(workflow
-            ? (await listFiles(join(base, 'workflows', workflow))).map((f) => `workflows/${workflow}/${f}`)
-            : (await listFiles(join(base, 'workflows'))).map((f) => `workflows/${f}`)),
+          // A playbook in a domain's folder: the domain's definitions too (not its other playbooks).
+          ...(domainFolder ? (await listFiles(join(base, domainFolder))).map((f) => `${domainFolder}/${f}`).filter((f) => !f.startsWith(`${domainFolder}/workflows/`)) : []),
+          ...(workflow && folder
+            ? (await listFiles(join(base, folder))).map((f) => `${folder}/${f}`)
+            : workflow ? [] : (await listFiles(join(base, 'workflows'))).map((f) => `workflows/${f}`)),
         ];
         return { files };
       }
-      if (!readablePath(path)) throw new Error(`\`${path}\` is not a file of the project: use a path under domain/ or workflows/`);
+      if (!readablePath(path)) throw new Error(`\`${path}\` is not a file of the project: use a path under domain/, domains/ or workflows/`);
       const file = join(base, path);
       return { path, content: existsSync(file) ? await readFile(file, 'utf8') : null };
     },
@@ -479,6 +495,46 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       return report;
     },
 
+    async testRun(draftId, record, by) {
+      const draft = await loadDraft(root, draftId);
+      if (!draft.workflow) throw new Error(`the playbook ${draft.meta.workflowId} doesn't load in this draft yet; fix its checks first`);
+      if (!deps.queryRecords) throw new Error('test runs need the records');
+      const errors = errorCount(await quickCheck(draftId));
+      if (errors) throw new Error(`the draft has ${plural(errors, 'error')}; fix ${errors === 1 ? 'it' : 'them'} before a test run`);
+      const hash = await draftContentHash(root, draftId);
+      // The record's latest case of this playbook: its model turns are replayed (no live model here).
+      const field = recordCaseField(draft.project, draft.workflow, record.entity);
+      const { rows } = field ? await deps.pool.query<{ id: string }>(
+        `select id from mw.cases where workflow_id = $1 and values->$2->>'value' = $3 order by created_at desc limit 1`,
+        [draft.meta.workflowId, field, record.id]) : { rows: [] };
+      const latestCaseId = rows[0]?.id;
+      const latestCase = latestCaseId ? await deps.caseToExample(latestCaseId).catch(() => undefined) : undefined;
+      const built = await testRunExample({
+        project: draft.project, workflow: draft.workflow, record,
+        query: (q) => deps.queryRecords!(q, by),
+        ...(latestCase && latestCaseId ? { latestCase, latestCaseId } : {}),
+        effectOf: (name) => deps.toolEffect?.(name),
+      });
+      const [outcome] = await deps.testRunner({
+        projectDir: draftDir(root, draftId), workflowId: draft.meta.workflowId, extraExamples: [built.example], only: TEST_RUN_EXAMPLE,
+      });
+      const run: DraftTestRun = {
+        draftId, workflowId: draft.meta.workflowId, hash, at: new Date().toISOString(), by: by.personId,
+        record: { entity: record.entity, id: record.id, title: built.title },
+        status: outcome?.status ?? 'fail',
+        differences: outcome?.differences ?? ['the test run did not report back'],
+        ...(outcome?.reason ? { reason: outcome.reason } : {}),
+        ...(outcome?.trace ? { trace: outcome.trace } : {}),
+        ...(latestCase?.model && latestCaseId ? { replayedCase: latestCaseId } : {}),
+        copied: built.copied,
+      };
+      await writeDraftTestRun(root, draftId, run);
+      emit(draftId);
+      return run;
+    },
+
+    lastTestRun: (draftId) => readDraftTestRun(root, draftId),
+
     async publish(draftId, opts) {
       const d = await readDraft(root, draftId);
       if (!d) return { status: 'failed', message: `there is no draft ${draftId}` };
@@ -498,7 +554,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         if (e instanceof DraftStaleError) return { status: 'stale', message: e.message };
         return { status: 'failed', message: e instanceof Error ? e.message : String(e) };
       }
-      const { workflow } = await loadWorkflow(join(root, 'workflows', d.meta.workflowId), root);
+      const { workflow } = await loadWorkflow(join(root, draftPlaybookFolder(d.meta)), root);
       if (!workflow) return { status: 'failed', message: `the published playbook ${d.meta.workflowId} does not load` };
       // Recorded before indexing, so the index finds the hash known and doesn't record it as `files`.
       await versions.record(deps.pool, {
@@ -577,11 +633,12 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         draftId = meta.id;
       }
       // The file is named for the example, as a slug unique in the folder; the name as typed stays inside it.
-      const examplesDir = join(draftDir(root, draftId), 'workflows', workflowId, 'examples');
+      const folder = draftPlaybookFolder((await requireDraft(draftId)).meta);
+      const examplesDir = join(draftDir(root, draftId), folder, 'examples');
       const base = exampleFileSlug(example.name) || exampleFileSlug(exampleNameFor(input.caseId));
       let file = base;
       for (let n = 2; existsSync(join(examplesDir, `${file}.yaml`)) || existsSync(join(examplesDir, `${file}.yml`)); n++) file = `${base}-${n}`;
-      const path = `workflows/${workflowId}/examples/${file}.yaml`;
+      const path = `${folder}/examples/${file}.yaml`;
       const { file: _file, ...doc } = example;
       await writeDraftFiles(root, draftId, [{ path, content: exampleToYaml(doc) }], {
         by: byLabel(by), via: 'editor', summary: input.correction ? `Example case ${example.name} from a correction` : `Example case ${example.name} from a past case`,

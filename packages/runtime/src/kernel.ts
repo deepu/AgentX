@@ -644,6 +644,12 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       caseToExample: (caseId, opts) => kernel.caseToExample(caseId, opts),
       testRunner: options.testRunner ?? defaultTestRunner({ adminUrl: options.testDatabaseUrl }),
       emit: (change) => feed.emit(change),
+      queryRecords: (q, by) => phase6.records.query(q, by),
+      // An effect that depends on the arguments counts as unknown: a test run stubs it.
+      toolEffect: (name) => {
+        const effect = gateway.bound()[name]?.effect ?? gateway.get(name)?.effect;
+        return typeof effect === 'string' ? effect : undefined;
+      },
     });
   }
   return kernel;
