@@ -10,7 +10,7 @@ import type { MemwiseRecordToolCallbacks, MemwiseToolCallbacks, PlaybookToolDiag
 import { untrustedRecordData } from '@memwise/session-tools-core'
 import type { Diagnostic, DraftDiff, DraftMeta, DraftReport } from '@memwise/defs'
 import { emitMemwiseChange, getMemwiseService } from './host'
-import { authoringOf, conversationState, isConversationStep, type ConversationState } from './conversation'
+import { authoringOf, conversationState, isConversationStep, isProjectConversation, type ConversationState } from './conversation'
 import type { MemwiseService, PersonActor } from './service'
 import type { ProjectDefs } from '@memwise/defs'
 import type { RecordField, RecordFieldSource, RecordPage, RecordQueryResult, RecordsService } from '@memwise/runtime'
@@ -111,7 +111,78 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
     if (s.status !== 'waiting' || finished.has(s.stepRunId)) throw new Error('This step is no longer waiting on the chat (it was finished, or the case moved on).')
   }
 
+  /** The create-project chat's state: refused in any other conversation. */
+  async function projectCtx(): Promise<{ svc: MemwiseService; actor: PersonActor; s: ConversationState; app: string }> {
+    const c = await ctx()
+    if (!isProjectConversation(c.s)) throw new Error('This chat is not making a project.')
+    const app = typeof c.s.values.app === 'string' ? c.s.values.app : ''
+    if (!app) throw new Error('This chat does not say which app the project is in.')
+    return { ...c, app }
+  }
+
   return {
+    // Stage 3 (26 §3): "Describe it in chat" — the create-project step's chat.
+    async projectOptions() {
+      const { svc, actor, app } = await projectCtx()
+      const apps = await svc.kernel.projects.apps(actor)
+      const a = apps.find((x) => x.id === app)
+      if (!a) throw new Error(`There is no app ${app} this person can see.`)
+      const { project } = await svc.kernel.project()
+      const roles = Object.values(project.roles).map((r) => ({ id: r.id, title: r.title }))
+      const appWorkflows = Object.values(project.workflows).filter((w) => w.domain === app && w.id !== 'create-project')
+      const pages = Object.entries(project.domains?.[app]?.pages ?? {}).map(([id, p]) => ({ id, title: p.title ?? id }))
+      const people = (await svc.kernel.people.list()).map((p) => ({ name: p.name, email: p.email }))
+      return {
+        app: a.id, title: a.title, nouns: a.nouns, version: a.version, canCreate: a.canCreate,
+        templates: a.templates,
+        projects: a.projects.filter((p) => !p.implicit).map((p) => ({ id: p.id, name: p.name, status: p.status, ...(p.study ? { study: p.study } : {}) })),
+        roles,
+        playbooks: appWorkflows.map((w) => ({ path: `workflows/${w.id}`, title: w.title ?? w.id })),
+        pages: pages.map((p) => ({ path: `pages/${p.id}`, title: p.title })),
+        people,
+      }
+    },
+
+    async projectDraft(input) {
+      const { svc, actor, s, app } = await projectCtx()
+      const projects = svc.kernel.projects
+      const made = typeof s.values.project === 'string' && s.values.project ? s.values.project : undefined
+      if (made) {
+        // Made earlier in this chat: later calls change it (Project settings, as the person).
+        const p = await projects.update(made, {
+          ...(input.name ? { name: input.name } : {}), ...(input.study ? { study: input.study } : {}),
+          ...(input.people ? { people: input.people } : {}), ...(input.settings ? { settings: input.settings } : {}),
+        }, actor)
+        emitMemwiseChange({ kind: 'projects', id: p.id })
+        return { project: p.id, name: p.name, status: p.status, changed: true }
+      }
+      requireWaiting(s)
+      if (!input.name) throw new Error('Give the project a name on the first call (e.g. "Study MW-310").')
+      if (!input.template && !input.copyFrom) throw new Error('Say what it starts from: a template card id or a project to copy (see project_options).')
+      // A retried call finds the draft it made (same name, still a draft).
+      const existing = (await projects.list(actor, { app })).find((p) => p.name === input.name && p.status === 'draft')
+      const p = existing ?? await projects.create({
+        app, name: input.name,
+        ...(input.template ? { template: input.template } : {}), ...(input.copyFrom ? { copyFrom: input.copyFrom } : {}),
+        ...(input.study ? { study: input.study } : {}), ...(input.people ? { people: input.people } : {}),
+        ...(input.without ? { without: input.without } : {}), ...(input.settings ? { settings: input.settings } : {}),
+      }, actor)
+      emitMemwiseChange({ kind: 'projects', id: p.id })
+      const r = await svc.kernel.submitStep({
+        stepRunId: s.stepRunId, outcome: 'drafted', values: { project: p.id, name: p.name }, by: actor,
+        via: { chatId: sessionId, rationale: `Drafted ${p.name}` },
+      })
+      if (!r.applied) {
+        opts.log?.(`[memwise] chat ${sessionId}: the create-project step was not finished (${r.status}): ${r.message ?? ''}`)
+        return { project: p.id, name: p.name, status: p.status, stepFinished: false, message: r.message ?? `The step was not finished (${r.status}).` }
+      }
+      finished.add(s.stepRunId)
+      return {
+        project: p.id, name: p.name, status: p.status, stepFinished: true,
+        next: 'The draft is on the page beside this chat. Nothing runs until the person presses Start there.',
+      }
+    },
+
     async vocabulary() {
       const { svc } = await ctx()
       return authoringOf(svc).vocabulary()

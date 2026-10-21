@@ -123,5 +123,6 @@ export {
   handlePlaybookCheck,
   handlePlaybookFinish,
 } from './playbooks.ts';
+export { handleProjectOptions, handleProjectDraft } from './projects.ts';
 export { handleRecordGet, handleRecordQuery, handleRecordKeep, handleRecordUpdate, untrustedRecordData } from './records.ts';
 export type { DecideArgs } from './decide.ts';

@@ -199,6 +199,8 @@ export type {
   PlaybookCheckInput,
   PlaybookFinishInput,
   PlaybookToolDiagnostic,
+  // MemWise project tool types
+  ProjectDraftInput,
   // MemWise record tool types
   MemwiseRecordToolCallbacks,
   RecordGetInput,
@@ -259,6 +261,9 @@ export {
   handlePlaybookDiff,
   handlePlaybookCheck,
   handlePlaybookFinish,
+  // MemWise projects
+  handleProjectOptions,
+  handleProjectDraft,
   // MemWise records
   handleRecordGet,
   handleRecordQuery,
@@ -340,6 +345,7 @@ export {
   RecordGetSchema,
   RecordQuerySchema,
   RecordKeepSchema,
+  PROJECT_TOOL_NAMES,
   RECORD_TOOL_NAMES,
   RECORD_KEEP_TOOL_NAME,
   // Descriptions

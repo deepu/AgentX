@@ -116,6 +116,7 @@ export async function personName(svc: MemwiseService, personId: string | undefin
  * draft, a review's send-back comment, and the rules the chat follows.
  */
 export async function conversationBlock(svc: MemwiseService, s: ConversationState, actor: PersonActor, who: string): Promise<string> {
+  if (isProjectConversation(s)) return projectConversationBlock(svc, s, actor, who)
   const { project } = await svc.kernel.project()
   const wf = project.workflows[s.workflowId]
   const step = wf?.steps[s.stepId]
@@ -188,4 +189,53 @@ export function kickoffMessage(kind: 'conversation' | 'explain'): string {
   return kind === 'conversation'
     ? 'Start the conversation: greet me briefly, say in a sentence or two what we are doing (from the MemWise context), and ask your first question.'
     : 'Start with two or three plain sentences on where this stands, then offer to answer questions about it.'
+}
+
+// ---------------------------------------------------------------- Stage 3: "Describe it in chat" (26 §3)
+
+/** The app playbook whose conversation makes a new project (runtime CREATE_PROJECT_PLAYBOOK). */
+export const CREATE_PROJECT = 'create-project'
+
+/** A conversation that makes a project (the `project_*` tools), not a playbook. */
+export function isProjectConversation(s: Pick<ConversationState, 'workflowId'>): boolean {
+  return s.workflowId === CREATE_PROJECT
+}
+
+/**
+ * The `<memwise_context>` block of a create-project chat: what was asked, the app, the draft
+ * made so far (once `project_draft` made it), the step's instructions and the rules.
+ */
+export async function projectConversationBlock(svc: MemwiseService, s: ConversationState, actor: PersonActor, who: string): Promise<string> {
+  const { project } = await svc.kernel.project()
+  const wf = project.workflows[s.workflowId]
+  const step = wf?.steps[s.stepId]
+  const app = str(s.values.app)
+  const appDef = app ? project.domains?.[app] : undefined
+  const lines: string[] = []
+  lines.push(`Step "${step?.title ?? s.stepId}" (${s.stepId}) of the playbook "${wf?.title ?? s.workflowId}"; case ${s.caseId}, step run ${s.stepRunId}.`)
+  lines.push('')
+  lines.push('## What was asked')
+  lines.push(`App: ${project.apps?.[app ?? '']?.title ?? appDef?.name ?? app ?? '(none)'}${app ? ` (${app})` : ''}`)
+  if (str(s.values.request)) lines.push(`Request: ${str(s.values.request)}`)
+  else lines.push('(Nothing written down yet: ask the person what the new project is.)')
+  const made = str(s.values.project)
+  if (made) {
+    const p = await svc.kernel.projects.get(made, actor).catch(() => undefined)
+    lines.push('')
+    lines.push(`## The draft made in this chat: "${p?.name ?? made}" (${made}), ${p?.status ?? 'draft'}`)
+    lines.push('Further project_draft calls change it.')
+  }
+  if (step?.instructions?.trim()) {
+    lines.push('')
+    lines.push('## How to do this step')
+    lines.push(step.instructions.trim())
+  }
+  lines.push('')
+  lines.push('## Rules')
+  lines.push(`- You act for ${who}, with their roles (${actor.roles.join(', ') || 'none'}). You can never do more than they could by hand.`)
+  lines.push('- Read project_options first; use only the template cards, projects, roles and paths it lists.')
+  lines.push('- Records are never copied: a new project starts empty, and says so.')
+  lines.push('- The project is a draft: nothing runs in it until the person presses Start on its page beside this chat.')
+  lines.push('- Keep the chat short (a few lines); the page shows the details.')
+  return lines.join('\n')
 }

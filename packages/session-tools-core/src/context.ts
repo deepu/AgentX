@@ -912,12 +912,32 @@ export interface PlaybookToolDiagnostic {
  * handlers return to the model; a thrown error becomes an error result.
  */
 export interface MemwiseToolCallbacks {
+  /**
+   * Stage 3 (docs/memwise/26-projects-and-pages.md §3): a chat answering an app's create-project
+   * step ("Describe it in chat"). Present only there; the playbook callbacks then refuse.
+   */
+  projectOptions?(): Promise<unknown>;
+  projectDraft?(input: ProjectDraftInput): Promise<{ project: string; name: string; status: string; [k: string]: unknown }>;
   vocabulary(): Promise<unknown>;
   read(input: PlaybookReadInput): Promise<unknown>;
   write(input: PlaybookWriteInput): Promise<{ draftId: string; editId: string; diagnostics: PlaybookToolDiagnostic[]; [k: string]: unknown }>;
   diff(): Promise<unknown>;
   check(input: PlaybookCheckInput): Promise<unknown>;
   finish(input: PlaybookFinishInput): Promise<{ applied: boolean; message?: string; [k: string]: unknown }>;
+}
+
+/** Make or change the draft project a create-project chat is about. */
+export interface ProjectDraftInput {
+  name?: string;
+  /** A template card id (`phase3`); not with `copyFrom`. */
+  template?: string;
+  /** Copy this project's way of working (never its records). */
+  copyFrom?: string;
+  study?: string;
+  people?: { email: string; name?: string; roles: string[]; note?: string }[];
+  /** Template paths to leave out (`pages/safety-literature`). */
+  without?: string[];
+  settings?: Record<string, unknown>;
 }
 
 // ============================================================

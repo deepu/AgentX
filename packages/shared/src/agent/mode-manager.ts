@@ -2070,6 +2070,7 @@ export function shouldAllowToolInMode(
         // Same for the MemWise playbook tools (advertised only in conversation-step chats)
         // and the record tools (record chats: record_get / record_query read; record_keep is blocked).
         includePlaybookTools: true,
+        includeProjectTools: true,
         includeRecordTools: true,
         includeRecordKeep: true,
         includeRecordUpdate: true,
