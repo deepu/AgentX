@@ -520,6 +520,8 @@ export type MwInboxItem =
   | {
       kind: 'change-request'
       id: string
+      /** The project (domain) it is in. */
+      domain?: string
       caseId?: undefined
       runId?: undefined
       workflowId: string
@@ -535,6 +537,8 @@ export type MwInboxItem =
   | {
       kind: 'inspector-question'
       id: string
+      /** The project (domain) it is in. */
+      domain?: string
       caseId?: undefined
       runId?: undefined
       workflowId?: undefined
@@ -633,6 +637,11 @@ export type MwChatAnchor =
   | { kind: 'record'; entity: string; id: string }
   | { kind: 'project' | 'waiting'; id: string }
   | { kind: 'dashboard'; domain: string; id: string }
+  /**
+   * Stage 5 (doc 26 §8): a change request (`id`: its id or label, `CR-014`), and a project's audit
+   * trail and TMF index (`id`: the project).
+   */
+  | { kind: 'change' | 'audit' | 'tmf'; id: string }
 
 /** The person's latest chat on an anchor (`memwise:chat:find`): null when there is none yet. */
 export interface MwFindChatResult {

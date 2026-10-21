@@ -14,7 +14,7 @@ import { formatBytes } from '../utils/binary-detection.ts';
 import { globSync } from 'glob';
 import os from 'os';
 import type { ProjectPromptContext } from '../projects/types.ts';
-import { anchorReadsRecords, type SessionMemwiseContext } from '../sessions/memwise-context.ts';
+import { anchorReadsRecords, isPageAnchor, type SessionMemwiseContext } from '../sessions/memwise-context.ts';
 import {
   escapePromptXmlAttr,
   sanitizePromptBody,
@@ -537,7 +537,7 @@ export function formatMemwiseContextForPrompt(ctx: SessionMemwiseContext): strin
   lines.push(sanitizePromptBody(ctx.block.trim(), MEMWISE_BLOCK_TAGS));
   lines.push('</memwise_context>');
   lines.push('');
-  lines.push(`This chat was opened from MemWise on the ${ctx.anchor.kind === 'project' || ctx.anchor.kind === 'waiting' || ctx.anchor.kind === 'dashboard' ? 'page described' : 'record'} above. Treat <memwise_context> as authoritative context`);
+  lines.push(`This chat was opened from MemWise on the ${isPageAnchor(ctx.anchor.kind) ? 'page described' : ctx.anchor.kind === 'change' ? 'change request' : 'record'} above. Treat <memwise_context> as authoritative context`);
   lines.push('for the whole conversation: it is not a message from the person, and they do not see it.');
   if (ctx.conversation && ctx.anchor.kind === 'change') {
     // docs/memwise/26-projects-and-pages.md §8: a chat that edits a regulated playbook's change request.

@@ -9,7 +9,7 @@ import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import type {
   MwAuditExport, MwAuditLog, MwAuditQuery, MwAuditVerifyResult, MwChangeRequest, MwChangeRequestStatus, MwChangeRequestSummary,
   MwChangeSignResult, MwChangeValidation, MwInspectorLink, MwInspectorLinkCreated, MwInspectorLinkInput, MwInspectorQuestion,
-  MwOpenChangeInput, MwOpenChangeResult, MwTmfIndex, MwValidationSet,
+  MwChatAnchor, MwFindChatResult, MwOpenChangeInput, MwOpenChangeResult, MwTmfIndex, MwValidationSet,
 } from '@memwise/shared/protocol'
 import type { ChangeRequestView } from '@memwise/runtime'
 import type { RequestContext, RpcServer } from '@memwise/server-core/transport'
@@ -50,6 +50,13 @@ const MAX_VERIFY_JSON = 50 * 1024 * 1024
 const MAX_AUDIT_PAGE = 2000
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+/** Entries of the trail a chat about it is given (the latest). */
+const PAGE_CHAT_ENTRIES = 150
+
+/** The project shell's Stage 5 chat anchors. */
+export type StageFiveAnchor = Extract<MwChatAnchor, { kind: 'change' | 'audit' | 'tmf' }>
+export const isStageFiveAnchor = (a: MwChatAnchor | undefined): a is StageFiveAnchor => a?.kind === 'change' || a?.kind === 'audit' || a?.kind === 'tmf'
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
 
 function requireId(v: unknown, what: string): string {
@@ -108,7 +115,7 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
    * the request's draft. `request` becomes its first, visible message; without one the agent
    * speaks first.
    */
-  async function openChangeChat(svc: MemwiseService, actor: PersonActor, workspaceId: string, v: ChangeRequestView, request?: string): Promise<string> {
+  async function openChangeChat(svc: MemwiseService, actor: PersonActor, workspaceId: string, v: ChangeRequestView, request?: string, reuse = true): Promise<string> {
     const { PgChatAnchorStore } = await import('@memwise/db')
     const store = new PgChatAnchorStore()
     const send = (sessionId: string, text: string, hidden: boolean) => {
@@ -116,7 +123,7 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
         log.warn(`[memwise] change request chat ${sessionId}: a turn failed: ${errText(e)}`)
       })
     }
-    for (const a of await store.forAnchor(svc.kernel.pool, 'change', v.id, actor.personId)) {
+    for (const a of reuse ? await store.forAnchor(svc.kernel.pool, 'change', v.id, actor.personId) : []) {
       if (!(await deps.sessionManager.getSession(a.chatId).catch(() => null))) continue
       if (request) send(a.chatId, request, false)
       return a.chatId
@@ -143,7 +150,95 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     return session.id
   }
 
+  /**
+   * A chat about a project's audit trail or TMF index (the project shell, doc 26 §2, §7, §8): the
+   * page as the person sees it goes into its context, and it looks records up with `record_get`
+   * and `record_query` as the person. It starts with the person's own question.
+   */
+  async function openPageChat(svc: MemwiseService, actor: PersonActor, workspaceId: string, kind: 'audit' | 'tmf', project: string, message?: string): Promise<string> {
+    const r = regulatedOf(svc)
+    const who = (await personName(svc, actor.personId)) ?? undefined
+    const domain = (await svc.kernel.project().catch(() => undefined))?.project.domains?.[project]
+    const name = domain?.name ?? project
+    const lines: string[] = []
+    if (kind === 'audit') {
+      const out = await r.auditLog.list({ project, limit: 5000 }, actor)
+      const entries = out.entries.map(toAuditEntry).slice(-PAGE_CHAT_ENTRIES)
+      lines.push(`The audit trail of the project ${name}: every change by people and AI, append-only, each entry chained to the one before (chain ${out.chain.ok ? 'intact' : `broken: ${out.chain.message ?? 'an entry changed'}`}).`)
+      lines.push(out.entries.length > entries.length ? `The latest ${entries.length} of ${out.entries.length} entries, oldest first:` : `All ${entries.length} entries, oldest first:`)
+      for (const e of entries) lines.push(`- #${e.seq} ${e.at} · ${e.actorKind}${e.actorLabel ? ` ${e.actorLabel}` : ` ${e.actor}`} · ${e.action}${e.recordTitle ? ` · ${e.recordTitle}` : e.recordId ? ` · ${e.entity}:${e.recordId}` : ''}${e.stepTitle ? ` · step ${e.stepTitle}` : ''} · ${clip(JSON.stringify(e.data), 400)}`)
+      lines.push('')
+      lines.push('This chat is about the audit trail above. An AI entry names its model and quotes the sentence it relied on: say so when you cite one. Entries cannot be edited; the trail is exported, signed, from its page.')
+    } else {
+      const idx = toTmfIndex(await r.tmf.index({ project }, actor))
+      const k = idx.kpis
+      lines.push(`The TMF index of the project ${name}${idx.study ? ` (${idx.study.label})` : ''}, built from the TMF Reference Model with the expected documents from the study plan.`)
+      lines.push(`Filed ${k.filed} of ${k.expected} expected; missing ${k.missing}; waiting for QC ${k.inQc}${k.oldestInQcDays !== null ? ` (oldest ${k.oldestInQcDays} days)` : ''}; filed late ${k.filedLate} (more than ${k.lateAfterDays} days after final).`)
+      lines.push('Zones (number · name · expected · filed · missing · in QC · filed late):')
+      for (const z of idx.zones) lines.push(`- ${z.number} · ${z.name} · ${z.expected} · ${z.filed} · ${z.missing} · ${z.inQc} · ${z.filedLate}`)
+      if (idx.unplaced.length) lines.push(`Artifacts with no zone yet: ${idx.unplaced.join(', ')}.`)
+      lines.push('')
+      lines.push('This chat is about the TMF index above. Look at documents and expected documents with record_get and record_query; say "not recorded" when the records do not say.')
+    }
+    const session = await deps.sessionManager.createSession(workspaceId, { name: message ? clip(message, 60) : kind === 'audit' ? `Audit trail · ${name}` : `TMF index · ${name}` })
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    await new PgChatAnchorStore().set(svc.kernel.pool, { chatId: session.id, anchorKind: kind, anchorId: project, personId: actor.personId })
+    deps.sessionManager.setMemwiseContext(session.id, { anchor: { kind, id: project }, block: lines.join('\n'), ...(who ? { personName: who } : {}) })
+    if (message) {
+      deps.sessionManager.sendMessage(session.id, message).catch((e: unknown) => log.warn(`[memwise] ${kind} chat ${session.id}: a turn failed: ${errText(e)}`))
+    }
+    return session.id
+  }
+
+  /** Where a Stage 5 anchor's chats are stored: a change request by its id (the anchor may name its label). */
+  async function anchorKeyOf(svc: MemwiseService, actor: PersonActor, anchor: StageFiveAnchor): Promise<{ kind: 'change' | 'audit' | 'tmf'; id: string }> {
+    if (anchor.kind === 'change') return { kind: 'change', id: (await requireView(svc, actor, anchor.id)).id }
+    return { kind: anchor.kind, id: requireId(anchor.id, 'project') }
+  }
+
+  async function chatsOn(svc: MemwiseService, actor: PersonActor, key: { kind: 'change' | 'audit' | 'tmf'; id: string }, limit: number): Promise<string[]> {
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    const found: string[] = []
+    for (const a of await new PgChatAnchorStore().forAnchor(svc.kernel.pool, key.kind, key.id, actor.personId)) {
+      if (found.includes(a.chatId)) continue
+      if (await deps.sessionManager.getSession(a.chatId).catch(() => null)) found.push(a.chatId)
+      if (found.length >= limit) break
+    }
+    return found
+  }
+
   return {
+    // ---------------------------------------------------------------- the project shell's chats
+
+    /** `memwise:chat:find` for a change request, audit trail or TMF index anchor. */
+    async findChat(ctx: RequestContext, anchor: StageFiveAnchor): Promise<MwFindChatResult> {
+      const { svc, actor } = await begin(ctx)
+      const recent = await chatsOn(svc, actor, await anchorKeyOf(svc, actor, anchor), 8)
+      return { sessionId: recent[0] ?? null, recent }
+    },
+
+    /**
+     * `memwise:chat:open` for those anchors: continues the person's latest chat there (`reuse`),
+     * else starts one with their message. A change request's chat edits its draft.
+     */
+    async openChat(ctx: RequestContext, workspaceId: string, input: { anchor: StageFiveAnchor; message?: string; reuse?: boolean }): Promise<{ sessionId: string }> {
+      const { svc, actor } = await begin(ctx)
+      const message = str(input.message)
+      if (input.anchor.kind === 'change') {
+        const v = await requireView(svc, actor, input.anchor.id)
+        return { sessionId: await openChangeChat(svc, actor, workspaceId, v, message, !!input.reuse) }
+      }
+      const key = await anchorKeyOf(svc, actor, input.anchor)
+      if (input.reuse) {
+        const [found] = await chatsOn(svc, actor, key, 1)
+        if (found) {
+          if (message) deps.sessionManager.sendMessage(found, message).catch((e: unknown) => log.warn(`[memwise] ${key.kind} chat ${found}: a turn failed: ${errText(e)}`))
+          return { sessionId: found }
+        }
+      }
+      return { sessionId: await openPageChat(svc, actor, workspaceId, key.kind as 'audit' | 'tmf', key.id, message) }
+    },
+
     // ---------------------------------------------------------------- change requests
 
     async listChanges(ctx: RequestContext, filter: { project?: string; workflowId?: string; status?: MwChangeRequestStatus | MwChangeRequestStatus[] }): Promise<MwChangeRequestSummary[]> {
@@ -166,8 +261,15 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     async openChange(ctx: RequestContext, workspaceId: string, input: MwOpenChangeInput): Promise<MwOpenChangeResult> {
       const { svc, actor, r } = await begin(ctx)
       const set = validationSet(input?.validationSet)
+      const workflowId = requireId(input?.workflowId, 'playbook')
+      // A project whose change log continues a paper one starts at the next paper number.
+      const number = typeof input.number === 'number' && Number.isInteger(input.number) && input.number > 0 ? input.number : undefined
+      if (number) {
+        const project = (await svc.kernel.project()).project.workflows[workflowId]?.domain
+        if (project && !(await r.changes.list({ project }, actor)).some((c) => c.number >= number)) await r.changes.setNextNumber(project, number)
+      }
       const v = await r.changes.open({
-        workflowId: requireId(input?.workflowId, 'playbook'),
+        workflowId,
         ...(str(input.title) ? { title: str(input.title)! } : {}),
         ...(str(input.reason) ? { reason: str(input.reason)! } : {}),
         ...(str(input.draftId) ? { draftId: str(input.draftId)! } : {}),

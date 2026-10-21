@@ -160,6 +160,11 @@ export interface MwOpenChangeInput {
   draftId?: string
   /** What the person asked for in chat: the request's chat starts with it. */
   request?: string
+  /**
+   * The request's number when the project's change log continues a paper one ("the paper log
+   * ended at CR-013": 14). Used only when it is above every number the project has used.
+   */
+  number?: number
   validationSet?: MwValidationSet
 }
 

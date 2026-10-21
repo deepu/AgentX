@@ -100,13 +100,13 @@ export function toRegulatedInboxItem(item: Extract<InboxItem, { kind: 'change-re
   if (item.kind === 'change-request') {
     const cr = item.changeRequest
     return {
-      kind: 'change-request', id: item.id, workflowId: cr.workflowId, caseTitle: `${cr.label} · ${cr.title}`, stepTitle: cr.playbookTitle,
+      kind: 'change-request', id: item.id, domain: cr.project, workflowId: cr.workflowId, caseTitle: `${cr.label} · ${cr.title}`, stepTitle: cr.playbookTitle,
       signoff: item.signoff, changeRequest: toChangeSummary(cr), since: item.since,
     }
   }
   const q = item.question
   return {
-    kind: 'inspector-question', id: item.id, caseTitle: clip(q.question.replace(/\s+/g, ' ').trim(), 140), stepTitle: q.linkName,
+    kind: 'inspector-question', id: item.id, domain: q.project, caseTitle: clip(q.question.replace(/\s+/g, ' ').trim(), 140), stepTitle: q.linkName,
     question: toInspectorQuestion(q), since: item.since,
   }
 }

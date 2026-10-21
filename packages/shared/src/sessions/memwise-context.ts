@@ -29,11 +29,18 @@ export type MemwiseChatAnchor =
   | { kind: 'case' | 'step' | 'workflow' | 'change'; id: string }
   | { kind: 'record'; entity: string; id: string }
   /** The project shell (doc 26 §2): a project's Home or Waiting for you (id: the project), a dashboard (`<domain>:<page>`). */
-  | { kind: 'project' | 'waiting' | 'dashboard'; id: string };
+  | { kind: 'project' | 'waiting' | 'dashboard'; id: string }
+  /** Stage 5: a project's audit trail and TMF index (id: the project). */
+  | { kind: 'audit' | 'tmf'; id: string };
 
 /** Anchors whose chat may look records up (`record_get`, `record_query`): a record, and the project shell's pages. */
 export function anchorReadsRecords(kind: MemwiseChatAnchor['kind'] | undefined): boolean {
-  return kind === 'record' || kind === 'project' || kind === 'waiting' || kind === 'dashboard';
+  return kind === 'record' || isPageAnchor(kind);
+}
+
+/** Anchors that are a page of the project shell (described in the context block), not a record or a step. */
+export function isPageAnchor(kind: MemwiseChatAnchor['kind'] | undefined): boolean {
+  return kind === 'project' || kind === 'waiting' || kind === 'dashboard' || kind === 'audit' || kind === 'tmf';
 }
 
 export interface SessionMemwiseContext {

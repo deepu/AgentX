@@ -1423,6 +1423,11 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     },
 
     async openChat(ctx: RequestContext, workspaceId: string, input: MwOpenChatInput): Promise<{ sessionId: string }> {
+      // Stage 5: a change request, the audit trail, the TMF index (doc 26 §8).
+      const { isStageFiveAnchor, createRegulatedApi } = await import('./memwise-regulated')
+      if (isStageFiveAnchor(input?.anchor)) {
+        return createRegulatedApi(deps).openChat(ctx, workspaceId, { anchor: input.anchor, ...(input.message ? { message: input.message } : {}), ...(input.reuse ? { reuse: true } : {}) })
+      }
       const { svc, actor, c, d } = await begin(ctx)
       const message = typeof input?.message === 'string' && input.message.trim() ? input.message.trim() : undefined
       // The project shell continues the person's chat on what's open, and sends their first
@@ -1457,6 +1462,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     async findChat(ctx: RequestContext, _workspaceId: string, input: { anchor: MwChatAnchor }): Promise<MwFindChatResult> {
       const { svc, actor } = await begin(ctx)
       if (!input?.anchor?.kind) throw new Error('Choose what the chat is about.')
+      const { isStageFiveAnchor, createRegulatedApi } = await import('./memwise-regulated')
+      if (isStageFiveAnchor(input.anchor)) return createRegulatedApi(deps).findChat(ctx, input.anchor)
       const recent = await anchoredChats(svc, actor, input.anchor, 8)
       return { sessionId: recent[0] ?? null, recent }
     },

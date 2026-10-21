@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTestDatabase, postgresAvailable, type TestDatabase } from '@memwise/db'
 import type {
-  MwAuditExport, MwAuditLog, MwAuditVerifyResult, MwChangeRequest, MwChangeSignResult, MwInboxItem, MwInspectorLink, MwInspectorQuestion,
+  MwAuditExport, MwAuditLog, MwAuditVerifyResult, MwChangeRequest, MwChangeSignResult, MwOpenChangeResult, MwInboxItem, MwInspectorLink, MwInspectorQuestion,
   MwTmfIndex,
 } from '@memwise/shared/protocol'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
@@ -188,6 +188,9 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     // Reopening gives the same chat; the request's page knows it.
     expect((await api.call<{ sessionId: string }>(anikaCtx, ch.CHANGES_CHAT, { crId })).sessionId).toBe(chatId)
     expect(await api.call<MwChangeRequest>(anikaCtx, ch.CHANGES_GET, { crId })).toMatchObject({ sessionId: chatId })
+    // The project shell finds the same chat by the request's label, and continues it.
+    expect(await api.call<unknown>(anikaCtx, ch.CHAT_FIND, { anchor: { kind: 'change', id: 'CR-014' } })).toMatchObject({ sessionId: chatId })
+    expect(await api.call<{ sessionId: string }>(anikaCtx, ch.CHAT_OPEN, { anchor: { kind: 'change', id: 'CR-014' }, reuse: true })).toEqual({ sessionId: chatId })
 
     // The chat's agent, through its playbook tools.
     const tools = buildMemwiseToolCallbacks({ sessionId: chatId })
@@ -271,6 +274,18 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
       .toMatchObject({ ok: false, chain: { ok: false, brokenAt: { id: entry.id, reason: 'hash' } } })
     expect(await api.call<MwAuditVerifyResult>(anikaCtx, ch.AUDIT_VERIFY, { exportJson: 'not json' })).toMatchObject({ ok: false })
     expect(await api.call<MwAuditVerifyResult>(anikaCtx, ch.AUDIT_VERIFY, { project: 'etmf' })).toMatchObject({ ok: true, chain: { ok: true } })
+
+    // The chat beside the trail (the project shell): none yet; the person's question starts one
+    // whose context is the trail, with its AI entry's model; then it is found and continued.
+    const anchor = { kind: 'audit', id: 'etmf' }
+    expect(await api.call<unknown>(anikaCtx, ch.CHAT_FIND, { anchor })).toEqual({ sessionId: null, recent: [] })
+    const { sessionId } = await api.call<{ sessionId: string }>(anikaCtx, ch.CHAT_OPEN, { anchor, message: 'Who touched the protocol signature page?', reuse: true })
+    expect(sessions.contexts.get(sessionId)).toMatchObject({ anchor: { kind: 'audit', id: 'etmf' } })
+    expect(sessions.contexts.get(sessionId)!.block).toContain(FAKE_CLASSIFIER_MODEL)
+    expect(sessions.contexts.get(sessionId)!.block).toContain('chain intact')
+    expect(sessions.sent).toContainEqual(expect.objectContaining({ sessionId, message: 'Who touched the protocol signature page?' }))
+    expect(await api.call<unknown>(anikaCtx, ch.CHAT_FIND, { anchor })).toMatchObject({ sessionId })
+    expect(await api.call<unknown>(anikaCtx, ch.CHAT_OPEN, { anchor, reuse: true })).toEqual({ sessionId })
   })
 
   it('the MHRA link: filed documents, signatures and the trail only; every view and download logged; questions go to the study manager', async () => {
@@ -340,5 +355,19 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     const zone = await api.call<MwTmfIndex>(anikaCtx, ch.TMF_INDEX, { project: 'etmf', zone: '05' })
     expect(zone.zone!.sites.map((s) => [s.label, s.filed, s.missing])).toEqual([['101', 2, 0], ['104', 2, 0], ['109', 0, 1]])
     expect(zone.zone!.documents).toHaveLength(4)
+
+    // The chat beside the index sees the zones' counts.
+    const { sessionId } = await api.call<{ sessionId: string }>(anikaCtx, ch.CHAT_OPEN, { anchor: { kind: 'tmf', id: 'etmf' }, message: 'Which zones are behind?' })
+    expect(sessions.contexts.get(sessionId)).toMatchObject({ anchor: { kind: 'tmf', id: 'etmf' } })
+    expect(sessions.contexts.get(sessionId)!.block).toContain('05 · Site Management · 5 · 4 · 1')
+  })
+
+  it('a change log that continues a paper one starts at the paper number, never below a used one', async () => {
+    const low = await api.call<MwOpenChangeResult>(anikaCtx, ch.CHANGES_OPEN, { workflowId: 'file-document', title: 'Below the log', number: 3 })
+    expect(low.changeRequest.label).toBe('CR-015')
+    await api.call(anikaCtx, ch.CHANGES_WITHDRAW, { crId: low.changeRequest.id })
+    const paper = await api.call<MwOpenChangeResult>(anikaCtx, ch.CHANGES_OPEN, { workflowId: 'file-document', title: 'After the paper log', number: 30 })
+    expect(paper.changeRequest.label).toBe('CR-030')
+    await api.call(anikaCtx, ch.CHANGES_WITHDRAW, { crId: paper.changeRequest.id })
   })
 })
