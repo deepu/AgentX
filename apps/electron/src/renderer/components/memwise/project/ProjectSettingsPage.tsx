@@ -1,6 +1,9 @@
 /**
- * Project settings (doc 26 §2): what the project holds and its house rules, its automations, and
- * Advanced: the classic layout switch and every chat (the shell has no chat list of its own).
+ * Project settings (doc 26 §2): the project itself (Stage 3: its template and a newer version to
+ * review, its people, connections and settings, Start / Archive / Save as template), what its app
+ * holds and its house rules, its automations, and Advanced: the classic layout switch and every
+ * chat (the shell has no chat list of its own). Until projects are stored the Project tab is the
+ * domain's view.
  */
 
 import * as React from 'react'
@@ -13,6 +16,7 @@ import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { getSessionTitle } from '@/utils/session'
 import { Info_Page } from '@/components/info/Info_Page'
 import { DomainView } from '../domains/DomainView'
+import { ProjectSettingsScreen } from '../projects/ProjectScreens'
 import { AutomationsPage } from '../domains/DomainsPages'
 import { relativeTime } from '../format'
 import { useNow } from '../use-now'
@@ -20,18 +24,21 @@ import type { ShellProject } from './project-model'
 import { saveShellLayout, shellLayoutAtom } from './useProjectShell'
 import { setShellRouteRewriter } from './shell-routes'
 
-const TABS = ['project', 'automations', 'advanced'] as const
+const TABS = ['project', 'definitions', 'automations', 'advanced'] as const
 type Tab = typeof TABS[number]
 const CHATS_SHOWN = 60
 
 export function ProjectSettingsPage({ project, tab }: { project: ShellProject; tab?: string }) {
   const { t } = useTranslation()
-  const current: Tab = (TABS as readonly string[]).includes(tab ?? '') ? tab as Tab : tab === 'rules' ? 'project' : 'project'
+  // Stage 3: the Project tab is the stored project's settings; what its app holds moves to its own tab.
+  const tabs: readonly Tab[] = project.stored ? TABS : TABS.filter(k => k !== 'definitions')
+  const definitions: Tab = project.stored ? 'definitions' : 'project'
+  const current: Tab = (tabs as readonly string[]).includes(tab ?? '') ? tab as Tab : tab === 'rules' ? definitions : 'project'
   const go = (next: Tab) => navigate(routes.view.project(project.id, { type: 'settings', ...(next === 'project' ? {} : { tab: next }) }))
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="project-settings">
       <div className="flex shrink-0 gap-1 border-b border-foreground/6 px-6 pt-3">
-        {TABS.map(k => (
+        {tabs.map(k => (
           <button
             key={k}
             type="button"
@@ -43,8 +50,9 @@ export function ProjectSettingsPage({ project, tab }: { project: ShellProject; t
         ))}
       </div>
       <div className="min-h-0 flex-1">
-        {current === 'project' && <ProjectTab project={project} rules={tab === 'rules'} />}
-        {current === 'automations' && <AutomationsPage domainId={project.id} />}
+        {current === 'project' && project.stored && <ProjectSettingsScreen projectId={project.id} />}
+        {current === definitions && <ProjectTab project={project} rules={tab === 'rules'} />}
+        {current === 'automations' && <AutomationsPage domainId={project.domain} />}
         {current === 'advanced' && <AdvancedTab />}
       </div>
     </div>
@@ -54,7 +62,7 @@ export function ProjectSettingsPage({ project, tab }: { project: ShellProject; t
 function ProjectTab({ project, rules }: { project: ShellProject; rules: boolean }) {
   const domains = useAtomValue(memwiseDomainsAtom)
   const playbooks = useAtomValue(memwisePlaybooksAtom)
-  const domain = domains?.find(d => d.id === project.id) ?? null
+  const domain = domains?.find(d => d.id === project.domain) ?? null
   return (
     <Info_Page loading={domains === null}>
       {domain && (

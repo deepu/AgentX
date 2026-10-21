@@ -73,7 +73,7 @@ export function NewProjectView({ app, draft, describing, busy, error, roleTitle 
             {app.title} › {t('memwise.projects.new.title', { one })}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-title text-foreground">{draft ? draft.name : t('memwise.projects.new.title', { one: capital(one) })}</h2>
+            <h2 className="text-title text-foreground">{draft ? draft.name : capital(t('memwise.projects.new.title', { one }))}</h2>
             {draft && <StatusPill status={draft.status} />}
           </div>
           <p className="text-label-sm text-secondary">{t('memwise.projects.new.intro')}</p>
@@ -111,7 +111,7 @@ export function NewProjectView({ app, draft, describing, busy, error, roleTitle 
                 selected={chosen.kind === 'copy'}
                 disabled={!!draft}
                 title={t('memwise.projects.new.copy', { one })}
-                detail={t('memwise.projects.new.copyFrom', { project: (draft && chosen.kind === 'copy' ? chosen.project : copyable.find((p) => p.id === copyFrom)?.study ?? copyable.find((p) => p.id === copyFrom)?.name) ?? '' })}
+                detail={t('memwise.projects.new.copyFrom', { project: projectLabel(app, draft && chosen.kind === 'copy' ? chosen.project : copyFrom) })}
                 data-source="copy"
                 onSelect={() => setSource({ kind: 'copy', project: copyFrom })}
               />
@@ -261,6 +261,12 @@ export function StatusPill({ status }: { status: MwProjectDetail['status'] }) {
       {status === 'draft' ? t('memwise.projects.status.draft') : t('memwise.projects.status.archived')}
     </span>
   )
+}
+
+/** "MW-301": a project by its study, else its name, else its id. */
+function projectLabel(app: MwApp, id: string): string {
+  const p = app.projects.find((x) => x.id === id)
+  return p?.study ?? p?.name ?? id
 }
 
 function initialSource(app: MwApp): ProjectSource {

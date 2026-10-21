@@ -39,7 +39,7 @@ export function shellRouteFor(state: NavigationState, data: ShellRouteData): str
     case 'cases': {
       if (!state.details) return at(undefined)
       const c = data.cases?.find(x => x.caseId === state.details!.caseId)
-      return at(c?.domain ?? (c ? data.workflowDomain(c.workflowId) : undefined), { type: 'run', caseId: state.details.caseId })
+      return at(c?.project ?? c?.domain ?? (c ? data.workflowDomain(c.workflowId) : undefined), { type: 'run', caseId: state.details.caseId })
     }
     case 'playbooks': {
       if (!state.details) return at(undefined)

@@ -95,7 +95,9 @@ export function NewProjectScreen({ appId, draftId: openDraft }: { appId: string;
   const apps = useMemwiseProjects()
   const app = apps.data?.find((a) => a.id === appId)
   const [draftId, setDraftId] = React.useState<string | null>(openDraft ?? null)
-  const [describedAt, setDescribedAt] = React.useState<string | null>(null)
+  const [describing, setDescribing] = React.useState(false)
+  // A draft this person makes while the page is open (here, or by describing it in the chat beside it).
+  const [since] = React.useState(() => new Date(Date.now() - 1000).toISOString())
   const draft = useMemwiseProject(draftId)
   const { busy, error, run } = useBusy<NewProjectBusy>()
 
@@ -103,10 +105,10 @@ export function NewProjectScreen({ appId, draftId: openDraft }: { appId: string;
 
   // "Describe it": the chat's first project_draft makes the draft; pick it up when it appears.
   React.useEffect(() => {
-    if (!describedAt || draftId || !app) return
-    const made = app.projects.find((p) => p.status === 'draft' && !!p.createdAt && p.createdAt >= describedAt)
-    if (made) { setDraftId(made.id); setDescribedAt(null) }
-  }, [app, describedAt, draftId])
+    if (draftId || !app) return
+    const made = app.projects.find((p) => p.status === 'draft' && !!p.createdAt && p.createdAt >= since)
+    if (made) { setDraftId(made.id); setDescribing(false) }
+  }, [app, since, draftId])
 
   if (!app) {
     return <Info_Page loading={apps.loading || !apps.data} error={apps.data ? t('memwise.projects.notFound') : apps.error ?? undefined}>{null}</Info_Page>
@@ -118,9 +120,8 @@ export function NewProjectScreen({ appId, draftId: openDraft }: { appId: string;
     setDraftId(p.id)
   })
   const describe = (request: string) => void run('describe', async () => {
-    const at = new Date(Date.now() - 1000).toISOString()
     const r = await calls.describe({ app: appId, request })
-    setDescribedAt(at)
+    setDescribing(true)
     if (r.sessionId) nav.openChat(r.sessionId)
   })
   const start = () => void run('start', async () => {
@@ -139,7 +140,7 @@ export function NewProjectScreen({ appId, draftId: openDraft }: { appId: string;
       <NewProjectView
         app={app}
         draft={draftId ? draft.data : null}
-        describing={!!describedAt}
+        describing={describing}
         busy={busy}
         error={error}
         roleTitle={roleTitle}

@@ -536,6 +536,7 @@ export function toCaseSummary(project: ProjectDefs, s: CaseSummary, subjects?: R
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
     ...(wf?.domain ? { domain: wf.domain } : {}),
+    ...(s.project ? { project: s.project } : {}),
   }
 }
 

@@ -7,7 +7,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai'
-import type { MwSaveViewInput } from '@memwise/shared/protocol'
+import type { MwRecordCreateInput, MwSaveViewInput } from '@memwise/shared/protocol'
 import { Info_Page } from '@/components/info/Info_Page'
 import { navigate, routes } from '@/lib/navigate'
 import { pagesAtom } from '@/atoms/pages'
@@ -143,7 +143,8 @@ export function DomainPage({ domainId, tab }: { domainId: string; tab?: 'rules' 
 
 // ---------------------------------------------------------------- entities
 
-export function EntitiesPage({ domainId, entity }: { domainId: string; entity?: string }) {
+/** `projectId` (Stage 3): only that project's records, and new ones are made in it. */
+export function EntitiesPage({ domainId, entity, projectId }: { domainId: string; entity?: string; projectId?: string }) {
   const { t } = useTranslation()
   const { domain, loading } = useDomain(domainId)
   const types = useAtomValue(memwiseEntityTypesAtom)
@@ -159,8 +160,9 @@ export function EntitiesPage({ domainId, entity }: { domainId: string; entity?: 
     const first = views.find(v => v.entity === entity && !v.personal)
     if (first) setState(viewToState(first))
   }, [views, entity])
-  const query = useMemwiseRecordQuery(entity && tab === 'records' ? stateToQuery(entity, domainId, state) : null)
+  const query = useMemwiseRecordQuery(entity && tab === 'records' ? { ...stateToQuery(entity, domainId, state), ...(projectId ? { project: projectId } : {}) } : null)
   const calls = useMemwiseRecordCalls()
+  const create = React.useCallback((input: MwRecordCreateInput) => calls.create(projectId ? { ...input, project: projectId } : input), [calls, projectId])
   const saveView = React.useCallback((view: MwSaveViewInput['view']) => calls.saveView({ domain: domainId, view }), [calls, domainId])
   const [creating, setCreating] = React.useState(false)
 
@@ -190,7 +192,7 @@ export function EntitiesPage({ domainId, entity }: { domainId: string; entity?: 
         />
       )}
       {type && (
-        <NewRecordDialog open={creating} type={type} title={title} onClose={() => setCreating(false)} create={calls.create} onCreated={openRecord} />
+        <NewRecordDialog open={creating} type={type} title={title} onClose={() => setCreating(false)} create={create} onCreated={openRecord} />
       )}
       {domain && entity && types !== null && !type && <p className="p-6 text-label text-tertiary">{t('memwise.entities.missing')}</p>}
     </Info_Page>

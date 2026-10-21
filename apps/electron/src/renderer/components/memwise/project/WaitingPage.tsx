@@ -14,7 +14,7 @@ import { memwiseCasesAtom, memwiseDomainsAtom, memwiseInboxAtom, memwisePlaybook
 import { inboxItemStepTitle, relativeTime } from '../format'
 import { useNow } from '../use-now'
 import { ALL_PROJECTS } from '../../../../shared/project-route'
-import { projectLookups, sortWaiting, waitingIn, type ShellProject } from './project-model'
+import { caseProject, projectLookups, sortWaiting, waitingIn, type ShellProject } from './project-model'
 import { inboxItemProject } from '@memwise/shared/protocol'
 
 const DAY = 86_400_000
@@ -102,7 +102,7 @@ export function WaitingPage({ projectId, projects }: { projectId: string; projec
                 <button
                   key={c.caseId}
                   type="button"
-                  onClick={() => navigate(routes.view.project(c.domain ?? projectId, { type: 'run', caseId: c.caseId }))}
+                  onClick={() => navigate(routes.view.project(projectId === ALL_PROJECTS ? caseProject(c) : projectId, { type: 'run', caseId: c.caseId }))}
                   className="flex w-full items-center gap-3 border-b border-foreground/6 px-4 py-2.5 text-left text-label last:border-b-0 hover:bg-fill-hover"
                 >
                   <span className="min-w-0 flex-1 truncate text-foreground">
@@ -184,7 +184,7 @@ export function playbookTitle(workflowId: string | undefined, playbooks: MwPlayb
 /** Runs of the project finished in the last seven days, latest first. */
 export function finishedThisWeek(cases: MwCaseSummary[] | null | undefined, projectId: string, now: number): MwCaseSummary[] {
   return (cases ?? [])
-    .filter(c => c.status === 'done' && (projectId === ALL_PROJECTS || (c.domain ?? 'domain') === projectId))
+    .filter(c => c.status === 'done' && (projectId === ALL_PROJECTS || caseProject(c) === projectId))
     .filter(c => now - Date.parse(c.updatedAt) < 7 * DAY)
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
     .slice(0, 6)

@@ -101,7 +101,7 @@ export function ProjectShellSidebar({ navState, workspaceName }: { navState: Nav
     <ProjectSidebar
       apps={apps}
       project={project}
-      domain={domains?.find(d => d.id === project.id) ?? null}
+      domain={domains?.find(d => d.id === project.domain) ?? null}
       details={details}
       totalWaiting={totalWaiting}
     />

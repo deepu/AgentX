@@ -14,6 +14,9 @@
  *   record     `{entity}:{recordId}`     (entity keys never hold a colon)
  *   records    `{entity}`
  *   settings   `{tab}`                   (none: the first tab)
+ *   update     `{inboxItemId}`           (Stage 3: review a template update, `template-update:<project>:<to>`)
+ *   app        `{appId}`                 (Stage 3: the app home, "TMF across studies"; under `*`)
+ *   new        `{appId}`                 (Stage 3: New project in that app; under `*`)
  * `*` as the project is "all projects" (Waiting for you across every project).
  */
 
@@ -29,8 +32,11 @@ export type ProjectDetails =
   | { type: 'record'; entity: string; recordId: string }
   | { type: 'records'; entity: string }
   | { type: 'settings'; tab?: string }
+  | { type: 'update'; itemId: string }
+  | { type: 'app'; appId: string }
+  | { type: 'new'; appId: string }
 
-export const PROJECT_DETAIL_TYPES = ['home', 'waiting', 'page', 'dashboard', 'playbook', 'run', 'record', 'records', 'settings'] as const
+export const PROJECT_DETAIL_TYPES = ['home', 'waiting', 'page', 'dashboard', 'playbook', 'run', 'record', 'records', 'settings', 'update', 'app', 'new'] as const
 
 /** Types whose id may be left out. */
 const OPTIONAL_ID: readonly string[] = ['home', 'waiting', 'settings']
@@ -62,6 +68,9 @@ export function packProjectDetail(d: ProjectDetails): string {
     case 'record': return `${d.entity}:${d.recordId}`
     case 'records': return d.entity
     case 'settings': return d.tab ?? ''
+    case 'update': return d.itemId
+    case 'app': return d.appId
+    case 'new': return d.appId
   }
 }
 
@@ -87,6 +96,9 @@ export function unpackProjectDetail(type: string, id: string): ProjectDetails | 
     }
     case 'records': return { type: 'records', entity: id }
     case 'settings': return id ? { type: 'settings', tab: id } : { type: 'settings' }
+    case 'update': return { type: 'update', itemId: id }
+    case 'app': return { type: 'app', appId: id }
+    case 'new': return { type: 'new', appId: id }
     default: return null
   }
 }

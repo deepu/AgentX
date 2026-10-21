@@ -137,3 +137,25 @@ export function useMemwiseProjectCalls(): MemwiseProjectCalls {
     }
   }, [store])
 }
+
+/**
+ * How many records of each type one project holds (the sidebar's RECORDS counts; a domain's own
+ * counts are across every project). Null for a project that isn't stored: the domain's counts serve.
+ */
+export function useProjectRecordCounts(project: { id: string; domain: string; stored?: boolean } | null, entities: string[]): MemwiseQuery<Record<string, number>> {
+  const key = project?.stored && entities.length ? `record-counts:${project.id}:${entities.join(',')}` : null
+  return useMemwiseQuery<Record<string, number>>(
+    key,
+    async (api, ws) => {
+      if (typeof api.memwiseQueryRecords !== 'function') return {}
+      const out: Record<string, number> = {}
+      for (const entity of entities) {
+        try {
+          out[entity] = (await api.memwiseQueryRecords(ws, { entity, domain: project!.domain, project: project!.id, limit: 1 })).total
+        } catch { /* a type this person can't read: no count */ }
+      }
+      return out
+    },
+    c => c.kind === 'records' || c.kind === 'definitions' || c.kind === 'projects',
+  )
+}

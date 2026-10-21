@@ -19,7 +19,7 @@ import { DashboardView } from '../domains/DashboardView'
 import { humanize, relativeTime } from '../format'
 import { useNow } from '../use-now'
 import { Composer } from './AnchoredChat'
-import { pluralTitle, projectPlaybooks, sortWaiting, waitingIn, type ShellProject } from './project-model'
+import { caseProject, pluralTitle, projectPlaybooks, projectRecordScope, sortWaiting, waitingIn, type ShellProject } from './project-model'
 import { playbookTitle, ShellPageFrame, ShellSection, WaitingCard } from './WaitingPage'
 
 const RECENT_SHOWN = 5
@@ -58,7 +58,7 @@ export function HomeChatColumn({ project, domain, send, busy }: HomeChatColumnPr
     return () => { stale = true }
   }, [workspaceId, project.id])
   // A domain with a home lists its recent questions (each has its page); others their chats.
-  const asked = useMemwiseRecordQuery(home ? { entity: home.entity, domain: project.id, limit: RECENT_SHOWN } : null)
+  const asked = useMemwiseRecordQuery(home ? { entity: home.entity, ...projectRecordScope(project), limit: RECENT_SHOWN } : null)
 
   const recent: { key: string; title: string; kind: string; at?: string; open: () => void }[] = []
   for (const r of asked.data?.rows ?? []) {
@@ -126,9 +126,9 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
   const dashboard = useMemwiseDashboard(board ? domain.id : null, board?.id ?? null)
   const home = domain?.home
   const ends = home ? [home.draftState, ...home.endStates].map(s => `'${s}'`).join(', ') : ''
-  const kept = useMemwiseRecordQuery(home ? { entity: home.entity, domain: project.id, filter: `not (status in (${ends}))`, limit: 8 } : null)
-  const own = new Set(projectPlaybooks(project.id, playbooks).map(p => p.id))
-  const running = (cases ?? []).filter(c => c.status === 'active' && own.has(c.workflowId)).slice(0, 4)
+  const kept = useMemwiseRecordQuery(home ? { entity: home.entity, ...projectRecordScope(project), filter: `not (status in (${ends}))`, limit: 8 } : null)
+  const own = new Set(projectPlaybooks(project, playbooks).map(p => p.id))
+  const running = (cases ?? []).filter(c => c.status === 'active' && own.has(c.workflowId) && (!project.stored || caseProject(c) === project.id)).slice(0, 4)
   const subtitle = [project.description, project.appName !== project.name ? t('memwise.shell.fromTemplate', { app: project.appName }) : undefined].filter(Boolean).join(' · ')
 
   return (

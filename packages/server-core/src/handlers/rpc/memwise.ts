@@ -2000,6 +2000,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const r = await recordsOf(svc).create({
         entity: input.entity, values: input.values,
         ...(input.status ? { status: input.status } : {}), ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+        ...(typeof input.project === 'string' && input.project ? { project: input.project } : {}),
       }, actor)
       if (r.applied) emitMemwiseChange({ kind: 'records', entity: input.entity, ...(r.id ? { id: r.id } : {}) })
       return withRecordMessage(d.toRecordWriteResult(r))

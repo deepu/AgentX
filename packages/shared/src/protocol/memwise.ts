@@ -225,6 +225,8 @@ export interface MwCaseSummary {
   updatedAt: string
   /** Phase 6: the playbook's domain (for the domain filter). */
   domain?: string
+  /** Stage 3: the project the run belongs to. */
+  project?: string
 }
 
 export interface MwStepRunSummary {
@@ -1646,7 +1648,14 @@ export interface MwRecordPage {
 }
 
 export interface MwRecordPageInput { entity: string; id: string; review?: { stepRunId: string } }
-export interface MwRecordCreateInput { entity: string; values: Record<string, unknown>; status?: string; reason?: string }
+export interface MwRecordCreateInput {
+  entity: string
+  values: Record<string, unknown>
+  status?: string
+  reason?: string
+  /** Stage 3: the project it belongs to (a project's list); absent: the person's current project. */
+  project?: string
+}
 export interface MwRecordUpdateInput { entity: string; id: string; values: Record<string, unknown>; reason?: string }
 export interface MwRecordTransitionInput { entity: string; id: string; transition: string; reason?: string }
 
