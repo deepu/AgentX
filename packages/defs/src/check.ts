@@ -4,6 +4,7 @@
  *
  * Codes are stable; tools and editors key on them.
  */
+import { checkProjects } from './check-projects.ts';
 import { boundPluginTools, checkBindings } from './binding-checks.ts';
 import { checkDomains, checkWorkflowDomain } from './check-domains.ts';
 import { domainOf, scopedEntities } from './domains.ts';
@@ -487,6 +488,14 @@ export function checkProject(project: ProjectDefs, env: CheckEnvironment): Diagn
   out.push(...checkDomains(project, env.roles));
   for (const workflow of Object.values(project.workflows)) {
     out.push(...checkWorkflow(workflow, env, { entities: scopedEntities(entities, domainOf(workflow)), project }));
+  }
+  // Stage 3 (26 §3): projects, entity scopes, and the playbooks a project changed with its own files.
+  out.push(...checkProjects(project, env.roles));
+  for (const p of Object.values(project.projects ?? {})) {
+    for (const workflow of Object.values(p.workflows)) {
+      if (!workflow.overridden?.length) continue;
+      out.push(...checkWorkflow(workflow, env, { entities: scopedEntities(entities, domainOf(workflow)), project }));
+    }
   }
   if (project.bindings) out.push(...checkBindings(project));
   return out;

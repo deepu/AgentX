@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "app": {
+      "description": "The app id, the domain folder name.",
+      "type": "string"
+    },
+    "title": {
+      "description": "The app name people see, e.g. eTMF. Default the domain name.",
+      "type": "string"
+    },
+    "version": {
+      "description": "The template version; publishing a template update makes the next one. Default 1.",
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "description": {
+      "type": "string"
+    },
+    "nouns": {
+      "description": "What a project is called in this app, e.g. { one: study, many: studies }.",
+      "type": "object",
+      "properties": {
+        "one": {
+          "type": "string"
+        },
+        "many": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "one",
+        "many"
+      ],
+      "additionalProperties": false
+    },
+    "home": {
+      "description": "The app home, a page across its projects: { title: TMF across studies, link: All studies }.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "link": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "templates": {
+      "description": "The template cards shown in New project, by id.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "description": "The line under the title, e.g. \"Many sites, visits\".",
+            "type": "string"
+          },
+          "without": {
+            "description": "Template paths a project made from this card leaves out: workflows/<id>, pages/<id>, views/<id>.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "settings": {
+            "description": "Initial project settings.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "title": "MemWise app",
+  "description": "domains/<id>/app.yaml: the domain as a template for projects."
+}

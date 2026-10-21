@@ -36,7 +36,7 @@ export class DefinitionCache {
    * run now would get). The domain layer is the workflow's own domain's (Phase 6, 24 §2).
    */
   async policy(workflow: WorkflowDef, stepId?: string, sources?: PolicySources, pluginPolicies?: PluginPolicy[]): Promise<CompiledPolicy> {
-    const layers = policyLayersFor(sources ?? (await loadPolicySources(this.pool)), domainOf(workflow));
+    const layers = policyLayersFor(sources ?? (await loadPolicySources(this.pool)), domainOf(workflow), workflow.project);
     const step = stepId ? workflow.steps[stepId] : undefined;
     const plugins = pluginLayers(pluginPolicies ?? (await loadPluginPolicies(this.pool)), workflow, step);
     return compilePolicy(layersFor({ ...layers, plugins, workflow, step }));

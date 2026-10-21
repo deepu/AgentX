@@ -28,7 +28,7 @@ import { runExample, type ExampleResult } from './examples.ts';
 import { DEFAULT_ENGINE_VERSION } from './kernel.ts';
 import { renderValidationReport } from './regulated/validation-report.ts';
 import { sampleTools } from './sample-tools.ts';
-import { projectPolicyLayers } from './runs.ts';
+import { policySourcesOf, projectPolicyLayers } from './runs.ts';
 
 const USAGE = `usage:
   memwise check <project>
@@ -73,7 +73,11 @@ async function diagnose(dir: string): Promise<{ project: ProjectDefs; all: Diagn
   // Policy tightening, per step (the workflow layer is checked as part of each step's stack).
   const seen = new Set<string>();
   const policies = pluginPolicies(boundPlugins(project));
-  for (const workflow of Object.values(project.workflows)) {
+  // Stage 3: a project's own copies too, where its files or its policy differ from the app's.
+  const own = policySourcesOf(project).projects ?? {};
+  const copies = Object.values(project.projects ?? {}).filter((p) => !p.implicit)
+    .flatMap((p) => Object.values(p.workflows).filter((w) => w.overridden?.length || own[p.id]));
+  for (const workflow of [...Object.values(project.workflows), ...copies]) {
     for (const step of [undefined, ...Object.values(workflow.steps)]) {
       const plugins = pluginLayers(policies, workflow, step);
       const { effective, violations } = compilePolicy(layersFor({ ...projectPolicyLayers(project, workflow), plugins, workflow, step }));

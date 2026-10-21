@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "project": {
+      "description": "The project id, the folder name.",
+      "type": "string"
+    },
+    "app": {
+      "type": "string",
+      "description": "The app (domain id) this project is a copy of."
+    },
+    "version": {
+      "description": "The app version its template was taken from. Default the app's current version.",
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "name": {
+      "type": "string"
+    },
+    "template": {
+      "description": "The template card it was made from (an id in app.yaml templates).",
+      "type": "string"
+    },
+    "copied_from": {
+      "description": "The project it was copied from (no records are copied).",
+      "type": "string"
+    },
+    "study": {
+      "description": "The study key linking projects across apps, e.g. MW-301.",
+      "type": "string"
+    },
+    "status": {
+      "description": "The status it starts in; default active. Nothing runs in a draft.",
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "archived"
+      ]
+    },
+    "people": {
+      "description": "People and their roles in this project.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "roles": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "note": {
+            "description": "Shown beside the role, e.g. owner.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "roles"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "connections": {
+      "description": "Connections the project uses, by id.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "plugin": {
+            "description": "The installed plugin it goes through.",
+            "type": "string"
+          },
+          "access": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write"
+            ]
+          },
+          "settings": {
+            "description": "Per-project settings (a mailbox, a folder), never credentials.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "without": {
+      "description": "Template paths left out: workflows/<id>, pages/<id>, views/<id>.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "settings": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    }
+  },
+  "required": [
+    "app",
+    "name"
+  ],
+  "additionalProperties": false,
+  "title": "MemWise project",
+  "description": "projects/<id>/project.yaml: one copy of an app, with overrides/ holding whole files that replace the template's."
+}

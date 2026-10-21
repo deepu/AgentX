@@ -1,0 +1,15 @@
+# Study MW-207, made from the Phase 3 study template at version 4, as it is.
+app: etmf
+version: 4
+template: phase3
+name: Study MW-207
+study: MW-207
+people:
+  - { email: anika.rao@northlight.example, name: Anika Rao, roles: [study_manager], note: owner }
+  - { email: tom.okafor@northlight.example, name: Tom Okafor, roles: [tmf_specialist], note: signs for filing }
+connections:
+  storage: { title: Study TMF storage }
+  email:   { title: Study email }
+settings:
+  phase: 2
+  next_milestone: { label: Lock, date: "2026-11-30" }

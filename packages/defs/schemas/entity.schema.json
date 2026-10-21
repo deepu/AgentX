@@ -550,6 +550,14 @@
       "items": {
         "type": "string"
       }
+    },
+    "scope": {
+      "description": "app: records shared by every project of the app (a Sponsor); project (the default): each project has its own.",
+      "type": "string",
+      "enum": [
+        "app",
+        "project"
+      ]
     }
   },
   "required": [

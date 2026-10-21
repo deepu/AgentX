@@ -269,6 +269,7 @@ export const entityFormat = z.strictObject({
   key: z.union([z.string(), names]).optional().meta({ description: 'Fields that identify a record (Text, Number or Ref, required): unique, and creating one that exists returns it.' }),
   keep_from_chat: z.boolean().optional().meta({ description: 'A chat anchored to a record may keep rows of this entity (with the person\'s permission).' }),
   list: names.optional().meta({ description: 'The columns of its records table by default: fields, calculated fields or status. Default: its short fields.' }),
+  scope: z.enum(['app', 'project']).optional().meta({ description: 'app: records shared by every project of the app (a Sponsor); project (the default): each project has its own.' }),
 }).meta({ title: 'MemWise entity type', description: 'domain/entities/<name>.yaml or domains/<id>/entities/<name>.yaml.' });
 
 const scriptedTurn = z.strictObject({
@@ -524,6 +525,56 @@ export const bindingFormat = z.strictObject({
   dry_run: z.strictObject({ at: z.string(), hash: z.string(), passed: z.boolean(), summary: z.string() }).optional(),
 }).meta({ title: 'MemWise binding', description: 'domain/bindings/<slug>.yaml: how one plugin is bound into this domain.' });
 
+// ---------------------------------------------------------------- apps and projects (26 §3)
+
+const templateCard = z.strictObject({
+  title: z.string(),
+  description: z.string().optional().meta({ description: 'The line under the title, e.g. "Many sites, visits".' }),
+  without: names.optional().meta({ description: 'Template paths a project made from this card leaves out: workflows/<id>, pages/<id>, views/<id>.' }),
+  settings: z.record(z.string(), z.unknown()).optional().meta({ description: 'Initial project settings.' }),
+});
+
+export const appFormat = z.strictObject({
+  app: z.string().optional().meta({ description: 'The app id, the domain folder name.' }),
+  title: z.string().optional().meta({ description: 'The app name people see, e.g. eTMF. Default the domain name.' }),
+  version: z.number().int().positive().optional().meta({ description: 'The template version; publishing a template update makes the next one. Default 1.' }),
+  description: z.string().optional(),
+  nouns: z.strictObject({ one: z.string(), many: z.string() }).optional()
+    .meta({ description: 'What a project is called in this app, e.g. { one: study, many: studies }.' }),
+  home: z.strictObject({ title: z.string(), link: z.string().optional() }).optional()
+    .meta({ description: 'The app home, a page across its projects: { title: TMF across studies, link: All studies }.' }),
+  templates: z.record(z.string(), templateCard).optional().meta({ description: 'The template cards shown in New project, by id.' }),
+}).meta({ title: 'MemWise app', description: 'domains/<id>/app.yaml: the domain as a template for projects.' });
+
+const projectPerson = z.strictObject({
+  email: z.string(),
+  name: z.string().optional(),
+  roles: z.union([z.string(), names]),
+  note: z.string().optional().meta({ description: 'Shown beside the role, e.g. owner.' }),
+});
+
+const projectConnection = z.strictObject({
+  title: z.string().optional(),
+  plugin: z.string().optional().meta({ description: 'The installed plugin it goes through.' }),
+  access: z.enum(['read', 'write']).optional(),
+  settings: z.record(z.string(), z.unknown()).optional().meta({ description: 'Per-project settings (a mailbox, a folder), never credentials.' }),
+});
+
+export const projectFormat = z.strictObject({
+  project: z.string().optional().meta({ description: 'The project id, the folder name.' }),
+  app: z.string().meta({ description: 'The app (domain id) this project is a copy of.' }),
+  version: z.number().int().positive().optional().meta({ description: "The app version its template was taken from. Default the app's current version." }),
+  name: z.string(),
+  template: z.string().optional().meta({ description: 'The template card it was made from (an id in app.yaml templates).' }),
+  copied_from: z.string().optional().meta({ description: 'The project it was copied from (no records are copied).' }),
+  study: z.string().optional().meta({ description: 'The study key linking projects across apps, e.g. MW-301.' }),
+  status: z.enum(['draft', 'active', 'archived']).optional().meta({ description: 'The status it starts in; default active. Nothing runs in a draft.' }),
+  people: z.array(projectPerson).optional().meta({ description: 'People and their roles in this project.' }),
+  connections: z.record(z.string(), projectConnection).optional().meta({ description: 'Connections the project uses, by id.' }),
+  without: names.optional().meta({ description: 'Template paths left out: workflows/<id>, pages/<id>, views/<id>.' }),
+  settings: z.record(z.string(), z.unknown()).optional(),
+}).meta({ title: 'MemWise project', description: 'projects/<id>/project.yaml: one copy of an app, with overrides/ holding whole files that replace the template\'s.' });
+
 export const formats = {
   workflow: workflowFormat,
   step: stepFormat,
@@ -538,6 +589,8 @@ export const formats = {
   domain: domainFormat,
   page: pageFormat,
   view: viewFormat,
+  app: appFormat,
+  project: projectFormat,
 } as const;
 export type FormatName = keyof typeof formats;
 
