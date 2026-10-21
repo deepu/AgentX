@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 import type { MwPageChange, MwSubmitResult } from '@memwise/shared/protocol'
-import { Markdown, PageBlocksContext, type PageBlocksActions } from '@memwise/ui'
+import { Markdown, PageBlocksContext, safeHref, type PageBlocksActions } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 import { useMemwisePageCalls, useMemwisePageChange } from '@/hooks/useMemwisePages'
 import { resultMessage } from '../format'
@@ -153,11 +153,11 @@ export function PageChangeView({ change, busy, actions = {}, onAccept, onSendBac
 
             {change.leftOut.length > 0 && (
               <div className="mt-5 space-y-1 text-label-sm text-secondary" data-left-out>
-                {change.leftOut.map((l, i) => (
+                {change.leftOut.map((l, i) => { const href = safeHref(l.href); return (
                   <p key={`${l.title}:${i}`} className="my-0">
                     {t('memwise.pages.change.leftOut')}{' '}
-                    {l.href
-                      ? <a className="text-foreground underline underline-offset-2" href={l.href} onClick={e => { if (actions.onUrlClick) { e.preventDefault(); actions.onUrlClick(l.href!) } }}>{l.title}</a>
+                    {href
+                      ? <a className="text-foreground underline underline-offset-2" href={href} onClick={e => { if (actions.onUrlClick) { e.preventDefault(); actions.onUrlClick(href) } }}>{l.title}</a>
                       : <span className="text-foreground">{l.title}</span>}
                     {l.why ? `, ${l.why}` : ''}
                     {onAskWhy && (
@@ -167,7 +167,7 @@ export function PageChangeView({ change, busy, actions = {}, onAccept, onSendBac
                       </>
                     )}
                   </p>
-                ))}
+                ) })}
               </div>
             )}
 
@@ -179,12 +179,14 @@ export function PageChangeView({ change, busy, actions = {}, onAccept, onSendBac
           {canDecide ? (
             comment === null ? (
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className="text-label-sm text-secondary">{t('memwise.pages.change.acceptNote')}</span>
+                {change.stale
+                  ? <span className="text-label-sm text-destructive" data-stale>{t('memwise.pages.change.stale')}</span>
+                  : <span className="text-label-sm text-secondary">{t('memwise.pages.change.acceptNote')}</span>}
                 <span className="flex items-center gap-2">
                   <button type="button" className="rounded-md border border-border px-3 py-1.5 text-label font-medium text-foreground disabled:opacity-60" disabled={!!busy} onClick={() => setComment('')} data-action="send-back">
                     {t('memwise.pages.change.sendBack')}
                   </button>
-                  <button type="button" className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-label font-medium text-background disabled:opacity-60" disabled={!!busy} onClick={onAccept} data-action="accept-change">
+                  <button type="button" className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-label font-medium text-background disabled:opacity-60" disabled={!!busy || !!change.stale} onClick={onAccept} data-action="accept-change">
                     {busy === 'accept' && <Loader2 className="size-3.5 animate-spin" />}
                     {t('memwise.pages.change.accept')}
                   </button>

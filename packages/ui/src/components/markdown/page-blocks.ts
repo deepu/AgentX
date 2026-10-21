@@ -12,9 +12,20 @@
  * - ```subpages { "changes"? } + "pages": [...], "changes": [...]
  */
 
+import { defaultUrlTransform } from 'react-markdown'
+
 export const PAGE_BLOCK_LANGS = new Set(['tiles', 'table', 'records', 'subpages'])
 
 export interface PageTile { label: string; value: string; note?: string }
+/**
+ * A link a page block (a table cell, a quote, a left-out paper) may carry, through the same
+ * `defaultUrlTransform` as Markdown links: javascript:, data:, vbscript: and file: links drop.
+ */
+export function safeHref(href: unknown): string | undefined {
+  const v = typeof href === 'string' ? href.trim() : ''
+  return (v && defaultUrlTransform(v)) || undefined
+}
+
 export interface PageQuote { text: string; cite?: string; href?: string }
 export interface PageCell { text: string; href?: string; quote?: PageQuote; muted?: boolean }
 export interface PageTableColumn { key: string; label: string; changed?: boolean }
@@ -79,10 +90,10 @@ function cellOf(v: unknown): PageCell | undefined {
   if (!isObj(v)) return undefined
   const text = str(v.text ?? v.value)
   if (text === undefined) return undefined
-  const href = str(v.href)
+  const href = safeHref(v.href)
   const q = v.quote
   const quote: PageQuote | undefined = typeof q === 'string' ? { text: q }
-    : isObj(q) && str(q.text) ? { text: str(q.text)!, ...(str(q.cite) ? { cite: str(q.cite)! } : {}), ...(str(q.href) ? { href: str(q.href)! } : {}) }
+    : isObj(q) && str(q.text) ? { text: str(q.text)!, ...(str(q.cite) ? { cite: str(q.cite)! } : {}), ...(safeHref(q.href) ? { href: safeHref(q.href)! } : {}) }
       : undefined
   return { text, ...(href ? { href } : {}), ...(quote ? { quote } : {}), ...(v.muted === true ? { muted: true } : {}) }
 }

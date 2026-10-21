@@ -3,7 +3,7 @@
  * mostly right still draws; what can't be read says why.
  */
 import { describe, expect, it } from 'bun:test'
-import { PAGE_BLOCK_LANGS, parseRecords, parseSubpages, parseTable, parseTiles, recordValueText } from '../page-blocks'
+import { PAGE_BLOCK_LANGS, parseRecords, parseSubpages, parseTable, parseTiles, recordValueText, safeHref } from '../page-blocks'
 
 describe('page blocks', () => {
   it('names the fenced languages a page draws', () => {
@@ -48,5 +48,21 @@ describe('page blocks', () => {
   it('record values read as one line', () => {
     expect(recordValueText(['a', null, 2])).toBe('a, 2')
     expect(recordValueText(undefined)).toBe('')
+  })
+})
+
+describe('links in page blocks', () => {
+  it('keep safe links and drop the schemes Markdown links drop', () => {
+    expect(safeHref(' https://doi.org/10.1/x ')).toBe('https://doi.org/10.1/x')
+    expect(safeHref('mailto:a@b.example')).toBe('mailto:a@b.example')
+    for (const bad of ['javascript:alert(1)', 'JavaScript:alert(1)', 'data:text/html,x', 'vbscript:x', '', undefined, 3]) expect(safeHref(bad)).toBeUndefined()
+  })
+  it('a table cell or quote with an unsafe link keeps its text, without the link', () => {
+    const t = parseTable(JSON.stringify({
+      columns: ['trial'],
+      rows: [{ trial: { text: 'STEP-1', href: 'javascript:alert(1)', quote: { text: 'Quoted', href: 'data:text/html,x' } } }, { trial: { text: 'SURMOUNT', href: 'https://example.org/s' } }],
+    }))
+    if (!t.ok) throw new Error('unread')
+    expect(t.value.rows.map(r => r.trial)).toEqual([{ text: 'STEP-1', quote: { text: 'Quoted' } }, { text: 'SURMOUNT', href: 'https://example.org/s' }])
   })
 })

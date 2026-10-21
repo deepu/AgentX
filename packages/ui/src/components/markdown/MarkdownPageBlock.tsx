@@ -15,7 +15,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { CodeBlock } from './CodeBlock'
 import {
-  parseRecords, parseSubpages, parseTable, parseTiles, recordValueText,
+  parseRecords, parseSubpages, parseTable, parseTiles, recordValueText, safeHref,
   type PageCell, type PageQuote, type PageRecentChange, type PageSubpage,
 } from './page-blocks'
 
@@ -93,7 +93,9 @@ function QuoteNote({ quote, onUrlClick }: { quote: PageQuote; onUrlClick?: (url:
   )
 }
 
-function LinkText({ href, children, onUrlClick }: { href: string; children: React.ReactNode; onUrlClick?: (url: string) => void }) {
+function LinkText({ href: raw, children, onUrlClick }: { href: string; children: React.ReactNode; onUrlClick?: (url: string) => void }) {
+  const href = safeHref(raw)
+  if (!href) return <>{children}</>
   return (
     <a
       href={href}

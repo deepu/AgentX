@@ -231,6 +231,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     sourcedProvenance: (db: import('pg').PoolClient, stepRunId: string, values: Record<string, unknown>, sources: Record<string, string>, by: string) =>
       external!.sourcedProvenance(db, stepRunId, values, sources, by),
     signing: { people, entities: () => entities, project: () => indexed?.project },
+    // A refresh's review step has no role: the page's reviewers answer it (27 §4).
+    mayAnswer: (db: import('pg').PoolClient, s: import('./submit.ts').WaitingStep, by: import('./types.ts').SubmitStepInput['by'], outcome: string) =>
+      pagesCore ? pagesCore.answerRefusal(db, s.run_id, by, outcome) : Promise.resolve(undefined),
   };
   const versionStore = new PgVersionStore();
 
@@ -352,6 +355,20 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     pool, project: () => indexed?.project, people, records: () => phase6.records,
     start: (input, opts) => start(input, true, opts),
     submitStep: (input) => submitStep(submitDeps, input),
+    // The kernel ends a replaced review itself: not a person's answer, so no reviewer check.
+    endReview: async (runId, comment) => {
+      const { rows } = await pool.query(
+        `select id, step_id, workflow_id, workflow_hash from mw.step_runs where run_id = $1 and status = 'waiting' and performer = 'person'
+          order by started_at desc limit 1`, [runId]);
+      const w = rows[0];
+      if (!w) return;
+      const step = (await defs.workflow(w.workflow_id, w.workflow_hash)).steps[w.step_id];
+      if (!step?.outcomes.includes('sent_back')) return;
+      const r = await submitStep({ ...submitDeps, mayAnswer: undefined },
+        { stepRunId: w.id, outcome: 'sent_back', values: {}, comment, by: { kind: 'person', personId: 'system', roles: [] } });
+      if (!r.applied && r.status !== 'stale') throw new Error(r.message ?? r.status);
+    },
+    log: (m) => { if ((options.logLevel ?? process.env.DBOS_LOG ?? 'warn') !== 'error') console.warn(`[memwise] ${m}`); },
     emit: (c) => feed.emit(c),
   });
 

@@ -5,7 +5,7 @@
  * and the project id is the domain id. Pure functions, so the screens and tests share them.
  */
 
-import type { MwChatAnchor, MwDomain, MwInboxItem, MwPlaybookSummary, MwTrigger } from '@memwise/shared/protocol'
+import type { MwChatAnchor, MwDomain, MwInboxItem, MwPageSummary, MwPlaybookSummary, MwTrigger } from '@memwise/shared/protocol'
 import type { ProjectDetails } from '../../../../shared/project-route'
 import { inboxItemProject } from '@memwise/shared/protocol'
 import { isMetaPlaybook } from '../draft/draft-model'
@@ -175,6 +175,14 @@ export function anchorKeyOf(anchor: MwChatAnchor): string {
  * or record about itself; a written page about the page (it can change the page, with Undo), and
  * an answer change opened outside Waiting for you about its page (`changePageId`, once known).
  */
+/**
+ * Where a written page shows in the sidebar (26 §4): at the top of PAGES, or, when it was written
+ * under a record (`under`), in the record tree under that record.
+ */
+export function writtenPagePlace(p: Pick<MwPageSummary, 'under'>): 'top' | 'record-tree' {
+  return p.under ? 'record-tree' : 'top'
+}
+
 export function chatAnchorFor(projectId: string, details: ProjectDetails, item?: MwInboxItem | null, changePageId?: string): MwChatAnchor {
   switch (details.type) {
     case 'waiting':

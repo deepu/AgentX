@@ -11,7 +11,7 @@ import { cpSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createKernel } from '../src/kernel.ts';
-import { createPagesService } from '../src/pages/service.ts';
+import { createPagesService, type PagesCore } from '../src/pages/service.ts';
 import { sampleTools } from '../src/sample-tools.ts';
 import type { InboxItem, Kernel, KernelChange, PersonActor } from '../src/types.ts';
 import { INTAKE_DIR } from './fixtures/exit-setup.ts';
@@ -63,8 +63,9 @@ async function waitingReview(runId: string) {
   const run = await kernel.waitForRun(runId, { until: (r) => r.status !== 'active' || r.state === 'review', timeoutMs: 60_000 });
   expect(run).toMatchObject({ state: 'review', status: 'active' });
   for (let i = 0; i < 100; i++) {
-    const s = await kernel.getStepRecord(`${runId}/${run.enteredSeq}/review`);
-    if (s?.status === 'waiting') return s;
+    const id = `${runId}/${run.enteredSeq}/review`;
+    const s = await kernel.getStepRecord(id);
+    if (s?.status === 'waiting') return { ...s, id };
     await new Promise((r) => setTimeout(r, 50));
   }
   throw new Error('review never waited');
@@ -255,5 +256,117 @@ describe.skipIf(!pgAvailable)('pages in the kernel', () => {
     expect(blocks[1].error).toContain('entity');
     // The written body keeps the block as written.
     expect(p.written).toContain('{"entity":"Customer","limit":5}');
+  });
+
+  // ---------------------------------------------------------------- the review's fixes
+
+  const setRefresh = (id: string, fields: Record<string, unknown>) =>
+    kernel.pool.query(`update mw.pages set refresh = refresh || $2::jsonb where id = $1`, [id, JSON.stringify(fields)]);
+  const runsOf = async (id: string) => (await kernel.pool.query(
+    `select r.id, r.status from mw.runs r join mw.cases c on c.id = r.case_id where c.values -> 'page' ->> 'value' = $1 order by r.created_at`, [id])).rows as { id: string; status: string }[];
+
+  test('the review step is answered only by the page\'s reviewers, and not accepted once the page moved on', async () => {
+    const p = (await kernel.pages.create({ project: P, title: 'Reviewed', body: BODY }, owner)).page!;
+    await kernel.pages.keep(p.id, { every: 'mon' }, owner);
+    writer = { page: p.id, writes: { body: NEW_TRIAL, label: '1 new trial' } };
+    const started = await kernel.pages.refreshNow(p.id, owner);
+    const step = await waitingReview(started.runId!);
+    const changeId = (await kernel.pages.get(p.id, owner))!.pendingChange!.id;
+
+    // Someone else can't answer the step directly, and isn't shown it.
+    expect(await kernel.submitStep({ stepRunId: step.id, outcome: 'accepted', values: {}, by: other })).toMatchObject({ applied: false, status: 'forbidden' });
+    expect((await kernel.pages.getChange(changeId, other))!.stepRunId).toBeUndefined();
+    expect((await kernel.pages.getChange(changeId, owner))!.stepRunId).toBe(step.id);
+
+    // The page changed while the change waited: it can't be accepted, only sent back.
+    expect((await kernel.pages.update(p.id, { body: `${BODY}\nA note.\n` }, owner)).applied).toBe(true);
+    expect((await kernel.pages.getChange(changeId, owner))!).toMatchObject({ stale: true, mayDecide: true });
+    expect(await kernel.pages.decideChange(changeId, { decision: 'accept' }, owner)).toMatchObject({ applied: false, status: 'stale' });
+    expect(await kernel.submitStep({ stepRunId: step.id, outcome: 'accepted', values: {}, by: owner })).toMatchObject({ applied: false, status: 'forbidden' });
+    expect(await kernel.pages.decideChange(changeId, { decision: 'send_back' }, owner)).toMatchObject({ applied: true });
+    expect(await finished(started.runId!)).toMatchObject({ status: 'done' });
+    expect((await kernel.pages.get(p.id, owner))!).toMatchObject({ version: 2, written: `${BODY}\nA note.\n` });
+  }, 90_000);
+
+  test('a newer change ends the review it replaced; a retried compare finds its own change', async () => {
+    const p = (await kernel.pages.create({ project: P, title: 'Replaced', body: BODY }, owner)).page!;
+    await kernel.pages.keep(p.id, { every: 'mon' }, owner);
+    writer = { page: p.id, writes: { body: NEW_TRIAL, label: '1 new trial' } };
+    const first = await kernel.pages.refreshNow(p.id, owner);
+    await waitingReview(first.runId!);
+    const before = (await kernel.pages.get(p.id, owner))!.pendingChange!.id;
+
+    const core = kernel.pages as unknown as PagesCore;
+    const c = await core.compare({ page: p.id, body: NEW_TRIAL.replace('10 trials', '11 trials'), runId: 'run_replacing', reason: 'manual' });
+    expect(c).toMatchObject({ outcome: 'material' });
+    expect(await finished(first.runId!)).toMatchObject({ status: 'done' });
+    expect((await kernel.pages.getChange(before, owner))!).toMatchObject({ status: 'sent_back', comment: 'Replaced by a newer refresh' });
+    expect(pageItems(await kernel.inbox(owner)).filter((i) => (i as { pageChange: { pageId: string } }).pageChange.pageId === p.id)).toEqual([]);
+    // The same run again: the same change, still pending.
+    expect(await core.compare({ page: p.id, body: NEW_TRIAL.replace('10 trials', '11 trials'), runId: 'run_replacing', reason: 'manual' })).toEqual(c);
+    await core.sendBack((c as { change: string }).change, owner.personId);
+
+    // Nothing new, retried: one history line.
+    await core.compare({ page: p.id, body: BODY, runId: 'run_retried', reason: 'manual' });
+    await core.compare({ page: p.id, body: BODY, runId: 'run_retried', reason: 'manual' });
+    const { rows } = await kernel.pool.query(`select count(*)::int as n from mw.page_changes where page_id = $1 and status = 'nothing_new'`, [p.id]);
+    expect(rows[0].n).toBe(1);
+  }, 90_000);
+
+  test('the sweep starts one refresh for a summary and a slot, and none while one runs', async () => {
+    const p = (await kernel.pages.create({ project: P, title: 'Swept', body: BODY }, owner)).page!;
+    await kernel.pages.keep(p.id, { every: 'mon' }, owner);
+    const now = new Date();
+    await setRefresh(p.id, { next: new Date(now.getTime() - 60_000).toISOString(), summaryDue: new Date(now.getTime() - 120_000).toISOString() });
+    writer = { page: p.id, writes: { body: NEW_TRIAL, label: '1 new trial' } };
+    const swept = (await kernel.pages.sweep(now)).filter((s) => s.pageId === p.id);
+    expect(swept).toHaveLength(1);
+    let r = (await kernel.pages.get(p.id, owner))!.refresh!;
+    expect(r.summaryDue).toBeUndefined();
+    expect(new Date(r.next!).getTime()).toBeGreaterThan(now.getTime());
+    await waitingReview(swept[0]!.runId);
+
+    // While it waits for review, a slot that came is covered by it: nothing starts.
+    await setRefresh(p.id, { next: new Date(now.getTime() - 60_000).toISOString() });
+    expect((await kernel.pages.sweep(now)).filter((s) => s.pageId === p.id)).toEqual([]);
+    r = (await kernel.pages.get(p.id, owner))!.refresh!;
+    expect(new Date(r.next!).getTime()).toBeGreaterThan(now.getTime());
+    expect((await runsOf(p.id)).filter((x) => x.status === 'active')).toHaveLength(1);
+    await kernel.pages.decideChange((await kernel.pages.get(p.id, owner))!.pendingChange!.id, { decision: 'send_back' }, owner);
+    await finished(swept[0]!.runId);
+
+    // After `until`, neither the schedule nor a summary starts one, and the page says it stopped.
+    await setRefresh(p.id, { until: '2020-01-01', next: new Date(now.getTime() - 60_000).toISOString(), summaryDue: now.toISOString() });
+    expect((await kernel.pages.sweep(now)).filter((s) => s.pageId === p.id)).toEqual([]);
+    expect((await kernel.pages.get(p.id, owner))!.refreshEnded).toBe(true);
+    expect((await kernel.pages.list(P, owner)).find((x) => x.id === p.id)!.refreshEnded).toBe(true);
+  }, 120_000);
+
+  test('undo twice does not redo; a refused write changes nothing', async () => {
+    const p = (await kernel.pages.create({ project: P, title: 'Undone', body: 'One.' }, owner)).page!;
+    await kernel.pages.update(p.id, { body: 'Two.' }, owner);
+    const once = await kernel.pages.undo(p.id, owner);
+    expect(once.page).toMatchObject({ version: 3, written: 'One.', canUndo: false });
+    expect(await kernel.pages.undo(p.id, owner)).toMatchObject({ applied: false, status: 'invalid' });
+    expect((await kernel.pages.get(p.id, owner))!).toMatchObject({ version: 3, written: 'One.' });
+
+    expect(await kernel.pages.update(p.id, { sumsChildren: true, body: 'x', expectedVersion: 1 }, owner)).toMatchObject({ applied: false, status: 'stale' });
+    expect((await kernel.pages.get(p.id, owner))!).toMatchObject({ version: 3, sumsChildren: false });
+  });
+
+  test('page writes need a role in the project; keeping and archiving are the owner\'s', async () => {
+    const outsider = await kernel.people.actorFor((await kernel.people.create({ name: 'olu', email: 'olu@acme.example', roles: [] })).id);
+    expect(await kernel.pages.create({ project: P, title: 'Not mine', body: 'x' }, outsider)).toMatchObject({ applied: false, status: 'forbidden' });
+    const p = (await kernel.pages.create({ project: P, title: 'Owned', body: 'x' }, owner)).page!;
+    for (const r of [
+      await kernel.pages.update(p.id, { body: 'y' }, outsider), await kernel.pages.undo(p.id, outsider),
+      await kernel.pages.keep(p.id, {}, outsider), await kernel.pages.archive(p.id, outsider),
+    ]) expect(r).toMatchObject({ applied: false, status: 'forbidden' });
+
+    await kernel.pages.keep(p.id, { every: 'mon' }, owner);
+    expect(await kernel.pages.keep(p.id, { every: 'daily' }, other)).toMatchObject({ applied: false, status: 'forbidden' });
+    expect(await kernel.pages.archive(p.id, other)).toMatchObject({ applied: false, status: 'forbidden' });
+    expect((await kernel.pages.keep(p.id, { every: 'daily' }, owner)).page).toMatchObject({ owner: owner.personId, refresh: { every: 'daily' } });
+    expect((await kernel.pages.archive(p.id, owner)).applied).toBe(true);
   });
 });

@@ -19,7 +19,7 @@ import { useMemwisePages } from '@/hooks/useMemwisePages'
 import type { ProjectDetails } from '../../../../shared/project-route'
 import { nestTree, treeNodeKey } from '../records/record-model'
 import { ProjectSwitcher } from './ProjectSwitcher'
-import { initials, playbookStartTag, projectPlaybooks, projectRecordTypes, type ShellApp, type ShellProject } from './project-model'
+import { initials, playbookStartTag, projectPlaybooks, projectRecordTypes, writtenPagePlace, type ShellApp, type ShellProject } from './project-model'
 
 /** How many playbooks show before "N more". */
 const PLAYBOOKS_SHOWN = 4
@@ -48,9 +48,9 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
   const ownPlaybooks = projectPlaybooks(project.id, playbooks)
   const shownPlaybooks = showAllPlaybooks ? ownPlaybooks : ownPlaybooks.slice(0, PLAYBOOKS_SHOWN)
   const records = projectRecordTypes(domain)
-  // Written pages list above as pages (26 §4); the record tree leaves them out.
+  // Written pages list above as pages (26 §4); one written under a record stays in the record tree.
   const pageList = useMemwisePages(project.id).data
-  const written = React.useMemo(() => new Set((pageList ?? []).map(p => p.id)), [pageList])
+  const written = React.useMemo(() => new Map((pageList ?? []).map(p => [p.id, p])), [pageList])
   const me = status?.me
 
   return (
@@ -199,7 +199,9 @@ export { Row as ProjectSidebarRow }
  * the page open is under it, and the first one with sub-pages starts open.
  */
 function WrittenPages({ projectId, details }: { projectId: string; details: ProjectDetails }) {
-  const pages = useMemwisePages(projectId).data ?? []
+  // A page written under a record (`under`) shows in the record tree, under that record.
+  const all = useMemwisePages(projectId).data
+  const pages = React.useMemo(() => (all ?? []).filter(p => writtenPagePlace(p) === 'top'), [all])
   const activeId = details.type === 'page' ? details.pageId : undefined
   const byParent = React.useMemo(() => {
     const m = new Map<string, MwPageSummary[]>()
@@ -233,7 +235,7 @@ function WrittenPages({ projectId, details }: { projectId: string; details: Proj
           depth={depth}
           inTree
           draft={p.status === 'draft'}
-          refresh={p.status === 'kept' && !!p.refresh}
+          refresh={p.status === 'kept' && !!p.refresh && !p.refreshEnded}
           caret={kids ? (open ? 'open' : 'closed') : undefined}
           onCaret={() => setToggled(t => ({ ...t, [p.id]: !open }))}
           active={activeId === p.id}
@@ -254,7 +256,7 @@ type TreeCache = Record<string, MwTreeNode[] | 'loading'>
  * PAGES after the written pages (Stage 2): the project's dashboards, then its record tree
  * (records that have pages of their own, a level at a time, from memwise:records:tree).
  */
-function PageTree({ domain, projectId, details, written }: { domain: MwDomain; projectId: string; details: ProjectDetails; written: Set<string> }) {
+function PageTree({ domain, projectId, details, written }: { domain: MwDomain; projectId: string; details: ProjectDetails; written: Map<string, MwPageSummary> }) {
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
   const lastChange = useAtomValue(memwiseLastChangeAtom)
   const [cache, setCache] = React.useState<TreeCache>({})
@@ -328,7 +330,23 @@ function PageTree({ domain, projectId, details, written }: { domain: MwDomain; p
   const renderNodes = (nodes: MwTreeNode[], depth: number): React.ReactNode => nestTree(nodes).map(e => {
     const n = e.node
     if (n.kind === 'page') {
-      if (written.has(n.pageId)) return null
+      const w = written.get(n.pageId)
+      if (w && writtenPagePlace(w) === 'top') return null
+      if (w) {
+        return (
+          <Row
+            key={`written:${n.pageId}`}
+            icon={FileText}
+            label={w.title}
+            depth={depth}
+            inTree
+            draft={w.status === 'draft'}
+            refresh={w.status === 'kept' && !!w.refresh && !w.refreshEnded}
+            active={details.type === 'page' && details.pageId === n.pageId}
+            onClick={() => go({ type: 'page', pageId: n.pageId })}
+          />
+        )
+      }
       return (
         <Row
           key={`page:${n.pageId}:${JSON.stringify(n.params)}`}

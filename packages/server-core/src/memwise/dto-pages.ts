@@ -16,6 +16,7 @@ export function toMwPageSummary(p: PageSummary, names: Names): MwPageSummary {
   return {
     id: p.id, projectId: p.project, ...(p.parent ? { parent: p.parent } : {}), title: p.title, status: p.status,
     ...(p.question ? { question: p.question } : {}), headline: p.headline, ...(p.refresh ? { refresh: { ...p.refresh } } : {}),
+    ...(p.refreshEnded ? { refreshEnded: true } : {}), ...(p.under ? { under: { ...p.under } } : {}),
     pinned: p.pinned, sumsChildren: p.sumsChildren, version: p.version,
     ...(p.owner ? { owner: p.owner } : {}), ...(ownerName ? { ownerName } : {}), updatedAt: p.updatedAt,
     ...(p.pendingChange ? { pendingChange: { ...p.pendingChange } } : {}),
@@ -84,7 +85,7 @@ export function toMwPageChange(c: PageChangeView, names: Names): MwPageChange {
     ...(c.runId ? { runId: c.runId } : {}), ...(c.caseId ? { caseId: c.caseId } : {}), ...(c.stepRunId ? { stepRunId: c.stepRunId } : {}),
     ...(c.reviewedBy ? { reviewedBy: c.reviewedBy } : {}), ...(reviewedByName ? { reviewedByName } : {}),
     ...(c.comment ? { comment: c.comment } : {}),
-    at: c.at, mayDecide: c.mayDecide,
+    at: c.at, mayDecide: c.mayDecide, ...(c.stale ? { stale: true } : {}),
   }
 }
 

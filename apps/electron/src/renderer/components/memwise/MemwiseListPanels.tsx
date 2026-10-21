@@ -340,8 +340,8 @@ export function PlaybooksList({ playbooks, drafts, selectedId, selectedDraftId, 
       />
     )
   }
-  // The playbooks that build things (playbooks, plugin bindings) sit in their own quieter group
-  const building = (id: string) => isMetaPlaybook(id) || id === 'bind-plugin'
+  // The playbooks the app adds (building playbooks, binding plugins, refreshing pages) sit in their own quieter group
+  const building = (id: string) => isMetaPlaybook(id)
   const regular = playbooks.filter(p => !building(p.id))
   const meta = playbooks.filter(p => building(p.id))
   const row = (p: MwPlaybookSummary, quiet: boolean) => (
@@ -420,7 +420,7 @@ export function PlaybooksListPanel({ selectedId, selectedDraftId, onSelect, onSe
   const drafts = useAtomValue(memwiseDraftsAtom)
   // Phase 6: the domain filter (the playbooks that build playbooks belong to no one domain and always show)
   const domainFilter = useDomainFilter(React.useMemo(() => (playbooks ?? []).filter(p => !isMetaPlaybook(p.id)).map(p => p.domain), [playbooks]))
-  const shown = React.useMemo(() => (playbooks && domainFilter.value ? playbooks.filter(p => isMetaPlaybook(p.id) || p.id === 'bind-plugin' || domainFilter.matches(p.domain)) : playbooks), [playbooks, domainFilter])
+  const shown = React.useMemo(() => (playbooks && domainFilter.value ? playbooks.filter(p => isMetaPlaybook(p.id) || domainFilter.matches(p.domain)) : playbooks), [playbooks, domainFilter])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <MemwiseStatusBanner className="mx-3 mt-1 mb-2" />

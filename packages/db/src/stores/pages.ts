@@ -167,8 +167,8 @@ export class PgPageStore {
     const { rows } = await db.query<PageDbRow>(
       `select ${PAGE_COLS} from mw.pages
         where status = 'kept' and refresh is not null
-          and (((refresh ->> 'next')::timestamptz <= $1 and (refresh ->> 'until' is null or (refresh ->> 'until')::date >= ($1::timestamptz)::date))
-               or (refresh ->> 'summaryDue') is not null)
+          and (refresh ->> 'until' is null or (refresh ->> 'until')::date >= ($1::timestamptz)::date)
+          and ((refresh ->> 'next')::timestamptz <= $1 or (refresh ->> 'summaryDue') is not null)
         order by updated_at, id limit 500`, [now.toISOString()]);
     return rows.map(toPage);
   }
@@ -254,8 +254,19 @@ export class PgPageStore {
     return rows.map((r) => ({ version: r.version, title: r.title, body: r.body, ...compact({ under: r.under, by: r.by, via: r.via, reason: r.reason }), at: iso(r.at) }));
   }
 
+  /** One version, with its body. */
   async version(db: Queryable, id: string, version: number): Promise<WrittenPageVersion | undefined> {
-    return (await this.versions(db, id)).find((v) => v.version === version);
+    const { rows } = await db.query<{ version: number; title: string; body: string; under: WrittenPageVersion['under'] | null; by: string | null; via: string | null; reason: string | null; at: Date }>(
+      'select version, title, body, under, by, via, reason, at from mw.page_versions where page_id = $1 and version = $2', [id, version]);
+    const r = rows[0];
+    return r ? { version: r.version, title: r.title, body: r.body, ...compact({ under: r.under, by: r.by, via: r.via, reason: r.reason }), at: iso(r.at) } : undefined;
+  }
+
+  /** Every version without its body (`body` is empty): what a history line needs. */
+  async versionNotes(db: Queryable, id: string): Promise<WrittenPageVersion[]> {
+    const { rows } = await db.query<{ version: number; title: string; by: string | null; via: string | null; reason: string | null; at: Date }>(
+      'select version, title, by, via, reason, at from mw.page_versions where page_id = $1 order by version', [id]);
+    return rows.map((r) => ({ version: r.version, title: r.title, body: '', ...compact({ by: r.by, via: r.via, reason: r.reason }), at: iso(r.at) }));
   }
 }
 
@@ -329,9 +340,12 @@ export class PgPageChangeStore {
     return rows[0] ? toChange(rows[0]) : undefined;
   }
 
-  /** A page's changes, newest first. */
-  async forPage(db: Queryable, pageId: string): Promise<PageChange[]> {
-    const { rows } = await db.query<ChangeDbRow>('select * from mw.page_changes where page_id = $1 order by at desc, id desc', [pageId]);
+  /** A page's changes, newest first; `withBody: false` leaves the proposed bodies out (`body` is empty). */
+  async forPage(db: Queryable, pageId: string, opts: { withBody?: boolean } = {}): Promise<PageChange[]> {
+    const cols = opts.withBody === false
+      ? `id, page_id, from_version, to_version, run_id, case_id, step_run_id, status, title, '' as body, summary, reviewed_by, comment, reviewed_at, at`
+      : '*';
+    const { rows } = await db.query<ChangeDbRow>(`select ${cols} from mw.page_changes where page_id = $1 order by at desc, id desc`, [pageId]);
     return rows.map(toChange);
   }
 
@@ -347,19 +361,29 @@ export class PgPageChangeStore {
     return rows.map(toChange);
   }
 
-  /** Records a refresh's new page for review. A page has one pending change: an older one is replaced. */
-  async propose(db: Queryable, c: Pick<PageChange, 'pageId' | 'fromVersion' | 'title' | 'body' | 'summary'> & { runId?: string; caseId?: string; id?: string }): Promise<PageChange> {
+  /**
+   * Records a refresh's new page for review. A page has one pending change: an older one is
+   * replaced (sent back as replaced, returned in `superseded` so its run's review can be ended). The same id again (a retried
+   * compare) updates the change only while it is still pending; a decided one is returned as it is.
+   */
+  async propose(db: Queryable, c: Pick<PageChange, 'pageId' | 'fromVersion' | 'title' | 'body' | 'summary'> & { runId?: string; caseId?: string; id?: string }):
+    Promise<PageChange & { superseded: { id: string; runId?: string }[] }> {
     const id = c.id ?? `pch_${ulid()}`;
+    const existing = await this.get(db, id);
+    if (existing && existing.status !== 'pending') return { ...existing, superseded: [] };
     // One pending change per page: a newer refresh supersedes one nobody reviewed yet.
-    await db.query(`update mw.page_changes set status = 'sent_back', comment = 'Replaced by a newer refresh', reviewed_at = now()
-                     where page_id = $1 and status = 'pending' and id <> $2`, [c.pageId, id]);
+    const old = await db.query<{ id: string; run_id: string | null }>(
+      `update mw.page_changes set status = 'sent_back', comment = 'Replaced by a newer refresh', reviewed_at = now()
+        where page_id = $1 and status = 'pending' and id <> $2 returning id, run_id`, [c.pageId, id]);
     const { rows } = await db.query<ChangeDbRow>(
       `insert into mw.page_changes (id, page_id, from_version, run_id, case_id, title, body, summary)
        values ($1, $2, $3, $4, $5, $6, $7, $8)
        on conflict (id) do update set title = excluded.title, body = excluded.body, summary = excluded.summary
+         where mw.page_changes.status = 'pending'
        returning *`,
       [id, c.pageId, c.fromVersion, c.runId ?? null, c.caseId ?? null, c.title, c.body, json(c.summary)]);
-    return toChange(rows[0]!);
+    const row = rows[0] ? toChange(rows[0]) : (await this.get(db, id))!;
+    return { ...row, superseded: old.rows.map((r) => ({ id: r.id, ...(r.run_id ? { runId: r.run_id } : {}) })) };
   }
 
   /** Changes the proposed page while it waits (the reviewer's chat). */
@@ -370,14 +394,21 @@ export class PgPageChangeStore {
     return rows[0] ? toChange(rows[0]) : undefined;
   }
 
-  /** A refresh that found nothing material: one row, for the page's history ("nothing new"). */
-  async nothingNew(db: Queryable, c: { pageId: string; fromVersion: number; runId?: string; caseId?: string; summary?: PageChangeSummary }): Promise<PageChange> {
+  /**
+   * A refresh that found nothing material: one row, for the page's history ("nothing new"). With
+   * an `id` (derived from the run), a retried compare finds the row it wrote and adds no second one.
+   */
+  async nothingNew(db: Queryable, c: { pageId: string; fromVersion: number; runId?: string; caseId?: string; summary?: PageChangeSummary; id?: string }): Promise<PageChange> {
+    const id = c.id ?? `pch_${ulid()}`;
     const { rows } = await db.query<ChangeDbRow>(
       `insert into mw.page_changes (id, page_id, from_version, run_id, case_id, status, title, body, summary, reviewed_at)
        select $1, p.id, $3, $4, $5, 'nothing_new', p.title, '', $6, now() from mw.pages p where p.id = $2
-       returning *`, [`pch_${ulid()}`, c.pageId, c.fromVersion, c.runId ?? null, c.caseId ?? null, json(c.summary ?? {})]);
-    if (!rows[0]) throw new Error(`There is no page ${c.pageId}`);
-    return toChange(rows[0]);
+       on conflict (id) do nothing
+       returning *`, [id, c.pageId, c.fromVersion, c.runId ?? null, c.caseId ?? null, json(c.summary ?? {})]);
+    if (rows[0]) return toChange(rows[0]);
+    const again = await this.get(db, id);
+    if (!again) throw new Error(`There is no page ${c.pageId}`);
+    return again;
   }
 
   async setStepRun(db: Queryable, id: string, stepRunId: string): Promise<void> {

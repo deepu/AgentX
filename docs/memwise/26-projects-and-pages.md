@@ -376,7 +376,13 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - "Why" beside something left out does not ask the change's chat yet.
   - A send still waits for the platform's outbound approval after the lead signs.
   - The seed can't backdate history.
-  - For a moment after Accept, the history can show the new version before the change row records `to_version`.
+- **After review** (PR #15):
+  - A refresh's review step is answered only by the page's owner or reviewers, checked in `submitStep` (`SubmitDeps.mayAnswer`). A change whose page moved on since the refresh read it is `stale`: it can be sent back, not accepted. Accept decides the change first, then writes, in one transaction.
+  - Creating, changing, undoing, keeping and archiving a page need a role in its project, as records do. Keeping a kept page, and archiving one, is for its owner or reviewers. Keep sets the owner only when there is none.
+  - The sweep starts one refresh for a summary and a slot together. It starts none while one runs. A change that replaces another ends the older run's review as sent back. After `until`, nothing refreshes, and the page says "No longer refreshed".
+  - A retried compare finds the change its run made, since the change id comes from the run id. Undo goes to the version before the one it undoes, so a second Undo doesn't redo.
+  - Links in table cells, quotes and left-out papers go through the same URL filter as Markdown links. A page written under a record stays in the record tree.
+  - Page views, lists and history no longer read every version's body. Only `versions()`, the full version list, still reads them.
 
 ### Stage 3 · Projects inside apps (branch `projects`)
 

@@ -1061,6 +1061,10 @@ export interface PageSummary {
   /** The first paragraph, in plain words: what the page says now. */
   headline: string;
   refresh?: PageRefreshInfo;
+  /** Its `until` day has passed: it no longer refreshes (it stays kept). */
+  refreshEnded?: boolean;
+  /** Phase 6 written pages hang in the record tree: under an entity type, or one record. */
+  under?: { entity: string; id?: string };
   pinned: boolean;
   sumsChildren: boolean;
   version: number;
@@ -1134,6 +1138,8 @@ export interface PageChangeView {
   at: string;
   /** Whether this person may accept or send it back. */
   mayDecide: boolean;
+  /** The page changed since the refresh read it (a chat edit, an Undo): it can only be sent back. */
+  stale?: boolean;
 }
 
 export interface PageWriteResult { applied: boolean; page?: PageView; message?: string; status?: 'applied' | 'forbidden' | 'invalid' | 'stale' | 'missing' | 'regulated' }

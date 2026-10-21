@@ -2017,6 +2017,10 @@ export interface MwPageSummary {
   /** The first paragraph in plain words: what the page says now. */
   headline: string
   refresh?: MwPageRefresh
+  /** Its `until` day has passed: it no longer refreshes (it stays kept). */
+  refreshEnded?: boolean
+  /** Phase 6 written pages hang in the record tree (under an entity type, or one record), not in PAGES. */
+  under?: { entity: string; id?: string }
   pinned: boolean
   /** It sums up its kept sub-pages. */
   sumsChildren: boolean
@@ -2171,6 +2175,8 @@ export interface MwPageChange {
   comment?: string
   at: string
   mayDecide: boolean
+  /** The page changed since the refresh read it (a chat edit, an Undo): it can only be sent back. */
+  stale?: boolean
 }
 
 export interface MwPageChangeDecideInput {

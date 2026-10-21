@@ -229,6 +229,20 @@ describe('review an answer change', () => {
     expect(notMine).not.toContain('data-action="accept-change"')
     expect(notMine).toContain("Waiting for the page&#x27;s owner to review it.")
   })
+
+  test('the page moved on since the refresh read it: it says so, and Accept is off', () => {
+    const html = render(<P.PageChangeView change={{ ...CHANGE, stale: true }} onAccept={() => {}} onSendBack={() => {}} />)
+    expect(html).toContain('data-stale')
+    expect(html).toContain('The page changed since this refresh read it.')
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-action="accept-change"/)
+    expect(html).toContain('data-action="send-back"')
+  })
+
+  test('a left-out link with an unsafe scheme shows as text', () => {
+    const html = render(<P.PageChangeView change={{ ...CHANGE, leftOut: [{ title: 'Sneaky', href: 'javascript:alert(1)' }] }} />)
+    expect(html).toContain('Sneaky')
+    expect(html).not.toContain('javascript:')
+  })
 })
 
 describe('home', () => {
@@ -267,5 +281,13 @@ describe('the same blocks in chat', () => {
     expect(html).toContain('This table block can&#x27;t be shown: it isn&#x27;t valid JSON.')
     const full = render(<Markdown mode="full">{'```tiles\n[{"label":"People","value":"4,120"}]\n```'}</Markdown>)
     expect(full).toContain('data-page-block="tiles"')
+  })
+})
+
+describe('a kept page past its last refresh', () => {
+  test('says it is no longer refreshed instead of how often', () => {
+    const html = render(<P.PageView page={page({ refreshEnded: true })} pages={PAGES} />)
+    expect(html).toContain('No longer refreshed')
+    expect(html).not.toContain('Refreshes every Monday')
   })
 })

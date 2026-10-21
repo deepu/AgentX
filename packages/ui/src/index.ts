@@ -102,6 +102,7 @@ export {
   MarkdownPageBlock,
   PageBlocksContext,
   PAGE_BLOCK_LANGS,
+  safeHref,
   parseTiles,
   parseTable,
   parseRecords,

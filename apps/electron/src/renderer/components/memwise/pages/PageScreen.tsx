@@ -142,7 +142,7 @@ export function PageView({ page, pages, versions, busy, actions = {}, onKeep, on
             <>
               <span className="inline-flex items-center gap-1.5 rounded-md bg-accent-tint px-2.5 py-1 text-label font-medium text-accent" data-pill="kept">
                 <RefreshCw className="size-3.5" aria-hidden />
-                {page.sumsChildren ? t('memwise.pages.sumsSubpages') : refreshLabel(page.refresh?.every, t, lang)}
+                {page.sumsChildren ? t('memwise.pages.sumsSubpages') : page.refreshEnded ? t('memwise.pages.refreshEnded') : refreshLabel(page.refresh?.every, t, lang)}
               </span>
               {lastLine && <span className="text-label-sm text-secondary" data-last-refresh>{lastLine}</span>}
               <span className="flex items-center gap-2 text-label-sm">

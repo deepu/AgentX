@@ -14,7 +14,7 @@ export { MarkdownChartBlock, type MarkdownChartBlockProps } from './MarkdownChar
 export { parseChartSpec, type ChartSpec, type ChartSpecResult } from './chart-spec'
 export { MarkdownPageBlock, PageBlocksContext, type MarkdownPageBlockProps, type PageBlocksActions } from './MarkdownPageBlock'
 export {
-  PAGE_BLOCK_LANGS, parseTiles, parseTable, parseRecords, parseSubpages,
+  PAGE_BLOCK_LANGS, safeHref, parseTiles, parseTable, parseRecords, parseSubpages,
   type PageTile, type PageCell, type PageQuote, type PageTable, type PageTableColumn, type PageRecords, type PageRecordsResult,
   type PageSubpage, type PageSubpages, type PageRecentChange,
 } from './page-blocks'

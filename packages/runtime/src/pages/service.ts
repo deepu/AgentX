@@ -5,8 +5,8 @@
 // refreshed again when one of its kept sub-pages changes, and drafts never feed its summary.
 // Chat writes pages through here too (`page_update`), acting as the person, each write a new
 // version that says it came from the chat, with Undo.
-import { PgPageChangeStore, PgPageStore, type PageChange, type PageChangeSummary, type Queryable, type WrittenPage } from '@memwise/db';
-import { hasRole, type ProjectDefs } from '@memwise/defs';
+import { PgPageChangeStore, PgPageStore, withTransaction, type PageChange, type PageChangeSummary, type Queryable, type WrittenPage } from '@memwise/db';
+import { hasRole, rolesIn, type ProjectDefs } from '@memwise/defs';
 import type pg from 'pg';
 import { derivedRunId } from '../flow/context.ts';
 import type {
@@ -28,7 +28,14 @@ export interface PagesDeps {
   /** The kernel's startRun as the kernel itself (any case field may be set). */
   start(input: StartRunInput, opts?: { actsFor?: string }): Promise<{ runId: string; caseId: string }>;
   submitStep(input: SubmitStepInput): Promise<SubmitResult>;
+  /**
+   * Ends a run's waiting "Review an answer change" as sent back, by the kernel (a newer refresh
+   * replaced its change). Absent: the review stays until its timeout.
+   */
+  endReview?(runId: string, comment: string): Promise<void>;
   emit(change: KernelChange): void;
+  /** Problems the sweep met (a refresh that could not start). */
+  log?(message: string): void;
 }
 
 const pages = new PgPageStore();
@@ -38,12 +45,19 @@ const byOf = (actor: Actor): string => (actor.kind === 'person' ? actor.personId
 const viaOf = (actor: Actor, via?: string): string => via ?? (actor.kind === 'person' ? `person:${actor.personId}` : actor.kind === 'step' ? `run:${actor.token.runId}` : 'system');
 const iso = (d: Date) => d.toISOString();
 
+/** Whether a kept page's `until` day has passed (it refreshes no more). */
+export function refreshEnded(p: Pick<WrittenPage, 'refresh'>, now = new Date()): boolean {
+  const until = p.refresh?.until;
+  return !!until && until < now.toISOString().slice(0, 10);
+}
+
 /** The page as a summary: what the tree, Home and the waiting list show. */
 function summaryOf(p: WrittenPage, extra: { pending?: PageChange; last?: PageChange } = {}): PageSummary {
   const last = extra.last;
   return {
     id: p.id, project: p.project, domain: p.domain, ...(p.parent ? { parent: p.parent } : {}), title: p.title, status: p.status,
     ...(p.question ? { question: p.question } : {}), headline: headline(p.body), ...(p.refresh ? { refresh: p.refresh } : {}),
+    ...(p.status === 'kept' && refreshEnded(p) ? { refreshEnded: true } : {}), ...(p.under ? { under: p.under } : {}),
     pinned: p.pinned, sumsChildren: p.sumsChildren, version: p.version, ...(p.owner ? { owner: p.owner } : {}),
     ...(p.createdBy ? { createdBy: p.createdBy } : {}), updatedAt: p.updatedAt,
     ...(extra.pending ? { pendingChange: { id: extra.pending.id, ...(extra.pending.summary.label ? { label: extra.pending.summary.label } : {}) } } : {}),
@@ -68,7 +82,16 @@ export interface PagesCore extends PagesService {
   reviewerOf(runId: string): Promise<{ by?: string; comment?: string }>;
   /** Whether this person reviews answer changes on the page (the waiting list shows them only theirs). */
   reviewable(pageId: string, actor: Actor): Promise<boolean>;
+  /**
+   * Why this person can't answer a run's review step, read in the submitting transaction: a run
+   * with a pending answer change is answered only by the page's reviewers, and not accepted once
+   * the page moved on. Undefined: the step's own rules decide.
+   */
+  answerRefusal(db: Queryable, runId: string, actor: Actor, outcome: string): Promise<string | undefined>;
 }
+
+/** The answer change a refresh run makes: one id per run, so a retried compare finds its own. */
+const changeIdOf = (runId: string) => `pch_${runId.replace(/^run_/, '')}`;
 
 export function createPagesService(deps: PagesDeps): PagesCore {
   const { pool } = deps;
@@ -104,6 +127,15 @@ export function createPagesService(deps: PagesDeps): PagesCore {
     return !p.owner && !reviewer;
   }
 
+  /** Whether the actor may write a project's pages: a role in its domain, as for records (any person when the project has no roles). */
+  function mayWrite(actor: Actor, domain: string): boolean {
+    if (actor.kind === 'system') return true;
+    if (actor.kind !== 'person') return false;
+    const roles = deps.project()?.roles;
+    return !roles || !Object.keys(roles).length || rolesIn(actor, domain).length > 0;
+  }
+  const noWrite = (domain: string) => refusal('forbidden', `You have no role in ${domainDef(domain)?.name ?? domain}, so you can't change its pages.`);
+
   const refusal = (status: NonNullable<PageWriteResult['status']>, message: string): PageWriteResult => ({ applied: false, status, message });
 
   /** Marks a parent that sums up its sub-pages for a summary refresh (one of its kept sub-pages changed). */
@@ -117,8 +149,8 @@ export function createPagesService(deps: PagesDeps): PagesCore {
   // ---------------------------------------------------------------- reading
 
   async function history(p: WrittenPage, list?: PageChange[]): Promise<PageHistoryEntry[]> {
-    const versions = await pages.versions(pool, p.id);
-    const all = list ?? (await changes.forPage(pool, p.id));
+    const versions = await pages.versionNotes(pool, p.id);
+    const all = list ?? (await changes.forPage(pool, p.id, { withBody: false }));
     const out: PageHistoryEntry[] = [];
     const acceptedVersions = new Set(all.filter((c) => c.status === 'accepted' && c.toVersion).map((c) => c.toVersion!));
     for (const v of versions) {
@@ -126,7 +158,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       const via = v.via ?? '';
       const kind: PageHistoryEntry['kind'] = v.version === 1
         ? (p.question ? 'asked' : 'made')
-        : v.reason === 'Undo' ? 'undo' : via.startsWith('chat:') ? 'chat' : via.startsWith('run:') ? 'refresh' : 'person';
+        : v.reason?.startsWith('Undo') ? 'undo' : via.startsWith('chat:') ? 'chat' : via.startsWith('run:') ? 'refresh' : 'person';
       out.push({ at: v.at, kind, version: v.version, ...(v.by ? { by: v.by } : {}), ...(v.reason ? { text: v.reason } : {}) });
     }
     for (const c of all) {
@@ -148,7 +180,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
   async function children(p: WrittenPage): Promise<PageChild[]> {
     const out: PageChild[] = [];
     for (const c of await pages.children(pool, p.id)) {
-      const list = await changes.forPage(pool, c.id);
+      const list = await changes.forPage(pool, c.id, { withBody: false });
       out.push({ ...summaryOf(c, { pending: list.find((x) => x.status === 'pending'), last: list.find((x) => x.status !== 'pending') }), inSummary: c.status === 'kept' });
     }
     return out;
@@ -202,7 +234,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
   }
 
   async function view(p: WrittenPage, actor: Actor): Promise<PageView> {
-    const list = await changes.forPage(pool, p.id);
+    const list = await changes.forPage(pool, p.id, { withBody: false });
     const kids = await children(p);
     const hist = await history(p, list);
     const breadcrumb: PageView['breadcrumb'] = [];
@@ -223,9 +255,9 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       const kind = line.kind === 'asked' ? 'made' : (line.kind as 'accepted' | 'nothing_new' | 'made' | 'chat');
       recent.push({ pageId: c.id, title: c.title, kind, at: line.at, ...(line.text ? { text: line.text } : {}), ...(line.byName ? { byName: line.byName } : {}) });
     }
-    const versions = p.version > 1 ? await pages.versions(pool, p.id) : [];
-    const current = versions.find((v) => v.version === p.version);
-    const previous = versions.find((v) => v.version === p.version - 1);
+    // Only the two versions "changed from chat" compares are read with their bodies.
+    const current = p.version > 1 ? await pages.version(pool, p.id, p.version) : undefined;
+    const previous = current?.via?.startsWith('chat:') ? await pages.version(pool, p.id, p.version - 1) : undefined;
     const fromChat = current?.via?.startsWith('chat:') && previous
       ? { version: p.version, chatId: current.via.slice(5), sections: changedSections(previous.body, current.body) }
       : undefined;
@@ -239,7 +271,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       children: kids,
       history: hist,
       ...(fromChat ? { changedFromChat: fromChat } : {}),
-      canUndo: p.version > 1 && p.status !== 'archived' && !(regulated(p) && p.status === 'kept'),
+      canUndo: undoTarget(p, current) !== undefined && p.status !== 'archived' && !(regulated(p) && p.status === 'kept') && mayWrite(actor, p.domain),
       changes: recent,
     };
   }
@@ -252,12 +284,15 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       ? (await pool.query(`select id from mw.step_runs where run_id = $1 and status = 'waiting' and performer = 'person' order by started_at desc limit 1`, [c.runId])).rows[0]?.id as string | undefined
       : undefined;
     const reviewedByName = await nameOf(c.reviewedBy);
+    const mayDecide = c.status === 'pending' && mayReview(actor, p);
+    const stale = c.status === 'pending' && p.version !== c.fromVersion;
     return {
       id: c.id, pageId: p.id, pageTitle: p.title, project: p.project, status: c.status, fromVersion: c.fromVersion,
       ...(c.toVersion ? { toVersion: c.toVersion } : {}), summary: c.summary, before, after: c.body,
-      ...(c.runId ? { runId: c.runId } : {}), ...(c.caseId ? { caseId: c.caseId } : {}), ...(waiting ? { stepRunId: waiting } : {}),
+      // The waiting step is named only to whoever may answer it.
+      ...(c.runId ? { runId: c.runId } : {}), ...(c.caseId ? { caseId: c.caseId } : {}), ...(waiting && mayDecide ? { stepRunId: waiting } : {}),
       ...(c.reviewedBy ? { reviewedBy: c.reviewedBy } : {}), ...(reviewedByName ? { reviewedByName } : {}), ...(c.comment ? { comment: c.comment } : {}),
-      at: c.at, mayDecide: c.status === 'pending' && mayReview(actor, p),
+      at: c.at, mayDecide, ...(stale ? { stale: true } : {}),
     };
   }
 
@@ -286,6 +321,35 @@ export function createPagesService(deps: PagesDeps): PagesCore {
     }, { ...(domainDef(p.domain)?.pageRules?.reviewer ? { actsFor: domainDef(p.domain)!.pageRules!.reviewer! } : domainDef(p.domain)?.owner ? { actsFor: domainDef(p.domain)!.owner! } : {}) });
   }
 
+  /** The page's refresh that is running now, if any: one at a time. */
+  async function runningRefresh(p: WrittenPage): Promise<{ id: string; case_id: string } | undefined> {
+    const { rows } = await pool.query<{ id: string; case_id: string }>(
+      `select r.id, r.case_id from mw.runs r join mw.cases c on c.id = r.case_id
+        where r.status = 'active' and r.workflow_id = $1 and c.values -> 'page' ->> 'value' = $2 limit 1`, [refreshPlaybook(p.project), p.id]);
+    return rows[0];
+  }
+
+  /**
+   * The version Undo goes back to: the one before the current version, or, when the current
+   * version is itself an Undo ("Undo: back to version 3"), the one before that, so a second Undo
+   * steps further back instead of redoing. Undefined when there is nothing earlier.
+   */
+  function undoTarget(p: WrittenPage, current?: { reason?: string }): number | undefined {
+    if (p.version < 2) return undefined;
+    const back = /^Undo: back to version (\d+)/.exec(current?.reason ?? '');
+    const target = back ? Number(back[1]) - 1 : p.version - 1;
+    return target >= 1 ? target : undefined;
+  }
+
+  const staleMessage = (p: WrittenPage, c: PageChange) =>
+    `${p.title} changed since this refresh read it (it is at version ${p.version}, the refresh started from ${c.fromVersion}). Send it back, and refresh the page again.`;
+
+  /** Who may archive a page: its owner or reviewers (anyone when it has neither), or whoever made a draft. */
+  function mayArchive(actor: Actor, p: WrittenPage): boolean {
+    if (mayReview(actor, p)) return true;
+    return actor.kind === 'person' && p.status === 'draft' && p.createdBy === actor.personId;
+  }
+
   const core: PagesCore = {
     refreshPlaybook,
 
@@ -293,7 +357,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       const out: PageSummary[] = [];
       const all = await pages.listProject(pool, project);
       for (const p of all) {
-        const list = await changes.forPage(pool, p.id);
+        const list = await changes.forPage(pool, p.id, { withBody: false });
         out.push(summaryOf(p, { pending: list.find((c) => c.status === 'pending'), last: list.find((c) => c.status !== 'pending') }));
       }
       // Parents before their children, each level by title.
@@ -330,6 +394,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       const domain = domainOfProject(input.project);
       const project = deps.project();
       if (project?.domains && Object.keys(project.domains).length && !project.domains[domain]) return refusal('invalid', `There is no project ${input.project}.`);
+      if (!mayWrite(actor, domain)) return noWrite(domain);
       const problem = await parentProblem(input.project, undefined, input.parent);
       if (problem) return refusal('invalid', problem);
       const p = await pages.save(pool, {
@@ -345,7 +410,11 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       if (actor.kind !== 'person' && actor.kind !== 'system') return refusal('forbidden', 'Only a person changes pages.');
       const p = await pages.get(pool, id);
       if (!p) return refusal('missing', `There is no page ${id}.`);
+      if (!mayWrite(actor, p.domain)) return noWrite(p.domain);
       if (p.status === 'archived') return refusal('invalid', `${p.title} is archived, so it can't be changed.`);
+      if (input.expectedVersion !== undefined && input.expectedVersion !== p.version) {
+        return refusal('stale', `The page changed since you opened it (version ${p.version}, not ${input.expectedVersion}).`);
+      }
       if (p.status === 'kept' && regulated(p)) {
         return refusal('regulated', `${domainDef(p.domain)?.name ?? p.domain} is a regulated project: a kept page there changes through a change request, which isn't built yet. Nothing was changed.`);
       }
@@ -356,17 +425,22 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       const body = input.body;
       const title = input.title?.trim();
       const moved = input.parent !== undefined && (input.parent ?? undefined) !== p.parent;
-      if (input.sumsChildren !== undefined) await pages.set(pool, id, { sumsChildren: input.sumsChildren });
+      const flags = input.sumsChildren !== undefined && input.sumsChildren !== p.sumsChildren;
       if ((body === undefined || body === p.body) && (!title || title === p.title) && !moved) {
-        const same = (await pages.get(pool, id))!;
-        if (input.sumsChildren !== undefined) changed(same);
-        return { applied: true, status: 'applied', page: await view(same, actor), message: 'Nothing to change.' };
+        const same = flags ? (await pages.set(pool, id, { sumsChildren: input.sumsChildren! }))! : p;
+        if (flags) changed(same);
+        return { applied: true, status: 'applied', page: await view(same, actor), ...(flags ? {} : { message: 'Nothing to change.' }) };
       }
       try {
-        const saved = await pages.write(pool, id, {
-          ...(title ? { title } : {}), ...(body !== undefined ? { body } : {}), ...(input.parent !== undefined ? { parent: input.parent } : {}),
-        }, byOf(actor), { via: viaOf(actor, input.via), reason: input.reason ?? 'Changed the page', ...(input.expectedVersion !== undefined ? { expectedVersion: input.expectedVersion } : {}) });
-        if (saved.status === 'kept') await markParent(pool, saved);
+        // The new version and the flag together: a write refused as stale changes nothing.
+        const saved = await withTransaction(pool, async (db) => {
+          const w = await pages.write(db, id, {
+            ...(title ? { title } : {}), ...(body !== undefined ? { body } : {}), ...(input.parent !== undefined ? { parent: input.parent } : {}),
+          }, byOf(actor), { via: viaOf(actor, input.via), reason: input.reason ?? 'Changed the page', ...(input.expectedVersion !== undefined ? { expectedVersion: input.expectedVersion } : {}) });
+          const done = flags ? (await pages.set(db, id, { sumsChildren: input.sumsChildren! }))! : w;
+          if (done.status === 'kept') await markParent(db, done);
+          return done;
+        });
         changed(saved);
         return { applied: true, status: 'applied', page: await view(saved, actor) };
       } catch (e) {
@@ -379,22 +453,32 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       if (actor.kind !== 'person' && actor.kind !== 'system') return refusal('forbidden', 'Only a person undoes a change.');
       const p = await pages.get(pool, id);
       if (!p) return refusal('missing', `There is no page ${id}.`);
+      if (!mayWrite(actor, p.domain)) return noWrite(p.domain);
       if (p.status === 'archived') return refusal('invalid', `${p.title} is archived.`);
       if (p.status === 'kept' && regulated(p)) return refusal('regulated', `${p.title} is in a regulated project; a change there is undone by a change request.`);
       if (opts.version !== undefined && opts.version !== p.version) return refusal('stale', `The page changed again since (version ${p.version}); open it again before undoing.`);
-      if (p.version < 2) return refusal('invalid', 'There is no earlier version to go back to.');
-      const back = await pages.version(pool, id, p.version - 1);
+      const target = undoTarget(p, await pages.version(pool, id, p.version));
+      if (target === undefined) return refusal('invalid', 'There is no earlier version to go back to.');
+      const back = await pages.version(pool, id, target);
       if (!back) return refusal('invalid', 'The earlier version was not found.');
-      const saved = await pages.write(pool, id, { title: back.title, body: back.body }, byOf(actor), { via: viaOf(actor), reason: 'Undo', expectedVersion: p.version });
-      changed(saved);
-      return { applied: true, status: 'applied', page: await view(saved, actor) };
+      try {
+        const saved = await pages.write(pool, id, { title: back.title, body: back.body }, byOf(actor), { via: viaOf(actor), reason: `Undo: back to version ${target}`, expectedVersion: p.version });
+        changed(saved);
+        return { applied: true, status: 'applied', page: await view(saved, actor) };
+      } catch (e) {
+        if ((e as { code?: string }).code === 'stale') return refusal('stale', (e as Error).message);
+        throw e;
+      }
     },
 
     async keep(id, input, actor) {
       if (actor.kind !== 'person' && actor.kind !== 'system') return refusal('forbidden', 'Only a person keeps a page.');
       const p = await pages.get(pool, id);
       if (!p) return refusal('missing', `There is no page ${id}.`);
+      if (!mayWrite(actor, p.domain)) return noWrite(p.domain);
       if (p.status === 'archived') return refusal('invalid', `${p.title} is archived.`);
+      // A kept page's schedule (and who reviews its changes) is its owner's or its reviewers' to change.
+      if (p.status === 'kept' && p.owner && !mayReview(actor, p)) return refusal('forbidden', `${p.title} is kept by someone else; only they or its reviewers change how it refreshes.`);
       const every = normalEvery(input.every ?? domainDef(p.domain)?.pageRules?.every ?? 'mon');
       if (!every) return refusal('invalid', `"${input.every}" is not a schedule: say a weekday (mon … sun), daily or month.`);
       if (input.until !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(input.until)) return refusal('invalid', 'until is a date, YYYY-MM-DD.');
@@ -408,7 +492,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       const next = nextRefresh(every, new Date());
       const playbook = refreshPlaybook(p.project);
       const kept = (await pages.set(pool, id, {
-        status: 'kept', ...(actor.kind === 'person' ? { owner: actor.personId } : {}),
+        status: 'kept', ...(actor.kind === 'person' && !p.owner ? { owner: actor.personId } : {}),
         refresh: { every, ...(input.until ? { until: input.until } : {}), next: iso(next), ...(p.refresh?.last ? { last: p.refresh.last } : {}), playbook },
       }))!;
       // A newly kept sub-page goes into its parent's summary at the parent's next refresh.
@@ -421,6 +505,8 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       if (actor.kind !== 'person' && actor.kind !== 'system') return refusal('forbidden', 'Only a person archives a page.');
       const p = await pages.get(pool, id);
       if (!p) return refusal('missing', `There is no page ${id}.`);
+      if (!mayWrite(actor, p.domain)) return noWrite(p.domain);
+      if (!mayArchive(actor, p)) return refusal('forbidden', `Only ${p.title}'s owner or its reviewers archive it.`);
       const archived = (await pages.set(pool, id, { status: 'archived', refresh: null, pinned: false }))!;
       changed(archived);
       return { applied: true, status: 'applied', page: await view(archived, actor) };
@@ -431,10 +517,8 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       if (!p) return { started: false, message: `There is no page ${id}.` };
       if (p.status === 'archived') return { started: false, message: `${p.title} is archived.` };
       // One refresh at a time: a running one is the answer.
-      const running = await pool.query(
-        `select r.id, r.case_id from mw.runs r join mw.cases c on c.id = r.case_id
-          where r.status = 'active' and r.workflow_id = $1 and c.values -> 'page' ->> 'value' = $2 limit 1`, [refreshPlaybook(p.project), p.id]);
-      if (running.rows[0]) return { started: false, runId: running.rows[0].id, caseId: running.rows[0].case_id, message: `${p.title} is being refreshed already.` };
+      const running = await runningRefresh(p);
+      if (running) return { started: false, runId: running.id, caseId: running.case_id, message: `${p.title} is being refreshed already.` };
       try {
         const by = actor.kind === 'person' ? actor.personId : undefined;
         const r = await startRefresh(p, `page:${p.id}:manual:${Date.now()}`, 'manual', by);
@@ -456,6 +540,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       const p = await pages.get(pool, c.pageId);
       if (!p) return { applied: false, status: 'missing', message: 'Its page was not found.' };
       if (!mayReview(actor, p)) return { applied: false, status: 'forbidden', message: `Only ${p.title}'s owner or its reviewers accept changes to it.` };
+      if (input.decision === 'accept' && p.version !== c.fromVersion) return { applied: false, status: 'stale', message: staleMessage(p, c) };
       const outcome = input.decision === 'accept' ? 'accepted' : 'sent_back';
       const waiting = c.runId
         ? (await pool.query(`select id from mw.step_runs where run_id = $1 and status = 'waiting' and performer = 'person' order by started_at desc limit 1`, [c.runId])).rows[0]?.id as string | undefined
@@ -500,19 +585,26 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       for (const p of await pages.due(pool, now)) {
         try {
           const r = p.refresh!;
-          if (r.summaryDue) {
-            const started = await startRefresh(p, `page:${p.id}:summary:${r.summaryDue}`, 'summary');
-            await pages.set(pool, p.id, { refresh: { ...r, summaryDue: undefined } as typeof r });
-            out.push({ pageId: p.id, ...started });
+          const slot = !!r.next && new Date(r.next) <= now;
+          // One refresh at a time. A slot that came while one runs is covered by it; a sub-page's
+          // change waits for the next sweep after it (the running one may have read it already).
+          if (await runningRefresh(p)) {
+            if (slot) await pages.set(pool, p.id, { refresh: { ...r, next: iso(nextRefresh(r.every, now)) } });
             continue;
           }
-          if (!r.next || new Date(r.next) > now) continue;
-          // A desktop closed through several slots refreshes once, for the latest one.
-          const started = await startRefresh(p, `page:${p.id}:${r.next}`, 'schedule');
-          await pages.set(pool, p.id, { refresh: { ...r, next: iso(nextRefresh(r.every, now)) } });
+          if (!r.summaryDue && !slot) continue;
+          // The summary and the schedule's slot together are one refresh; a desktop closed through
+          // several slots refreshes once, for the latest one.
+          const reason = r.summaryDue ? 'summary' : 'schedule';
+          const key = r.summaryDue ? `page:${p.id}:summary:${r.summaryDue}` : `page:${p.id}:${r.next}`;
+          const started = await startRefresh(p, key, reason);
+          const rest: typeof r = { ...r, ...(slot ? { next: iso(nextRefresh(r.every, now)) } : {}) };
+          delete rest.summaryDue;
+          await pages.set(pool, p.id, { refresh: rest });
           out.push({ pageId: p.id, ...started });
-        } catch {
-          // A refresh that can't start (its playbook missing) waits for the next sweep; the page says when it last refreshed.
+        } catch (e) {
+          // It waits for the next sweep; the page says when it last refreshed.
+          deps.log?.(`the refresh of page ${p.id} could not start: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
       if (out.length) deps.emit({ kind: 'pages' });
@@ -526,7 +618,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       if (!p) throw new Error(`There is no page ${id}`);
       const kids = await pages.children(pool, id);
       const kept = kids.filter((c) => c.status === 'kept');
-      const list = await changes.forPage(pool, id);
+      const list = await changes.forPage(pool, id, { withBody: false });
       const last = list.find((c) => c.status !== 'pending' && c.status !== 'sent_back');
       return {
         id: p.id, title: p.title, project: p.project, status: p.status, version: p.version, ...(p.question ? { question: p.question } : {}),
@@ -564,7 +656,10 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       const now = new Date().toISOString();
       const stamp = async () => { if (p.refresh) await pages.set(pool, p.id, { refresh: { ...(await pages.get(pool, p.id))!.refresh!, last: now } }); };
       if (!cmp.material) {
-        const c = await changes.nothingNew(pool, { pageId: p.id, fromVersion: p.version, ...(input.runId ? { runId: input.runId } : {}), ...(input.caseId ? { caseId: input.caseId } : {}), summary: { from } });
+        const c = await changes.nothingNew(pool, {
+          pageId: p.id, fromVersion: p.version, summary: { from },
+          ...(input.runId ? { runId: input.runId, id: changeIdOf(input.runId) } : {}), ...(input.caseId ? { caseId: input.caseId } : {}),
+        });
         await stamp();
         changed(p, c.id);
         return { outcome: 'nothing_new' };
@@ -583,26 +678,42 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       };
       const c = await changes.propose(pool, {
         pageId: p.id, fromVersion: p.version, title: input.title?.trim() || p.title, body: input.body, summary,
-        ...(input.runId ? { runId: input.runId, id: `pch_${input.runId.replace(/^run_/, '')}` } : {}), ...(input.caseId ? { caseId: input.caseId } : {}),
+        ...(input.runId ? { runId: input.runId, id: changeIdOf(input.runId) } : {}), ...(input.caseId ? { caseId: input.caseId } : {}),
       });
       await stamp();
+      // A change this one replaced: its run's review ends, so no orphan waits in anyone's list.
+      for (const old of c.superseded) {
+        if (old.runId && old.runId !== input.runId && deps.endReview) {
+          await deps.endReview(old.runId, 'Replaced by a newer refresh').catch((e) => deps.log?.(`ending the review of ${old.id}: ${e instanceof Error ? e.message : String(e)}`));
+        }
+      }
       changed(p, c.id);
       return { outcome: 'material', change: c.id };
     },
 
     async accept(changeId, by, opts = {}) {
-      const c = await changes.get(pool, changeId);
-      if (!c) throw new Error(`There is no answer change ${changeId}`);
-      if (c.status === 'accepted' && c.toVersion) return { version: c.toVersion };
-      if (c.status !== 'pending') throw new Error(`The change was ${c.status === 'sent_back' ? 'sent back' : 'already decided'}`);
-      const p = (await pages.get(pool, c.pageId))!;
-      const saved = await pages.write(pool, p.id, { title: c.title, body: c.body }, by, {
-        via: opts.via ?? (c.runId ? `run:${c.runId}` : `person:${by}`), reason: c.summary.title ? `Accepted: ${c.summary.title}` : 'Accepted the answer change',
+      // Decided first (only a pending change), then written, in one transaction: two accepts at
+      // once write one version, and the change names its version from the start.
+      const saved = await withTransaction(pool, async (db) => {
+        const c = await changes.get(db, changeId);
+        if (!c) throw new Error(`There is no answer change ${changeId}`);
+        if (c.status === 'accepted' && c.toVersion) return { c, page: undefined };
+        if (c.status !== 'pending') throw new Error(`The change was ${c.status === 'sent_back' ? 'sent back' : 'already decided'}`);
+        const p = await pages.get(db, c.pageId);
+        if (!p) throw new Error('Its page was not found');
+        if (p.version !== c.fromVersion) throw Object.assign(new Error(staleMessage(p, c)), { code: 'stale' });
+        const decided = await changes.decide(db, c.id, { status: 'accepted', by, toVersion: c.fromVersion + 1, ...(opts.comment ? { comment: opts.comment } : {}) });
+        if (!decided) throw Object.assign(new Error('The change was decided by someone else just now'), { code: 'stale' });
+        const page = await pages.write(db, p.id, { title: c.title, body: c.body }, by, {
+          via: opts.via ?? (c.runId ? `run:${c.runId}` : `person:${by}`), reason: c.summary.title ? `Accepted: ${c.summary.title}` : 'Accepted the answer change',
+          expectedVersion: c.fromVersion,
+        });
+        await markParent(db, page);
+        return { c, page };
       });
-      await changes.decide(pool, c.id, { status: 'accepted', by, toVersion: saved.version, ...(opts.comment ? { comment: opts.comment } : {}) });
-      await markParent(pool, saved);
-      changed(saved, c.id);
-      return { version: saved.version };
+      if (!saved.page) return { version: saved.c.toVersion! };
+      changed(saved.page, saved.c.id);
+      return { version: saved.page.version };
     },
 
     async sendBack(changeId, by, comment) {
@@ -616,6 +727,17 @@ export function createPagesService(deps: PagesDeps): PagesCore {
     async reviewable(pageId, actor) {
       const p = await pages.get(pool, pageId);
       return !!p && mayReview(actor, p);
+    },
+
+    async answerRefusal(db, runId, actor, outcome) {
+      const { rows } = await db.query(`select id from mw.page_changes where run_id = $1 and status = 'pending' limit 1`, [runId]);
+      if (!rows[0]) return undefined;
+      const c = await changes.get(db, rows[0].id);
+      const p = c && await pages.get(db, c.pageId);
+      if (!c || !p) return undefined;
+      if (!mayReview(actor, p)) return `Only the reviewers of ${p.title} can accept or send back this change.`;
+      if (outcome === 'accepted' && p.version !== c.fromVersion) return staleMessage(p, c);
+      return undefined;
     },
 
     async reviewerOf(runId) {

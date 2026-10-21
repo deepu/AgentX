@@ -23,7 +23,7 @@ import type {
   MwProjectAskInput, MwProjectAskResult,
   MwRecordWriteResult, MwReleaseTriggerInput, MwSaveNoteInput, MwSaveViewInput, MwTreeInput, MwTreeNode, MwTrigger, MwView,
 } from '@memwise/shared/protocol'
-import type { ApprovalDecision, DraftDiff, DraftMeta } from '@memwise/defs'
+import { META_PLAYBOOKS, type ApprovalDecision, type DraftDiff, type DraftMeta } from '@memwise/defs'
 import type { CompiledPolicy } from '@memwise/policy'
 import type {
   Actor, AuditService, CaseView, ChannelService, DomainsService, ExternalService, IdentityService, InboxItem, PageView, PluginsService,
@@ -236,14 +236,14 @@ const BIND_STEP_MODE: Record<string, MwInboxBinding['mode']> = { fix: 'edit', re
 const LINK_BADGE_ROWS = 2000
 const refusal = (code: string, message: string): MwSubmitResult => ({ applied: false, code, message })
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
-/** The meta playbooks that build and change playbooks (20 §3). */
-const META_PLAYBOOKS = ['create-playbook', 'change-playbook']
+/** The meta playbooks that build and change playbooks (20 §3): their runs are drafts. */
+const PLAYBOOK_BUILDERS = ['create-playbook', 'change-playbook']
 /** Larger files are left out of `MwDraft.fileTexts` (the diff still shows them). */
 const FILE_TEXT_MAX = 256_000
 
 /** A meta playbook state that is its chat (conversation step): drafts there are finished from the chat. */
 function inChatState(c: DtoContext, state: string): boolean {
-  return META_PLAYBOOKS.some((id) => isConversationStep(c.project.workflows[id]?.steps[state]))
+  return PLAYBOOK_BUILDERS.some((id) => isConversationStep(c.project.workflows[id]?.steps[state]))
 }
 
 function clientOf(ctx: RequestContext): ClientIdentity {
@@ -923,7 +923,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       lines.push(`The project ${domainName}${domain?.description ? `: ${domain.description}` : ''}.`)
       const entities = Object.entries(c.project.entities).filter(([, e]) => (e.domain ?? 'domain') === domainId)
       if (entities.length) lines.push(`Record types: ${entities.map(([key, e]) => `${e.title ?? e.entity} (${key})`).join(', ')}.`)
-      const playbooks = Object.values(c.project.workflows).filter((w) => (w.domain ?? 'domain') === domainId && !META_PLAYBOOKS.includes(w.id as typeof META_PLAYBOOKS[number]))
+      const playbooks = Object.values(c.project.workflows).filter((w) => (w.domain ?? 'domain') === domainId && !(META_PLAYBOOKS as readonly string[]).includes(w.id))
       if (playbooks.length) lines.push(`Playbooks: ${playbooks.map((w) => w.title ?? w.id).join(', ')}.`)
       const items = (await enrichInbox(svc, actor, c, d, await svc.kernel.inbox(actor)).catch(() => [] as MwInboxItem[]))
         .filter((i) => inboxItemDomain(c, i) === domainId)
@@ -1203,7 +1203,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     let metaRuns: Promise<{ runId: string; caseId: string; state: string; status: string; draft?: string }[]> | undefined
     const activeMetaRuns = () => (metaRuns ??= (async () => {
       const out: { runId: string; caseId: string; state: string; status: string; draft?: string }[] = []
-      for (const workflowId of META_PLAYBOOKS) {
+      for (const workflowId of PLAYBOOK_BUILDERS) {
         if (!c.project.workflows[workflowId]) continue
         const cases = await svc.kernel.listCases({ workflowId, status: 'active' }, actor).catch(() => [])
         for (const cs of cases) {

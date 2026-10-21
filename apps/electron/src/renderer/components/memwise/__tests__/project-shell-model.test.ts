@@ -7,7 +7,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { MwCaseSummary, MwDomain, MwInboxItem, MwPlaybookSummary, MwTrigger } from '@memwise/shared/protocol'
 import {
-  anchorKeyOf, chatAnchorFor, groupByApp, initials, pickProject, playbookStartTag, pluralTitle, projectPlaybooks, shellProjects, sortWaiting, waitingIn,
+  anchorKeyOf, chatAnchorFor, groupByApp, initials, pickProject, playbookStartTag, pluralTitle, projectPlaybooks, shellProjects, sortWaiting, waitingIn, writtenPagePlace,
 } from '../project/project-model'
 import { shellRouteFor, type ShellRouteData } from '../project/shell-routes'
 import { parseRouteToNavigationState } from '../../../../shared/route-parser'
@@ -133,5 +133,13 @@ describe('older routes open inside a project', () => {
     expect(to('settings')).toBeNull()
     expect(to(routes.view.draft('d1'))).toBeNull()
     expect(to('mw/etmf')).toBeNull()
+  })
+})
+
+describe('written pages in the sidebar', () => {
+  test('a page written under a record stays in the record tree; others list at the top of PAGES', () => {
+    expect(writtenPagePlace({})).toBe('top')
+    expect(writtenPagePlace({ under: { entity: 'client', id: 'c1' } })).toBe('record-tree')
+    expect(writtenPagePlace({ under: { entity: 'study' } })).toBe('record-tree')
   })
 })
