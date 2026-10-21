@@ -46,6 +46,7 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 | 22 | [Phase 4 interfaces](22-phase-4-interfaces.md) | Plugin format and import, bindings, the bind-plugin playbook, mappings, identity resolution, connectors as plugins |
 | 23 | [Phase 5 interfaces](23-phase-5-interfaces.md) | The relay, external links, channel delivery, extraction in the form |
 | 24 | [Phase 6 interfaces](24-phase-6-interfaces.md) | Domains and grants, record tables and history, conditions, record pages, triggers, hand-offs, regulated mode, incoming email, review screens |
+| 25 | [Literature watch](25-literature-poc.md) | PubMed proof of concept: the Literature domain, keyed records, checked quotes, record chat and Keep as evidence, charts |
 
 ## Status labels
 
