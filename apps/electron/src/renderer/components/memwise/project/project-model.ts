@@ -179,8 +179,11 @@ export function pickProject(projects: ShellProject[], wanted?: string | null, la
  */
 export function projectPlaybooks(project: string | Pick<ShellProject, 'apps'>, playbooks: MwPlaybookSummary[] | null | undefined): MwPlaybookSummary[] {
   const apps = typeof project === 'string' ? [project] : project.apps
-  return (playbooks ?? []).filter(p => apps.includes(p.domain ?? DEFAULT_PROJECT) && !isMetaPlaybook(p.id))
+  return (playbooks ?? []).filter(p => apps.includes(p.domain ?? DEFAULT_PROJECT) && !isMetaPlaybook(p.id) && !APP_PLAYBOOKS.includes(p.id))
 }
+
+/** The app's own playbooks (`@memwise/defs` APP_PLAYBOOKS): they make projects, so no project lists them. */
+export const APP_PLAYBOOKS: readonly string[] = ['create-project']
 
 /**
  * The short tag beside a playbook in the sidebar: how it starts. `email` for an incoming message,
