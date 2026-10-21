@@ -282,7 +282,17 @@ function getElectronEnv(): Record<string, string> {
 //   TLA-free ESM, so the runtime `require('@anthropic-ai/claude-agent-sdk')`
 //   resolves correctly. Mirror of the same flag in `scripts/electron-build-main.ts`
 //   and `apps/electron/package.json` build:main.
-const MAIN_BUNDLE_EXTERNALS = ["electron", "@anthropic-ai/claude-agent-sdk"];
+// - winston / @opentelemetry/*: optional DBOS telemetry deps, not installed;
+//   mirror of MEMWISE_OPTIONAL_EXTERNALS in `scripts/electron-build-main.ts`.
+const MAIN_BUNDLE_EXTERNALS = [
+  "electron",
+  "@anthropic-ai/claude-agent-sdk",
+  "winston",
+  "winston-transport",
+  "@opentelemetry/sdk-logs",
+  "@opentelemetry/exporter-trace-otlp-proto",
+  "@opentelemetry/exporter-logs-otlp-proto",
+];
 
 // Run a one-shot esbuild using the JavaScript API
 async function runEsbuild(
