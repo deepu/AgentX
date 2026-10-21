@@ -37,7 +37,7 @@ import type { HandlerDeps } from '../handler-deps'
 import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange } from '../../memwise/host'
 import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../memwise/service'
 import type { DraftFacts, DtoContext } from '../../memwise/dto'
-import { keepableEntities, recordDigest } from '../../memwise/chat-tools'
+import { keepableEntities, mayChangeDraft, mayChangePlaybooks, recordDigest } from '../../memwise/chat-tools'
 import { untrustedRecordData } from '@memwise/session-tools-core'
 import { clearRecordsChatFilter, getRecordsChatFilter } from '../../memwise/records-filter'
 import {
@@ -1089,6 +1089,14 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     })
   }
 
+  /** A record's title, when this person may see the record (a test run's summary names it only then). */
+  async function visibleTitle(svc: MemwiseService, actor: PersonActor, record: { entity: string; id: string }): Promise<string | undefined> {
+    const records = (svc.kernel as { records?: RecordsService }).records
+    if (!records) return undefined
+    const r = await records.query({ entity: record.entity, filter: `id = '${record.id.replace(/'/g, "''")}'`, limit: 1 }, actor).catch(() => undefined)
+    return r?.rows[0]?.title
+  }
+
   /** Per request: draft facts (edits, report, the change run, names) for the DTOs. */
   function draftLookup(svc: MemwiseService, actor: PersonActor, c: DtoContext) {
     const authoring = authoringOf(svc)
@@ -1135,7 +1143,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           run: await runOf(got.meta), changedFiles,
           playbookTitle: c.project.workflows[got.meta.workflowId]?.title ?? got.meta.title,
           names: await (names ??= peopleNames(svc)),
-          ...await authoring.lastTestRun(got.meta.id).then((testRun) => (testRun ? { testRun } : {}), () => ({})),
+          ...await authoring.lastTestRun(got.meta.id, actor).then((testRun) => (testRun ? { testRun } : {}), () => ({})),
+          mayChange: got.meta.status === 'open' && !(await mayChangeDraft(svc, actor, got.meta)),
         }
       },
     }
@@ -1569,7 +1578,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         ...(playbook ? { playbook } : {}),
         diagnostics: diagnostics.map(d.toDiagnostic),
         ...(got.meta.status === 'open' ? { fileTexts: await draftFileTexts(authoring, got.meta, diff) } : {}),
-        ...(facts.testRun ? { lastTestRun: d.toDraftTestRun(facts.testRun, facts.names), testRunStale: facts.testRun.hash !== got.contentHash } : {}),
+        ...(facts.testRun ? { lastTestRun: d.toDraftTestRun(facts.testRun, facts.names, await visibleTitle(svc, actor, facts.testRun.record)), testRunStale: facts.testRun.hash !== got.contentHash } : {}),
       }
     },
 
@@ -1579,6 +1588,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const kind = input.kind ?? (c.project.workflows[input.workflowId] ? 'change' : 'create')
       if (kind === 'change' && !c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
       if (kind === 'create' && c.project.workflows[input.workflowId]) throw new Error('A playbook with that id already exists.')
+      await mayChangePlaybooks(svc, actor, input.workflowId, kind === 'create' ? 'create-playbook' : 'change-playbook')
       const meta = await authoringOf(svc).createDraft({
         workflowId: input.workflowId.trim(), title: input.title?.trim() || c.project.workflows[input.workflowId]?.title || d.humanize(input.workflowId), kind,
       }, actor)
@@ -1592,6 +1602,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const got = await authoring.getDraft(input?.draftId)
       if (!got) return { applied: false, diagnostics: [], code: 'draft.missing', message: DRAFT_MESSAGES.missing }
       if (got.meta.status !== 'open') return { applied: false, diagnostics: [], code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
+      const refusedWrite = await mayChangeDraft(svc, actor, got.meta)
+      if (refusedWrite) return { applied: false, diagnostics: [], code: 'draft.not_allowed', message: refusedWrite }
       if (!Array.isArray(input.files) || !input.files.length) return { applied: false, diagnostics: [], code: 'draft.write_failed', message: 'Nothing to write.' }
       try {
         const { edit, diagnostics } = await authoring.write({
@@ -1610,6 +1622,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const got = await authoring.getDraft(input?.draftId)
       if (!got) return refusal('draft.missing', DRAFT_MESSAGES.missing!)
       if (got.meta.status !== 'open') return refusal('draft.not_open', DRAFT_MESSAGES.not_open!)
+      const refused = await mayChangeDraft(svc, actor, got.meta)
+      if (refused) return refusal('draft.not_allowed', refused)
       const edit = got.edits.find((e) => e.id === input.editId)
       if (!edit) return refusal('edit.missing', DRAFT_MESSAGES.edit_missing!)
       if (edit.status !== 'pending') return refusal('edit.not_pending', DRAFT_MESSAGES.edit_not_pending!)
@@ -1625,6 +1639,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const got = await authoring.getDraft(input?.draftId)
       if (!got) return refusal('draft.missing', DRAFT_MESSAGES.missing!)
       if (got.meta.status !== 'open') return refusal('draft.not_open', DRAFT_MESSAGES.not_open!)
+      const refused = await mayChangeDraft(svc, actor, got.meta)
+      if (refused) return refusal('draft.not_allowed', refused)
       const edit = got.edits.find((e) => e.id === input.editId)
       if (!edit) return refusal('edit.missing', DRAFT_MESSAGES.edit_missing!)
       if (edit.status !== 'pending') return refusal('edit.not_pending', DRAFT_MESSAGES.edit_not_pending!)
@@ -1645,6 +1661,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const got = await authoring.getDraft(draftId)
       if (!got) return refusal('draft.missing', DRAFT_MESSAGES.missing!)
       if (got.meta.status !== 'open') return refusal('draft.not_open', DRAFT_MESSAGES.not_open!)
+      const refused = await mayChangeDraft(svc, actor, got.meta)
+      if (refused) return refusal('draft.not_allowed', refused)
       await authoring.discardDraft(draftId, actor)
       emitMemwiseChange({ kind: 'drafts', id: draftId })
       return { applied: true }
@@ -1666,6 +1684,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const got = await authoring.getDraft(draftId)
       if (!got) return { applied: false, code: 'draft.missing', message: DRAFT_MESSAGES.missing }
       if (got.meta.status !== 'open') return { applied: false, code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
+      const refused = await mayChangeDraft(svc, actor, got.meta)
+      if (refused) return { applied: false, code: 'draft.not_allowed', message: refused }
       const facts = await draftLookup(svc, actor, c).facts(got.meta, { got })
       if (facts.run?.status === 'active') {
         // Still in its chat (the meta playbook's conversation step), or past it on the way to review.
@@ -1698,6 +1718,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const got = await authoring.getDraft(input?.draftId)
       if (!got) return { applied: false, code: 'draft.missing', message: DRAFT_MESSAGES.missing }
       if (got.meta.status !== 'open') return { applied: false, code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
+      const refused = await mayChangeDraft(svc, actor, got.meta)
+      if (refused) return { applied: false, code: 'draft.not_allowed', message: refused }
       if (!input.record?.entity || !input.record?.id) return { applied: false, code: 'draft.test_run_failed', message: 'Pick the record to run the draft on.' }
       try {
         const run = await authoring.testRun(input.draftId, { entity: input.record.entity, id: input.record.id }, actor)

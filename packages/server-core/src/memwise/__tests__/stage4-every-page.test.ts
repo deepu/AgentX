@@ -43,6 +43,8 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
   const sessions = fakeSessions()
   let manager: RequestContext
   let reviewer: RequestContext
+  let craCtx: RequestContext
+  let ownerCtx: RequestContext
   let siteId = ''
   let chatId = ''
   let draftId = ''
@@ -136,6 +138,8 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
       const live = parse(await handlePlaybookRead(ctx, { path: SEND }))
       return parse(await handlePlaybookWrite(ctx, { files: [{ path: SEND, content: (live.content as string).replace('wait 5 days', 'wait 6 days') }], summary: 'Wait 6 days' }))
     }
+    craCtx = ctxFor('ola-client', cra.id)
+    ownerCtx = ctxFor('mia-client', mia.id)
     const owner = await attempt(mia.id, 'mia-client')
     expect(owner).toMatchObject({ status: 'kept' })
     const sent = await api.call<any>(ctxFor('mia-client', mia.id), ch.DRAFTS_SUBMIT, owner.draftId)
@@ -168,12 +172,45 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     expect(refused.message).toContain("doesn't start from a Study")
   }, 180_000)
 
+  it("someone else sees whether the test run passed, not what it saw, and can't change the draft", async () => {
+    const mine = await api.call<MwDraft>(manager, ch.DRAFTS_GET, draftId)
+    expect(mine.mayChange).toBe(true)
+    expect(mine.lastTestRun).toMatchObject({ detail: true, status: 'pass' })
+    expect(mine.lastTestRun?.trace?.calls.length).toBeGreaterThan(0)
+    for (const other of [craCtx, ownerCtx]) {
+      const seen = await api.call<MwDraft>(other, ch.DRAFTS_GET, draftId)
+      expect(seen.mayChange).toBe(false)
+      expect(seen.lastTestRun).toMatchObject({ detail: false, status: 'pass', record: { entity: 'etmf.Site', id: siteId }, differences: [] })
+      expect(seen.lastTestRun?.trace).toBeUndefined()
+      expect(seen.lastTestRun?.copied).toBeUndefined()
+      expect(JSON.stringify(seen.lastTestRun)).not.toContain('priya.shah@')
+    }
+    // The CRA may not change playbooks; the study manager may, but the draft is Anika's.
+    const refusals = async (who: RequestContext) => [
+      await api.call<any>(who, ch.DRAFTS_SUBMIT, draftId),
+      await api.call<any>(who, ch.DRAFTS_DISCARD, draftId),
+      await api.call<any>(who, ch.DRAFTS_TEST_RUN, { draftId, record: { entity: 'etmf.Site', id: siteId } }),
+      await api.call<any>(who, ch.DRAFTS_WRITE, { draftId, files: [{ path: SEND, content: 'x' }], summary: 'no' }),
+      await api.call<any>(who, ch.DRAFTS_KEEP, { draftId, editId: mine.edits[0]!.id }),
+    ]
+    for (const r of await refusals(craCtx)) expect(r).toMatchObject({ applied: false, code: 'draft.not_allowed', message: expect.stringContaining('study_manager') })
+    for (const r of await refusals(ownerCtx)) expect(r).toMatchObject({ applied: false, code: 'draft.not_allowed', message: expect.stringContaining('someone else') })
+    await expect(api.call(craCtx, ch.DRAFTS_CREATE, { workflowId: 'chase-missing', title: 'Mine now' })).rejects.toThrow('study_manager')
+    expect((await api.call<MwDraft>(manager, ch.DRAFTS_GET, draftId)).stage).toBe('draft')
+  }, 60_000)
+
   it('Send for review starts the change run, which waits for a manager', async () => {
     const sent = await api.call<any>(manager, ch.DRAFTS_SUBMIT, draftId)
     expect(sent).toMatchObject({ applied: true })
     const c = await until('the review', () => api.call<MwCase>(reviewer, ch.CASES_GET, sent.caseId), (x) => x.state === 'review' || x.status !== 'active', 170_000)
     expect(c.state).toBe('review')
     expect((await api.call<MwDraft>(manager, ch.DRAFTS_GET, draftId)).stage).toBe('in_review')
+    // The chat can't change it any more while it is with the reviewer.
+    const ctx = { memwise: buildMemwiseToolCallbacks({ sessionId: chatId }) } as unknown as SessionToolContext
+    const live = parse(await handlePlaybookRead(ctx, { path: SEND }))
+    const again = parse(await handlePlaybookWrite(ctx, { files: [{ path: SEND, content: `${live.content}\n` }], summary: 'One more thing' }))
+    expect(again.error).toContain('sent for review')
+    expect((await api.call<MwDraft>(manager, ch.DRAFTS_GET, draftId)).edits).toHaveLength(1)
   }, 180_000)
 
   it('a list\'s chat filters the list: chips on the page, a bad filter refused, × clears it', async () => {

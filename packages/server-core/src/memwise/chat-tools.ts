@@ -119,20 +119,43 @@ async function findTestRecord(svc: MemwiseService, actor: PersonActor, workflowI
 }
 
 /**
- * May this person change playbooks? The change-playbook's first step's role, where the project has
- * that role; a project with roles of its own (the eTMF's has no `staff`) lets the playbook's owner
- * role change it instead (D122).
+ * May this person change playbooks? The change-playbook's first step's role (create-playbook's,
+ * for a new one), where the project has that role; a project with roles of its own (the eTMF's
+ * has no `staff`) lets the playbook's owner role change it instead (D122).
  */
-async function mayChangePlaybooks(svc: MemwiseService, actor: PersonActor, workflowId?: string): Promise<void> {
+export async function mayChangePlaybooks(svc: MemwiseService, actor: PersonActor, workflowId?: string, metaId: 'change-playbook' | 'create-playbook' = 'change-playbook'): Promise<void> {
   const { project } = await svc.kernel.project()
-  const meta = project.workflows['change-playbook']
-  if (!meta) throw new Error('Changing playbooks by chat is not set up in this project (the change-playbook playbook is missing).')
+  const meta = project.workflows[metaId]
+  if (!meta) throw new Error(`Changing playbooks is not set up in this project (the ${metaId} playbook is missing).`)
   const assignee = meta.steps[meta.start]?.assignee
   if (!assignee || actor.roles.includes(assignee)) return
   const known = new Set((await svc.kernel.people.roles()).map((r) => r.id))
   const owner = workflowId ? project.workflows[workflowId]?.owner : undefined
   if (!known.has(assignee) && owner && actor.roles.includes(owner)) return
   throw new Error(`Changing playbooks is for someone with the ${known.has(assignee) || !owner ? assignee : owner} role.`)
+}
+
+/**
+ * May this person change this draft (write, keep or discard its edits, discard it, send it for
+ * review, test-run it)? They may change the playbook, and the draft is theirs: made by them, or
+ * by the CLI. Undefined when they may; else why not, in words.
+ */
+export async function mayChangeDraft(svc: MemwiseService, actor: PersonActor, meta: Pick<DraftMeta, 'kind' | 'workflowId' | 'createdBy'>): Promise<string | undefined> {
+  if (meta.kind === 'binding') return undefined // the binding review screen has its own steps
+  try {
+    await mayChangePlaybooks(svc, actor, meta.workflowId, meta.kind === 'create' ? 'create-playbook' : 'change-playbook')
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e)
+  }
+  if (meta.createdBy.startsWith('person_') && meta.createdBy !== actor.personId) return 'This draft is someone else\'s; only they can change it.'
+  return undefined
+}
+
+/** A draft whose change run is going (checking, in review, or back at its chat) is not changed from a playbook's chat. */
+async function changeRunActive(svc: MemwiseService, draft: DraftMeta): Promise<boolean> {
+  if (!draft.runId) return false
+  const run = await svc.kernel.getRun(draft.runId).catch(() => undefined)
+  return run?.status === 'active'
 }
 
 export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): MemwiseToolCallbacks {
@@ -226,6 +249,9 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
       if (pc) {
         const { svc, actor } = pc
         await mayChangePlaybooks(svc, actor, pc.workflowId)
+        if (pc.draft && await changeRunActive(svc, pc.draft)) {
+          throw new Error('This change was sent for review, so it can\'t be changed from here now. Tell the person: the reviewer can send it back, or they can wait for it to be approved and then change it again.')
+        }
         const authoring = authoringOf(svc)
         const { project } = await svc.kernel.project()
         const live = project.workflows[pc.workflowId]

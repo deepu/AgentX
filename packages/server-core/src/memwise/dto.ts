@@ -3,7 +3,7 @@
  * ever sees these. Pure functions over the indexed definitions, so they are easy to test.
  */
 import type {
-  CaseTypeDef, Diagnostic, DraftEdit, DraftMeta, DraftReport, DraftTestRun, EffectClass, EntityTypeDef, FieldDef, FileChange, Impact,
+  CaseTypeDef, Diagnostic, DraftEdit, DraftMeta, DraftReport, DraftTestRun, DraftTestRunSummary, EffectClass, EntityTypeDef, FieldDef, FileChange, Impact,
   JournalEntry, ProjectDefs, RecordTypeDef, StepDef, StepRecord, StructuralDiff, WorkflowDef, WorkflowVersion, WriteDef,
 } from '@memwise/defs'
 import type { CompiledPolicy, RuleOrigin, Sourced } from '@memwise/policy'
@@ -783,8 +783,10 @@ export interface DraftFacts {
   changedFiles: number
   playbookTitle: string
   names: Map<string, string>
-  /** Stage 4: the last test run on one record (`drafts/<id>/test-run.json`). */
-  testRun?: DraftTestRun
+  /** Stage 4: the last test run on one record: in full for who ran it, else its summary (`drafts/<id>/test-run.json`). */
+  testRun?: DraftTestRunSummary | DraftTestRun
+  /** Stage 4: the viewer may change the draft. */
+  mayChange?: boolean
 }
 
 /** Where a draft is: published/discarded from its meta; in review while its change run waits at `review`; checked or failed when the last report covers the current content. */
@@ -820,15 +822,19 @@ export function toDraftSummary(f: DraftFacts): MwDraftSummary {
     ...(m.status === 'open' && f.run?.status === 'active' && f.run.inChat ? { inChat: true } : {}),
     ...(m.chatId ? { chatId: m.chatId } : {}),
     ...(f.testRun && f.testRun.hash === f.contentHash ? { testRun: f.testRun.status } : {}),
+    ...(f.mayChange !== undefined ? { mayChange: f.mayChange } : {}),
   }
 }
 
 /** Stage 4 (26 §5): a draft's test run on one record, for its page. */
-export function toDraftTestRun(r: DraftTestRun, names: Map<string, string>): MwDraftTestRun {
+export function toDraftTestRun(r: DraftTestRunSummary | DraftTestRun, names: Map<string, string>, title?: string): MwDraftTestRun {
   const byName = names.get(r.by)
+  const base = { draftId: r.draftId, workflowId: r.workflowId, at: r.at, by: r.by, ...(byName ? { byName } : {}), status: r.status }
+  if (!('copied' in r)) {
+    return { ...base, record: { entity: r.record.entity, id: r.record.id, ...(title ? { title } : {}) }, detail: false, differences: [] }
+  }
   return {
-    draftId: r.draftId, workflowId: r.workflowId, at: r.at, by: r.by, ...(byName ? { byName } : {}),
-    record: { ...r.record }, status: r.status, differences: [...r.differences],
+    ...base, record: { ...r.record }, detail: true, differences: [...r.differences],
     ...(r.reason ? { reason: r.reason } : {}),
     ...(r.trace ? { trace: r.trace } : {}),
     ...(r.replayedCase ? { replayedCase: r.replayedCase } : {}),

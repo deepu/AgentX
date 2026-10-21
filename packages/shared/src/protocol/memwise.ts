@@ -705,6 +705,11 @@ export interface MwDraftSummary {
   chatId?: string
   /** Stage 4: the last test run's status, when it covers the current content. */
   testRun?: 'pass' | 'fail' | 'skip'
+  /**
+   * Stage 4: whether the viewer may change this draft (write, keep, discard, send for review, run
+   * a test): they may change the playbook, and the draft is theirs.
+   */
+  mayChange?: boolean
 }
 
 export interface MwDraftEdit {
@@ -838,13 +843,19 @@ export interface MwDraftTestRun {
   at: string
   by: string
   byName?: string
-  record: { entity: string; id: string; title: string }
+  /** `title` when the viewer may see the record. */
+  record: { entity: string; id: string; title?: string }
   status: 'pass' | 'fail' | 'skip'
+  /**
+   * D121: what the run saw (differences, trace, copied records) is only for the person who ran it,
+   * until the app restarts; everyone else gets whether it passed, on which record, who and when.
+   */
+  detail: boolean
   differences: string[]
   reason?: string
   trace?: MwRunTrace
   replayedCase?: string
-  copied: Record<string, number>
+  copied?: Record<string, number>
 }
 
 export interface MwTestRunDraftInput {
