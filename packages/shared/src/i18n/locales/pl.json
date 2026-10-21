@@ -1673,7 +1673,7 @@
   "memwise.projects.new.describePlaceholder": "Opisz ({{one}}) albo zmień szkic",
   "memwise.projects.new.describing": "Czat przygotowuje szkic. Pojawi się tutaj, gdy będzie gotowy.",
   "memwise.projects.new.discard": "Odrzuć",
-  "memwise.projects.new.intro": "Zaczyna się od szablonu. Wszystko poniżej należy do tego projektu i można to tu zmienić.",
+  "memwise.projects.new.intro": "Wszystko poniżej należy do tego projektu i można to tu zmienić.",
   "memwise.projects.new.makeDraft": "Utwórz szkic",
   "memwise.projects.new.more_few": "jeszcze {{count}}",
   "memwise.projects.new.more_many": "jeszcze {{count}}",

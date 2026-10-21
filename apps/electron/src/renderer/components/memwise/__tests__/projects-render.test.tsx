@@ -28,6 +28,8 @@ const { draftLists, parseUpdateItemId, peopleLine, slugOf, sortGroups, templateL
 const { waitingTotal } = await import('@/hooks/useMemwiseProjects')
 const { caseProject, projectPlaybooks, projectRecordScope, storedShellApps, storedShellProjects } = await import('../project/project-model')
 const { parseProjectSegments, projectRoute } = await import('../../../../shared/project-route')
+const { UpdateCard } = await import('../project/WaitingPage')
+const { updateItemId } = await import('../project/project-model')
 
 beforeAll(() => {
   setI18n(setupI18n([initReactI18next]))
@@ -271,7 +273,7 @@ describe('the shell, projects stored', () => {
     const projects = storedShellProjects([app], domains)
     expect(projects.map(p => p.id)).toEqual(['mw301', 'mw207', 'mw310', 'old'])
     expect(projects.find(p => p.id === 'mw310')?.status).toBe('draft')
-    expect(projects.find(p => p.id === 'mw301')?.update).toEqual({ to: 5 })
+    expect(projects.find(p => p.id === 'mw301')?.update).toEqual({ to: 5, from: 4 })
   })
 
   test("an item or a run says its project; Stage 1's domain answer stays the fallback", () => {
@@ -290,6 +292,19 @@ describe('the shell, projects stored', () => {
     const route = projectRoute('mw301', { type: 'update', itemId: 'template-update:mw301:5' })
     expect(route).toBe('mw/mw301/update/template-update%3Amw301%3A5')
     expect(parseProjectSegments(route.split('/'))).toEqual({ projectId: 'mw301', details: { type: 'update', itemId: 'template-update:mw301:5' } })
+  })
+})
+
+describe('the template update beside a project\'s waiting items', () => {
+  test('Home and Waiting for you show it with Review, as Waiting across projects does', () => {
+    const p = storedShellProjects([etmf], [])[0]!
+    expect(p).toMatchObject({ id: 'mw301', update: { to: 5, from: 4 } })
+    expect(updateItemId(p)).toBe('template-update:mw301:5')
+    const html = render(<UpdateCard project={p} />)
+    expect(text(html)).toContain('Review the eTMF template, version 5')
+    expect(text(html)).toContain('Version 4 → 5')
+    expect(html).toContain('data-testid="waiting-review-update"')
+    expect(render(<UpdateCard project={{ ...p, update: undefined }} />)).toBe('')
   })
 })
 

@@ -1615,7 +1615,7 @@
   "memwise.projects.new.describePlaceholder": "{{one}}を説明するか、下書きを変更してください",
   "memwise.projects.new.describing": "チャットが下書きを作成中です。準備ができるとここに表示されます。",
   "memwise.projects.new.discard": "破棄",
-  "memwise.projects.new.intro": "テンプレートから始まります。以下はすべてこのプロジェクトのもので、ここで変更できます。",
+  "memwise.projects.new.intro": "以下はすべてこのプロジェクトのもので、ここで変更できます。",
   "memwise.projects.new.makeDraft": "下書きを作成",
   "memwise.projects.new.more_one": "ほか {{count}} 件",
   "memwise.projects.new.more_other": "ほか {{count}} 件",

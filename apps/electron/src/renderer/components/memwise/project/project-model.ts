@@ -32,8 +32,8 @@ export interface ShellProject {
   status?: MwProjectStatus
   /** An app's own project (no project.yaml). */
   implicit?: boolean
-  /** A newer template version waits for review. */
-  update?: { to: number }
+  /** A newer template version waits for review (`from`: the version it is on). */
+  update?: { to: number; from?: number }
 }
 
 export interface ShellApp {
@@ -116,7 +116,7 @@ export function storedShellProjects(apps: MwApp[], domains: MwDomain[] | null | 
         id: p.id, name, appId: p.app, appName: p.app === app.id ? app.title : p.appTitle, domain: p.app, apps: p.apps,
         regulated: domain?.regulated ?? false, waiting: p.waiting, stored: true, status: p.status,
         ...(domain?.description && p.implicit ? { description: domain.description } : {}),
-        ...(p.implicit ? { implicit: true } : {}), ...(p.update ? { update: p.update } : {}),
+        ...(p.implicit ? { implicit: true } : {}), ...(p.update ? { update: { ...p.update, from: p.templateVersion } } : {}),
       })
     }
   }
@@ -268,4 +268,9 @@ export function chatAnchorFor(projectId: string, details: ProjectDetails, item?:
     case 'record': return { kind: 'record', entity: details.entity, id: details.recordId }
     default: return { kind: 'project', id: projectId }
   }
+}
+
+/** The inbox item id of a project's template update (as Waiting across projects names it). */
+export function updateItemId(project: Pick<ShellProject, 'id' | 'update'>): string | undefined {
+  return project.update ? `template-update:${project.id}:${project.update.to}` : undefined
 }

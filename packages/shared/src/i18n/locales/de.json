@@ -1615,7 +1615,7 @@
   "memwise.projects.new.describePlaceholder": "{{one}} beschreiben oder den Entwurf ändern",
   "memwise.projects.new.describing": "Der Chat entwirft es. Der Entwurf erscheint hier, sobald er fertig ist.",
   "memwise.projects.new.discard": "Verwerfen",
-  "memwise.projects.new.intro": "Beginnt mit einer Vorlage. Alles unten gehört zu diesem Projekt und lässt sich hier ändern.",
+  "memwise.projects.new.intro": "Alles unten gehört zu diesem Projekt und lässt sich hier ändern.",
   "memwise.projects.new.makeDraft": "Entwurf erstellen",
   "memwise.projects.new.more_one": "{{count}} weitere",
   "memwise.projects.new.more_other": "{{count}} weitere",

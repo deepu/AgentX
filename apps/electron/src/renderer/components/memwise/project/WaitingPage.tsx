@@ -14,7 +14,7 @@ import { memwiseCasesAtom, memwiseDomainsAtom, memwiseInboxAtom, memwisePlaybook
 import { inboxItemStepTitle, relativeTime } from '../format'
 import { useNow } from '../use-now'
 import { ALL_PROJECTS } from '../../../../shared/project-route'
-import { caseProject, projectLookups, sortWaiting, waitingIn, type ShellProject } from './project-model'
+import { caseProject, projectLookups, sortWaiting, updateItemId, waitingIn, type ShellProject } from './project-model'
 import { inboxItemProject } from '@memwise/shared/protocol'
 
 const DAY = 86_400_000
@@ -69,17 +69,20 @@ export function WaitingPage({ projectId, projects }: { projectId: string; projec
   const lookups = projectLookups({ playbooks, domains })
   const projectName = (item: MwInboxItem) => projects.find(p => p.id === inboxItemProject(item, lookups))?.name
   const done = finishedThisWeek(cases, projectId, now)
+  const project = all ? undefined : projects.find(p => p.id === projectId)
+  const update = project?.update ? project : undefined
 
   return (
     <ShellPageFrame
       crumb={t('memwise.shell.waiting')}
       title={all ? t('memwise.shell.waitingAll') : t('memwise.shell.waiting')}
-      count={items.length}
+      count={items.length + (update ? 1 : 0)}
       subtitle={all ? t('memwise.shell.waitingAllHint') : t('memwise.shell.waitingHint')}
     >
-      {inbox === null ? null : items.length === 0 ? (
+      {update && <div className="mb-2.5"><UpdateCard project={update} primary={items.length === 0} /></div>}
+      {inbox === null ? null : items.length === 0 ? (update ? null : (
         <p className="rounded-[10px] border border-foreground/8 px-4 py-6 text-center text-label text-secondary" data-testid="waiting-empty">{t('memwise.shell.nothingWaiting')}</p>
-      ) : (
+      )) : (
         <div className="flex flex-col gap-2.5" data-testid="waiting-list">
           {items.map((item, i) => (
             <WaitingCard
@@ -173,6 +176,34 @@ export function WaitingCard({ item, playbooks, primary, now, project, compact, o
           {t('memwise.shell.open')}
         </button>
       </div>
+    </div>
+  )
+}
+
+/** A project's template update, waiting for review beside its other items (Stage 3). */
+export function UpdateCard({ project, primary }: { project: ShellProject; primary?: boolean }) {
+  const { t } = useTranslation()
+  const id = updateItemId(project)
+  if (!project.update || !id) return null
+  return (
+    <div className="flex items-center gap-4 rounded-[10px] border border-foreground/10 bg-background px-4 py-3 shadow-minimal" data-testid="waiting-update">
+      <div className="min-w-0 flex-1">
+        <div className="text-label font-semibold text-foreground">{t('memwise.projects.update.itemTitle', { app: project.appName, version: project.update.to })}</div>
+        {project.update.from !== undefined && (
+          <div className="truncate text-label-sm text-secondary">{t('memwise.projects.update.itemDetail', { from: project.update.from, to: project.update.to })}</div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => navigate(routes.view.project(project.id, { type: 'update', itemId: id }))}
+        data-testid="waiting-review-update"
+        className={cn(
+          'shrink-0 rounded-md px-3 py-1 text-label-sm font-medium',
+          primary ? 'bg-foreground text-background hover:opacity-90' : 'border border-foreground/15 text-foreground hover:bg-fill-hover',
+        )}
+      >
+        {t('memwise.projects.update.review')}
+      </button>
     </div>
   )
 }

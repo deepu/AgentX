@@ -1615,7 +1615,7 @@
   "memwise.projects.new.describePlaceholder": "Írd le ({{one}}), vagy módosítsd a vázlatot",
   "memwise.projects.new.describing": "A csevegés készíti. A vázlat itt jelenik meg, amint elkészül.",
   "memwise.projects.new.discard": "Elvetés",
-  "memwise.projects.new.intro": "Sablonból indul. Minden alább ehhez a projekthez tartozik, és itt módosítható.",
+  "memwise.projects.new.intro": "Minden alább ehhez a projekthez tartozik, és itt módosítható.",
   "memwise.projects.new.makeDraft": "Vázlat készítése",
   "memwise.projects.new.more_one": "még {{count}}",
   "memwise.projects.new.more_other": "még {{count}}",

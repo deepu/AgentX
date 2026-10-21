@@ -1615,7 +1615,7 @@
   "memwise.projects.new.describePlaceholder": "描述{{one}},或修改草稿",
   "memwise.projects.new.describing": "聊天正在起草。草稿准备好后会显示在这里。",
   "memwise.projects.new.discard": "放弃",
-  "memwise.projects.new.intro": "从模板开始。以下内容都属于此项目,可以在这里修改。",
+  "memwise.projects.new.intro": "以下内容都属于此项目,可以在这里修改。",
   "memwise.projects.new.makeDraft": "创建草稿",
   "memwise.projects.new.more_one": "还有 {{count}} 个",
   "memwise.projects.new.more_other": "还有 {{count}} 个",

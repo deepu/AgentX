@@ -20,7 +20,7 @@ import { humanize, relativeTime } from '../format'
 import { useNow } from '../use-now'
 import { Composer } from './AnchoredChat'
 import { caseProject, pluralTitle, projectPlaybooks, projectRecordScope, sortWaiting, waitingIn, type ShellProject } from './project-model'
-import { playbookTitle, ShellPageFrame, ShellSection, WaitingCard } from './WaitingPage'
+import { playbookTitle, ShellPageFrame, ShellSection, UpdateCard, WaitingCard } from './WaitingPage'
 
 const RECENT_SHOWN = 5
 
@@ -134,11 +134,12 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
   return (
     <ShellPageFrame crumb={t('memwise.shell.homeCrumb')} title={project.name} subtitle={subtitle || undefined}>
       <div data-testid="project-pinned-page">
-        <ShellSection title={t('memwise.shell.waiting')} count={waiting.length}>
-          {waiting.length === 0 ? (
+        <ShellSection title={t('memwise.shell.waiting')} count={waiting.length + (project.update ? 1 : 0)}>
+          {waiting.length === 0 && !project.update ? (
             <p className="text-label text-tertiary">{t('memwise.shell.nothingWaiting')}</p>
           ) : (
             <div className="flex flex-col gap-2">
+              {project.update && <UpdateCard project={project} primary={waiting.length === 0} />}
               {waiting.slice(0, 3).map((item, i) => (
                 <WaitingCard key={item.id} item={item} playbooks={playbooks} primary={i === 0 && waiting.length === 1} now={now} compact onOpen={() => navigate(routes.view.project(project.id, { type: 'waiting', itemId: item.id }))} />
               ))}
