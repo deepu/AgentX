@@ -19,6 +19,7 @@ const { RegulatedDomainLinksView, keepsTmf } = await import('../regulated/Regula
 const { InboxItemView } = await import('../InboxItemView')
 type InboxActions = import('../InboxItemView').InboxActions
 const M = await import('../regulated/regulated-model')
+const F = await import('../format')
 const S = await import('../regulated/sample-regulated')
 
 beforeAll(() => {
@@ -187,7 +188,7 @@ describe('inspector access', () => {
     expect(html).toContain('never drafts, chats or AI suggestions')
     expect(html).toContain('data-link="il_1" data-status="active"')
     expect(html).toContain('GCP inspector, MHRA; Dr J. Patel, MHRA')
-    expect(html).toContain('12 views · 3 downloads')
+    expect(html).toContain('12 views</span><span class="block whitespace-nowrap">3 downloads')
     expect(html).toContain('data-link="il_0" data-status="revoked"')
     expect(html).toContain('Access ended')
     expect(count(html, 'data-action="revoke"')).toBe(1)
@@ -293,6 +294,13 @@ describe('inbox items and the domain page', () => {
     expect(html).toContain('42 of 42 match')
     expect(html).toContain('Your QA signature makes this change live as the next version.')
     expect(html).toContain('data-action="open-change-request"')
+    expect(html).toContain('Approve CR-014 as QA')
+  })
+
+  test('Waiting for you titles a sign-off by what to do and a question by its link', () => {
+    expect(F.inboxItemStepTitle(S.sampleChangeRequestItem, t)).toBe('Approve CR-014 as QA')
+    expect(F.inboxItemStepTitle({ ...S.sampleChangeRequestItem, signoff: 'raiser' as const }, t)).toBe('Sign CR-014 and send it to QA')
+    expect(F.inboxItemStepTitle(S.sampleInspectorQuestionItem, t)).toBe('Question from MHRA inspection')
   })
 
   test("an inspector's question, answered from the inbox", () => {

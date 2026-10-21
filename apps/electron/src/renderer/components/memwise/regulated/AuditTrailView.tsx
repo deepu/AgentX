@@ -61,7 +61,7 @@ export function AuditTrailView({ projectName, log, scope, peopleAndAi, onPeopleA
             <span className="text-secondary">
               {' · '}
               {openRecord
-                ? <button type="button" className="hover:underline" onClick={() => openRecord(record.entity, record.id)}>{record.title}</button>
+                ? <button type="button" className="text-left hover:underline" onClick={() => openRecord(record.entity, record.id)}>{record.title}</button>
                 : record.title}
             </span>
           )}

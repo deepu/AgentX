@@ -145,19 +145,19 @@ export function InspectorSetupView({ projectName, links, questions, actions = {}
           <Table head={[t('memwise.regulated.inspectors.inspection'), t('memwise.regulated.inspectors.ends'), t('memwise.regulated.inspectors.activity'), t('memwise.regulated.inspectors.statusHead'), '']}>
             {links.map(l => (
               <tr key={l.id} data-link={l.id} data-status={l.status}>
-                <Cell>
+                <Cell className="min-w-40">
                   <p className="font-medium text-foreground">{l.name}</p>
                   <p className="text-label-sm text-secondary">{inspectorNames(l)}</p>
                 </Cell>
                 <Cell className="whitespace-nowrap">{absoluteDate(l.expiresAt, i18n.language)}</Cell>
-                <Cell className="whitespace-nowrap text-secondary" data-activity>
-                  {t('memwise.regulated.inspectors.views', { count: l.views })}
-                  {' · '}
-                  {t('memwise.regulated.inspectors.downloads', { count: l.downloads })}
+                <Cell className="text-secondary" data-activity>
+                  <span className="block whitespace-nowrap">{t('memwise.regulated.inspectors.views', { count: l.views })}</span>
+                  <span className="block whitespace-nowrap">{t('memwise.regulated.inspectors.downloads', { count: l.downloads })}</span>
                   {l.lastOpenedAt && <span className="block text-label-sm text-tertiary">{t('memwise.regulated.inspectors.lastOpened', { time: relativeTime(l.lastOpenedAt, now, i18n.language) })}</span>}
                 </Cell>
                 <Cell><Info_Badge color={STATUS_COLOR[l.status]} dot>{inspectorStatusLabel(l.status, t)}</Info_Badge></Cell>
-                <Cell className="whitespace-nowrap text-right">
+                <Cell>
+                  <div className="flex flex-col items-end gap-1">
                   {l.status !== 'revoked' && actions.extend && (
                     <Button
                       size="sm"
@@ -174,6 +174,7 @@ export function InspectorSetupView({ projectName, links, questions, actions = {}
                       <ShieldOff />{t('memwise.regulated.inspectors.revoke')}
                     </Button>
                   )}
+                  </div>
                 </Cell>
               </tr>
             ))}
