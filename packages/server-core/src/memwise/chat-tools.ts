@@ -159,8 +159,8 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
       requireWaiting(s)
       if (!input.name) throw new Error('Give the project a name on the first call (e.g. "Study MW-310").')
       if (!input.template && !input.copyFrom) throw new Error('Say what it starts from: a template card id or a project to copy (see project_options).')
-      // A retried call finds the draft it made (same name, still a draft).
-      const existing = (await projects.list(actor, { app })).find((p) => p.name === input.name && p.status === 'draft')
+      // A retried call finds the draft this person made (same name, still a draft); never someone else's.
+      const existing = (await projects.list(actor, { app })).find((p) => p.name === input.name && p.status === 'draft' && p.createdBy === actor.personId)
       const p = existing ?? await projects.create({
         app, name: input.name,
         ...(input.template ? { template: input.template } : {}), ...(input.copyFrom ? { copyFrom: input.copyFrom } : {}),

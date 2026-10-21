@@ -4,14 +4,14 @@
  * started, archived, a template update skipped). Every change goes through the files and then
  * `index()`, so `memwise check`, git and the app always agree.
  */
-import { PgEntityStore, PgProjectStore, projectScoped, withActor, type ProjectRow } from '@memwise/db';
+import { PgEntityStore, PgProjectStore, projectScoped, tableOf, withActor, type ProjectRow } from '@memwise/db';
 import {
-  createProjectFiles, hasRole, projectIdFor, publishAppVersion, resolveEntity, rolesIn, saveAsTemplate as saveFilesAsTemplate,
+  APP_PLAYBOOKS, checkProjects, createProjectFiles, hasRole, implicitProject, projectIdFor, publishAppVersion, resolveEntity, rolesIn, saveAsTemplate as saveFilesAsTemplate,
   seesProjectIn, takeTemplateUpdate, templateUpdate, updateProjectFile, type AppDef, type Diagnostic, type EntityTypeDef,
   type ExampleCase, type MwProjectDef, type ProjectDefs, type TemplateChange,
 } from '@memwise/defs';
-import { rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type pg from 'pg';
 import type { Actor, InboxItem, KernelChange, StartRunInput, TestRunner } from '../types.ts';
 import { seedProjectRecords, type SeedDeps } from './seed.ts';
@@ -55,6 +55,30 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
     if (!d) throw new Error('projects need a kernel with a workspace folder');
     return d;
   }
+  /**
+   * The definitions as the lists show them: also each app's own project (D107) that projects
+   * have replaced but that still holds records or runs from before (other than the app's own
+   * create-project runs), so they stay reachable in the switcher, the app home and the counts.
+   */
+  async function listed(): Promise<ProjectDefs> {
+    const d = await defs();
+    const missing = Object.values(d.apps ?? {}).filter((a) => !d.projects?.[a.id] && d.domains?.[a.id]);
+    if (!missing.length) return d;
+    const ids = missing.map((a) => a.id);
+    const used = new Set((await deps.pool.query<{ project: string }>(
+      `select distinct project from mw.runs where project = any($1::text[]) and not (workflow_id = any($2::text[]))`, [ids, [...APP_PLAYBOOKS]])).rows.map((r) => r.project));
+    for (const e of Object.values(deps.entities())) {
+      const app = e.domain ?? 'domain';
+      if (!projectScoped(e) || !ids.includes(app) || used.has(app)) continue;
+      try {
+        if ((await deps.pool.query(`select 1 from ${tableOf(e)} where project = $1 limit 1`, [app])).rows.length) used.add(app);
+      } catch { /* no table yet: no records */ }
+    }
+    if (!used.size) return d;
+    const own = Object.fromEntries(missing.filter((a) => used.has(a.id)).map((a) => [a.id, implicitProject(d, a)]));
+    return { ...d, projects: { ...d.projects, ...own } };
+  }
+
   const root = (): string => {
     if (!deps.root) throw new Error('changing projects needs a kernel with a workspace folder');
     return deps.root;
@@ -127,12 +151,12 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       ...(p.from ? { from: p.from } : {}), ...(p.implicit ? { implicit: true } : {}),
       ...(update ? { update } : {}),
       waiting: (waiting.get(p.id) ?? 0) + (update ? 1 : 0),
-      ...(row ? { createdAt: row.createdAt, updatedAt: row.updatedAt } : {}),
+      ...(row ? { createdAt: row.createdAt, updatedAt: row.updatedAt } : {}), ...(row?.createdBy ? { createdBy: row.createdBy } : {}),
     };
   }
 
   async function summaries(actor: Actor, filter: { app?: string } = {}): Promise<MwProjectSummary[]> {
-    const d = await defs();
+    const d = await listed();
     const [r, waiting] = await Promise.all([rows(), waitingByProject(actor)]);
     const out: MwProjectSummary[] = [];
     for (const p of Object.values(d.projects ?? {})) {
@@ -148,7 +172,7 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
   }
 
   async function detail(id: string, actor: Actor): Promise<MwProjectDetail | undefined> {
-    const d = await defs();
+    const d = await listed();
     const p = d.projects?.[id];
     if (!p || !sees(actor, p)) return undefined;
     const app = appOf(d, p.app);
@@ -197,10 +221,70 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
     return p;
   }
 
-  async function reindex() {
+  /** Indexes the files; the errors in the files of these projects (another project's don't block this one). */
+  async function reindex(ids: string[] = []): Promise<Diagnostic[]> {
     const diagnostics = await deps.index();
-    const errors = diagnostics.filter((x) => x.severity === 'error' && x.file?.startsWith('projects/'));
-    if (errors.length) throw new Error(`the project files don't check: ${errors.map((e) => `${e.file}: ${e.message}`).join('; ')}`);
+    if (!ids.length) return [];
+    // `memwise check`'s project checks too (a role that isn't one, …), which indexing doesn't run.
+    const d = await deps.project();
+    if (d) diagnostics.push(...checkProjects(d, d.roles ? Object.keys(d.roles) : undefined));
+    return diagnostics.filter((x) => x.severity === 'error' && ids.some((id) => x.file === `projects/${id}` || x.file?.startsWith(`projects/${id}/`)));
+  }
+
+  type Snapshot = Map<string, Map<string, Buffer> | null>;
+  async function snapshot(ids: string[]): Promise<Snapshot> {
+    const out: Snapshot = new Map();
+    for (const id of ids) {
+      const dir = join(root(), 'projects', id);
+      const files = new Map<string, Buffer>();
+      const walk = async (rel: string): Promise<boolean> => {
+        let entries;
+        try { entries = await readdir(join(dir, rel), { withFileTypes: true }); } catch { return false; }
+        for (const e of entries) {
+          const r = rel ? `${rel}/${e.name}` : e.name;
+          if (e.isDirectory()) await walk(r);
+          else if (e.isFile()) files.set(r, await readFile(join(dir, r)));
+        }
+        return true;
+      };
+      out.set(id, (await walk('')) ? files : null);
+    }
+    return out;
+  }
+  async function restore(saved: Snapshot): Promise<void> {
+    for (const [id, files] of saved) {
+      const dir = join(root(), 'projects', id);
+      await rm(dir, { recursive: true, force: true });
+      if (!files) continue;
+      for (const [rel, bytes] of files) {
+        await mkdir(dirname(join(dir, rel)), { recursive: true });
+        await writeFile(join(dir, rel), bytes);
+      }
+    }
+  }
+
+  /**
+   * Changes these projects' files, then indexes. When the change fails, or leaves one of these
+   * projects not checking, their files go back as they were and nothing is reported as done; once
+   * it checks, nothing after it is allowed to fail the operation.
+   */
+  async function changeFiles<T>(ids: string[], change: () => Promise<T>): Promise<T> {
+    const saved = await snapshot(ids);
+    let result: T;
+    try {
+      result = await change();
+    } catch (err) {
+      await restore(saved);
+      await deps.index().catch(() => undefined);
+      throw err;
+    }
+    const errors = await reindex(ids);
+    if (errors.length) {
+      await restore(saved);
+      await deps.index().catch(() => undefined);
+      throw new Error(`nothing was changed: the project files wouldn't check (${errors.map((e) => `${e.file}: ${e.message}`).join('; ')})`);
+    }
+    return result;
   }
 
   // ---------------------------------------------------------------- template updates
@@ -268,7 +352,7 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
   // ---------------------------------------------------------------- the app home
 
   async function home(appId: string, actor: Actor): Promise<MwAppHome> {
-    const d = await defs();
+    const d = await listed();
     const app = appOf(d, appId);
     const entities = deps.entities();
     const r = await rows();
@@ -396,19 +480,25 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       if (!appId) throw new Error('name the app, or a project to copy');
       appOf(d, appId);
       mustManage(d, actor, appId);
+      // Every app it will run is one the maker may make projects in (D105): the apps named, or the copied project's.
+      for (const a of new Set([...(input.also ?? []), ...(source?.apps ?? [])])) {
+        if (a === appId) continue;
+        appOf(d, a);
+        mustManage(d, actor, a);
+      }
       if (!input.name?.trim()) throw new Error('a project needs a name');
-      const taken = [...Object.keys(d.projects ?? {}), ...Object.keys(d.domains ?? {})];
+      const taken = [...Object.keys(d.projects ?? {}), ...Object.keys(d.domains ?? {}), ...Object.keys(d.apps ?? {})];
       const id = input.id ?? projectIdFor(input.name, taken);
+      if (d.apps?.[id] || d.domains?.[id]) throw new Error(`\`${id}\` is the id of an app; a project needs another id`);
       // Whoever makes it is in it: a person creating a study holds the owner role there.
       const people = input.people ?? (source ? undefined : await creatorAsPerson(d, actor, appId));
-      await createProjectFiles(d, {
+      await changeFiles([id], () => createProjectFiles(d, {
         id, name: input.name.trim(), app: appId, status: 'draft',
         ...(input.template ? { template: input.template } : {}), ...(input.copyFrom ? { copyFrom: input.copyFrom } : {}),
         ...(input.study ? { study: input.study } : {}), ...(people ? { people } : {}),
         ...(input.without ? { without: input.without } : {}), ...(input.settings ? { settings: input.settings } : {}),
         ...(input.also ? { also: input.also } : {}),
-      });
-      await reindex();
+      }));
       if (isPerson(actor)) await deps.pool.query('update mw.projects set created_by = $2 where id = $1 and created_by is null', [id, actor.personId]);
       changed(id);
       return must(id, actor);
@@ -430,8 +520,7 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       }
       if (patch.connections) fields.connections = Object.fromEntries(patch.connections.map(({ id: cid, ...c }) => [cid, c]));
       if (patch.settings) fields.settings = patch.settings;
-      await updateProjectFile(d, id, fields);
-      await reindex();
+      await changeFiles([id], () => updateProjectFile(d, id, fields));
       changed(id);
       return must(id, actor);
     },
@@ -441,9 +530,8 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       const p = projectOf(d, id);
       if (!sees(actor, p)) throw new Error(`there is no project ${id}`);
       mustManage(d, actor, p.app, p.id);
-      if (!p.implicit) await updateProjectFile(d, id, { status: undefined });
+      if (!p.implicit) await changeFiles([id], () => updateProjectFile(d, id, { status: undefined }));
       await store.setStatus(deps.pool, id, 'active');
-      await reindex();
       changed(id);
       return must(id, actor);
     },
@@ -454,9 +542,8 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       if (!sees(actor, p)) throw new Error(`there is no project ${id}`);
       mustManage(d, actor, p.app, p.id);
       if (p.implicit) throw new Error(`${p.name} is its app's own project; it can't be archived`);
-      await updateProjectFile(d, id, { status: 'archived' });
+      await changeFiles([id], () => updateProjectFile(d, id, { status: 'archived' }));
       await store.setStatus(deps.pool, id, 'archived');
-      await reindex();
       changed(id);
       return must(id, actor);
     },
@@ -501,12 +588,12 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       const p = projectOf(d, id);
       if (!sees(actor, p)) throw new Error(`there is no project ${id}`);
       mustManage(d, actor, p.app, p.id);
-      const r = await takeTemplateUpdate(d, id);
-      await store.skipVersion(deps.pool, id, null);
-      await reindex();
+      const r = await changeFiles([id], () => takeTemplateUpdate(d, id));
+      // The files changed and check: what follows can't undo that, so it doesn't fail the take.
+      await store.skipVersion(deps.pool, id, null).catch(() => undefined);
       changed(id);
       deps.emit({ kind: 'inbox' });
-      return r;
+      return { version: r.version, removed: r.removed };
     },
 
     async skipUpdate(id, actor) {

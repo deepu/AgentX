@@ -185,6 +185,11 @@ describe.skipIf(!postgresAvailable())('Stage 3 exit: projects inside apps, throu
     expect(options.templates.map((t) => t.id)).toEqual(['phase3', 'phase1'])
     expect(options.projects.map((p) => p.id)).toContain('mw301')
     expect(options.roles.map((x) => x.id)).toContain('study_manager')
+    // Someone else's draft of the same name is never taken for this chat's.
+    await svc.kernel.projects.create({
+      app: 'etmf', name: 'Study MW-311', id: 'mw311-other', template: 'phase3',
+      people: [{ email: 'anika.rao@northlight.example', name: 'Anika Rao', roles: ['study_manager'] }],
+    }, SYSTEM)
     const drafted = await tools.projectDraft!({ name: 'Study MW-311', template: 'phase1', study: 'MW-311' })
     expect(drafted).toMatchObject({ project: 'study-mw-311', status: 'draft', stepFinished: true })
     // Later calls change the draft the chat made.
@@ -192,6 +197,8 @@ describe.skipIf(!postgresAvailable())('Stage 3 exit: projects inside apps, throu
     expect(await tools.projectDraft!({ settings: { phase: 1 } })).toMatchObject({ project: 'study-mw-311', changed: true })
     const p = (await api.call<MwProjectDetail>(anika, ch.PROJECTS_GET, 'study-mw-311'))!
     expect(p).toMatchObject({ status: 'draft', study: 'MW-311', templateTitle: 'Phase 1 study', settings: expect.objectContaining({ phase: 1 }) })
+    expect((await svc.kernel.projects.get('mw311-other', SYSTEM))!).toMatchObject({ templateTitle: 'Phase 3 study' })
+    await svc.kernel.projects.discard('mw311-other', SYSTEM)
     // Only Anika could: Priya's describe is refused before anything starts.
     await expect(api.call(priya, ch.PROJECTS_DESCRIBE, { app: 'etmf', request: 'x' })).rejects.toThrow('only the Study manager')
   }, 60_000)

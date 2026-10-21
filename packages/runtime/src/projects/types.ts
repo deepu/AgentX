@@ -37,6 +37,8 @@ export interface MwProjectSummary {
   waiting: number;
   createdAt?: string;
   updatedAt?: string;
+  /** The person who made it (absent for projects from files). */
+  createdBy?: string;
 }
 
 /** An app with its projects, for the switcher (app first: eTMF › MW-301, D104). */

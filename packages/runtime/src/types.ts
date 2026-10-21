@@ -749,6 +749,8 @@ export interface RecordPage {
   /** Entity key. */
   entity: string;
   domain: string;
+  /** Stage 3: the project it belongs to (absent for records every project of the app shares). */
+  project?: string;
   entityName: string;
   regulated: boolean;
   id: string;

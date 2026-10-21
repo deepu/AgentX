@@ -1617,6 +1617,8 @@ export interface MwRecordReview {
 export interface MwRecordPage {
   entity: string
   domain: string
+  /** Stage 3: the project it belongs to (absent for records every project of the app shares). */
+  project?: string
   domainName: string
   entityName: string
   regulated: boolean
@@ -2025,6 +2027,8 @@ export interface MwProjectSummary {
   waiting: number
   createdAt?: string
   updatedAt?: string
+  /** The person who made it (absent for projects from files). */
+  createdBy?: string
 }
 
 /** An app with its projects (the switcher, app first). */

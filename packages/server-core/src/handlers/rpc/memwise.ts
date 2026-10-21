@@ -2205,7 +2205,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         ...(input.copyFrom ? { copyFrom: input.copyFrom } : {}), ...(input.also ? { also: input.also } : {}),
         ...(input.study ? { study: input.study } : {}), ...(input.people ? { people: input.people } : {}),
         ...(input.without ? { without: input.without } : {}), ...(input.settings ? { settings: input.settings } : {}),
-        ...(input.id ? { id: input.id } : {}),
+        // An id of its own is a project id, never an app's (the kernel refuses those: D107).
+        ...(input.id !== undefined ? { id: requireId(input.id, 'project') } : {}),
       }, actor)
       emitMemwiseChange({ kind: 'projects', id: p.id })
       return p

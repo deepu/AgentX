@@ -62,8 +62,9 @@ export function projectTools(service?: () => ProjectsService | undefined, actor?
     async execute({ app, name, template, copy_from, study }, ctx) {
       const s = need();
       const by = await who(ctx.token.onBehalfOf);
-      // The same draft asked for twice (a retried call) is the one already made.
-      const existing = (await s.list(by, { app })).find((p) => p.name === name.trim() && p.status === 'draft');
+      // The same draft asked for twice (a retried call) is the one this person already made; never someone else's.
+      const mine = by.kind === 'person' ? by.personId : undefined;
+      const existing = mine ? (await s.list(by, { app })).find((p) => p.name === name.trim() && p.status === 'draft' && p.createdBy === mine) : undefined;
       const p = existing ?? await s.create({ app, name, ...(template ? { template } : {}), ...(copy_from ? { copyFrom: copy_from } : {}), ...(study ? { study } : {}) }, by);
       return { project: p.id, name: p.name, status: p.status };
     },
