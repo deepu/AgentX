@@ -20,7 +20,7 @@ const { TooltipProvider } = await import('@memwise/ui')
 const { InboxItemView } = await import('../InboxItemView')
 type InboxActions = import('../InboxItemView').InboxActions
 const { PluginsList } = await import('../plugins/PluginsList')
-const { PluginOverview } = await import('../plugins/PluginView')
+const { PluginHero, PluginOverview } = await import('../plugins/PluginView')
 const { BindingReview } = await import('../plugins/BindingReview')
 const { RecordsTable, RecordView } = await import('../plugins/RecordsView')
 const { versionOrigin } = await import('../playbook/VersionLine')
@@ -63,6 +63,16 @@ describe('plugin page', () => {
     expect(html).toContain('not classified: treated as irreversible')
     expect(html).toContain('CRM follow-up')
     expect(html).toContain('Not bound yet.')
+  })
+
+  test('the hash reads as a hash, and a binding shows the date it was frozen, not "2 hours ago"', () => {
+    const digits = { ...samplePluginDetail, hash: '1401404584580dd8f39409c88eeadde1403ed8d944fd771dd78343e1ac4890a8' }
+    const html = render(<PluginOverview plugin={digits} now={NOW} />)
+    expect(html).toContain('1401404584580dd8…')
+    expect(html).toContain(`title="${digits.hash}"`)
+    const hero = render(<PluginHero plugin={{ ...samplePluginDetail, binding: { status: 'bound', version: 1, pluginVersion: '1.0.0', frozenAt: '2026-10-21T09:00:00Z' } }} now={Date.parse('2026-10-21T11:00:00Z')} />)
+    expect(hero).toContain('bound Oct 21, 2026')
+    expect(hero).not.toContain('ago')
   })
 })
 

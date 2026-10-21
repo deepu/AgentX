@@ -886,7 +886,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           policies[step.id] = compilePolicy(layersFor({ ...(loaded.project.domainPolicy ? { domainPolicy: loaded.project.domainPolicy } : {}), plugins, workflow: wf, step }))
         } catch { /* shown without */ }
       }
-      const ctxD: DtoContext = { ...c, project: loaded.project, diagnostics: loaded.diagnostics }
+      const ctxD: DtoContext = { ...c, project: loaded.project, diagnostics: loaded.diagnostics, ...(c.toolsFor ? { tools: c.toolsFor(loaded.project) } : {}) }
       return { ...d.toPlaybook(ctxD, wf, policies), startFields: startFields(wf) }
     } catch {
       return undefined

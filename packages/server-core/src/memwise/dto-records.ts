@@ -221,6 +221,7 @@ export function toTransitionOption(t: RecordTransitionOption): MwTransitionOptio
     ...(t.reason ? { reason: t.reason } : {}),
     ...(t.guard ? { guard: { condition: t.guard.condition, holds: !!t.guard.holds } } : {}),
     ...(t.signed ? { signed: true } : {}),
+    ...(t.automatic ? { automatic: true } : {}),
   }
 }
 
@@ -529,5 +530,6 @@ export function toEntityDefinition(project: ProjectDefs, key: string, e: EntityT
     ...(e.lifecycleChart ? { lifecycle: lifecycleOf(project, e.lifecycleChart) } : {}),
     invariants: [...(e.invariants ?? [])],
     usedBy,
+    ...(e.list?.length ? { list: [...e.list] } : {}),
   }
 }

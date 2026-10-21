@@ -18,6 +18,11 @@ const { findTextQuotes, normalizeQuote, textSegments } = await import('../record
 const { RecordPageView } = await import('../records/RecordPageView')
 const { DashboardView } = await import('../domains/DashboardView')
 const L = await import('../records/sample-literature')
+const { EntityView, viewToState } = await import('../domains/EntitiesView')
+const { defaultColumns, filterExample, recordColumns } = await import('../records/record-model')
+const S = await import('../records/sample-records')
+const { GeneratedForm } = await import('../GeneratedForm')
+const { isLongTextField } = await import('../domains/NewRecordDialog')
 
 beforeAll(() => {
   setI18n(setupI18n([initReactI18next]))
@@ -99,6 +104,24 @@ describe('the Topic page (25 §5)', () => {
     expect(html).toContain('Ask about this topic')
   })
 
+  test('a move only a playbook step makes is said in words, not offered as a button', () => {
+    const page = {
+      ...L.sampleTopicPage, status: 'draft',
+      lifecycle: {
+        states: ['draft', 'active', 'paused', 'closed'], current: 'draft',
+        transitions: [
+          { name: 'activate', label: 'Activate', to: 'active', allowed: false, reason: 'only a playbook step can move a Topic to active ("activate")', automatic: true },
+          { name: 'close', label: 'Close', to: 'closed', allowed: true },
+        ],
+      },
+    }
+    const html = render(<RecordPageView page={page} actions={{ openRecord: () => {}, transition: async () => ({ applied: true }) } as never} />)
+    expect(html).not.toContain('data-transition="activate"')
+    expect(html).toContain('data-automatic="activate"')
+    expect(html).toContain('Only a playbook step can move a Topic to active')
+    expect(html).toContain('data-transition="close"')
+  })
+
   test('no openChat: no chat button', () => {
     expect(render(<RecordPageView page={L.sampleTopicPage} />)).not.toContain('data-action="ask-about-record"')
   })
@@ -137,5 +160,81 @@ describe('free pages (25 §5)', () => {
     expect(html).toContain('Screenings by decision')
     expect(html).toContain('data-chart="line"')
     expect(html).toContain('<polyline')
+  })
+})
+
+describe('the Article records table (walkthrough)', () => {
+  const columns = [
+    { name: 'pmid', label: 'Pmid', type: 'Text' }, { name: 'doi', label: 'Doi', type: 'Text' }, { name: 'pmc_id', label: 'Pmc id', type: 'Text' },
+    { name: 'title', label: 'Title', type: 'Text' }, { name: 'journal', label: 'Journal', type: 'Text' }, { name: 'year', label: 'Year', type: 'Number' },
+    { name: 'article_types', label: 'Article types', type: 'List<Text>' }, { name: 'abstract', label: 'Abstract', type: 'Text' },
+    { name: 'n', label: 'N', type: 'Number' }, { name: 'sponsor', label: 'Sponsor', type: 'Text' }, { name: 'status', label: 'Status', type: 'Lifecycle' },
+  ]
+  const long = 'Background: oral GLP-1 receptor agonists. '.repeat(10)
+  const row = (id: string, title: string, values: Record<string, unknown>) => ({ entity: 'literature.article', id, title, status: 'found', hidden: [], values: { title, ...values } })
+  const result = {
+    entity: 'literature.article', columns, total: 2,
+    rows: [
+      row('a1', 'ATTAIN-2: orforglipron in adults with type 2 diabetes', { pmid: '40500001', doi: '10.1/attain2', journal: 'Lancet', year: 2025, article_types: ['Randomized Controlled Trial', 'Multicenter Study'], abstract: long, n: 1613 }),
+      row('a2', 'Example Review B', { pmid: '40500002', journal: 'BMJ', year: 2024, article_types: ['Review'], abstract: long }),
+    ],
+  }
+
+  test('default columns: short fields only, not the abstract, not the title, not a field no row has; the status last', () => {
+    const names = defaultColumns(columns, result.rows).map(c => c.name)
+    expect(names).toEqual(['pmid', 'doi', 'journal', 'year', 'article_types', 'status'])
+    expect(defaultColumns(columns, result.rows, { max: 10 }).map(c => c.name)).toEqual(['pmid', 'doi', 'journal', 'year', 'article_types', 'n', 'status'])
+    // Fields in the `title:` template are the first column already.
+    expect(defaultColumns(columns, result.rows, { title: '{pmid} · {title}' }).map(c => c.name)).not.toContain('pmid')
+    expect(defaultColumns(columns, [], { title: '{title}' }).map(c => c.name)).toEqual(['pmid', 'doi', 'pmc_id', 'journal', 'year', 'status'])
+    // The entity's `list:` wins, in its order.
+    expect(defaultColumns(columns, result.rows, { list: ['journal', 'year', 'n', 'status'] }).map(c => c.name)).toEqual(['journal', 'year', 'n', 'status'])
+  })
+
+  test('every column stays in the Columns menu, whatever the last query asked for', () => {
+    const type = { fields: columns.filter(c => c.name !== 'status').map(c => ({ name: c.name, type: c.type })), lifecycle: ['found', 'read'], definition: { calculated: [{ name: 'evidence_count' }] } }
+    const all = recordColumns(type, [{ name: 'year', label: 'Year', type: 'Number' }]).map(c => c.name)
+    expect(all).toEqual([...columns.filter(c => c.name !== 'status').map(c => c.name), 'evidence_count', 'status'])
+  })
+
+  test('one line per row: cut with an ellipsis, the whole value in the tooltip, lists joined, years not grouped', () => {
+    const type = { name: 'Article', key: 'literature.article', fields: columns.map(c => ({ name: c.name, type: c.type, schema: {} })), lifecycle: ['found', 'read'] }
+    const html = render(<EntityView domain={S.sampleDomains[0]!} type={type} tab="records" onTab={() => {}} views={[]} state={viewToState(null)} onState={() => {}} result={result} />)
+    expect(html).not.toContain('Background: oral GLP-1')
+    expect(html).not.toContain('>Abstract<')
+    expect(html).toContain('title="Randomized Controlled Trial, Multicenter Study"')
+    expect(html).toContain('>2025<')
+    expect(count(html, 'class="max-w-[16rem] truncate"')).toBeGreaterThan(0)
+    // Chosen columns still show what was chosen, the abstract too.
+    const chosen = render(<EntityView domain={S.sampleDomains[0]!} type={type} tab="records" onTab={() => {}} views={[]} state={{ ...viewToState(null), columns: ['abstract'] }} onState={() => {}} result={result} />)
+    expect(chosen).toContain(`title="${long}"`)
+  })
+
+  test("the filter box's example names the entity's own fields", () => {
+    const topic = { fields: [{ name: 'name', type: 'Text' }, { name: 'question', type: 'Text' }, { name: 'next_check', type: 'Date' }], lifecycle: ['draft', 'active'] }
+    expect(filterExample(topic)).toBe("status = 'draft'")
+    expect(filterExample({ fields: [{ name: 'study_type', type: 'Enum[randomised_trial, cohort]' }, { name: 'year', type: 'Number' }], lifecycle: ['found'] })).toBe("status = 'found' and study_type = 'randomised_trial'")
+    expect(filterExample({ fields: [{ name: 'year', type: 'Number' }] })).toBe('year > 0')
+    expect(filterExample({ fields: [{ name: 'name', type: 'Text' }] })).toBe('name is set')
+    const type = { name: 'Topic', key: 'literature.topic', fields: topic.fields.map(f => ({ ...f, schema: {} })), lifecycle: topic.lifecycle }
+    const html = render(<EntityView domain={S.sampleDomains[0]!} type={type} tab="records" onTab={() => {}} views={[]} state={viewToState(null)} onState={() => {}} result={null} />)
+    expect(html).toContain('placeholder="e.g. status = &#x27;draft&#x27;"')
+    expect(html).not.toContain('country')
+  })
+})
+
+describe('New Topic (walkthrough)', () => {
+  test('free text like the question is typed in a multi-line box; the name stays one line', () => {
+    const fields = [
+      { name: 'name', type: 'Text', schema: { type: 'string' }, required: true },
+      { name: 'question', type: 'Text', schema: { type: 'string' }, required: true },
+      { name: 'next_check', type: 'Date', schema: { type: 'string', format: 'date' } },
+    ]
+    expect(fields.map(isLongTextField)).toEqual([false, true, false])
+    const html = render(<GeneratedForm fields={fields} values={{}} onChange={() => {}} multiline={isLongTextField} />)
+    expect(count(html, '<textarea')).toBe(1)
+    expect(html).toContain('data-field="question" data-kind="longtext"')
+    // Without it, as every other form: one line each.
+    expect(count(render(<GeneratedForm fields={fields} values={{}} onChange={() => {}} />), '<textarea')).toBe(0)
   })
 })

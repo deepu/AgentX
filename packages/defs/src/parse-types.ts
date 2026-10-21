@@ -101,6 +101,7 @@ export function parseEntityFile(text: string, file: string): ParseResult<EntityT
     // Literature (25 §3, §6).
     key: Array.isArray(data.key) ? asStrings(data.key) : typeof data.key === 'string' ? [data.key.trim()] : undefined,
     keepFromChat: data.keep_from_chat === true ? true : undefined,
+    list: Array.isArray(data.list) ? asStrings(data.list) : undefined,
   });
   rememberLocator(value, src.locate);
   return { value, diagnostics: report.diagnostics };

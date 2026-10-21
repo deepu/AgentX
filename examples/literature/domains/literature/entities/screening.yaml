@@ -2,6 +2,7 @@ entity: Screening
 title: "{article}"
 parent: topic
 key: [topic, article]          # one screening per paper per topic, so a re-entered `record` adds none
+list: [topic, decision, confidence, year, phase]
 fields:
   topic:      { type: Ref<Topic>, required: true }
   article:    { type: Ref<Article>, required: true }

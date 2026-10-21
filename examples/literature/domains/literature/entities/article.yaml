@@ -1,6 +1,7 @@
 entity: Article
 title: "{title}"
 key: [pmid]                    # one record per paper, whichever topic found it first
+list: [journal, year, study_type, phase, n, status]   # the records table's columns; the abstract only on the page
 fields:
   pmid:          { type: Text, required: true, description: The PubMed id }
   doi:           { type: Text, description: "Link it as https://doi.org/<doi> when citing it" }

@@ -37,10 +37,35 @@ type JsonSchemaFn = (type: FieldDef['type'], recordTypes?: Record<string, { fiel
 /** Tool facts the screens show (name, description, effect class, plugin). */
 export interface ToolInfo { name: string; description?: string; effect?: EffectClass; plugin?: string }
 
+/**
+ * The tools of a project as the kernel binds them, for the screens: the caller's own tools first,
+ * then the entity tools (`literature.topic.get` reads), then what frozen bindings bind (with the
+ * binding's class, e.g. `PubMed.search_articles` reads), then the builtins plugin routes run on.
+ * `entity` and `plugin` are @memwise/defs' `entityTools` and `boundPluginTools` of the project.
+ */
+export function projectToolInfo(
+  direct: Map<string, ToolInfo>,
+  builtins: Map<string, ToolInfo>,
+  entity: Record<string, { effect: EffectClass }>,
+  plugin: Record<string, { effect?: EffectClass; plugin: string; description: string }>,
+): Map<string, ToolInfo> {
+  const out = new Map(direct)
+  for (const [name, t] of Object.entries(entity)) if (!out.has(name)) out.set(name, { name, effect: t.effect })
+  for (const [name, t] of Object.entries(plugin)) {
+    if (out.has(name)) continue
+    const description = t.description || builtins.get(name)?.description
+    out.set(name, { name, ...(description ? { description } : {}), ...(t.effect ? { effect: t.effect } : {}), plugin: t.plugin })
+  }
+  for (const [name, t] of builtins) if (!out.has(name)) out.set(name, t)
+  return out
+}
+
 export interface DtoContext {
   project: ProjectDefs
   diagnostics: Diagnostic[]
   tools: Map<string, ToolInfo>
+  /** The tools for another set of definitions (a draft's own bindings and entities). */
+  toolsFor?: (project: ProjectDefs) => Map<string, ToolInfo>
   jsonSchema: JsonSchemaFn
 }
 

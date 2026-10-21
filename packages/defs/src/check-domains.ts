@@ -179,6 +179,11 @@ function checkEntity(add: Add, project: ProjectDefs, def: EntityTypeDef, roles: 
     else if (!f.required) at('error', 'key-field-not-required', `key: \`${name}\` identifies a ${def.entity}, so every one has it: add \`required: true\``, ['key', i]);
     else if (f.access?.length) at('error', 'key-field-restricted', `key: \`${name}\` has \`access:\`, but a key finds the ${def.entity} for anyone who creates or reads one by it: drop \`access:\` from ${name} or key on another field`, ['key', i]);
   });
+  // The records table's default columns: its own fields, calculated ones, or its status.
+  def.list?.forEach((name, i) => {
+    if (def.fields[name] || def.calculated?.[name] || name === 'status') return;
+    at('error', 'list-unknown-field', `list: \`${name}\` is not a field of ${def.entity}`, ['list', i]);
+  });
   for (const [name, f] of Object.entries(def.fields)) {
     if (!f.quoteOf) continue;
     const path: PathKey[] = ['fields', name, 'quote_of'];

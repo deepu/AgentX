@@ -14,7 +14,7 @@ import { Info_Page } from '@/components/info/Info_Page'
 import { Info_Section } from '@/components/info/Info_Section'
 import { Info_Table } from '@/components/info/Info_Table'
 import { cn } from '@/lib/utils'
-import { absoluteTime, humanize, relativeTime } from '../format'
+import { absoluteDate, absoluteTime, humanize, shortHash } from '../format'
 import { EffectBadge, Pill } from '../playbook/Tags'
 import { effectLabel } from '../playbook/labels'
 import { bindingBadge, classSourceLabel, trustLabel } from './plugin-model'
@@ -40,11 +40,13 @@ export function PluginHero({ plugin, now }: { plugin: MwPluginDetail; now?: numb
           <Info_Badge color={badge.tone} data-binding-status={b.status}>{badge.label}</Info_Badge>
           <span>{t('memwise.plugins.versionShort', { version: plugin.version })}</span>
           <span>{trustLabel(plugin.trust, t)}</span>
+          {/* The date the binding was frozen, as its file says: a binding shipped with an example was
+              frozen when the example was written, not when this install started. */}
           {b.status === 'bound' && b.frozenAt && (
             <span title={absoluteTime(b.frozenAt, i18n.language)}>
               {b.frozenByName
-                ? t('memwise.plugins.boundBy', { name: b.frozenByName, time: relativeTime(b.frozenAt, now, i18n.language) })
-                : t('memwise.plugins.boundAt', { time: relativeTime(b.frozenAt, now, i18n.language) })}
+                ? t('memwise.plugins.boundBy', { name: b.frozenByName, time: absoluteDate(b.frozenAt, i18n.language) })
+                : t('memwise.plugins.boundAt', { time: absoluteDate(b.frozenAt, i18n.language) })}
             </span>
           )}
         </>
@@ -106,7 +108,7 @@ export function PluginOverview({ plugin, onOpenPlaybook, now }: PluginOverviewPr
           <Info_Table.Row label={t('memwise.plugins.trustLabel')} value={trustLabel(plugin.trust, t)} />
           {plugin.imported && <Info_Table.Row label={t('memwise.plugins.importedLabel')} value={t('memwise.plugins.importedClaude')} />}
           <Info_Table.Row label={t('memwise.plugins.folder')} value={<span className="font-mono text-label-sm [overflow-wrap:anywhere]">{plugin.dir}</span>} />
-          <Info_Table.Row label={t('memwise.plugins.hash')} value={<span className="font-mono text-label-sm">{plugin.hash.slice(0, 12)}</span>} />
+          <Info_Table.Row label={t('memwise.plugins.hash')} value={<span className="font-mono text-label-sm" title={plugin.hash}>{shortHash(plugin.hash)}</span>} />
           {plugin.environment?.runtime && <Info_Table.Row label={t('memwise.plugins.runtime')} value={plugin.environment.runtime} />}
           {plugin.environment?.network?.length ? <Info_Table.Row label={t('memwise.plugins.network')} value={plugin.environment.network.join(', ')} /> : null}
         </Info_Table>
@@ -212,8 +214,8 @@ export function PluginOverview({ plugin, onOpenPlaybook, now }: PluginOverviewPr
                 <span className="flex-1" />
                 <span className="text-label-sm text-tertiary" title={absoluteTime(v.frozenAt, i18n.language)}>
                   {v.frozenByName ?? v.frozenBy
-                    ? t('memwise.plugins.frozenBy', { name: v.frozenByName ?? v.frozenBy, time: relativeTime(v.frozenAt, now, i18n.language) })
-                    : relativeTime(v.frozenAt, now, i18n.language)}
+                    ? t('memwise.plugins.frozenBy', { name: v.frozenByName ?? v.frozenBy, time: absoluteDate(v.frozenAt, i18n.language) })
+                    : absoluteDate(v.frozenAt, i18n.language)}
                 </span>
               </li>
             ))}

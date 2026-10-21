@@ -1,5 +1,6 @@
 entity: Topic
 title: "{name}"
+list: [next_check, last_checked, included, excluded, evidence_kept, status]
 fields:
   name:         { type: Text, required: true, description: "A short name, like Oral GLP-1s for weight in T2D" }
   question:     { type: Text, required: true, description: "The question the team wants answered, in plain words" }

@@ -116,6 +116,14 @@ describe('entity key, quote_of and keep_from_chat', () => {
     expect(await checkLit({ [ARTICLE]: two })).toEqual([]);
   });
 
+  test('list: the default columns, each a field, a calculated field or status (list-unknown-field)', async () => {
+    const listed = article('key: [pmid]', 'key: [pmid]\nlist: [year, evidence_count, status]');
+    const { project } = await loadProject(makeMulti(listed, LIT));
+    expect(project.entities['sales.Article']!.list).toEqual(['year', 'evidence_count', 'status']);
+    expect(await checkLit(listed)).toEqual([]);
+    expect(await checkLit(article('key: [pmid]', 'key: [pmid]\nlist: [year, abstrakt]'))).toEqual([`error list-unknown-field ${ARTICLE} list.1`]);
+  });
+
   test('key-field-restricted: a key field may not have access:', async () => {
     expect(await checkLit(article('pmid: { type: Text, required: true }', 'pmid: { type: Text, required: true, access: [lead] }')))
       .toEqual([`error key-field-restricted ${ARTICLE} key.0`]);

@@ -535,6 +535,13 @@
     "keep_from_chat": {
       "description": "A chat anchored to a record may keep rows of this entity (with the person's permission).",
       "type": "boolean"
+    },
+    "list": {
+      "description": "The columns of its records table by default: fields, calculated fields or status. Default: its short fields.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": [

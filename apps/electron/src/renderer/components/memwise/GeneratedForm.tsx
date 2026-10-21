@@ -46,6 +46,8 @@ export interface GeneratedFormProps {
   className?: string
   /** Phase 5: what reading the documents found, per field (extract-model.ts). */
   suggestions?: FormSuggestions
+  /** Text fields typed in a multi-line box rather than one line (a Topic's question). */
+  multiline?: (field: MwField) => boolean
 }
 
 /** Per field: the suggestion its value came from (a badge), and others to offer ("Use this"). */
@@ -55,11 +57,12 @@ export interface FormSuggestions {
   onUse: (field: MwField, suggestion: MwExtractSuggestion) => void
 }
 
-export function GeneratedForm({ fields, values, onChange, errors, serverErrors, onUpload, disabled, className, suggestions }: GeneratedFormProps) {
+export function GeneratedForm({ fields, values, onChange, errors, serverErrors, onUpload, disabled, className, suggestions, multiline }: GeneratedFormProps) {
   return (
     <div className={cn('space-y-4', className)} data-memwise-form>
       {fields.map(f => {
         const ff = toFormField(f)
+        if (ff.kind === 'text' && multiline?.(f)) ff.kind = 'longtext'
         return (
           <FieldRow
             key={f.name}

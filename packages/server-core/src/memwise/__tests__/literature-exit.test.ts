@@ -36,7 +36,7 @@ import { createTestDatabase, postgresAvailable, type TestDatabase } from '@memwi
 import { loadProject, type ScriptedTurn } from '@memwise/defs'
 import { scriptedProvider, type ModelProvider, type ModelRequest } from '@memwise/gateway'
 import { handleRecordGet, handleRecordKeep, handleRecordQuery } from '@memwise/session-tools-core'
-import type { MwCase, MwDashboard, MwDomain, MwInboxItem, MwRecordPage, MwStepRecord } from '@memwise/shared/protocol'
+import type { MwCase, MwDashboard, MwDomain, MwInboxItem, MwPlaybook, MwRecordPage, MwStepRecord } from '@memwise/shared/protocol'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import type { RequestContext } from '../../transport/types'
 import { ctxFor, fakeServer, fakeSessions, quiet, until } from './api-harness'
@@ -346,6 +346,12 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
     expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
     expect(project.bindings?.['claude/pubmed']?.tools['PubMed.search_articles']).toEqual({ effect: 'read' })
     expect(project.pluginVersions?.['claude/pubmed']?.['1.0.0']?.manifest.mcpServers).toEqual({ PubMed: { url: fake.url } })
+    // The playbook page shows the searcher's tools as the kernel binds them: all three only read.
+    const watch = await api.call<MwPlaybook>(lead, ch.PLAYBOOKS_GET, 'set-up-watch')
+    const draft = Object.values(watch.steps).find((s) => s.title === 'Draft the PubMed search')!
+    expect(draft.tools.map((t) => [t.name, t.effect, t.classified])).toEqual([
+      ['literature.topic.get', 'read', true], ['PubMed.search_articles', 'read', true], ['PubMed.get_article_metadata', 'read', true],
+    ])
   })
 
   it('before: Example Trial A was stored and read last week, for another topic', async () => {

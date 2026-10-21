@@ -11,7 +11,7 @@ import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import { WsRpcServer, type WsRpcServerOptions } from '../../transport/server'
 import { WsRpcClient } from '../../transport/client'
 import { personMayCall } from '../../transport/person-channels'
-import { connectionModels, NO_MODEL_MESSAGE, pickPlaybookConnection, piAiProviderIdFor, unconfiguredModels } from '../models'
+import { connectionModels, newestMidTier, NO_MODEL_MESSAGE, pickPlaybookConnection, pickPlaybookModel, piAiProviderIdFor, unconfiguredModels } from '../models'
 import { addMissingMetaPlaybooks, affectsIndex, findExampleProject, seedProject } from '../seed'
 import { createSessionToken, sessionPersonId } from '../../webui/auth'
 
@@ -165,6 +165,30 @@ describe('model roles', () => {
     expect(Object.keys(r.modelRoles).sort()).toEqual([...roles].sort())
     expect(r.modelRoles.checker!.provider).toBe('anthropic')
     expect(r.message).not.toContain('sk-test')
+  })
+
+  it('playbook steps run on the newest Sonnet, not the connection\'s Opus, unless MEMWISE_PLAYBOOK_MODEL names one', async () => {
+    const ids = ['claude-haiku-4-5', 'claude-opus-5-5', 'claude-sonnet-4-5', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-6', 'claude-sonnet-5', 'claude-sonnet-5-5']
+    expect(newestMidTier('anthropic', ids)).toBe('claude-sonnet-5-5')
+    expect(newestMidTier('anthropic', ['claude-sonnet-4-5-20250929', 'claude-sonnet-4'])).toBe('claude-sonnet-4-5-20250929')
+    expect(pickPlaybookModel('anthropic', ids, 'claude-opus-5-5', '')).toBe('claude-sonnet-5-5')
+    expect(pickPlaybookModel('anthropic', ids, 'claude-opus-5-5', 'anthropic/claude-opus-5-5')).toBe('claude-opus-5-5')
+    // A name the catalog doesn't have is ignored; with no Sonnet at all the connection's model stays.
+    expect(pickPlaybookModel('anthropic', ids, undefined, 'claude-nonexistent')).toBe('claude-sonnet-5-5')
+    expect(pickPlaybookModel('anthropic', ['claude-opus-5-5', 'claude-haiku-4-5'], 'claude-opus-5-5', '')).toBe('claude-opus-5-5')
+    // OpenAI as before: the connection's model, else the preferred list.
+    expect(pickPlaybookModel('openai', ['gpt-4o', 'gpt-5', 'gpt-5.5'], 'gpt-5.5', '')).toBe('gpt-5.5')
+    expect(pickPlaybookModel('openai', ['gpt-4o', 'gpt-5', 'gpt-5.5'], undefined, '')).toBe('gpt-5')
+
+    const prev = process.env.MEMWISE_PLAYBOOK_MODEL
+    delete process.env.MEMWISE_PLAYBOOK_MODEL
+    try {
+      const r = await connectionModels({ roles }, { ...conn, defaultModel: 'claude-opus-5-5' })
+      expect(r.modelRoles.checker!.model).toMatch(/^claude-sonnet-/)
+      expect(r.message).toBe(`Agent steps use ${r.modelRoles.checker!.model} through "Anthropic".`)
+    } finally {
+      if (prev !== undefined) process.env.MEMWISE_PLAYBOOK_MODEL = prev
+    }
   })
 
   it('a subscription default leaves playbook steps to another connection with an API key', () => {

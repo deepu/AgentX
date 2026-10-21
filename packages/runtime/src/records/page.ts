@@ -237,7 +237,12 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
         const t = chart.transitions[name];
         const check = await checkTransition(db, def, entities, project, { id, transition: name }, mover);
         const guard = t?.guard ? await evaluateCondition(db, def, entities, id, t.guard).then((g) => ({ condition: t.guard!, holds: g.holds })).catch(() => ({ condition: t.guard!, holds: false })) : undefined;
-        transitions.push({ name, to, allowed: check.ok, ...(!check.ok ? { reason: check.message } : {}), ...(guard ? { guard } : {}), ...(t?.signed ? { signed: true } : {}) });
+        // A transition no role may make is the playbooks' (an "activate" `by: [step]`): never a person's button.
+        const automatic = !!t && !chart.fromList && !t.by.some((b) => b.kind === 'role');
+        transitions.push({
+          name, to, allowed: check.ok, ...(!check.ok ? { reason: check.message } : {}), ...(guard ? { guard } : {}), ...(t?.signed ? { signed: true } : {}),
+          ...(automatic ? { automatic: true } : {}),
+        });
       }
     });
     // The states on the shortest way from the first state to the current one, so a page doesn't

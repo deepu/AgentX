@@ -398,9 +398,12 @@ export function TransitionButtons({ transitions, onTransition, busy, size = 'sm'
 }) {
   const { t } = useTranslation()
   if (transitions.length === 0) return null
+  // A move only a playbook step (or a connector) makes is no button of a person's: it is said in words.
+  const buttons = transitions.filter(tr => !tr.automatic)
+  const automatic = transitions.filter(tr => tr.automatic)
   return (
     <div className="flex flex-wrap items-start gap-2" data-transitions>
-      {transitions.map(tr => {
+      {buttons.map(tr => {
         const why = transitionBlockedReason(tr, t)
         return (
           <span key={tr.name} className="inline-flex flex-col items-start gap-0.5">
@@ -419,6 +422,11 @@ export function TransitionButtons({ transitions, onTransition, busy, size = 'sm'
           </span>
         )
       })}
+      {automatic.map(tr => (
+        <span key={tr.name} className="max-w-[20rem] text-label-sm text-tertiary" data-automatic={tr.name}>
+          {transitionBlockedReason({ ...tr, allowed: false }, t)}
+        </span>
+      ))}
     </div>
   )
 }

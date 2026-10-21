@@ -246,6 +246,27 @@ export function isStructuralCheck(rule: string): boolean {
   return rule === 'outcome is declared' || rule === 'required tools called' || rule.startsWith('writes.')
 }
 
+// ---------------------------------------------------------------- filter
+
+/**
+ * An example filter for the Records filter box, from the entity's own fields: its first status
+ * (`status = 'draft'`) and one of its choice or number fields (`study_type = 'randomised_trial'`,
+ * `year > 0`), so the hint never names a field the entity doesn't have.
+ */
+export function filterExample(type: { fields: { name: string; type: string }[]; lifecycle?: string[] }): string {
+  const parts: string[] = []
+  if (type.lifecycle?.[0]) parts.push(`status = '${type.lifecycle[0]}'`)
+  const choice = type.fields.find(f => f.name !== 'status' && enumChoices(f.type)?.length)
+  const number = type.fields.find(f => baseType(f.type) === 'Number')
+  if (choice) parts.push(`${choice.name} = '${enumChoices(choice.type)![0]}'`)
+  else if (number) parts.push(`${number.name} > 0`)
+  if (parts.length === 0) {
+    const text = type.fields.find(f => baseType(f.type) === 'Text')
+    if (text) parts.push(`${text.name} is set`)
+  }
+  return parts.slice(0, 2).join(' and ')
+}
+
 // ---------------------------------------------------------------- related
 
 /** Up to two columns for a related table: not the status (it has its pill), nor a value that only repeats the row's title. */
@@ -262,6 +283,61 @@ export function cardColumns<C extends { name: string }>(columns: C[], rows: { ti
     return v === undefined || v === null || v === '' || (typeof v === 'string' && r.title.includes(v))
   }
   return columns.filter(c => c.name !== group && !rows.every(r => inTitle(r, c.name))).slice(0, 2)
+}
+
+/** A value too long for a table cell: free text over this many characters (an abstract, a quote). */
+export const LONG_VALUE_CHARS = 120
+
+const isLongValue = (v: unknown): boolean =>
+  typeof v === 'string' ? v.length > LONG_VALUE_CHARS || v.includes('\n') : Array.isArray(v) ? v.some(isLongValue) : false
+
+/** A records table column: the query result's, or one the definition has that the result left out. */
+export interface RecordColumn { name: string; label: string; type: string; calculated?: boolean; followed?: boolean }
+
+/**
+ * Every column a records table can show, in the definition's order (fields, calculated fields,
+ * then the status when it has a lifecycle), whatever the last query asked for: the Columns menu
+ * lists them all, so a column turned off can be turned on again.
+ */
+export function recordColumns(
+  type: { fields: { name: string; type: string }[]; lifecycle?: string[]; definition?: { calculated?: { name: string }[] } },
+  result?: RecordColumn[] | null,
+): RecordColumn[] {
+  const from = new Map((result ?? []).map(c => [c.name, c]))
+  const out: RecordColumn[] = []
+  const add = (c: RecordColumn) => { if (!out.some(x => x.name === c.name)) out.push(from.get(c.name) ?? c) }
+  for (const f of type.fields) add({ name: f.name, label: humanize(f.name), type: f.type })
+  for (const c of type.definition?.calculated ?? []) add({ name: c.name, label: humanize(c.name), type: 'Number', calculated: true })
+  for (const c of result ?? []) if (c.name !== 'status') add(c)
+  if (type.lifecycle?.length || from.has('status')) add({ name: 'status', label: humanize('status'), type: 'Lifecycle' })
+  return out
+}
+
+/**
+ * The columns a records table shows when nobody chose any. The entity's `list:` when it has one;
+ * else up to `max` short fields in their order, leaving out long free text (any value over
+ * LONG_VALUE_CHARS), fields no row has a value for, and fields the row's title already shows
+ * (those in its `title:` template, or whose value is in every title), then its status. The
+ * Columns menu can add the rest.
+ */
+export function defaultColumns<C extends { name: string }>(
+  columns: C[], rows: { title: string; values: Record<string, unknown> }[], opts: { list?: string[]; title?: string; max?: number } = {},
+): C[] {
+  if (opts.list?.length) return opts.list.flatMap(n => columns.filter(c => c.name === n))
+  const max = opts.max ?? 6
+  const status = columns.filter(c => c.name === 'status')
+  const fields = columns.filter(c => c.name !== 'status')
+  const inTemplate = new Set(opts.title ? [...opts.title.matchAll(/\{([^{}]+)\}/g)].map(m => m[1]!.trim()) : [])
+  if (rows.length === 0) return [...fields.filter(c => !inTemplate.has(c.name)).slice(0, max - status.length), ...status]
+  const empty = (v: unknown) => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)
+  const short = fields.filter(c => {
+    if (inTemplate.has(c.name)) return false
+    const values = rows.map(r => r.values[c.name])
+    if (values.every(empty)) return false
+    if (values.some(isLongValue)) return false
+    return !rows.every(r => empty(r.values[c.name]) || (typeof r.values[c.name] === 'string' && r.title.includes(r.values[c.name] as string)))
+  })
+  return [...short.slice(0, max - status.length), ...status]
 }
 
 /**

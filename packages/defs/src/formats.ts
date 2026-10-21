@@ -266,6 +266,7 @@ export const entityFormat = z.strictObject({
   page: pageLayoutFormat.optional().meta({ description: 'The record page layout.' }),
   key: z.union([z.string(), names]).optional().meta({ description: 'Fields that identify a record (Text, Number or Ref, required): unique, and creating one that exists returns it.' }),
   keep_from_chat: z.boolean().optional().meta({ description: 'A chat anchored to a record may keep rows of this entity (with the person\'s permission).' }),
+  list: names.optional().meta({ description: 'The columns of its records table by default: fields, calculated fields or status. Default: its short fields.' }),
 }).meta({ title: 'MemWise entity type', description: 'domain/entities/<name>.yaml or domains/<id>/entities/<name>.yaml.' });
 
 const scriptedTurn = z.strictObject({

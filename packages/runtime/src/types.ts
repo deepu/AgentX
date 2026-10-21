@@ -649,6 +649,8 @@ export interface RecordTransitionOption {
   reason?: string;
   guard?: { condition: string; holds: boolean };
   signed?: boolean;
+  /** No person can ever make it: only a playbook step, a connector or MemWise itself (`by: [step]`). */
+  automatic?: boolean;
 }
 
 export interface RecordFlag {

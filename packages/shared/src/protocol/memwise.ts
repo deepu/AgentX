@@ -1476,6 +1476,8 @@ export interface MwTransitionOption {
   reason?: string
   guard?: { condition: string; holds: boolean }
   signed?: boolean
+  /** No person can make it (only a playbook step, a connector or MemWise): shown as a note, never a button. */
+  automatic?: boolean
 }
 
 export interface MwRecordFlag { id: string; entity: string; recordId: string; invariant: string; message: string; raisedAt: string; closedAt?: string }
@@ -1738,6 +1740,8 @@ export interface MwEntityDefinition {
   invariants: string[]
   /** Playbooks that read, write or start from this entity. */
   usedBy: { workflowId: string; title: string }[]
+  /** The records table's default columns (`list:`); absent: the table picks short fields. */
+  list?: string[]
 }
 
 /** Phase 6 domain additions the sidebar and the domain page use (`MwDomain` stays as agreed). */

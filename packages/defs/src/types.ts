@@ -127,6 +127,11 @@ export interface EntityTypeDef {
   key?: string[];
   /** D83: a record chat may keep rows of this entity (`keep_from_chat: true`). */
   keepFromChat?: boolean;
+  /**
+   * The columns its records table shows when nobody chose any (`list: [journal, year, status]`):
+   * fields, calculated fields or `status`. Absent: short fields chosen from the records.
+   */
+  list?: string[];
 }
 
 // ---------------------------------------------------------------- policy files (08 §2)

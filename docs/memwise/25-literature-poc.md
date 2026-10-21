@@ -148,12 +148,13 @@ Full text from PMC, Embase or ClinicalTrials.gov, two reviewers and conflicts, a
 - `plugins/` holds the PubMed plugin (manifest made the way the installer does, tools discovered from the fake server, real URL kept) and the data plugin 1.1.0 (Apache-2.0, not bound: it is there for its skills).
 
 **Kernel.**
-- New check codes: `key-unknown-field`, `key-field-not-required`, `key-field-restricted`, `quote-of-not-text`, `quote-of-unknown-field`, `map-each-not-list`, `map-item-without-each`, `each-write-not-list`, `each-target-not-keyed` (warning), `quotes-ignored`.
+- New check codes: `key-unknown-field`, `key-field-not-required`, `key-field-restricted`, `quote-of-not-text`, `quote-of-unknown-field`, `map-each-not-list`, `map-item-without-each`, `each-write-not-list`, `each-target-not-keyed` (warning), `quotes-ignored`, `list-unknown-field`.
 - `each:` with an empty or unset list makes no calls and writes `[]`; a value that isn't a list goes to a person. `{ today: n }` uses the step's start time and the kernel process's local time zone (not a workspace setting: a kernel running in UTC moves to the next date at UTC midnight).
 - The key index is synced as `<table>__key` (a name over Postgres's 63 bytes keeps its start and ends with a hash of the whole); when existing rows clash, the key is left unenforced and the sync returns a note. A person creating a duplicate key gets a readable error; only steps get `existed: true`.
 - The quote normaliser is one function in `packages/defs/src/quotes.ts`, used by the step engine, the records service and the renderer's fallback highlighting. A quote for a field the step didn't write also fails.
 - Quote flags are keyed `quote_of:<field>`; a records consumer re-checks when the quoting record or its source text changes.
 - Interval chart rows are capped at 200 (with a skipped count). Record page charts are keyed by `mwPageBlockKey(area, index)`.
+- An entity may name its records table's default columns with `list: [journal, year, status]` (fields, calculated fields or `status`; anything else is `list-unknown-field`). Without it the table shows up to six short fields (no value over 120 characters, none its `title:` template already shows) and the status. Cells are one line, cut with an ellipsis, the whole value in the tooltip; the Columns menu lists every field whatever the last query asked for.
 
 **Chat.**
 - Record chats open in Ask mode when the record's domain has a `keep_from_chat` entity. `record_get` and `record_query` are allowed in Explore; `record_keep` is blocked there and asked in every other mode, never "Always allow". The prompt lists each row with its fields and quote. Results are wrapped as untrusted record data, and so is the record digest in the chat's context (text values cut at 300 characters; `record_get` has them whole). `record_get` gives each value's quote and whether it was found, from the page's text viewers.
@@ -161,7 +162,7 @@ Full text from PMC, Embase or ClinicalTrials.gov, two reviewers and conflicts, a
 - The record anchor is stored as `anchor_kind = 'record'`, `anchor_id = "<entity>:<id>"`; no migration (the column is plain text).
 - Plugin skills: newest version per plugin, named `<plugin>:<skill>`; the MemWise note is added to the "read these skill files" directive and to skill suggestions, not to the Read tool's result.
 
-**Models.** Playbook steps use the default connection when it has an API key, else the first other connection that does, so a Claude subscription can stay the default for chat (`pickPlaybookConnection`, models.ts).
+**Models.** Playbook steps use the default connection when it has an API key, else the first other connection that does, so a Claude subscription can stay the default for chat (`pickPlaybookConnection`, models.ts). On an Anthropic connection they run on the newest `claude-sonnet-*` in pi-ai's catalog, not the connection's chat model (often an Opus); `MEMWISE_PLAYBOOK_MODEL` names another, and the connection's model is the fallback when the catalog has no Sonnet (`pickPlaybookModel`). OpenAI connections keep their own model.
 
 **Open.**
 - Charts aren't clickable (interval rows don't open their record; bars don't filter a view), though the data carries `record` and `key`.

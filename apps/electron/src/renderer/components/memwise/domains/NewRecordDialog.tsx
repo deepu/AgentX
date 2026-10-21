@@ -25,6 +25,14 @@ export function newRecordFields(type: MwEntityType): MwField[] {
   return required.length ? required : own
 }
 
+/**
+ * A Text field typed in a multi-line box: free text like a Topic's question or inclusion rules.
+ * Names, titles and ids stay one line.
+ */
+export function isLongTextField(field: Pick<MwField, 'name' | 'type'>): boolean {
+  return field.type.trim() === 'Text' && !/(^|_)(name|title|id|code|number|key|email|phone)$/i.test(field.name)
+}
+
 export interface NewRecordDialogProps {
   open: boolean
   type: MwEntityType
@@ -94,6 +102,7 @@ export function NewRecordDialog({ open, type, title, onClose, create, onCreated 
               errors={errors}
               serverErrors={serverErrors}
               disabled={busy}
+              multiline={isLongTextField}
             />
           </div>
           {message && <p className="text-label-sm text-destructive whitespace-pre-line" role="alert">{message}</p>}
