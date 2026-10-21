@@ -91,6 +91,8 @@ export function affectedByChange(change: MwChange): AffectedLists {
     case 'records': return { ...NO_LISTS, inbox: true, domains: true }
     // Phase 6: a trigger fired, was held or released (held firings are inbox items; released ones start cases).
     case 'triggers': return { ...NO_LISTS, inbox: true, cases: true }
+    // Pages (26 §4): an answer change waits in the inbox; the domains list their pages.
+    case 'pages': return { ...NO_LISTS, inbox: !!change.changeId, cases: !!change.changeId, domains: true }
     default: return { ...NO_LISTS }
   }
 }

@@ -98,6 +98,26 @@ export {
   type RunCommandHandler,
   shellCommandFromBlock,
   consoleSnippetCommand,
+  // MemWise page blocks (26 §4): tiles, tables with quotes, live records and sub-pages
+  MarkdownPageBlock,
+  PageBlocksContext,
+  PAGE_BLOCK_LANGS,
+  parseTiles,
+  parseTable,
+  parseRecords,
+  parseSubpages,
+  type MarkdownPageBlockProps,
+  type PageBlocksActions,
+  type PageTile,
+  type PageCell,
+  type PageQuote,
+  type PageTable,
+  type PageTableColumn,
+  type PageRecords,
+  type PageRecordsResult,
+  type PageSubpage,
+  type PageSubpages,
+  type PageRecentChange,
 } from './components/markdown'
 
 // Charts (25 §5): one kit for record pages, dashboards and the ```chart block
