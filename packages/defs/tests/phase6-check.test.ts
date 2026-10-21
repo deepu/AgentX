@@ -359,9 +359,9 @@ describe('the eTMF example (examples/etmf)', () => {
   test('two domains, a regulated one, its entities and playbooks', async () => {
     const { project } = await loadProject(ETMF);
     expect(project.workspace).toMatchObject({ name: 'Northlight CRO', policy: { effects: { outbound: 'approve', irreversible: 'deny' } } });
-    expect(Object.keys(project.roles).sort()).toEqual(['cra', 'study_manager', 'tmf_specialist']);
+    expect(Object.keys(project.roles).sort()).toEqual(['cra', 'qa', 'study_manager', 'tmf_specialist']);
     expect(Object.keys(project.domains!).sort()).toEqual(['edc', 'etmf']);
-    expect(project.domains!.etmf).toMatchObject({ name: 'eTMF', regulated: true, retentionMs: 25 * 365 * 86_400_000, owner: 'study_manager', intake: { address: 'etmf' } });
+    expect(project.domains!.etmf).toMatchObject({ name: 'eTMF', regulated: true, retentionMs: 25 * 365 * 86_400_000, owner: 'study_manager', qa: 'qa', intake: { address: 'etmf' } });
     expect(project.domains!.etmf!.policy!.modelRoles).toEqual(expect.arrayContaining(['router', 'classifier', 'verifier']));
     expect(Object.keys(project.entities).sort()).toEqual(['edc.Site', 'etmf.Document', 'etmf.ExpectedDocument', 'etmf.Person', 'etmf.Site', 'etmf.Sponsor', 'etmf.Study']);
     expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'file-document', 'fix-rejected-document', 'route-message', 'watch-expiries']);

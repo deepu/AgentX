@@ -3,6 +3,7 @@ roles:
   tmf_specialist: { title: TMF specialist, description: "QCs, signs and files TMF documents" }
   study_manager:  { title: Study manager, description: Runs a study for the sponsor and opens its sites }
   cra:            { title: CRA, description: Monitors the sites and writes the visit reports }
+  qa:             { title: QA, description: "Signs change requests to playbooks, rules and record types" }
 policy:                        # house rules for every domain
   policy: workspace
   effects:

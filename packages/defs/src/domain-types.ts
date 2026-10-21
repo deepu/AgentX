@@ -35,6 +35,11 @@ export interface DomainDef {
   owner?: string;
   /** Regulated mode (24 §9). */
   regulated?: boolean;
+  /**
+   * Stage 5 (26 §8): the role whose signature makes a change request live in a regulated domain
+   * (QA). Default: the domain's owner.
+   */
+  qa?: string;
   /** Retention of records, e.g. 25y (recorded and shown). */
   retentionMs?: DurationMs;
   /** Domains whose workflows may start or call this domain's workflows (24 §8). */

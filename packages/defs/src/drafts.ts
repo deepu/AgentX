@@ -62,15 +62,51 @@ async function listFiles(dir: string, prefix = ''): Promise<string[]> {
   return out.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
+/** Where a draft's playbook lives: `workflows/<id>`, or its folder in a named domain (`meta.folder`). */
+export function draftPlaybookFolder(meta: Pick<DraftMeta, 'workflowId' | 'folder'>): string {
+  return meta.folder ?? `workflows/${meta.workflowId}`;
+}
+
+/** The domain a folder `domains/<d>/workflows/<id>` belongs to, else undefined (the default domain). */
+function domainOfFolder(folder: string | undefined): string | undefined {
+  const m = folder ? /^domains\/([^/]+)\/workflows\/[^/]+$/.exec(folder) : null;
+  return m ? m[1] : undefined;
+}
+
+/**
+ * The live folder of playbook `workflowId`: `workflows/<id>` when it is there, else the first
+ * `domains/<d>/workflows/<id>` that holds a workflow.yaml. Undefined when there is none.
+ */
+export async function livePlaybookFolder(root: string, workflowId: string): Promise<string | undefined> {
+  const abs = resolve(root);
+  if (existsSync(join(abs, 'workflows', workflowId, 'workflow.yaml'))) return `workflows/${workflowId}`;
+  let domains: string[];
+  try {
+    domains = (await readdir(join(abs, 'domains'), { withFileTypes: true })).filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name).sort();
+  } catch { return undefined; }
+  for (const d of domains) {
+    if (existsSync(join(abs, 'domains', d, 'workflows', workflowId, 'workflow.yaml'))) return `domains/${d}/workflows/${workflowId}`;
+  }
+  return undefined;
+}
+
 /**
  * The project-relative files a draft is about, in a project folder (live or the draft's own):
- * `domain/` and the playbook's folder; for a binding draft, `domain/` only.
+ * `domain/` and the playbook's folder; for a binding draft, `domain/` only. A draft of a named
+ * domain's playbook also holds `workspace.yaml` and every domain's definitions (all of
+ * `domains/`), so it loads and checks as a project.
  */
-async function contentFiles(root: string, workflowId: string, kind?: DraftKind): Promise<string[]> {
-  return [
-    ...(await listFiles(join(root, 'domain'))).map((f) => `domain/${f}`),
-    ...(kind === 'binding' ? [] : (await listFiles(join(root, 'workflows', workflowId))).map((f) => `workflows/${workflowId}/${f}`)),
-  ];
+async function contentFiles(root: string, meta: Pick<DraftMeta, 'workflowId' | 'kind' | 'folder'>): Promise<string[]> {
+  const out = (await listFiles(join(root, 'domain'))).map((f) => `domain/${f}`);
+  if (meta.kind === 'binding') return out;
+  if (domainOfFolder(meta.folder)) {
+    if (await isFile(join(root, 'workspace.yaml'))) out.push('workspace.yaml');
+    out.push(...(await listFiles(join(root, 'domains'))).map((f) => `domains/${f}`));
+    return out.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+  const folder = draftPlaybookFolder(meta);
+  out.push(...(await listFiles(join(root, folder))).map((f) => `${folder}/${f}`));
+  return out;
 }
 
 async function readText(p: string): Promise<string | null> {
@@ -150,16 +186,17 @@ export async function createDraft(root: string, input: CreateDraftInput): Promis
   const { workflowId } = input;
   if (input.kind === 'binding') throw new Error('a binding draft is made with createBindingDraft');
   if (!WORKFLOW_ID_PATTERN.test(workflowId)) throw new Error(`\`${workflowId}\` can't be a playbook id: use letters, digits, - and _`);
-  const liveDir = join(abs, 'workflows', workflowId);
-  const exists = existsSync(join(liveDir, 'workflow.yaml'));
-  const kind = input.kind ?? (exists ? 'change' : 'create');
-  if (kind === 'change' && !exists) throw new Error(`there is no playbook ${workflowId} (workflows/${workflowId}/workflow.yaml) to change`);
-  if (kind === 'create' && existsSync(liveDir)) throw new Error(`a playbook ${workflowId} already exists; make a change draft instead`);
+  const found = await livePlaybookFolder(abs, workflowId);
+  const kind = input.kind ?? (found ? 'change' : 'create');
+  if (kind === 'change' && !found) throw new Error(`there is no playbook ${workflowId} (workflows/${workflowId}/workflow.yaml) to change`);
+  if (kind === 'create' && (found || existsSync(join(abs, 'workflows', workflowId)))) throw new Error(`a playbook ${workflowId} already exists; make a change draft instead`);
+  const folder = kind === 'change' && found ? found : `workflows/${workflowId}`;
+  const liveDir = join(abs, folder);
 
   let live: WorkflowDef | undefined;
   if (kind === 'change') {
     live = (await loadWorkflow(liveDir, abs)).workflow;
-    if (!live) throw new Error(`the playbook ${workflowId} doesn't load; fix workflows/${workflowId}/workflow.yaml first`);
+    if (!live) throw new Error(`the playbook ${workflowId} doesn't load; fix ${folder}/workflow.yaml first`);
   }
 
   const now = new Date();
@@ -168,18 +205,21 @@ export async function createDraft(root: string, input: CreateDraftInput): Promis
   const dir = draftDir(abs, id);
   await mkdir(dir, { recursive: true });
 
+  const inDomain = folder.startsWith('domains/') ? folder : undefined;
   const base: Record<string, string> = {};
-  const files = kind === 'change' ? await contentFiles(abs, workflowId) : (await listFiles(join(abs, 'domain'))).map((f) => `domain/${f}`);
+  const files = kind === 'change'
+    ? await contentFiles(abs, { workflowId, kind, ...(inDomain ? { folder: inDomain } : {}) })
+    : (await listFiles(join(abs, 'domain'))).map((f) => `domain/${f}`);
   for (const rel of files) {
     const bytes = await readFile(join(abs, rel));
     base[rel] = hashOf(bytes);
     await mkdir(dirname(join(dir, rel)), { recursive: true });
     await writeFile(join(dir, rel), bytes);
   }
-  await mkdir(join(dir, 'workflows', workflowId), { recursive: true });
+  await mkdir(join(dir, folder), { recursive: true });
   if (live) {
     // The bump is part of making the draft, not an edit: the diff shows it, discard can't undo it.
-    const shape = join(dir, 'workflows', workflowId, 'workflow.yaml');
+    const shape = join(dir, folder, 'workflow.yaml');
     await writeFile(shape, setWorkflowVersion(await readFile(shape, 'utf8'), live.version + 1));
   }
 
@@ -194,6 +234,7 @@ export async function createDraft(root: string, input: CreateDraftInput): Promis
     createdBy: input.createdBy,
     createdAt: now.toISOString(),
     ...(input.runId ? { runId: input.runId } : {}),
+    ...(inDomain ? { folder: inDomain } : {}),
   };
   await writeMeta(dir, meta);
   await writeFile(join(dir, 'edits.jsonl'), '');
@@ -227,7 +268,7 @@ export async function createBindingDraft(root: string, input: CreateBindingDraft
   await mkdir(dir, { recursive: true });
 
   const base: Record<string, string> = {};
-  for (const rel of await contentFiles(abs, slug, 'binding')) {
+  for (const rel of await contentFiles(abs, { workflowId: slug, kind: 'binding' })) {
     const bytes = await readFile(join(abs, rel));
     base[rel] = hashOf(bytes);
     await mkdir(dirname(join(dir, rel)), { recursive: true });
@@ -306,13 +347,25 @@ export interface WriteDraftOptions {
   summary: string;
 }
 
-/** Why a path can't be written in a draft of `workflowId` (a binding draft: `domain/` only), or undefined when it can. */
-export function badDraftPath(path: string, workflowId: string, kind?: DraftKind): string | undefined {
+/**
+ * Why a path can't be written in a draft of `workflowId` (a binding draft: `domain/` only), or
+ * undefined when it can. A draft of a named domain's playbook (`folder`) may write the playbook's
+ * folder and its domain's `policy.yaml` and `entities/` (the playbook, its rules and record types).
+ */
+export function badDraftPath(path: string, workflowId: string, kind?: DraftKind, folder?: string): string | undefined {
   if (!path || path.includes('\\') || path.includes('\0')) return 'use a project-relative path with / between folders';
   if (path.startsWith('/') || /^[A-Za-z]:/.test(path)) return 'use a path relative to the project, not an absolute one';
   const parts = path.split('/');
   if (parts.some((p) => p === '' || p === '.' || p === '..')) return 'a path has no empty, `.` or `..` parts';
   if (parts.some((p) => p.startsWith('.'))) return 'files and folders starting with a dot are not part of a playbook';
+  const domain = domainOfFolder(folder);
+  if (domain && folder) {
+    const inPlaybook = path.startsWith(`${folder}/`);
+    const inRules = path === `domains/${domain}/policy.yaml`;
+    const inTypes = parts[0] === 'domains' && parts[1] === domain && parts[2] === 'entities' && parts.length > 3;
+    if (!inPlaybook && !inRules && !inTypes) return `a draft of ${workflowId} only holds ${folder}/..., domains/${domain}/policy.yaml and domains/${domain}/entities/...`;
+    return undefined;
+  }
   const inDomain = parts[0] === 'domain' && parts.length > 1;
   if (kind === 'binding') return inDomain ? undefined : 'a binding draft only holds domain/...';
   const inPlaybook = parts[0] === 'workflows' && parts[1] === workflowId && parts.length > 2;
@@ -333,7 +386,7 @@ export async function writeDraftFiles(root: string, id: string, files: DraftFile
   const list = fileList(files);
   const seen = new Set<string>();
   for (const f of list) {
-    const why = badDraftPath(f.path, meta.workflowId, meta.kind);
+    const why = badDraftPath(f.path, meta.workflowId, meta.kind, meta.folder);
     if (why) throw new Error(`can't write \`${f.path}\`: ${why}`);
     if (f.content !== null && typeof f.content !== 'string') throw new Error(`can't write \`${f.path}\`: the content is text, or null to delete the file`);
     if (seen.has(f.path)) throw new Error(`\`${f.path}\` is written twice in one edit`);
@@ -409,13 +462,18 @@ export async function discardDraftEdit(root: string, id: string, editId: string)
 
 // ---------------------------------------------------------------- hash, load, diff
 
-/** sha256 over the draft's domain/ and workflows/ files (sorted path, NUL, bytes, NUL); not its metadata. */
+/**
+ * sha256 over the draft's domain/ and workflows/ files (sorted path, NUL, bytes, NUL), and its
+ * workspace.yaml and domains/ when it has them; not its metadata.
+ */
 export async function draftContentHash(root: string, id: string): Promise<string> {
   const dir = draftDir(root, id);
   const h = createHash('sha256');
   for (const top of ['domain', 'workflows']) {
     for (const f of await listFiles(join(dir, top))) h.update(`${top}/${f}`).update('\0').update(await readFile(join(dir, top, f))).update('\0');
   }
+  if (await isFile(join(dir, 'workspace.yaml'))) h.update('workspace.yaml').update('\0').update(await readFile(join(dir, 'workspace.yaml'))).update('\0');
+  for (const f of await listFiles(join(dir, 'domains'))) h.update(`domains/${f}`).update('\0').update(await readFile(join(dir, 'domains', f))).update('\0');
   return h.digest('hex');
 }
 
@@ -436,7 +494,7 @@ interface PendingChange { path: string; draft: string | null; live: string | nul
  */
 async function changedFiles(root: string, dir: string, meta: DraftMeta): Promise<PendingChange[]> {
   const abs = resolve(root);
-  const draftFiles = await contentFiles(dir, meta.workflowId, meta.kind);
+  const draftFiles = await contentFiles(dir, meta);
   const paths = [...new Set([...Object.keys(meta.base), ...draftFiles])].sort();
   const out: PendingChange[] = [];
   for (const path of paths) {
@@ -465,8 +523,9 @@ async function playbookMovedOn(root: string, meta: DraftMeta): Promise<string[]>
     const liveHash = (await isFile(full)) ? hashOf(await readFile(full)) : undefined;
     return liveHash !== meta.base[file] ? [file] : [];
   }
-  const prefix = `workflows/${meta.workflowId}/`;
-  const live = (await listFiles(join(resolve(root), 'workflows', meta.workflowId))).map((f) => prefix + f);
+  const folder = draftPlaybookFolder(meta);
+  const prefix = `${folder}/`;
+  const live = (await listFiles(join(resolve(root), folder))).map((f) => prefix + f);
   const paths = [...new Set([...Object.keys(meta.base).filter((p) => p.startsWith(prefix)), ...live])].sort();
   const out: string[] = [];
   for (const path of paths) {
@@ -538,8 +597,9 @@ export async function applyDraft(root: string, id: string, opts: { hash?: string
     if (text === null) throw new Error(`the draft has no ${file}, so there is nothing to publish`);
     version = parseBindingFile(text, file).value?.version ?? 0;
   } else {
-    const shapeText = await readText(join(dir, 'workflows', meta.workflowId, 'workflow.yaml'));
-    if (shapeText === null) throw new Error(`the draft has no workflows/${meta.workflowId}/workflow.yaml, so there is nothing to publish`);
+    const folder = draftPlaybookFolder(meta);
+    const shapeText = await readText(join(dir, folder, 'workflow.yaml'));
+    if (shapeText === null) throw new Error(`the draft has no ${folder}/workflow.yaml, so there is nothing to publish`);
     version = parseWorkflowFile(shapeText, 'workflow.yaml').value?.version ?? 1;
   }
 
