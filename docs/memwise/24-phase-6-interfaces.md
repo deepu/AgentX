@@ -442,6 +442,7 @@ Example cases settle block states through the flow's dispatcher.
 - A person changes grants only in domains they own (the domain's owner role).
 - Signing locks after 5 wrong passwords within 15 minutes, a sliding window: someone guessing slowly is not locked out.
 - The `signature-ok` sign-in event is written in the submit transaction.
+- A value a person sends back exactly as the case has it keeps its provenance, the Phase 5 rule for external answers applied to person steps too. A review screen sends every value, so approving the agent's reading leaves it "read by the agent" and only corrections are the person's.
 - The page tree shows entity types that have no parent and no children as top-level groups. A group of more than 25 records opens a view.
 - Mentions are written on the kernel's own connection.
 - Passwords are at least 12 characters in a regulated workspace.
@@ -482,6 +483,12 @@ Example cases settle block states through the flow's dispatcher.
   - The Domains section has no middle list. When a project has only the default domain, the Domains section and the filters stay hidden.
 - The top "Pages" item opens a cross-domain overview that includes the workspace's own pages. "Automations" opens the playbook triggers; the earlier chat automations moved under it.
 - Document review shows inside the inbox, with no new route. The queue groups items by review kind, playbook and step.
+- The walkthrough against a real server (screenshots in the project files, `phase-6-walkthrough/`) fixed:
+  - record titles in place of ids in tables, boards, dashboards, related rows, case values and proposed values;
+  - shared views, whose files name the entity without its domain;
+  - `related: [versions, signatures]` in a page layout, which shows the history and signatures blocks;
+  - case names, condition-wait wording ("Waiting for a condition"), formatted percentages, enums and dates;
+  - grouping, board cards and the Status column on the Entities screen.
 - Diff review is a stand-in: the inbox item carries no record versions yet, so it compares a form step's prefill with what the step read.
 - Small gaps:
   - a record group such as "Sites · 7" opens the entity's full list without the parent filter;
@@ -499,6 +506,9 @@ Example cases settle block states through the flow's dispatcher.
 - Personal sign-in doesn't expire after 12 hours idle.
 - Playbooks drafted inside `domains/` are not covered by Phase 3 authoring yet.
 - Per-domain plugin bindings are not supported.
+- The eTMF flow shows no quote highlights on the PDF: quotes come only from a reader tool's fields (`page`, `quote`), and the classify step writes by judgement. The example needs a reader tool, or judgement writes need to carry a page and quote.
+- An admin can't set another person's password from the app; people choose their own at their first signature.
+- Small things: the Missing documents view repeats the same text in two columns; the case diagram tags a condition wait with a role; the inbox chip calls a document review "Form"; the bundled Postgres needs a manual `chmod` when the server runs as root.
 - These need real accounts or decisions:
   - incoming email on a real address (a Cloudflare Email Worker in front of the relay webhook);
   - SSO with MFA for signing;

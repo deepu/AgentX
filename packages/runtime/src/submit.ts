@@ -6,6 +6,7 @@ import type { DBOSClient } from '@dbos-inc/dbos-sdk';
 import { PgCaseStore, type Queryable } from '@memwise/db';
 import { domainOf, hasRole, scopedEntities, validateValue, type EntityTypeDef, type Provenance, type RecordTypes, type StepDef, type WorkflowDef } from '@memwise/defs';
 import type pg from 'pg';
+import { isDeepStrictEqual } from 'node:util';
 import { driverIdOf } from './ids.ts';
 import type { Submission, SubmissionMessage } from './driver.ts';
 import { storeMentions } from './records/context.ts';
@@ -166,6 +167,15 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput, opts:
     const provenance = input.sources && Object.keys(input.sources).length && deps.sourcedProvenance
       ? await deps.sourcedProvenance(db, input.stepRunId, clean, input.sources, input.by.personId)
       : {};
+    // A value sent back as the case already has it (a review screen sends every value) keeps where
+    // it came from; only what the person changed or added is theirs, as for external answers (D68).
+    if (!input.via) {
+      const had = (await new PgCaseStore().get(db, s.case_id))?.values ?? {};
+      for (const [field, v] of Object.entries(clean)) {
+        const h = had[field];
+        if (!provenance[field] && h?.provenance && isDeepStrictEqual(h.value, v)) provenance[field] = h.provenance;
+      }
+    }
     const submission: Submission = {
       stepRunId: input.stepRunId, by: input.by.personId, at: new Date().toISOString(), values: clean,
       ...(input.comment?.trim() ? { comment: input.comment.trim() } : {}),

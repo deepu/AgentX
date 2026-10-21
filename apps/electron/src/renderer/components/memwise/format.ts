@@ -18,7 +18,7 @@ import type {
 
 // ---------------------------------------------------------------- words
 
-const ACRONYMS = new Set(['gst', 'gstin', 'pan', 'crm', 'id', 'ifsc', 'vat', 'tds', 'kyc', 'pdf', 'url', 'api'])
+const ACRONYMS = new Set(['gst', 'gstin', 'pan', 'crm', 'id', 'ifsc', 'vat', 'tds', 'kyc', 'pdf', 'url', 'api', 'qc', 'cv', 'tmf', 'cra', 'irb', 'edc', 'brsr', 'sso', 'mfa'])
 
 /** `client_name` → "Client name", `gst.validate_gstin` → "GST validate GSTIN". */
 export function humanize(name: string): string {

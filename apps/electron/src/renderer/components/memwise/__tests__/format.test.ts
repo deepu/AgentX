@@ -30,6 +30,8 @@ describe('words', () => {
     expect(humanize('client_name')).toBe('Client name')
     expect(humanize('gstin_ok')).toBe('GSTIN ok')
     expect(humanize('needs_person')).toBe('Needs person')
+    expect(humanize('qc_comment')).toBe('QC comment')
+    expect(humanize('cv_expires')).toBe('CV expires')
     expect(toolLabel('intake.extract_fields')).toBe('Extract fields')
     expect(toolLabel('gst.validate_gstin')).toBe('Validate GSTIN')
     expect(toolLabel('domain.customer.create')).toBe('Create customer')

@@ -475,6 +475,7 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   // memwise — the app API; a remote workspace's server hosts its own kernel (19 §9)
   RPC_CHANNELS.memwise.STATUS,
   RPC_CHANNELS.memwise.PEOPLE_LIST,
+  RPC_CHANNELS.memwise.PEOPLE_PASSWORD_SET,
   RPC_CHANNELS.memwise.PEOPLE_ACT_AS,
   RPC_CHANNELS.memwise.PEOPLE_CREATE,
   RPC_CHANNELS.memwise.ROLES_LIST,

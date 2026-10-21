@@ -251,7 +251,10 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
   }, 60_000)
 
   it('the document is filed with a signature and an unbroken history', async () => {
-    await until('filed', () => api.call<MwCase>(specialist, ch.CASES_GET, fileCaseId), (c) => c.status !== 'active', 60_000)
+    const fileCase = await until('filed', () => api.call<MwCase>(specialist, ch.CASES_GET, fileCaseId), (c) => c.status !== 'active', 60_000)
+    // Values approved as the agent proposed them keep the agent's provenance; only the correction is the specialist's.
+    expect(fileCase.values.artifact?.provenance.kind).not.toBe('person')
+    expect(fileCase.values.version?.provenance.kind).toBe('person')
     const page = await api.call<MwRecordPage>(specialist, ch.RECORDS_PAGE, { entity: 'etmf.Document', id: documentId })
     expect(page.status).toBe('filed')
     expect(page.signatures).toHaveLength(1)
