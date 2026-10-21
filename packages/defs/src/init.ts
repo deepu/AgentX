@@ -8,7 +8,11 @@ import { BINDINGS_DIR } from './plugin-types.ts';
 
 /** The sample project in this repository (examples/intake). */
 // A file URL, not import.meta.dir: the bundled CLI runs on Electron's Node (and passes `source`).
-export const INTAKE_TEMPLATE_DIR = fileURLToPath(new URL('../../../examples/intake', import.meta.url));
+// The Electron main process is bundled as CommonJS, where `import.meta.url` is undefined; it never
+// uses this default (it seeds from the shipped examples), so fall back to a relative path there.
+export const INTAKE_TEMPLATE_DIR = import.meta.url
+  ? fileURLToPath(new URL('../../../examples/intake', import.meta.url))
+  : resolve('examples/intake');
 
 /** Playbooks every project ships with: building and changing playbooks, and binding plugins, are runs of these (20 §3, 22 §4). */
 export const META_PLAYBOOKS = ['create-playbook', 'change-playbook', 'bind-plugin'] as const;
