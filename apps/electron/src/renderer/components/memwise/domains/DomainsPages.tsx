@@ -70,7 +70,7 @@ function PagesOverviewPage() {
 
 // ---------------------------------------------------------------- domain page
 
-function DomainPage({ domainId, tab }: { domainId: string; tab?: 'rules' }) {
+export function DomainPage({ domainId, tab }: { domainId: string; tab?: 'rules' }) {
   const { t } = useTranslation()
   const { domain, loading } = useDomain(domainId)
   const playbooks = useAtomValue(memwisePlaybooksAtom)
@@ -143,7 +143,7 @@ function DomainPage({ domainId, tab }: { domainId: string; tab?: 'rules' }) {
 
 // ---------------------------------------------------------------- entities
 
-function EntitiesPage({ domainId, entity }: { domainId: string; entity?: string }) {
+export function EntitiesPage({ domainId, entity }: { domainId: string; entity?: string }) {
   const { t } = useTranslation()
   const { domain, loading } = useDomain(domainId)
   const types = useAtomValue(memwiseEntityTypesAtom)
@@ -199,7 +199,7 @@ function EntitiesPage({ domainId, entity }: { domainId: string; entity?: string 
 
 // ---------------------------------------------------------------- dashboard
 
-function DashboardPage({ domainId, pageId, params }: { domainId: string; pageId: string; params?: Record<string, string> }) {
+export function DashboardPage({ domainId, pageId, params }: { domainId: string; pageId: string; params?: Record<string, string> }) {
   const { t } = useTranslation()
   const { data, error, loading, reload } = useMemwiseDashboard(domainId, pageId, params)
   return (
@@ -212,7 +212,7 @@ function DashboardPage({ domainId, pageId, params }: { domainId: string; pageId:
 
 // ---------------------------------------------------------------- automations
 
-function AutomationsPage({ domainId }: { domainId?: string }) {
+export function AutomationsPage({ domainId }: { domainId?: string }) {
   const { t } = useTranslation()
   const { data, error, loading, reload } = useMemwiseTriggers()
   const domains = useAtomValue(memwiseDomainsAtom)

@@ -404,7 +404,7 @@ export interface RecordChatContext {
   actor: PersonActor
   records: RecordsService
   project: ProjectDefs
-  /** The anchored record. */
+  /** The anchored record; empty for a chat about a project page (doc 26 §2). */
   entity: string
   id: string
   domain: string
@@ -428,21 +428,30 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
     const { PgChatAnchorStore, parseRecordAnchorId } = await import('@memwise/db')
     const anchor = await new PgChatAnchorStore().get(svc.kernel.pool, sessionId)
     const rec = anchor?.anchorKind === 'record' ? parseRecordAnchorId(anchor.anchorId) : undefined
-    if (!anchor || !rec) throw new Error('This chat is not about a record.')
+    // A chat about a project page (doc 26 §2) looks records up in the project's domain; it has no record of its own.
+    const page = anchor && (anchor.anchorKind === 'project' || anchor.anchorKind === 'waiting' || anchor.anchorKind === 'dashboard')
+      ? (anchor.anchorKind === 'dashboard' ? anchor.anchorId.split(':')[0] : anchor.anchorId)
+      : undefined
+    if (!anchor || (!rec && !page)) throw new Error('This chat is not about a record.')
     if (!anchor.personId) throw new Error('This chat has no person to act for.')
     const records = (svc.kernel as { records?: RecordsService }).records
     if (!records) throw new Error('Records are not available in this version.')
     const actor = await svc.kernel.people.actorFor(anchor.personId)
     const { project } = await svc.kernel.project()
+    if (!rec) return { svc, actor, records, project, entity: '', id: '', domain: page || 'domain' }
     const domain = project.entities[rec.entity]?.domain ?? rec.entity.split('.')[0] ?? 'domain'
     return { svc, actor, records, project, entity: rec.entity, id: rec.id, domain }
   }
 
-  /** A bare entity name is looked up in the anchored record's domain. */
+  /** A bare entity name is looked up in the anchored record's domain (in every domain for `*`, all projects). */
   function entityKey(c: RecordChatContext, entity: string): string {
     if (c.project.entities[entity]) return entity
     if (!entity.includes('.')) {
-      const inDomain = Object.entries(c.project.entities).find(([key, def]) => (def.domain ?? 'domain') === c.domain && (key === `${c.domain}.${entity}` || def.entity.toLowerCase() === entity.toLowerCase()))
+      const inDomain = Object.entries(c.project.entities).find(([key, def]) => {
+        const domain = def.domain ?? 'domain'
+        if (c.domain !== '*' && domain !== c.domain) return false
+        return key === `${domain}.${entity}` || def.entity.toLowerCase() === entity.toLowerCase()
+      })
       if (inDomain) return inDomain[0]
     }
     return entity
@@ -496,6 +505,7 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
      */
     async update(input) {
       const c = await ctx()
+      if (!c.entity) throw new Error('This chat is not about a draft.')
       const initial = c.project.entities[c.entity]?.lifecycleChart?.initial
       const page = await c.records.page(c.entity, c.id, c.actor)
       if (!page) throw new Error('The draft was not found, or this person may not see it.')
