@@ -110,10 +110,19 @@ export function createAuditLogService(deps: AuditLogDeps): AuditLogService {
       const row = await entityStore.get(deps.pool, def, e.recordId).catch(() => undefined);
       if (row) titles.set(k, recordTitle(def, e.recordId, { ...row.values, ...(row.lifecycle ? { status: row.lifecycle } : {}) }));
     }
+    // A step entry is named as the playbook version its run was pinned to (a run that finished on
+    // version 1 after version 2 went live keeps version 1's step titles), else as the latest.
+    const stepRunIds = [...new Set(entries.map((e) => e.data.stepRunId).filter((x): x is string => typeof x === 'string'))];
+    const pinned = new Map<string, string>();
+    if (stepRunIds.length) {
+      const { rows } = await deps.pool.query<{ id: string; workflow_hash: string }>(`select id, workflow_hash from mw.step_runs where id = any($1)`, [stepRunIds]);
+      for (const r of rows) pinned.set(r.id, r.workflow_hash);
+    }
     const workflows = new Map<string, import('@memwise/defs').WorkflowDef | undefined>();
-    const workflowOf = async (id: string) => {
-      if (!workflows.has(id)) workflows.set(id, await deps.defs.latest(id).catch(() => undefined));
-      return workflows.get(id);
+    const workflowOf = async (id: string, hash?: string) => {
+      const key = hash ? `${id}@${hash}` : id;
+      if (!workflows.has(key)) workflows.set(key, await (hash ? deps.defs.workflow(id, hash) : deps.defs.latest(id)).catch(() => undefined));
+      return workflows.get(key);
     };
     const out: AuditEntryView[] = [];
     for (const e of entries) {
@@ -122,7 +131,8 @@ export function createAuditLogService(deps: AuditLogDeps): AuditLogService {
       if (title) v.recordTitle = title;
       const wfId = typeof e.data.workflow === 'string' ? e.data.workflow : undefined;
       if (wfId) {
-        const wf = await workflowOf(wfId);
+        const hash = typeof e.data.stepRunId === 'string' ? pinned.get(e.data.stepRunId) : undefined;
+        const wf = (hash ? await workflowOf(wfId, hash) : undefined) ?? await workflowOf(wfId);
         if (wf?.title) v.playbookTitle = wf.title;
         const step = typeof e.data.step === 'string' ? wf?.steps[e.data.step] : undefined;
         if (step?.title) v.stepTitle = step.title;
