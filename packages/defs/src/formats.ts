@@ -541,8 +541,16 @@ export const appFormat = z.strictObject({
   description: z.string().optional(),
   nouns: z.strictObject({ one: z.string(), many: z.string() }).optional()
     .meta({ description: 'What a project is called in this app, e.g. { one: study, many: studies }.' }),
-  home: z.strictObject({ title: z.string(), link: z.string().optional() }).optional()
-    .meta({ description: 'The app home, a page across its projects: { title: TMF across studies, link: All studies }.' }),
+  home: z.strictObject({
+    title: z.string(),
+    link: z.string().optional(),
+    columns: z.array(z.union([
+      z.strictObject({ label: z.string(), value: dashboardValue, format: z.enum(['number', 'percent']).optional() }),
+      z.strictObject({ label: z.string(), setting: z.string().meta({ description: "A key of each project's settings, e.g. phase." }) }),
+    ])).optional().meta({ description: 'One row per project: { label, value: { count | percent | sum | avg: <Entity>, where } } read in that project, or { label, setting }.' }),
+    next: z.string().optional().meta({ description: 'The setting holding each project\'s next milestone, { label, date }.' }),
+  }).optional()
+    .meta({ description: 'The app home, a page across its projects: { title: TMF across studies, link: All studies, columns }.' }),
   templates: z.record(z.string(), templateCard).optional().meta({ description: 'The template cards shown in New project, by id.' }),
 }).meta({ title: 'MemWise app', description: 'domains/<id>/app.yaml: the domain as a template for projects.' });
 

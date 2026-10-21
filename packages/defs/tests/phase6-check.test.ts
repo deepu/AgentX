@@ -364,7 +364,7 @@ describe('the eTMF example (examples/etmf)', () => {
     expect(project.domains!.etmf).toMatchObject({ name: 'eTMF', regulated: true, retentionMs: 25 * 365 * 86_400_000, owner: 'study_manager', intake: { address: 'etmf' } });
     expect(project.domains!.etmf!.policy!.modelRoles).toEqual(expect.arrayContaining(['router', 'classifier', 'verifier']));
     expect(Object.keys(project.entities).sort()).toEqual(['edc.Site', 'etmf.Document', 'etmf.ExpectedDocument', 'etmf.Person', 'etmf.Site', 'etmf.Sponsor', 'etmf.Study']);
-    expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'file-document', 'fix-rejected-document', 'route-message', 'watch-expiries']);
+    expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'create-project', 'file-document', 'fix-rejected-document', 'route-message', 'watch-expiries']);
     expect(Object.keys(project.domains!.etmf!.views).sort()).toEqual(['documents-in-qc', 'missing-documents', 'sites', 'sites-board']);
     expect(Object.keys(project.domains!.etmf!.pages)).toEqual(['tmf-health']);
 

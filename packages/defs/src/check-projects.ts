@@ -35,6 +35,18 @@ export function checkProjects(project: ProjectDefs, roles: string[] | undefined)
     for (const [name, rel] of Object.entries(def.relationships)) if (rel.cardinality === 'one') refuse(rel.target, ['relationships', name]);
   }
 
+  // app-home-unknown-entity: the app home's columns count records of the app's own types.
+  for (const app of Object.values(project.apps ?? {})) {
+    (app.home?.columns ?? []).forEach((c, i) => {
+      if (!('value' in c)) return;
+      const v = c.value as Record<string, unknown>;
+      const name = String(v.count ?? v.percent ?? v.sum ?? v.avg);
+      if (!resolveEntity(project.entities, app.id, name)) {
+        add('error', 'app-home-unknown-entity', `home: the column "${c.label}" counts ${name}, which ${app.title} doesn't have`, app.file, app, ['home', 'columns', i, 'value']);
+      }
+    });
+  }
+
   const projects = Object.values(project.projects ?? {});
   const roleSet = roles ? new Set(roles) : undefined;
   const studies = new Map<string, string>();

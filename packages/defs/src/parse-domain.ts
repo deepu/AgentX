@@ -140,7 +140,7 @@ export function parseViewFile(text: string, file: string): ParseResult<ViewDef> 
 
 const VALUE_KINDS = ['count', 'percent', 'sum', 'avg'] as const;
 
-function dashboardValue(raw: Record<string, unknown>): DashboardValue | undefined {
+export function dashboardValue(raw: Record<string, unknown>): DashboardValue | undefined {
   const kind = VALUE_KINDS.find((k) => typeof raw[k] === 'string');
   if (!kind) return undefined;
   const entity = (raw[kind] as string).trim();

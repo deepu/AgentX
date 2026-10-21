@@ -4,7 +4,8 @@
  */
 import type { DomainDef } from './domain-types.ts';
 import { appFormat, projectFormat } from './formats.ts';
-import type { AppDef, AppTemplateCard, ProjectConnectionDef, ProjectPersonDef, ProjectSource, ProjectStatus } from './project-types.ts';
+import { dashboardValue } from './parse-domain.ts';
+import type { AppDef, AppHomeColumn, AppHomeDef, AppTemplateCard, ProjectConnectionDef, ProjectPersonDef, ProjectSource, ProjectStatus } from './project-types.ts';
 import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, type ParseResult } from './source.ts';
 
 /** The app of a domain without `app.yaml`: version 1, named after the domain, one blank card. */
@@ -39,8 +40,7 @@ export function parseAppFile(text: string, file: string, domain: Pick<DomainDef,
   });
   const nouns = isRecord(data.nouns) && typeof data.nouns.one === 'string' && typeof data.nouns.many === 'string'
     ? { one: data.nouns.one, many: data.nouns.many } : undefined;
-  const home = isRecord(data.home) && typeof data.home.title === 'string'
-    ? compact({ title: data.home.title, link: asString(data.home.link) }) : undefined;
+  const home = isRecord(data.home) && typeof data.home.title === 'string' ? homeOf(data.home as Record<string, unknown> & { title: string }) : undefined;
   const value: AppDef = compact({
     id: domain.id,
     title: asString(data.title) ?? domain.name,
@@ -54,6 +54,19 @@ export function parseAppFile(text: string, file: string, domain: Pick<DomainDef,
   });
   rememberLocator(value, src.locate);
   return { value, diagnostics: report.diagnostics };
+}
+
+function homeOf(raw: Record<string, unknown> & { title: string }): AppHomeDef {
+  const columns: AppHomeColumn[] = [];
+  for (const c of Array.isArray(raw.columns) ? raw.columns : []) {
+    if (!isRecord(c) || typeof c.label !== 'string') continue;
+    if (typeof c.setting === 'string') { columns.push({ label: c.label, setting: c.setting }); continue; }
+    const value = isRecord(c.value) ? dashboardValue(c.value) : undefined;
+    if (!value) continue;
+    const format = c.format === 'percent' || c.format === 'number' ? c.format : 'percent' in value ? 'percent' : undefined;
+    columns.push(compact({ label: c.label, value, format }));
+  }
+  return compact({ title: raw.title, link: asString(raw.link), columns, next: asString(raw.next) });
 }
 
 /** `project.yaml` as written, before its template is resolved. */

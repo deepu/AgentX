@@ -1,0 +1,6 @@
+case: new_study
+fields:
+  app:     { type: Text, description: "The app the study is made in: etmf" }
+  request: { type: Text, description: "What was asked for, in their words" }
+  project: { type: Text, description: "The draft study's id: its folder under projects/" }
+  name:    { type: Text, description: "What people call it, e.g. Study MW-310" }

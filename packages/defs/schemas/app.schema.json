@@ -37,13 +37,143 @@
       "additionalProperties": false
     },
     "home": {
-      "description": "The app home, a page across its projects: { title: TMF across studies, link: All studies }.",
+      "description": "The app home, a page across its projects: { title: TMF across studies, link: All studies, columns }.",
       "type": "object",
       "properties": {
         "title": {
           "type": "string"
         },
         "link": {
+          "type": "string"
+        },
+        "columns": {
+          "description": "One row per project: { label, value: { count | percent | sum | avg: <Entity>, where } } read in that project, or { label, setting }.",
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "count": {
+                            "type": "string"
+                          },
+                          "where": {
+                            "type": "string",
+                            "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+                          }
+                        },
+                        "required": [
+                          "count"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "percent": {
+                            "type": "string"
+                          },
+                          "where": {
+                            "type": "string",
+                            "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+                          },
+                          "of": {
+                            "description": "Which rows make 100% (default all of them).",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "percent",
+                          "where"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "sum": {
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          },
+                          "where": {
+                            "type": "string",
+                            "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+                          }
+                        },
+                        "required": [
+                          "sum",
+                          "field"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "avg": {
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          },
+                          "where": {
+                            "type": "string",
+                            "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+                          }
+                        },
+                        "required": [
+                          "avg",
+                          "field"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "number",
+                      "percent"
+                    ]
+                  }
+                },
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "setting": {
+                    "type": "string",
+                    "description": "A key of each project's settings, e.g. phase."
+                  }
+                },
+                "required": [
+                  "label",
+                  "setting"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "next": {
+          "description": "The setting holding each project's next milestone, { label, date }.",
           "type": "string"
         }
       },

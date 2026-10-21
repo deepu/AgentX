@@ -134,6 +134,33 @@ describe('apps and projects', () => {
   });
 });
 
+describe('the app home and app playbooks', () => {
+  test('home: columns read per project, settings and the next milestone; an unknown entity is an error', async () => {
+    const { project } = await load(ETMF);
+    expect(project.apps!.etmf!.home).toEqual({
+      title: 'TMF across studies', link: 'All studies', next: 'next_milestone',
+      columns: [
+        { label: 'Phase', setting: 'phase' },
+        { label: 'Sites', value: { count: 'Site' } },
+        { label: 'Filed', value: { percent: 'ExpectedDocument', where: "status = 'filed'" }, format: 'percent' },
+        { label: 'Missing', value: { count: 'ExpectedDocument', where: "status = 'missing'" } },
+        { label: 'Waiting for QC', value: { count: 'Document', where: "status = 'in_qc'" } },
+      ],
+    });
+    const dir = etmfCopy();
+    const app = readFileSync(join(dir, 'domains/etmf/app.yaml'), 'utf8').replace('{ count: Site }', '{ count: Visit }');
+    write(dir, { 'domains/etmf/app.yaml': app });
+    expect(codes((await load(dir)).all)).toEqual(['app-home-unknown-entity domains/etmf/app.yaml']);
+  });
+
+  test('create-project is the app\'s own: projects get no copy of it', async () => {
+    const { project } = await load(ETMF);
+    expect(project.workflows['create-project']).toBeDefined();
+    for (const p of Object.values(project.projects!)) expect(p.workflows['create-project']).toBeUndefined();
+    expect(Object.keys(project.projects!.mw301!.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'file-document', 'fix-rejected-document', 'route-message', 'watch-expiries']);
+  });
+});
+
 describe('template updates', () => {
   test('version 5: MW-207 gets the change, MW-301 already does it; MW-207 keeps running version 4 until it takes it', async () => {
     const dir = etmfCopy();

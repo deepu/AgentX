@@ -45,8 +45,13 @@ export function domainEntities(project: Pick<ProjectDefs, 'entities'>, domain: s
   return out;
 }
 
-/** Whether a grant holds in `project` (Stage 3): a grant without a project holds in every project of its domain. */
-export const grantInProject = (g: Grant, project: string | undefined): boolean => !project || !g.project || g.project === project;
+/**
+ * Whether a grant holds in `project` (Stage 3): a grant without a project holds in every project
+ * of its domain. The app's own project (id = the domain id: what came before projects, and runs
+ * that act on the app itself, like create-project) is shared: any grant in the domain holds there.
+ */
+export const grantInProject = (g: Grant, project: string | undefined): boolean =>
+  !project || !g.project || g.project === project || project === g.domain;
 
 /**
  * Whether an actor's roles (workspace-wide) or grants hold `role` in `domain` (24 §2), and

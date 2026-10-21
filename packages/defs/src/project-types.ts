@@ -10,7 +10,7 @@
  *
  * STAGE 3 CONTRACT. Change only additively. Imports nothing at run time (safe for the app's bundles).
  */
-import type { FreePageDef, ViewDef } from './domain-types.ts';
+import type { DashboardValue, FreePageDef, ViewDef } from './domain-types.ts';
 import type { PolicyDoc, WorkflowDef } from './types.ts';
 
 /** `projects/` at the workspace root: one folder per project. */
@@ -28,6 +28,16 @@ export const PROJECT_ID_PATTERN = /^[a-z][a-z0-9_-]{0,62}$/;
  * (D95: fixed by the template), because every project of the app shares their tables.
  */
 export const OVERRIDABLE = /^(workflows\/[^/]+\/.+|policy\.ya?ml|pages\/[^/]+\.ya?ml|views\/[^/]+\.ya?ml)$/;
+
+/**
+ * Playbooks of an app that act on the app itself, not inside one project: `create-project` (a
+ * new project described in chat). Projects get no copy of them; their runs belong to the app's
+ * own project (id = the app id), which everyone with a role in the app sees.
+ */
+export const APP_PLAYBOOKS: readonly string[] = ['create-project'];
+
+/** The kernel's `projects.*` tools (the create-project conversation's), bound in every workspace. */
+export const PROJECT_KERNEL_TOOLS: Readonly<Record<string, 'read' | 'draft'>> = { 'projects.options': 'read', 'projects.create_draft': 'draft' };
 
 export type ProjectStatus = 'draft' | 'active' | 'archived';
 export const PROJECT_STATUSES: readonly ProjectStatus[] = ['draft', 'active', 'archived'];
@@ -47,6 +57,20 @@ export interface AppTemplateCard {
 }
 
 /** `domains/<id>/app.yaml`. A domain without one is an app at version 1 with one card, "Blank". */
+/** A column of the app home's table, one row per project (26 §3, "TMF across studies"). */
+export type AppHomeColumn =
+  | { label: string; value: DashboardValue; format?: 'number' | 'percent' }
+  | { label: string; setting: string };
+
+/** `home:` of app.yaml: the page across an app's projects. */
+export interface AppHomeDef {
+  title: string;
+  link?: string;
+  columns: AppHomeColumn[];
+  /** The project setting that holds the next milestone, `{ label, date }`. */
+  next?: string;
+}
+
 export interface AppDef {
   /** The domain id. */
   id: string;
@@ -57,7 +81,7 @@ export interface AppDef {
   /** What a project is called in this app: `{ one: study, many: studies }`. */
   nouns?: { one: string; many: string };
   /** The app home ("TMF across studies"), a page across the app's projects. */
-  home?: { title: string; link?: string };
+  home?: AppHomeDef;
   templates: AppTemplateCard[];
   /** Older versions kept under `versions/<n>/`, ascending. */
   versions: number[];

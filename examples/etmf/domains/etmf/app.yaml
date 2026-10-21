@@ -4,7 +4,16 @@ title: eTMF
 version: 4
 description: The trial master file of a study, one project per study.
 nouns: { one: study, many: studies }
-home: { title: TMF across studies, link: All studies }
+home:
+  title: TMF across studies
+  link: All studies
+  columns:
+    - { label: Phase, setting: phase }
+    - { label: Sites, value: { count: Site } }
+    - { label: Filed, value: { percent: ExpectedDocument, where: "status = 'filed'" } }
+    - { label: Missing, value: { count: ExpectedDocument, where: "status = 'missing'" } }
+    - { label: Waiting for QC, value: { count: Document, where: "status = 'in_qc'" } }
+  next: next_milestone
 templates:
   phase3:
     title: Phase 3 study

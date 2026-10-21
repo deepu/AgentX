@@ -380,6 +380,8 @@ export interface EntityEvent {
   transition?: string;
   /** Who made the change (the version's `by`). */
   by?: string;
+  /** Stage 3: the record's project (absent for an app-scoped record). */
+  project?: string;
   at: string;
 }
 

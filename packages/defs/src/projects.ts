@@ -20,7 +20,7 @@ import { parsePageFile, parseViewFile } from './parse-domain.ts';
 import { parsePolicyFile } from './parse-policy.ts';
 import { defaultApp, parseAppFile, parseProjectFile, projectSource, type ProjectFile } from './parse-projects.ts';
 import {
-  APP_VERSIONS_DIR, OVERRIDABLE, OVERRIDES_DIR, PROJECT_ID_PATTERN, PROJECTS_DIR, type AppDef, type MwProjectDef,
+  APP_PLAYBOOKS, APP_VERSIONS_DIR, OVERRIDABLE, OVERRIDES_DIR, PROJECT_ID_PATTERN, PROJECTS_DIR, type AppDef, type MwProjectDef,
 } from './project-types.ts';
 import { locatorOf, rememberLocator, sha256 } from './source.ts';
 import type { Diagnostic, PolicyDoc, ProjectDefs, WorkflowDef } from './types.ts';
@@ -185,7 +185,7 @@ async function resolveProject(abs: string, project: ProjectDefs, pf: ProjectFile
   // Playbooks: the template's at `version`, each file replaced by an override when there is one.
   const workflows: Record<string, WorkflowDef> = {};
   for (const name of await subdirs(join(abs, tdir, 'workflows'))) {
-    if (without.has(`workflows/${name}`)) continue;
+    if (without.has(`workflows/${name}`) || APP_PLAYBOOKS.includes(name)) continue;
     const overlay = new Map<string, WorkflowOverlayFile>();
     for (const path of overrides) {
       const prefix = `workflows/${name}/`;

@@ -1,0 +1,17 @@
+name: copies-mw301
+description: >
+  The study manager asks for a new study that works like MW-301; the conversation makes MW-310 as
+  a draft copied from it.
+case:
+  app: etmf
+  request: Set up MW-310, a phase 3 study like MW-301.
+submit:
+  interview:
+    outcome: drafted
+    values:
+      project: study-mw-310
+      name: Study MW-310
+expect:
+  outcome: drafted
+  state: end
+  writes: { project: study-mw-310, name: Study MW-310 }
