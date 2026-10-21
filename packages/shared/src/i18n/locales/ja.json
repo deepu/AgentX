@@ -1752,6 +1752,7 @@
   "memwise.review.edited": "編集済み",
   "memwise.review.fillRequired": "先に必須の値を入力してください。",
   "memwise.review.flag": "フラグ",
+  "memwise.review.formChecks": "エージェントの回答は形式どおりです。結果はこのステップで許可されたもので、すべての値の型が正しいです。",
   "memwise.review.inARow_one": "{{count}} 件を続けてレビュー",
   "memwise.review.inARow_other": "{{count}} 件を続けてレビュー",
   "memwise.review.next": "次へ",

@@ -1752,6 +1752,7 @@
   "memwise.review.edited": "Editado",
   "memwise.review.fillRequired": "Rellene primero los valores obligatorios.",
   "memwise.review.flag": "Alerta",
+  "memwise.review.formChecks": "La respuesta del agente está bien formada: su resultado es uno que el paso permite y cada valor tiene el tipo correcto.",
   "memwise.review.inARow_one": "Revisar {{count}} seguidas",
   "memwise.review.inARow_other": "Revisar {{count}} seguidas",
   "memwise.review.next": "Siguiente",

@@ -1752,6 +1752,7 @@
   "memwise.review.edited": "Szerkesztve",
   "memwise.review.fillRequired": "Előbb töltse ki a kötelező értékeket.",
   "memwise.review.flag": "Jelzés",
+  "memwise.review.formChecks": "Az ügynök válasza formailag helyes: az eredménye a lépés által megengedett, és minden érték típusa megfelelő.",
   "memwise.review.inARow_one": "{{count}} áttekintése egymás után",
   "memwise.review.inARow_other": "{{count}} áttekintése egymás után",
   "memwise.review.next": "Következő",

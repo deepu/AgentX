@@ -9,7 +9,7 @@ import { initReactI18next, setI18n } from 'react-i18next'
 import { setupI18n, i18n } from '@memwise/shared/i18n'
 import type { MwDashboardBlock, MwInboxItem, MwTransitionOption } from '@memwise/shared/protocol'
 import {
-  acceptAllAbove, areaBlocks, cardColumns, chartData, changedReviewFields, confidenceLabel, detailFields, diffRows, fieldSourceLabel,
+  acceptAllAbove, areaBlocks, cardColumns, isStructuralCheck, splitRelated, chartData, changedReviewFields, confidenceLabel, detailFields, diffRows, fieldSourceLabel,
   fieldSourceTone, firstDocumentReview, formatTypedValue, headerFields, heatBucket, initialReviewDraft, isReviewItem, groupRows, kpiBelowTarget,
   kpiValue, layoutColumns, lifecycleSteps, lockedMessage, missingReviewFields, nestTree, queueKeyAction, queueNeighbour,
   relatedColumns, retentionLabel, reviewOutcomes, sameKindItems, statusLabel, tableColumns, tableRows, tableSubmission, transitionBlockedReason, transitionLabel,
@@ -57,6 +57,20 @@ describe('record values and sources', () => {
     expect(formatTypedValue('Percent', 52, t, 'en')).toBe('52%')
     // An enum value reads as words, as the definitions list them.
     expect(formatTypedValue('Enum[start_up, conduct, close_out]', 'start_up', t, 'en')).toBe('Start up')
+  })
+
+  test('related versions and signatures are the history block, drawn once', () => {
+    const layout = { layout: 'split' as const, header: [], areas: { right: [{ kind: 'related' as const, relationships: ['versions', 'signatures', 'documents'] }] } }
+    expect(splitRelated(layout, ['versions', 'signatures', 'documents'])).toEqual({ relationships: ['documents'], history: true })
+    const withHistory = { ...layout, areas: { ...layout.areas, below: [{ kind: 'history' as const }] } }
+    expect(splitRelated(withHistory, ['versions', 'signatures'])).toEqual({ relationships: [], history: false })
+  })
+
+  test("the engine's checks on an agent's answer are told from the domain's", () => {
+    expect(isStructuralCheck('outcome is declared')).toBe(true)
+    expect(isStructuralCheck('required tools called')).toBe(true)
+    expect(isStructuralCheck('writes.site: Ref<Site>')).toBe(true)
+    expect(isStructuralCheck('The Investigator CV is a missing expected document of US-012.')).toBe(false)
   })
 
   test('a board card skips the group and what its title already says', () => {

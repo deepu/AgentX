@@ -1814,6 +1814,7 @@
   "memwise.review.edited": "Edytowane",
   "memwise.review.fillRequired": "Najpierw uzupełnij wymagane wartości.",
   "memwise.review.flag": "Flaga",
+  "memwise.review.formChecks": "Odpowiedź agenta jest poprawna formalnie: jej wynik jest dozwolony w tym kroku, a każda wartość ma właściwy typ.",
   "memwise.review.inARow_few": "Przejrzyj {{count}} po kolei",
   "memwise.review.inARow_many": "Przejrzyj {{count}} po kolei",
   "memwise.review.inARow_one": "Przejrzyj {{count}} po kolei",

@@ -1752,6 +1752,7 @@
   "memwise.review.edited": "Bearbeitet",
   "memwise.review.fillRequired": "Füllen Sie zuerst die Pflichtwerte aus.",
   "memwise.review.flag": "Hinweis",
+  "memwise.review.formChecks": "Die Antwort des Agenten ist formal korrekt: Das Ergebnis ist für den Schritt zulässig, und jeder Wert hat den richtigen Typ.",
   "memwise.review.inARow_one": "{{count}} nacheinander prüfen",
   "memwise.review.inARow_other": "{{count}} nacheinander prüfen",
   "memwise.review.next": "Weiter",

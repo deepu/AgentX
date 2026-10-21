@@ -70,11 +70,21 @@ function editable(p: MwProposedValue): 'text' | 'number' | 'date' | 'boolean' | 
   return typeof p.value === 'object' && p.value !== null ? null : 'text'
 }
 
-function provenanceText(p: MwProposedValue, t: ReturnType<typeof useTranslation>['t']): string {
+function rationaleOf(p: MwProposedValue): string | undefined {
+  return p.provenance?.kind === 'judgement' ? p.provenance.rationale : undefined
+}
+
+/** The agent's reasoning when every value it proposed gives the same one: shown once, above them. */
+export function sharedRationale(proposed: MwProposedValue[]): string | undefined {
+  const reasons = proposed.map(rationaleOf).filter((r): r is string => !!r)
+  return reasons.length > 1 && reasons.every(r => r === reasons[0]) ? reasons[0] : undefined
+}
+
+function provenanceText(p: MwProposedValue, t: ReturnType<typeof useTranslation>['t'], shared?: string): string {
   const sure = confidenceLabel(p.confidence, t)
   const who = p.provenance?.kind === 'person' ? t('memwise.review.byPerson') : t('memwise.review.byAgent')
-  const why = p.provenance?.kind === 'judgement' ? p.provenance.rationale : undefined
-  return [sure ? `${who} · ${sure}` : who, why].filter(Boolean).join(' · ')
+  const why = rationaleOf(p)
+  return [sure ? `${who} · ${sure}` : who, why === shared ? undefined : why].filter(Boolean).join(' · ')
 }
 
 export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, onPick, queue, initialSigning = false }: ReviewPanelProps) {
@@ -87,6 +97,7 @@ export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, on
   const [signing, setSigning] = React.useState(initialSigning)
   const { approve, sendBack } = reviewOutcomes(review.outcomes)
   const changed = changedReviewFields(review, draft)
+  const shared = sharedRationale(review.proposed)
   const missing = missingReviewFields(review, draft)
   const done = !!result?.applied
 
@@ -175,6 +186,7 @@ export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, on
       ))}
 
       <Info_Section title={t('memwise.review.proposed')} description={changed.length ? t('memwise.review.changedCount', { count: changed.length }) : t('memwise.review.proposedHint')}>
+        {shared && <p className="border-b border-separator px-3.5 py-2.5 text-label-sm text-secondary" data-agent-rationale>{t('memwise.review.byAgent')} · {shared}</p>}
         <ul className="divide-y divide-separator" data-proposed>
           {review.proposed.map(p => {
             const kind = editable(p)
@@ -196,7 +208,7 @@ export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, on
                   </label>
                   <div className="min-w-0" onClick={e => e.stopPropagation()}>
                     {kind === null || done ? (
-                      <span className="text-label font-medium text-foreground">{formatTypedValue(p.type, value, t, i18n.language)}</span>
+                      <span className="text-label font-medium text-foreground">{formatTypedValue(p.type, value, t, i18n.language, value === p.value ? p.ref : undefined)}</span>
                     ) : kind === 'boolean' ? (
                       <label className="flex items-center gap-2 text-label">
                         <input id={`rv-${p.field}`} type="checkbox" checked={value === true} onChange={e => setDraft(d => ({ ...d, [p.field]: e.target.checked }))} disabled={!!busy} onFocus={() => p.quote && onPick?.(p.field)} />
@@ -219,7 +231,7 @@ export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, on
                   </div>
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-0 text-label-sm text-tertiary sm:pl-[132px]">
-                  <span>{provenanceText(p, t)}</span>
+                  <span>{provenanceText(p, t, shared)}</span>
                   {p.page !== undefined && <span>{t('memwise.review.page', { page: p.page })}</span>}
                   {p.quote && (
                     <span className="inline-flex min-w-0 items-center gap-1 text-secondary" data-quote-of={p.field}>

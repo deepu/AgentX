@@ -156,6 +156,17 @@ export function areaBlocks(layout: MwPageLayout, area: AreaName): MwPageBlock[] 
   return blocks
 }
 
+/**
+ * A `related` block's names: `versions` and `signatures` are the record's own history (24 §6:
+ * "`related` also accepts `versions` and `signatures`"), drawn by the History block, once; the
+ * rest are relationships.
+ */
+export function splitRelated(layout: MwPageLayout, names: string[]): { relationships: string[]; history: boolean } {
+  const own = new Set(['versions', 'signatures'])
+  const historyBlock = Object.values(layout.areas).flat().some(b => b?.kind === 'history')
+  return { relationships: names.filter(n => !own.has(n)), history: !historyBlock && names.some(n => own.has(n)) }
+}
+
 /** The header's extra fields (not title or status), with their values. */
 export function headerFields(page: MwRecordPage): MwRecordField[] {
   return page.layout.header
@@ -201,6 +212,17 @@ export function transitionBlockedReason(tr: MwTransitionOption, t: TFunction): s
   if (tr.reason) return tr.reason.charAt(0).toUpperCase() + tr.reason.slice(1)
   if (tr.guard && !tr.guard.holds) return t('memwise.record.guardNotMet', { condition: tr.guard.condition })
   return t('memwise.record.notAllowed')
+}
+
+// ---------------------------------------------------------------- checks
+
+/**
+ * The engine's own checks on an agent's answer (its outcome is declared, its required tools ran,
+ * each value has its type and source: "writes.site: Ref<Site>"). Passed, they fold into one line;
+ * the domain's checks, written for people, stay as they are.
+ */
+export function isStructuralCheck(rule: string): boolean {
+  return rule === 'outcome is declared' || rule === 'required tools called' || rule.startsWith('writes.')
 }
 
 // ---------------------------------------------------------------- related

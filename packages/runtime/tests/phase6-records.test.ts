@@ -168,7 +168,10 @@ describe.skipIf(!pgAvailable)('Phase 6 records', () => {
     const inst = await kernel.records.create({ entity: 'lab.Instrument', values: { serial: 'SN-1', model: 'Autoclave 9', location: 'Room 2' } }, tech);
     expect(inst).toMatchObject({ applied: true });
     expect(await kernel.records.transition({ entity: 'lab.Instrument', id: inst.id!, transition: 'to_retired' }, tech)).toMatchObject({ applied: true });
-    expect(await kernel.records.transition({ entity: 'lab.Instrument', id: inst.id!, transition: 'to_active' }, analyst)).toMatchObject({ applied: false });
+    const notYours = await kernel.records.transition({ entity: 'lab.Instrument', id: inst.id!, transition: 'to_active' }, analyst);
+    expect(notYours).toMatchObject({ applied: false, status: 'forbidden' });
+    // Says where the move goes, in words a person reads on the record page.
+    expect(notYours.message).toMatch(/can move an? Instrument to active/);
     expect(await kernel.records.transition({ entity: 'lab.Instrument', id: inst.id!, transition: 'to_active' }, tech)).toMatchObject({ applied: true });
   });
 

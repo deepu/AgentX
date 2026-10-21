@@ -233,6 +233,8 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
     const page = await api.call<MwRecordPage>(specialist, ch.RECORDS_PAGE, { entity: 'etmf.Document', id: documentId, review: { stepRunId: item.stepRunId } })
     expect(page.layout.layout).toBe('split')
     expect(page.review?.proposed.find((p) => p.field === 'artifact')?.value).toBe('Investigator CV')
+    // A proposed reference carries its record's title, so the screen does not show the id.
+    expect(page.review?.proposed.find((p) => p.field === 'site')?.ref).toMatchObject({ id: ids.site, title: 'US-012 · Harbor Oncology, Boston' })
     expect(page.review?.sign?.meaning).toBe('Reviewed and approved for filing')
     expect(page.documents.file?.name).toBe('vogel-cv.pdf')
 

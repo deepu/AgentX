@@ -161,6 +161,7 @@ export function toReview(project: ProjectDefs, r: RecordReview): MwRecordReview 
       ...(p.quote ? { quote: p.quote } : {}),
       ...(p.document ? { document: p.document } : {}),
       ...(p.required ? { required: true } : {}),
+      ...(p.ref ? { ref: { entity: p.ref.entity, id: p.ref.id, title: p.ref.title } } : {}),
     })),
     checks: r.checks.map((c): MwCheckResult => ({ rule: c.rule, verdict: c.passed ? 'pass' : 'flag', ...(c.reason ? { note: c.reason } : {}), stepRunId: c.stepRunId })),
     outcomes: [...r.outcomes],

@@ -312,8 +312,10 @@ export const sampleDocumentPage: MwRecordPage = {
         { kind: 'fields', fields: ['artifact', 'study', 'site', 'about', 'document_date', 'version', 'unblinded'] },
         { kind: 'checks' },
         { kind: 'details' },
+        // As the eTMF example writes it: the record's versions and signatures.
+        { kind: 'related', relationships: ['versions', 'signatures'] },
       ],
-      below: [{ kind: 'mentions' }, { kind: 'notes' }, { kind: 'history' }],
+      below: [{ kind: 'mentions' }, { kind: 'notes' }],
     },
   },
   fields: [
@@ -356,14 +358,17 @@ export const sampleDocumentReview: MwRecordReview = {
   instructions: 'Check the document against its index and the flags, then approve and sign, or send it back to the site with a note.',
   proposed: [
     { field: 'artifact', label: 'Artifact', type: 'Ref<Artifact>', value: 'Curriculum vitae', confidence: 0.97, page: 1, quote: 'Curriculum vitae', document: 'file_vogel_cv', required: true, provenance: { kind: 'tool', at: T('2026-10-20T08:09:00'), stepRunId: 'sr_index', tool: 'tmf.classify', callId: 'c1' } },
-    { field: 'study', label: 'Study', type: 'Ref<Study>', value: 'AST-301', confidence: 0.99, provenance: { kind: 'judgement', at: T('2026-10-20T08:09:00'), stepRunId: 'sr_index', rationale: 'From the email subject' } },
-    { field: 'site', label: 'Site', type: 'Ref<Site>', value: 'DE-104 · Berlin', confidence: 0.95, provenance: { kind: 'judgement', at: T('2026-10-20T08:09:00'), stepRunId: 'sr_index', rationale: "Sender's site" } },
-    { field: 'about', label: 'About', type: 'Ref<Person>', value: 'Dr. Lena Vogel', confidence: 0.93, page: 1, quote: 'Dr. med. Lena Vogel', document: 'file_vogel_cv' },
+    { field: 'study', label: 'Study', type: 'Ref<Study>', value: 'stud_ast301', ref: { entity: 'etmf.study', id: 'stud_ast301', title: 'AST-301' }, confidence: 0.99, provenance: { kind: 'judgement', at: T('2026-10-20T08:09:00'), stepRunId: 'sr_index', rationale: 'From the email subject' } },
+    { field: 'site', label: 'Site', type: 'Ref<Site>', value: 'site_de104', ref: { entity: 'etmf.site', id: 'site_de104', title: 'DE-104 · Berlin' }, confidence: 0.95, provenance: { kind: 'judgement', at: T('2026-10-20T08:09:00'), stepRunId: 'sr_index', rationale: "Sender's site" } },
+    { field: 'about', label: 'About', type: 'Ref<Person>', value: 'pers_vogel', ref: { entity: 'etmf.person', id: 'pers_vogel', title: 'Dr. Lena Vogel' }, confidence: 0.93, page: 1, quote: 'Dr. med. Lena Vogel', document: 'file_vogel_cv' },
     { field: 'document_date', label: 'Document date', type: 'Date', value: '2026-03-14', confidence: 0.91, page: 2, quote: '14 Mar 2026', document: 'file_vogel_cv', required: true },
     { field: 'version', label: 'Version', type: 'Text', value: '2026', confidence: 0.62, page: 2, quote: 'Version 2026 rev. B', document: 'file_vogel_cv' },
     { field: 'unblinded', label: 'Unblinded', type: 'Boolean', value: false, confidence: 0.98 },
   ],
   checks: [
+    // The engine's own checks on the agent's answer: they fold into one line.
+    { rule: 'outcome is declared', verdict: 'pass', stepRunId: 'sr_index' },
+    { rule: 'writes.site: Ref<Site>', verdict: 'pass', stepRunId: 'sr_index' },
     { rule: 'Signed and dated (page 2)', verdict: 'pass', stepRunId: 'sr_check' },
     { rule: 'Signed within the last 2 years', verdict: 'pass', stepRunId: 'sr_check' },
     { rule: 'Site DE-104 is active', verdict: 'pass', stepRunId: 'sr_check' },

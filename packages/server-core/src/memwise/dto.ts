@@ -125,12 +125,15 @@ export function caseTitle(values: Record<string, unknown>, caseId: string, caseT
     const plugin = plain(values.plugin)
     if (typeof plugin === 'string' && plugin.trim()) return `Bind ${project ? pluginTitle(project, plugin.trim()) : plugin.trim()}`
   }
-  for (const key of ['client_name', 'legal_name', 'title']) {
+  for (const key of ['client_name', 'legal_name', 'title', 'subject']) {
     const v = plain(values[key])
     if (typeof v === 'string' && v.trim()) return v.trim()
   }
-  for (const [key, raw] of Object.entries(values)) {
-    const v = plain(raw)
+  // The first text in the order the case type lists its fields (values come back in any order:
+  // a document's "version" must not name it before its "artifact").
+  const fields = Object.keys(caseType?.fields ?? {})
+  for (const key of [...fields, ...Object.keys(values).filter((k) => !fields.includes(k))]) {
+    const v = plain(values[key])
     const type = caseType?.fields[key]?.type
     const texty = !type || (type.kind === 'scalar' && (type.name === 'Text' || type.name === 'PersonName'))
     if (texty && typeof v === 'string' && v.trim()) return v.trim()

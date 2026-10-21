@@ -57,6 +57,10 @@ describe('record page', () => {
     expect(split).toContain('@3xl/record:grid-cols-2')
     // An open flag shows as an alert, and history names a signature changed since signing.
     expect(split).toContain(`data-flag="${S.sampleDocumentPage.flags[0]!.id}"`)
+    // `related: [versions, signatures]` draws the record's history, once.
+    expect(count(split, 'data-signatures')).toBe(1)
+    expect(count(split, 'data-versions')).toBe(1)
+    expect(split).toContain('data-changed-since')
   })
 
   test('review mode: proposed values beside the document, checks, send back and approve and sign', () => {
@@ -75,6 +79,22 @@ describe('record page', () => {
     expect(html).toContain('Approve and sign')
     expect(html).toContain('data-checks')
     expect(html).toContain('Check this')
+    // A proposed reference reads as its record's title, not its id.
+    expect(html).toContain('DE-104 · Berlin')
+    expect(html).not.toContain('site_de104')
+    // The engine's checks on the agent's answer fold into one line; the domain's stay.
+    expect(html).toContain('data-form-checks="2"')
+    expect(html).not.toContain('writes.site')
+    expect(html).toContain('Signed and dated (page 2)')
+  })
+
+  test('the agent reasoning shared by every proposed value is shown once', () => {
+    const because = 'The email names site US-012.'
+    const proposed = S.sampleDocumentReview.proposed.map(p => ({ ...p, provenance: { kind: 'judgement' as const, at: '2026-10-20T08:09:00Z', stepRunId: 'sr', rationale: because } }))
+    const page = { ...S.sampleDocumentReviewPage, review: { ...S.sampleDocumentReview, proposed } }
+    const html = render(<RecordPageView page={page} now={S.SAMPLE_NOW} review={{ submit: ok }} />)
+    expect(html).toContain('data-agent-rationale')
+    expect(count(html, because)).toBe(1)
   })
 
   test('review in a row shows where you are and the keys', () => {

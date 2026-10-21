@@ -298,6 +298,14 @@ export async function buildReview(deps: RecordsDeps, def: EntityTypeDef, recordI
       ...(p?.quote ? { quote: p.quote } : {}), ...(p?.document ? { document: p.document } : {}), ...(w.required ? { required: true } : {}),
     };
   });
+  // A proposed reference is shown by its record's title, as the viewer may read it.
+  for (const p of proposed) {
+    const w = step.writes[p.field]!;
+    if (w.type.kind !== 'ref' || typeof p.value !== 'string') continue;
+    const target = resolveEntity(entities, domain, w.type.entity);
+    const t = target ? await titleOf(deps, actor, target, p.value) : undefined;
+    if (target && t) p.ref = { entity: keyOf(target), id: p.value, title: t.title };
+  }
 
   // The checks of the agent steps of this case that ran before the review.
   const { rows: earlier } = await deps.pool.query(

@@ -1752,6 +1752,7 @@
   "memwise.review.edited": "已编辑",
   "memwise.review.fillRequired": "请先填写必填值。",
   "memwise.review.flag": "标记",
+  "memwise.review.formChecks": "代理的回答格式正确：其结果是该步骤允许的结果，且每个值的类型都正确。",
   "memwise.review.inARow_one": "连续审核 {{count}} 项",
   "memwise.review.inARow_other": "连续审核 {{count}} 项",
   "memwise.review.next": "下一个",

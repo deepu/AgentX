@@ -707,6 +707,8 @@ export interface RecordReview {
     quote?: string;
     document?: string;
     required?: boolean;
+    /** A reference's record, by its title. */
+    ref?: RecordRef;
   }[];
   /** The checks of the agent step(s) that prepared it, with evidence. */
   checks: (CheckResult & { stepRunId: string })[];

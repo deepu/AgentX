@@ -211,6 +211,15 @@ describe('cases about records', () => {
     expect(values.site).toMatchObject({ value: 'site_1', refTitle: 'US-012 · Harbor Oncology, Boston' })
   })
 
+  it('a case is named by its first text in field order, or an email by its subject', () => {
+    const textField = { type: { kind: 'scalar', name: 'Text' }, typeSource: 'Text' }
+    const doc = { fields: { artifact: textField, version: textField } } as never
+    // Values come back in any order; the case type's order decides.
+    expect(caseTitle({ version: '2026-03', artifact: 'Investigator CV' }, 'case_1', doc)).toBe('Investigator CV')
+    const message = { fields: { subject: textField, body: textField } } as never
+    expect(caseTitle({ body: 'Please find attached…', subject: 'AST-301 US-012: PI CV' }, 'case_2', message)).toBe('AST-301 US-012: PI CV')
+  })
+
   it('a wait_until waits on a condition, not on the owner; its values keep their types', () => {
     const wf = { id: 'activate-site', owner: 'study_manager', steps: {}, states: { collect_pack: { name: 'collect_pack', on: { met: 'approve' }, block: { kind: 'wait_until' } } } } as never
     expect(waitingOn(wf, 'collect_pack', 'active')).toEqual({ kind: 'condition' })

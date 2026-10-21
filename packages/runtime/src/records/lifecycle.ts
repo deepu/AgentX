@@ -78,7 +78,7 @@ export async function checkTransition(
   }
   const domain = domainOfEntity(def);
   if (!mayMove(t, chart, mover, domain)) {
-    return { ok: false, status: 'forbidden', message: `only ${describeBy(t, chart)} can make "${input.transition}" on a ${def.entity}` };
+    return { ok: false, status: 'forbidden', message: `only ${describeBy(t, chart)} can move a ${def.entity} to ${to.replace(/_/g, ' ')} ("${input.transition}")` };
   }
   if (t.guard) {
     const g = await evaluateCondition(db, def, entities, input.id, t.guard);

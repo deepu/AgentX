@@ -1504,6 +1504,8 @@ export interface MwProposedValue {
   quote?: string
   document?: string
   required?: boolean
+  /** A proposed reference's record, by its title (`value` keeps the id). */
+  ref?: MwRecordRef
 }
 
 export interface MwCheckResult { rule: string; verdict: string; note?: string; stepRunId: string }

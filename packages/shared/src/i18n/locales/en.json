@@ -1752,6 +1752,7 @@
   "memwise.review.edited": "Edited",
   "memwise.review.fillRequired": "Fill in the required values first.",
   "memwise.review.flag": "Flag",
+  "memwise.review.formChecks": "The agent's answer is well formed: its outcome is one the step allows, and every value has the right type.",
   "memwise.review.inARow_one": "Review {{count}} in a row",
   "memwise.review.inARow_other": "Review {{count}} in a row",
   "memwise.review.next": "Next",
