@@ -1,17 +1,22 @@
 #!/usr/bin/env node
 // A scripted stand-in for the Anthropic Messages API, for walkthrough screenshots where no API key
 // is available. It answers POST /v1/messages (streaming or not) with a reply picked by matching the
-// last user message against a script, and never calls tools. Not for tests of model behaviour.
+// last user message against a script. Not for tests of model behaviour.
 //
-//   node scripts/walkthrough/fake-anthropic.mjs [port] [script.json]
+//   node scripts/walkthrough/fake-anthropic.mjs [port] [script.json] [tools.mjs]
 //
 // script.json: [{ "match": "regex", "reply": "markdown" }, ...]; the first match wins. Requests
 // whose system prompt asks for a title get a short title from the user's words.
+// tools.mjs (optional) exports `toolReply(body)`: for a request it recognises (a playbook step's
+// agent, by the tools it is offered), it returns `{ toolCalls: [{ name, input }] }` with the wire
+// tool names (`step__finish`), and the server answers with those tool calls; `null` falls through
+// to the script.
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
 
 const port = Number(process.argv[2] ?? 8787)
 const script = process.argv[3] ? JSON.parse(readFileSync(process.argv[3], 'utf8')) : []
+const tools = process.argv[4] ? await import(new URL(process.argv[4], `file://${process.cwd()}/`).href) : null
 const FALLBACK = "I can't answer that in this walkthrough: it runs on scripted replies, not a real model."
 
 function textOf(content) {
@@ -75,9 +80,32 @@ const server = createServer((req, res) => {
     }
     let body = {}
     try { body = JSON.parse(raw || '{}') } catch { /* empty */ }
-    const text = replyFor(body)
     const model = body.model ?? 'claude-sonnet-5-5'
     const id = `msg_fake_${Date.now().toString(36)}`
+    let calls = null
+    try { calls = tools?.toolReply(body)?.toolCalls ?? null } catch (e) { console.error('[fake-anthropic] tools.mjs failed', e) }
+    if (calls?.length) {
+      const blocks = calls.map((c, i) => ({ type: 'tool_use', id: `toolu_fake_${Date.now().toString(36)}_${i}`, name: c.name, input: c.input ?? {} }))
+      console.log(`[fake-anthropic] tools ${model}: ${blocks.map(b => b.name).join(', ')}`)
+      if (!body.stream) {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ id, type: 'message', role: 'assistant', model, content: blocks, stop_reason: 'tool_use', stop_sequence: null, usage: usage('x'.repeat(200)) }))
+        return
+      }
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
+      const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+      send('message_start', { type: 'message_start', message: { id, type: 'message', role: 'assistant', model, content: [], stop_reason: null, stop_sequence: null, usage: { ...usage(''), output_tokens: 1 } } })
+      blocks.forEach((b, index) => {
+        send('content_block_start', { type: 'content_block_start', index, content_block: { type: 'tool_use', id: b.id, name: b.name, input: {} } })
+        send('content_block_delta', { type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: JSON.stringify(b.input) } })
+        send('content_block_stop', { type: 'content_block_stop', index })
+      })
+      send('message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 50 } })
+      send('message_stop', { type: 'message_stop' })
+      res.end()
+      return
+    }
+    const text = replyFor(body)
     console.log(`[fake-anthropic] ${body.stream ? 'stream' : 'json'} ${model}: ${JSON.stringify(lastUserText(body.messages ?? []).slice(-80))} -> ${JSON.stringify(text.slice(0, 60))}`)
     if (!body.stream) {
       res.writeHead(200, { 'content-type': 'application/json' })
