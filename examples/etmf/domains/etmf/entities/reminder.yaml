@@ -1,0 +1,12 @@
+entity: Reminder
+title: "{subject}"
+parent: site
+# A reminder "Chase missing documents" sent a site about the documents it still owes: who it went to,
+# who was copied, and what it said. The site's `reminders_sent` counts them.
+fields:
+  site:    { type: Ref<Site>, required: true }
+  sent_to: { type: Email, required: true }
+  copied:  { type: Email, description: "Who was copied (the CRA, from the second reminder on)" }
+  subject: { type: Text, required: true }
+  body:    Text
+  sent_at: DateTime

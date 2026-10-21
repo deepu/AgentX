@@ -363,8 +363,8 @@ describe('the eTMF example (examples/etmf)', () => {
     expect(Object.keys(project.domains!).sort()).toEqual(['edc', 'etmf']);
     expect(project.domains!.etmf).toMatchObject({ name: 'eTMF', regulated: true, retentionMs: 25 * 365 * 86_400_000, owner: 'study_manager', intake: { address: 'etmf' } });
     expect(project.domains!.etmf!.policy!.modelRoles).toEqual(expect.arrayContaining(['router', 'classifier', 'verifier']));
-    expect(Object.keys(project.entities).sort()).toEqual(['edc.Site', 'etmf.Document', 'etmf.ExpectedDocument', 'etmf.Person', 'etmf.Site', 'etmf.Sponsor', 'etmf.Study']);
-    expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'file-document', 'fix-rejected-document', 'route-message', 'watch-expiries']);
+    expect(Object.keys(project.entities).sort()).toEqual(['edc.Site', 'etmf.Document', 'etmf.ExpectedDocument', 'etmf.Person', 'etmf.Reminder', 'etmf.Site', 'etmf.Sponsor', 'etmf.Study']);
+    expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'file-document', 'fix-rejected-document', 'route-message', 'watch-expiries']);
     expect(Object.keys(project.domains!.etmf!.views).sort()).toEqual(['documents-in-qc', 'missing-documents', 'sites', 'sites-board']);
     expect(Object.keys(project.domains!.etmf!.pages)).toEqual(['tmf-health']);
 
@@ -384,7 +384,7 @@ describe('the eTMF example (examples/etmf)', () => {
     ]);
     // One model role per agent step, so the scripted provider plays each its own script.
     const agentRoles = Object.values(project.workflows).flatMap((w) => Object.values(w.steps)).filter((s) => s.performer === 'agent').map((s) => s.model);
-    expect(agentRoles.sort()).toEqual(['classifier', 'router']);
+    expect(agentRoles.sort()).toEqual(['classifier', 'escalator', 'router', 'writer']);
     for (const wf of Object.values(project.workflows)) expect(wf.examples.length).toBeGreaterThan(0);
   });
 
@@ -414,13 +414,13 @@ describe('the eTMF example (examples/etmf)', () => {
     expect(rows).toEqual([
       'domain edc', 'domain etmf',
       'entity_type edc.Site', 'entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person',
-      'entity_type etmf.Site', 'entity_type etmf.Sponsor', 'entity_type etmf.Study',
+      'entity_type etmf.Reminder', 'entity_type etmf.Site', 'entity_type etmf.Sponsor', 'entity_type etmf.Study',
       'page etmf/tmf-health',
       'policy domain:etmf', 'policy workspace',
       'view etmf/documents-in-qc', 'view etmf/missing-documents', 'view etmf/sites', 'view etmf/sites-board',
     ]);
     const from = (id: string) => [...new Set(refs.filter((r) => r.fromId === id).map((r) => `${r.toKind} ${r.toId}`))].sort();
-    expect(from('etmf.Site')).toEqual(['entity_type edc.Site', 'entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person', 'entity_type etmf.Study']);
+    expect(from('etmf.Site')).toEqual(['entity_type edc.Site', 'entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person', 'entity_type etmf.Reminder', 'entity_type etmf.Study']);
     expect(from('route-message')).toEqual(expect.arrayContaining(['policy domain:etmf', 'policy workspace', 'workflow file-document']));
     expect(from('activate-site')).toEqual(expect.arrayContaining(['entity_type etmf.Site']));
     expect(from('etmf/tmf-health')).toEqual(['entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person', 'entity_type etmf.Site', 'entity_type etmf.Study']);

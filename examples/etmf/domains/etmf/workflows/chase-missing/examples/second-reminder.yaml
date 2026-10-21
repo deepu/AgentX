@@ -1,0 +1,60 @@
+name: second-reminder
+description: >
+  DE-104 still owes three start-up documents a week after its first reminder. The reminder is drafted
+  to the coordinator, the study manager approves it, it is recorded as the site's second reminder, and
+  the site gets 5 days to upload.
+records:
+  Sponsor:
+    - { id: spon_aster, name: Aster Bio }
+  Study:
+    - { id: stud_mw301, code: MW-301, sponsor: spon_aster }
+  Site:
+    - id: site_de104
+      site_number: DE-104
+      study: stud_mw301
+      status: activating
+      coordinator_email: coordinator@charite-studien.example
+      cra_name: Priya Shah
+      cra_email: priya.shah@northlight.example
+  ExpectedDocument:
+    - { id: expe_de104_protocol, site: site_de104, study: stud_mw301, artifact: Protocol signature page, phase: start_up, status: missing }
+    - { id: expe_de104_lab, site: site_de104, study: stud_mw301, artifact: Lab normal ranges, phase: start_up, status: missing }
+    - { id: expe_de104_sub_cv, site: site_de104, study: stud_mw301, artifact: Sub-investigator CVs, phase: start_up, status: missing }
+    - { id: expe_de104_irb, site: site_de104, study: stud_mw301, artifact: IRB approval, phase: start_up, status: filed }
+  Reminder:
+    - { id: remi_de104_1, site: site_de104, sent_to: coordinator@charite-studien.example, subject: "MW-301: 3 documents needed", sent_at: "2026-10-09T09:00:00Z" }
+case:
+  site: site_de104
+model:
+  writer:
+    - toolCalls:
+        - { name: etmf.expected_document.list, args: { filter: "site = 'site_de104' and status = 'missing'" } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: drafted
+            writes:
+              email_to: coordinator@charite-studien.example
+              email_cc: priya.shah@northlight.example
+              email_subject: "MW-301: 3 documents needed before the 28 Oct visit"
+              email_body: |
+                Hello,
+
+                Before Priya's visit on Wed 28 Oct we still need the protocol signature page, the
+                sub-investigator CVs and the current lab normal ranges. This is our second reminder.
+
+                Could you upload them by Mon 26 Oct? The link below needs no login.
+            rationale: Second reminder; three start-up documents are still missing (the list from the site's expected documents).
+submit:
+  approve_email: { outcome: approved }
+expect:
+  outcome: found
+  state: wait_for_upload
+  writes:
+    missing_documents: 3
+    reminders_sent: 1
+    email_to: coordinator@charite-studien.example
+  entities:
+    Reminder:
+      - { site: site_de104 }
+      - { site: site_de104, sent_to: coordinator@charite-studien.example, subject: "MW-301: 3 documents needed before the 28 Oct visit" }

@@ -1,0 +1,24 @@
+workflow: chase-missing
+version: 2
+title: Chase missing documents
+owner: study_manager
+# One case per site, from when it starts activating until its start-up pack is complete. Each round
+# reads what the site still owes, drafts a reminder to the site coordinator, waits for the study
+# manager to approve it, records it as sent, and gives the site 5 days to upload before the next one.
+start: find_missing
+starts_on:
+  - entered: Site.activating
+    with: { site: record }
+    as: study_manager
+steps:
+  find_missing:   { on: { found: draft_email } }
+  draft_email:    { on: { drafted: approve_email } }
+  approve_email:
+    on: { approved: send, escalate: escalate }
+    wait: { remind: 2d, timeout: 7d → end }
+  send:           { on: { sent: wait_for_upload } }
+  wait_for_upload:                                   # the next reminder, unless the pack is complete
+    wait_until: { record: case.site, condition: "missing_documents = 0" }
+    on: { met: end }
+    wait: { timeout: 5d → find_missing }
+  escalate:       { on: { escalated: end } }
