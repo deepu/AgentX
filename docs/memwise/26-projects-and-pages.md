@@ -343,7 +343,11 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
 - **Record pages** (`RecordShellPage.tsx`): the record's layout under the shell's header (Records › Sites › DE-104, its facts, Export audit trail when regulated); split layouts sit side by side at the page column's width, so a document's preview is beside its facts.
 - **Sign page:** a waiting step that reviews and signs a document opens as the record page in review mode with the signature in the page (`SignatureCard`: meaning, password, "Signing records your name, the time and this meaning, and locks this version", Send back / Sign).
 - **Changing playbooks in a project with its own roles:** the eTMF has no `staff` or `manager`, so the playbook's owner role may change it by chat; the change run's review still waits for `manager`, which the eTMF lacks (Stage 5's change requests route it in regulated projects).
-- **Walkthrough:** `scripts/walkthrough/every-page-etmf.mjs` with `seed-every-page.mjs` and `every-page-replies.json`. The scripted model now also makes scripted tool calls, so both flows go through the chat's real tools (`playbook_write`, `playbook_test_run`, `records_filter`); the calls' arguments are written in advance, everything after them is real.
+- **Walkthrough:** `scripts/walkthrough/every-page-etmf.mjs` with `seed-every-page.mjs` and `every-page-replies.json`. The scripted model now also makes scripted tool calls, so both flows go through the chat's real tools (`playbook_write`, `playbook_test_run`, `records_filter`); the calls' arguments are written in advance, everything after them is real. Screenshots are in `projects-and-pages-walkthrough/stage-4-every-page/`. What it showed and what is still open:
+  - Flow 1 ends with the draft "in review" and the change run waiting at "Review the change" for Manager. While the change run's check step runs, the draft is still `draft`, so the page says "sent, being checked".
+  - Flow 2 saves a view, not a page, until `pages` is merged in.
+  - The mocks' playbook description, the Site KPI tiles and the Document "What the AI checked" layout are not built: playbooks have no description field, and the other two are mock-only.
+  - The scripted CV is classified with the example's IDs, so its Sign page shows raw IDs. This comes from the seed.
 
 ### Stage 5 · Regulated projects (branch `regulated`)
 
