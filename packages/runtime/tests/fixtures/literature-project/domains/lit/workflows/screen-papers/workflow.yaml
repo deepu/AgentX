@@ -1,0 +1,10 @@
+workflow: screen-papers
+version: 1
+title: Screen papers
+owner: lead
+# A row that can't be recorded sends the case to a person, who fixes the rows; `record` runs
+# again and finds the screenings it made the first time by their key (25 §3).
+start: record
+steps:
+  record: { on: { done: end, needs_person: fix } }
+  fix:    { on: { fixed: record }, wait: { timeout: 7d → end } }

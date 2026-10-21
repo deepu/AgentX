@@ -4,7 +4,7 @@
 // every write with a flag when it isn't in the source, record-page kpis and charts, free-page
 // charts, and rows kept from a chat.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PgEntityStore, withActor, type TestDatabase } from '@memwise/db';
+import { applyDomainSchema, PgEntityStore, withActor, type TestDatabase } from '@memwise/db';
 import { loadProject, type ProjectDefs, type ScriptedTurn } from '@memwise/defs';
 import { scriptedProvider } from '@memwise/gateway';
 import { mkdtempSync } from 'node:fs';
@@ -42,6 +42,20 @@ let topic = '';
 
 /** A record page's field values by name. */
 const valuesOf = (page: RecordPage | undefined) => Object.fromEntries((page?.fields ?? []).map((f) => [f.name, f.value]));
+
+/** The step run waiting in `state` (a person's step). */
+async function waitingIn(runId: string, state: string): Promise<string> {
+  for (let i = 0; i < 300; i++) {
+    const run = await kernel.getRun(runId);
+    if (run?.state === state) {
+      const id = `${runId}/${run.enteredSeq}/${state}`;
+      if ((await kernel.getStepRecord(id))?.status === 'waiting') return id;
+    }
+    if (run && run.status !== 'active') throw new Error(`${runId} ended in ${run.state}: ${run.stopReason}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`${runId} never waited in ${state}`);
+}
 
 async function finished(runId: string) {
   const run = await kernel.waitForRun(runId, { until: (r) => r.status !== 'active', timeoutMs: 60_000 });
@@ -208,4 +222,46 @@ describe.skipIf(!pgAvailable)('Literature in the kernel', () => {
     const other = await kernel.records.dashboard('lit', 'literature', { topic: 'topi_nothing' }, lead);
     expect(other.blocks[0]).toMatchObject({ kind: 'chart', chart: { total: 0, data: [] } });
   });
+
+  test('`each:` re-entered after a person: the screenings made before the failure are found by their key, not made again', async () => {
+    const t = await kernel.records.create({ entity: 'lit.Topic', values: { name: 'Re-entered' }, reason: 'test' }, lead);
+    const papers = (await kernel.pool.query(`select id from domain.lit__article where pmid in ('41275875', '40000001', '40000002') order by pmid desc`)).rows.map((r) => r.id as string);
+    expect(papers).toHaveLength(3);
+    const count = async () => (await kernel.pool.query(`select count(*)::int as n from domain.lit__screening where topic = $1`, [t.id])).rows[0].n as number;
+    // The second row's decision isn't one a Screening takes: the step stops there, for a person.
+    const rows = [{ article: papers[0], decision: 'include' }, { article: papers[1], decision: 'maybe' }, { article: papers[2], decision: 'exclude' }];
+    const { runId, caseId } = await kernel.startRun({ workflowId: 'screen-papers', case: { topic: t.id, rows } });
+    const fix = await waitingIn(runId, 'fix');
+    const first = (await kernel.getStepRecord(`${runId}/0/record`))!;
+    expect(first.status).toBe('needs_person');
+    expect(first.rationale).toContain('decision');
+    expect(await count()).toBe(1);
+    const madeFirst = (await kernel.pool.query(`select id from domain.lit__screening where topic = $1`, [t.id])).rows[0].id as string;
+
+    // The person fixes the row; `record` runs again as a new step run, from the first row.
+    expect(await kernel.submitStep({ stepRunId: fix, outcome: 'fixed', values: { rows: rows.map((r) => (r.decision === 'maybe' ? { ...r, decision: 'include' } : r)) }, by: lead }))
+      .toMatchObject({ applied: true });
+    await finished(runId);
+    expect(await count()).toBe(3);
+    const screenings = (await kernel.getCase(caseId))!.values.screenings!.value as string[];
+    expect(screenings).toHaveLength(3);
+    expect(screenings[0]).toBe(madeFirst);
+    // Two step runs called create for the first row, under different idempotency keys.
+    const { rows: effects } = await kernel.pool.query(`select idempotency_key from mw.effects where step_run_id like $1 and idempotency_key like '%:lit.screening.create:0'`, [`${runId}/%`]);
+    expect(new Set(effects.map((e) => e.idempotency_key)).size).toBe(2);
+  }, 90_000);
+
+  test('a keyed create finds the existing record as the system, even when the step may not read the key column', async () => {
+    // As if pmid had `access:` (the check refuses that: key-field-restricted): the step's grants leave the column out.
+    const def = project.entities['lit.Article']!;
+    const restricted = { ...project.entities, 'lit.Article': { ...def, fields: { ...def.fields, pmid: { ...def.fields.pmid!, access: ['lead'] } } } };
+    await applyDomainSchema(kernel.pool, restricted);
+    try {
+      const { runId, caseId } = await kernel.startRun({ workflowId: 'collect-papers', case: { rows: [{ pmid: '41275875', title: 'ATTAIN-2 (once more)', year: 2025 }] } });
+      await finished(runId);
+      expect((await kernel.getCase(caseId))?.values.articles?.value).toEqual([ARTICLE_ID]);
+    } finally {
+      await applyDomainSchema(kernel.pool, project.entities);
+    }
+  }, 90_000);
 });

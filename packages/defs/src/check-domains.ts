@@ -177,6 +177,7 @@ function checkEntity(add: Add, project: ProjectDefs, def: EntityTypeDef, roles: 
     if (!f) at('error', 'key-unknown-field', `key: \`${name}\` is not a field of ${def.entity}`, ['key', i]);
     else if (!isKeyType(f.type)) at('error', 'key-unknown-field', `key: \`${name}\` is ${f.typeSource}; a key is a Text, Number or Ref field`, ['key', i]);
     else if (!f.required) at('error', 'key-field-not-required', `key: \`${name}\` identifies a ${def.entity}, so every one has it: add \`required: true\``, ['key', i]);
+    else if (f.access?.length) at('error', 'key-field-restricted', `key: \`${name}\` has \`access:\`, but a key finds the ${def.entity} for anyone who creates or reads one by it: drop \`access:\` from ${name} or key on another field`, ['key', i]);
   });
   for (const [name, f] of Object.entries(def.fields)) {
     if (!f.quoteOf) continue;

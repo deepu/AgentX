@@ -80,11 +80,14 @@ describe('the quote normaliser (one place, for the step engine, the record store
     expect(findQuote('   ', ABSTRACT)).toBeUndefined();
   });
 
-  test('quoteIn and quoteInValue look through strings, numbers and JSON text', () => {
+  test('quoteIn and quoteInValue look through strings and JSON text, not numbers', () => {
     expect(quoteIn('randomly ASSIGNED', ABSTRACT)).toBe(true);
     expect(quoteInValue('randomly assigned', { rows: [{ abstract: ABSTRACT }] })).toBe(true);
     expect(quoteInValue('randomly assigned', { content: [{ type: 'text', text: JSON.stringify({ abstract: ABSTRACT }) }] })).toBe(true);
-    expect(quoteInValue('1613', { n: 1613 })).toBe(true);
+    // A number a tool returned is a value, not words it was read from (in JSON text too); in prose it counts.
+    expect(quoteInValue('1613', { n: 1613 })).toBe(false);
+    expect(quoteInValue('1613', { content: [{ type: 'text', text: JSON.stringify({ n: 1613 }) }] })).toBe(false);
+    expect(quoteInValue('1613', { rows: [{ abstract: ABSTRACT }] })).toBe(true);
     expect(quoteInValue('enrolled', { rows: [{ abstract: ABSTRACT }] })).toBe(false);
   });
 });
@@ -111,6 +114,11 @@ describe('entity key, quote_of and keep_from_chat', () => {
     // A key of several required fields is fine.
     const two = LIT[ARTICLE]!.replace('key: [pmid]', 'key: [pmid, year]').replace('  year: Number', '  year: { type: Number, required: true }');
     expect(await checkLit({ [ARTICLE]: two })).toEqual([]);
+  });
+
+  test('key-field-restricted: a key field may not have access:', async () => {
+    expect(await checkLit(article('pmid: { type: Text, required: true }', 'pmid: { type: Text, required: true, access: [lead] }')))
+      .toEqual([`error key-field-restricted ${ARTICLE} key.0`]);
   });
 
   test('quote-of-not-text and quote-of-unknown-field', async () => {
@@ -214,6 +222,16 @@ describe('system steps: each, item, today, now; quotes', () => {
       .toEqual(['error unknown-case-field map.lookup.customer.name']);
     expect((await check({ [WORK]: system('  lookup.customer: { each: case.flags, name: item.note, region: x }', '  owner: { type: Ref<Customer>, from: { tool: lookup.customer, field: id } }') })).out)
       .toEqual(['error each-write-not-list writes.owner']);
+  });
+
+  test('each-target-not-keyed: creating once per item needs a key on the entity, or a re-entered step makes them again', async () => {
+    const create = system('  domain.customer.create: { each: case.flags, name: item.note }', '  owners: { type: List<Text>, from: { tool: domain.customer.create, field: id } }')
+      .replace(/lookup\.customer/g, 'domain.customer.create');
+    expect((await check({ [WORK]: create })).out).toEqual(['warning each-target-not-keyed map.domain.customer.create.each']);
+    const keyed = 'entity: Customer\nkey: [name]\nfields:\n  name: { type: Text, required: true }\n';
+    expect((await check({ [WORK]: create, 'domain/entities/customer.yaml': keyed })).out).toEqual([]);
+    // A tool that isn't a create (a read per item) needs no key.
+    expect((await check({ [WORK]: system('  lookup.customer: { each: case.flags, name: item.note, region: x }') })).out).toEqual([]);
   });
 
   test('quotes: required is parsed on an agent step and ignored, with a warning, elsewhere', async () => {

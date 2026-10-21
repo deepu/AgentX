@@ -7,6 +7,7 @@
  * Loaded by SessionManager at module level, so no kernel imports here except lazily.
  */
 import type { MemwiseRecordToolCallbacks, MemwiseToolCallbacks, PlaybookToolDiagnostic, RecordKeepRowResult } from '@memwise/session-tools-core'
+import { untrustedRecordData } from '@memwise/session-tools-core'
 import type { Diagnostic, DraftDiff, DraftMeta, DraftReport } from '@memwise/defs'
 import { emitMemwiseChange, getMemwiseService } from './host'
 import { authoringOf, conversationState, isConversationStep, type ConversationState } from './conversation'
@@ -246,15 +247,31 @@ export function sourceLabel(src: RecordFieldSource): string {
   }
 }
 
+/** The words a value was read from, and whether they are in the page's text. */
+interface ValueQuote { quote: string; found: boolean }
+
+/**
+ * The quote of each of the record's values, by field: the page's text viewers light them up
+ * (`texts[*].highlights` of kind `value`, 25 §4). A value quoted in two viewers keeps the first.
+ */
+export function valueQuotes(page: RecordPage): Map<string, ValueQuote> {
+  const out = new Map<string, ValueQuote>()
+  for (const view of Object.values(page.texts ?? {})) {
+    for (const h of view.highlights) {
+      if (h.kind === 'value' && h.quote && !out.has(h.field)) out.set(h.field, { quote: h.quote, found: h.found })
+    }
+  }
+  return out
+}
+
 /** One field of a record as the chat sees it: value, type, source, and its quote when it has one. */
-function fieldForChat(f: RecordField): Record<string, unknown> {
-  const quote = (f as RecordField & { quote?: unknown }).quote
+function fieldForChat(f: RecordField, quote: ValueQuote | undefined): Record<string, unknown> {
   return {
     field: f.name,
     type: f.type,
     value: f.value,
     source: sourceLabel(f.source),
-    ...(typeof quote === 'string' && quote ? { quote } : {}),
+    ...(quote ? { quote: quote.quote, quoteFound: quote.found } : {}),
     ...(f.ref ? { ref: { entity: f.ref.entity, id: f.ref.id, title: f.ref.title } } : {}),
   }
 }
@@ -263,7 +280,7 @@ function fieldForChat(f: RecordField): Record<string, unknown> {
 export function recordForChat(page: RecordPage): Record<string, unknown> {
   const visible = page.fields.filter((f) => !f.hidden)
   const hidden = page.fields.filter((f) => f.hidden).map((f) => f.name)
-  const quotes = (page as RecordPage & { quotes?: unknown }).quotes
+  const quotes = valueQuotes(page)
   return {
     entity: page.entity,
     id: page.id,
@@ -272,9 +289,8 @@ export function recordForChat(page: RecordPage): Record<string, unknown> {
     domain: page.domain,
     ...(page.status ? { status: page.status } : {}),
     ...(page.parents.length ? { parents: page.parents.map((p) => ({ entity: p.entity, id: p.id, title: p.title })) } : {}),
-    values: visible.map(fieldForChat),
+    values: visible.map((f) => fieldForChat(f, quotes.get(f.name))),
     ...(hidden.length ? { hiddenFields: hidden } : {}),
-    ...(quotes !== undefined ? { quotes } : {}),
     related: Object.fromEntries(Object.entries(page.related).map(([rel, r]) => [rel, {
       entity: r.entity,
       total: r.total,
@@ -407,6 +423,8 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
 /** Longest record digest put into a record chat's context (the system prompt). */
 const RECORD_DIGEST_MAX = 16_000
 const DIGEST_VALUE_MAX = 600
+/** Longest text value in the digest; `record_get` gives the whole value. */
+const DIGEST_TEXT_MAX = 300
 const DIGEST_RELATED_MAX = 25
 
 /** One page block in plain words ("chart: Included papers by year (bar of screenings by year)"). */
@@ -431,13 +449,17 @@ function describeBlock(block: { kind: string; [k: string]: unknown }): string {
 /**
  * The context of a chat anchored to a record (doc 25 §6), from its page as the person sees it:
  * its values (with where each came from and its quote), related rows (titles and ids), open
- * flags, cases, and what the page shows.
+ * flags, cases, and what the page shows. What the record holds was written by people, plugins
+ * and sources, so it goes in an `<untrusted_record_data>` block, as the record tools' results
+ * do: data, never instructions. Long text is cut (record_get has it whole).
  */
 export function recordDigest(page: RecordPage): string {
   const clip = (v: unknown, n = DIGEST_VALUE_MAX) => {
     const s = typeof v === 'string' ? v : JSON.stringify(v)
     return s && s.length > n ? `${s.slice(0, n)}…` : s
   }
+  const clipText = (v: unknown) => (typeof v === 'string' && v.length > DIGEST_TEXT_MAX ? `${v.slice(0, DIGEST_TEXT_MAX)}… (use record_get for the full text)` : clip(v))
+  const quotes = valueQuotes(page)
   const lines: string[] = [
     `${page.entityName} "${page.title}" (entity ${page.entity}, id ${page.id}) in the domain ${page.domain}${page.status ? `, status ${page.status}` : ''}.`,
   ]
@@ -446,9 +468,10 @@ export function recordDigest(page: RecordPage): string {
   for (const f of page.fields) {
     if (f.hidden) { lines.push(`- ${f.name}: (not visible to this person)`); continue }
     if (f.value === null || f.value === undefined || f.value === '') continue
-    const quote = (f as RecordField & { quote?: unknown }).quote
-    const shown = f.ref ? `${f.ref.title} (${f.ref.entity} ${f.ref.id})` : clip(f.value)
-    lines.push(`- ${f.name} (${f.type}): ${shown} [${sourceLabel(f.source)}]${typeof quote === 'string' && quote ? ` quote: "${clip(quote, 300)}"` : ''}`)
+    const quote = quotes.get(f.name)
+    const shown = f.ref ? `${f.ref.title} (${f.ref.entity} ${f.ref.id})` : clipText(f.value)
+    const quoted = quote ? ` quote${quote.found ? '' : ' (not found in the text)'}: "${clip(quote.quote, DIGEST_TEXT_MAX)}"` : ''
+    lines.push(`- ${f.name} (${f.type}): ${shown} [${sourceLabel(f.source)}]${quoted}`)
   }
   const related = Object.entries(page.related)
   if (related.length) {
@@ -464,12 +487,15 @@ export function recordDigest(page: RecordPage): string {
   if (page.lifecycle?.transitions.length) {
     lines.push(`Lifecycle: ${page.lifecycle.states.join(' → ')}; now ${page.lifecycle.current ?? '?'}; moves: ${page.lifecycle.transitions.map((t) => `${t.name}${t.allowed ? '' : ' (not for this person now)'}`).join(', ')}`)
   }
+  // What the page shows comes from the entity's definition, not from the record.
   const areas = Object.entries(page.layout.areas) as [string, { kind: string }[]][]
-  lines.push(`The page shows (${page.layout.layout} layout; header: ${page.layout.header.join(', ') || 'title'}):`)
+  const layoutLines = [`The page shows (${page.layout.layout} layout; header: ${page.layout.header.join(', ') || 'title'}):`]
   for (const [area, blocks] of areas) {
-    if (blocks?.length) lines.push(`- ${area}: ${blocks.map((b) => describeBlock(b as { kind: string; [k: string]: unknown })).join('; ')}`)
+    if (blocks?.length) layoutLines.push(`- ${area}: ${blocks.map((b) => describeBlock(b as { kind: string; [k: string]: unknown })).join('; ')}`)
   }
-  let digest = lines.join('\n')
-  if (digest.length > RECORD_DIGEST_MAX) digest = `${digest.slice(0, RECORD_DIGEST_MAX)}\n… (shortened; use record_get and record_query)`
-  return digest
+  const layout = layoutLines.join('\n')
+  const budget = Math.max(0, RECORD_DIGEST_MAX - layout.length - untrustedRecordData('').length)
+  let record = lines.join('\n')
+  if (record.length > budget) record = `${record.slice(0, budget)}\n… (shortened; use record_get and record_query)`
+  return `${untrustedRecordData(record)}\n${layout}`
 }

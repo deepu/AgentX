@@ -71,17 +71,17 @@ function parsedJson(v: string): unknown {
 }
 
 /**
- * The texts in a value (a tool result, a record's values): every string at any depth, numbers
- * as written, and the strings inside JSON text. A quote is looked for in each one, so it can't
- * straddle two fields of a result.
+ * The texts in a value (a tool result, a record's values): every string at any depth and the
+ * strings inside JSON text. Numbers, booleans and other values are not text: a quote names the
+ * words a value was read from, so a number a tool returned (`n: 1613`) quotes nothing. A quote
+ * is looked for in each text, so it can't straddle two fields of a result.
  */
 export function textsOf(value: unknown, out: string[] = []): string[] {
   if (typeof value === 'string') {
-    out.push(value);
+    // JSON text counts by the strings inside it (unescaped), not its numbers or punctuation.
     const inner = parsedJson(value);
     if (inner !== undefined) textsOf(inner, out);
-  } else if (typeof value === 'number' || typeof value === 'bigint') {
-    out.push(String(value));
+    else out.push(value);
   } else if (Array.isArray(value)) {
     for (const x of value) textsOf(x, out);
   } else if (value && typeof value === 'object') {

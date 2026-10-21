@@ -10,6 +10,7 @@
  * `domain.domain__<entity>`) happens once, in the same transaction.
  */
 import { DEFAULT_DOMAIN, keyOf, splitEntityKey, type DomainDef, type EntityTypeDef, type ValueType, type WorkflowDef } from '@memwise/defs';
+import crypto from 'node:crypto';
 import type pg from 'pg';
 import { APP_ROLE } from '../actor.ts';
 import { quoteIdent } from '../cluster.ts';
@@ -192,8 +193,22 @@ async function syncTablesIn(db: Queryable, entities: Record<string, EntityTypeDe
   return notes;
 }
 
-/** The unique index on an entity's key columns (25 §3): `<table>__key`, cut to Postgres's 63 characters. */
-export const keyIndexName = (def: EntityRef) => `${entityTableName(def)}__key`.slice(0, 63);
+/** Postgres keeps the first 63 bytes of a name. */
+const PG_NAME_MAX = 63;
+
+/**
+ * The unique index on an entity's key columns (25 §3): `<table>__key`. A longer name keeps its
+ * start and ends with a hash of the whole, so two long entity names that share a start don't
+ * get the same index.
+ */
+export function keyIndexName(def: EntityRef): string {
+  const full = `${entityTableName(def)}__key`;
+  if (Buffer.byteLength(full) <= PG_NAME_MAX) return full;
+  const hash = crypto.createHash('sha256').update(full).digest('hex').slice(0, 10);
+  let head = full.slice(0, PG_NAME_MAX - hash.length - 1);
+  while (Buffer.byteLength(head) > PG_NAME_MAX - hash.length - 1) head = head.slice(0, -1);
+  return `${head}_${hash}`;
+}
 
 /** The columns of an entity's key (25 §3), in the key's order; empty when it has none. */
 export function keyColumns(def: EntityTypeDef): EntityColumn[] {

@@ -80,6 +80,19 @@ describe('quotes on judgement writes (D81)', () => {
     expect(stray.checks.find((c) => !c.passed)).toMatchObject({ rule: 'writes.sponsor: the quote is in a source', reason: expect.stringContaining("isn't written") });
   });
 
+  test('a quote on a value that comes from a tool fails the quote rule for that field', () => {
+    const input = reader('q-tool');
+    input.step.writes.pmid = { field: 'pmid', type: { kind: 'scalar', name: 'Text' }, typeSource: 'Text', from: { kind: 'tool', tool: 'paper.get', field: 'pmid' } };
+    const r = structuralChecks(input, { outcome: 'read', writes: { n: 1613, pmid: '1' }, quotes: { n: '1613 (757 [46·9%] female)', pmid: '1613' } }, evidence, ['paper.get'], 'T');
+    expect(r.passed).toBe(false);
+    expect(r.checks.filter((c) => !c.passed)).toEqual([
+      { rule: 'writes.pmid: the quote is in a source', kind: 'structural', passed: false, reason: 'this value comes from a tool; quote only judgement writes' },
+    ]);
+    // The value itself is still taken from the tool, without a quote.
+    expect(r.writes.pmid!.provenance).toMatchObject({ kind: 'tool', tool: 'paper.get' });
+    expect(r.writes.pmid!.provenance).not.toHaveProperty('quote');
+  });
+
   test('`quotes: required`: a value without a quote fails the same check; an empty value needs none', () => {
     const input = reader('q-required', 'required');
     const r = structuralChecks(input, { outcome: 'read', writes: { n: 1613, sponsor: '' } }, evidence, ['paper.get'], 'T');

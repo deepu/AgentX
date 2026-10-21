@@ -285,6 +285,9 @@ function checkExtract(d: Diagnostics, step: StepDef, env: CheckEnvironment): voi
   }
 }
 
+/** The entity tools of these entity types by tool name, each naming its entity by its key here. */
+const entityToolsOf = (entities: Record<string, EntityTypeDef> | undefined) => (entities ? entityTools(entities) : {});
+
 /**
  * A system step runs without a model: its required tools in order, each with the arguments its
  * `map` gives, and its writes taken from their results. So every required argument must be
@@ -318,6 +321,13 @@ function checkSystemStep(d: Diagnostics, workflow: WorkflowDef, step: StepDef, e
     }
     const of = field?.type.kind === 'list' ? field.type.of : undefined;
     itemFields[tool] = of?.kind === 'named' ? (workflow.caseType.types[of.name]?.fields ?? entities?.[of.name]?.fields) : undefined;
+    // Each call's idempotency key names the step run, so a step re-entered after a person
+    // creates the items again unless the entity's key finds the ones made the first time.
+    const target = entityToolsOf(entities)[tool];
+    const made = target?.verb === 'create' ? entities?.[target.entity] : undefined;
+    if (made && !made.key?.length) {
+      at('warning', 'each-target-not-keyed', `${tool} is called once per item and ${made.entity} has no \`key:\`, so a step run again (re-entered after a person) creates the items again: give ${made.entity} a key, e.g. \`key: [<field>, …]\``, ['map', tool, 'each']);
+    }
   }
   for (const tool of step.tools.required) {
     const args = map[tool] ?? {};

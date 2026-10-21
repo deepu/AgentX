@@ -1,5 +1,6 @@
 entity: Screening
 title: "{article}"
+key: [topic, article]
 fields:
   topic:    { type: Ref<Topic>, required: true }
   article:  { type: Ref<Article>, required: true }

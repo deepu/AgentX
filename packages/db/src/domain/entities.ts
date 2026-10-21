@@ -149,11 +149,28 @@ export class PgEntityStore {
    * its id and whether it `existed` (then nothing changed). Race-safe: the insert does nothing on
    * a conflict, so two creates of the same key both get the one record. A repeat with the same
    * idempotency key answers as the first did (`existed: false`). Without a key it is `create`.
+   * The record a clash was on is looked up on `db`, as its actor; see `insertKeyed`.
    */
   async createKeyed(
     db: Queryable, def: EntityTypeDef, values: Record<string, unknown>,
     opts: CreateEntityOptions & { reason?: string; id?: string } = {},
   ): Promise<{ id: string; existed: boolean }> {
+    const r = await this.insertKeyed(db, def, values, opts);
+    if (!r.existed) return r;
+    const found = await this.idByKey(db, def, values);
+    if (!found) throw new Error(`${def.entity}: the key ${keyText(def, values)} conflicted but no record with it is visible`);
+    return { id: found, existed: true };
+  }
+
+  /**
+   * `createKeyed` up to the clash: `{ existed: true }` without the id when a record with the key
+   * is there. The kernel's tools then find it as the system, in a transaction of its own after
+   * this one (as the quote checks run), so the actor's row and column rules can't hide it.
+   */
+  async insertKeyed(
+    db: Queryable, def: EntityTypeDef, values: Record<string, unknown>,
+    opts: CreateEntityOptions & { reason?: string; id?: string } = {},
+  ): Promise<{ id: string; existed: false } | { existed: true }> {
     const cols = keyColumns(def);
     if (!cols.length) return { id: await this.create(db, def, values, opts), existed: false };
     const empty = cols.filter((c) => values[c.field] === undefined || values[c.field] === null || values[c.field] === '');
@@ -184,12 +201,14 @@ export class PgEntityStore {
       const again = await db.query<{ id: string }>(`select id from ${table} where idempotency_key = $1`, [opts.idempotencyKey]);
       if (again.rows[0]) return { id: again.rows[0].id, existed: false };
     }
-    const found = await this.idByKey(db, def, values);
-    if (!found) throw new Error(`${def.entity}: the key ${keyText(def, values)} conflicted but no record with it is visible`);
-    return { id: found, existed: true };
+    return { existed: true };
   }
 
-  /** The id of the record with this key (25 §3), from the table (so a field's access list doesn't hide the match). */
+  /**
+   * The id of the record with this key (25 §3), from the table. Under a person or step actor the
+   * table's column grants leave out fields with `access:` (which is why a key field may not have
+   * one: `key-field-restricted`); the kernel's tools run it as the system (see `insertKeyed`).
+   */
   async idByKey(db: Queryable, def: EntityTypeDef, key: Record<string, unknown>): Promise<string | undefined> {
     const cols = keyColumns(def);
     if (!cols.length || cols.some((c) => key[c.field] === undefined || key[c.field] === null)) return undefined;

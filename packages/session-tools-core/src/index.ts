@@ -263,6 +263,7 @@ export {
   handleRecordGet,
   handleRecordQuery,
   handleRecordKeep,
+  untrustedRecordData,
 } from './handlers/index.ts';
 
 export type {

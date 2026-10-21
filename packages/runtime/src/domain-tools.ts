@@ -102,6 +102,13 @@ export function domainTools(entities: Record<string, EntityTypeDef>, runtime?: (
   /** Quote fields (25 §4) checked after the write, as the system: a quote not in its source flags the record. */
   const checkQuotesOf = (def: EntityTypeDef, recordId: string) =>
     quoteFields(def).length ? withActor(rt().pool, { kind: 'system' }, (db) => checkQuotes(db, entities, def, recordId)) : Promise.resolve({});
+  /**
+   * The id of the record with this key (25 §3), looked up as the system like the quote check, so
+   * neither the step's column grants nor row rules hide it. What the step may see of the record
+   * is still read as the step.
+   */
+  const idByKey = (def: EntityTypeDef, key: Record<string, unknown>) =>
+    withActor(rt().pool, { kind: 'system' }, (db) => store.idByKey(db, def, key));
 
   /**
    * The person a step acts for, with their roles and grants now (for `by: role:<x>`). A triggered
@@ -131,10 +138,14 @@ export function domainTools(entities: Record<string, EntityTypeDef>, runtime?: (
         const errors = fieldErrors(def, entities, args, { creating: true });
         if (Object.keys(errors).length) throw new Error(`the ${label} can't be created: ${plainErrors(errors)}`);
         const opts = { idempotencyKey: ctx.idempotencyKey, stepRunId: ctx.token.stepRunId };
-        // Keyed (25 §3, D80): the record with this key, made now or found as it was.
-        const r = key
-          ? await asStep(ctx.token, (c) => store.createKeyed(c, def, args, opts))
-          : { id: await asStep(ctx.token, (c) => store.create(c, def, args, opts)), existed: false };
+        // Keyed (25 §3, D80): the record with this key, made now or found as it was (as the
+        // system, once the step's transaction is done).
+        const made = key
+          ? await asStep(ctx.token, (c) => store.insertKeyed(c, def, args, opts))
+          : { id: await asStep(ctx.token, (c) => store.create(c, def, args, opts)), existed: false as const };
+        const found = made.existed ? await idByKey(def, args) : made.id;
+        if (!found) throw new Error(`the ${label} with this ${keyText} clashed with one that can't be found`);
+        const r = { id: found, existed: made.existed };
         if (!r.existed) {
           await checkQuotesOf(def, r.id);
           changed(def, r.id);
@@ -158,7 +169,8 @@ export function domainTools(entities: Record<string, EntityTypeDef>, runtime?: (
       source,
       async execute({ id, key: byKey }: { id?: string; key?: Record<string, unknown> }, ctx: ToolContext) {
         if (!id && !(key && byKey && typeof byKey === 'object')) throw new Error(key ? `name the ${label} by its id or its ${keyText} (\`key\`)` : `name the ${label} by its id`);
-        const row = await withActor(rt().pool, { kind: 'step', token: ctx.token }, (c) => (id ? store.get(c, def, id) : store.getByKey(c, def, byKey!)));
+        const found = id ?? (await idByKey(def, byKey!));
+        const row = found ? await withActor(rt().pool, { kind: 'step', token: ctx.token }, (c) => store.get(c, def, found)) : undefined;
         const which = id ?? key!.map((f) => `${f} ${JSON.stringify(byKey![f])}`).join(', ');
         return row ? { id: row.id, ...(row.lifecycle ? { status: row.lifecycle } : {}), ...row.values, hidden: row.hidden } : { error: `no ${label} ${which}` };
       },

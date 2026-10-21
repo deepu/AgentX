@@ -173,6 +173,8 @@ export function structuralChecks(
     checks.push(errors.length ? fail(`writes.${field}: ${w.typeSource}`, errors.join('; ')) : pass(`writes.${field}: ${w.typeSource}`));
 
     if (w.from.kind === 'tool') {
+      // The tool result is the value's source; a quote would claim words it wasn't read from.
+      if (args.quotes?.[field] !== undefined) checks.push(fail(quoteRule(field), 'this value comes from a tool; quote only judgement writes'));
       const rule = `writes.${field}: from tool ${w.from.tool}${w.from.field ? ` (${w.from.field})` : ''}`;
       const hit = findInResults(evidence, w.from.tool, value, w.from.field, field);
       if (!hit) {
