@@ -207,8 +207,8 @@ export interface AuditFilter {
   entity?: string;
   recordId?: string;
   caseId?: string;
-  /** Also the entries of the cases that touched the record (its step records). */
-  withCases?: boolean;
+  /** With `entity`: also the entries of these cases (the cases that touched the record: its step records). */
+  caseIds?: string[];
   actorKinds?: AuditActorKind[];
   actions?: string[];
   /** Only entries with seq greater than this (paging, newest last). */
@@ -287,16 +287,13 @@ export class PgAuditLog {
     const { rows } = await db.query<AuditDbRow>(
       `select ${AUDIT_COLS} from mw.audit_log a
         where project = $1
-          and ($2::text is null or (entity = $2 and record_id = $3)
-               or ($4::boolean and case_id in (select s.case_id from mw.signatures s where s.entity = $2 and s.record_id = $3 and s.case_id is not null
-                                      union select st.case_id from mw.record_versions v join mw.step_runs st on st.id = v.via
-                                       where v.entity = $2 and v.record_id = $3)))
+          and ($2::text is null or (entity = $2 and record_id = $3) or case_id = any($4::text[]))
           and ($5::text is null or case_id = $5)
           and ($6::text[] is null or actor_kind = any($6))
           and ($7::text[] is null or action = any($7))
           and seq > $8
         order by seq limit $9`,
-      [f.project, f.entity ?? null, f.recordId ?? null, f.withCases ?? false, f.caseId ?? null, f.actorKinds ?? null, f.actions ?? null,
+      [f.project, f.entity ?? null, f.recordId ?? null, f.caseIds ?? [], f.caseId ?? null, f.actorKinds ?? null, f.actions ?? null,
         f.afterSeq ?? 0, f.limit ?? 1000]);
     return rows.map(toAudit);
   }

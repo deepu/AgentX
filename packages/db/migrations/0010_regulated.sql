@@ -225,6 +225,7 @@ declare
   actor text;
   label text;
   model text;
+  verifier text;
   quote text;
   quoted_field text;
 begin
@@ -234,8 +235,11 @@ begin
   end if;
   if new.performer = 'agent' then
     kind := 'ai'; actor := new.id;
+    -- The model the agent ran on (its own turns, not the verifier's).
     select j.model ->> 'model' into model from mw.step_journal j
-     where j.step_run_id = new.id and j.kind = 'model' and j.model is not null order by j.started_at desc limit 1;
+     where j.step_run_id = new.id and j.kind = 'model' and j.journal_key like 'model:%' and j.model is not null order by j.started_at desc limit 1;
+    select j.model ->> 'model' into verifier from mw.step_journal j
+     where j.step_run_id = new.id and j.kind = 'model' and j.journal_key like 'verify:%' and j.model is not null order by j.started_at desc limit 1;
     select e.key, e.value -> 'provenance' ->> 'quote' into quoted_field, quote from jsonb_each(new.outputs) e
      where jsonb_typeof(e.value) = 'object' and e.value -> 'provenance' ->> 'quote' is not null order by e.key limit 1;
   elsif new.performer = 'person' and new.decided_by is not null then
@@ -248,7 +252,7 @@ begin
   end if;
   perform mw.audit_append(mw.audit_project_of_case(new.case_id), kind, actor, label, 'step.' || new.status, null, null, new.case_id,
     jsonb_strip_nulls(jsonb_build_object('stepRunId', new.id, 'step', new.step_id, 'workflow', new.workflow_id,
-      'version', new.workflow_version, 'performer', new.performer, 'outcome', new.outcome, 'model', model,
+      'version', new.workflow_version, 'performer', new.performer, 'outcome', new.outcome, 'model', model, 'verifierModel', verifier,
       'rationale', left(coalesce(new.rationale, new.comment), 600), 'quote', left(quote, 600), 'quotedField', quoted_field,
       'checkpoint', case when jsonb_typeof(new.checkpoint) = 'array' and jsonb_array_length(new.checkpoint) > 0 then
         jsonb_build_object('rules', jsonb_array_length(new.checkpoint),

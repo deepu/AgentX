@@ -47,6 +47,11 @@ import { startValueErrors, StartRunError } from './start.ts';
 import { createAuditService } from './audit/trail.ts';
 import { withPasswordRule } from './regulated/passwords.ts';
 import { isRegulatedPlaybook } from './regulated/signatures.ts';
+import { createAuditLogService } from './regulated/audit-log.ts';
+import { createChangesService } from './regulated/changes.ts';
+import { createInspectorService } from './regulated/inspectors.ts';
+import { createTmfService } from './regulated/tmf.ts';
+import { VERIFIER_ROLE } from '@memwise/policy';
 import { pairAllLinks } from './records/consumers.ts';
 import type { RecordsDeps } from './records/context.ts';
 import { createDomainsService } from './records/domains.ts';
@@ -307,6 +312,18 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     audit: createAuditService(recordsDeps),
   };
 
+  // Stage 5 (26 §8): regulated projects: change requests, the project audit log, inspectors, the TMF index.
+  const auditLog = createAuditLogService({ pool, entities: () => entities, defs, people });
+  const changes = createChangesService({
+    pool, projectDir: options.projectDir, project: () => indexed?.project, authoring: () => authoring, models, verifierRole: VERIFIER_ROLE,
+    people, auditLog: () => auditLog, emit: (c) => feed.emit(c),
+  });
+  const inspectors = createInspectorService({
+    pool, entities: () => entities, project: () => indexed?.project, people, files, auditLog: () => auditLog,
+    publicUrl: () => options.publicUrl?.() ?? process.env.MEMWISE_PUBLIC_URL ?? undefined, emit: (c) => feed.emit(c),
+  });
+  const regulated: import('./types.ts').KernelRegulated = { changes, auditLog, inspectors, tmf: createTmfService({ pool, entities: () => entities }) };
+
   // Phase 6 flow (24 §7, §8, §10): the dispatcher, triggers, hand-offs, incoming email, entity timers.
   const flow = createFlow({
     pool, client,
@@ -347,6 +364,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     people: withPasswordRule(people, () => indexed?.project),
     ...phase6,
     triggers: flow.triggers,
+    ...regulated,
 
     async index() {
       if (!options.projectDir) throw new Error('createKernel({ projectDir }) is needed to index');
@@ -475,6 +493,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       // Phase 6: firings the storm guard held, for the workflow's owner role (24 §7).
       const domainDefs = indexed?.project.domains ?? (await indexedDomains(pool));
       items.push(...(await heldTriggerItems(pool, defs, actor, (d) => domainDefs[d]?.owner)));
+      // Stage 5: change requests waiting for a signature, and inspectors' questions.
+      items.push(...(await changes.inboxItems(actor)), ...(await inspectors.inboxItems(actor)));
       // Phase 4: uncertain identity matches, for the people who own plugin bindings.
       for (const candidate of (await pluginServices?.identityInbox(actor)) ?? []) {
         items.push({ kind: 'identity', id: `identity:${candidate.id}`, candidate, since: candidate.createdAt });
@@ -581,7 +601,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const channels = createChannelService({
     pool, tools: () => gateway, people, external, inbox: (actor) => kernel.inbox(actor), subscribe: (l) => feed.subscribe(l),
     async policyFor(item) {
-      if (item.kind === 'identity' || item.kind === 'flag') return undefined;
+      if (item.kind === 'identity' || item.kind === 'flag' || item.kind === 'change-request' || item.kind === 'inspector-question') return undefined;
       // The playbook's policy without a step layer, as for an invite (a step's allow list is for its own calls).
       const wf = await defs.latest(item.workflowId);
       return wf ? (await defs.policy(wf)).effective : undefined;
@@ -644,6 +664,11 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       caseToExample: (caseId, opts) => kernel.caseToExample(caseId, opts),
       testRunner: options.testRunner ?? defaultTestRunner({ adminUrl: options.testDatabaseUrl }),
       emit: (change) => feed.emit(change),
+      changes: {
+        onDraftCreated: (meta, by) => changes.onDraftCreated(meta, by),
+        publishRefusal: (draftId, cr) => changes.publishRefusal(draftId, cr),
+        regulated: (workflowId) => isRegulatedPlaybook(indexed?.project, workflowId),
+      },
     });
   }
   return kernel;
