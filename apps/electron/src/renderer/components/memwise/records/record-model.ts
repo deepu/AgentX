@@ -53,7 +53,7 @@ export const TONE_PILL: Record<StatusTone, string> = {
 
 /** The base of a type expression: `Ref<Person>` → "Ref", `List<Flag>` → "List". */
 export function baseType(type: string): string {
-  return type.replace(/[<(].*$/, '').trim()
+  return type.replace(/[<([].*$/, '').trim()
 }
 
 /** A percent type: `Percentage` as the definitions write it (`Percent` is accepted too). */
@@ -86,7 +86,7 @@ export function formatTypedValue(type: string, value: unknown, t: TFunction, loc
   if (isPercentType(base) && typeof value === 'number') return formatPercent(value, locale)
   if (base === 'Date' && typeof value === 'string') return formatDate(value, locale)
   if ((base === 'DateTime' || base === 'Timestamp') && typeof value === 'string') return absoluteTime(value, locale)
-  if ((base === 'Lifecycle' || base === 'Status') && typeof value === 'string') return statusLabel(value)
+  if ((base === 'Lifecycle' || base === 'Status' || base === 'Enum') && typeof value === 'string') return statusLabel(value)
   if (base === 'Money' && isMoney(value)) return formatMoney(value, locale)
   if (base === 'Address' && typeof value === 'object' && !Array.isArray(value)) {
     return Object.values(value as Record<string, unknown>).filter(v => typeof v === 'string' && v).join(', ')
@@ -210,6 +210,35 @@ export function relatedColumns(rows: { title: string; values: Record<string, unk
   return [...new Set(rows.flatMap(r => Object.keys(r.values)))]
     .filter(c => c !== 'status' && !rows.every(r => r.values[c] === undefined || r.values[c] === r.title))
     .slice(0, 2)
+}
+
+/** A board card's lines: up to two columns, not the one it is grouped by, nor one whose value its title already shows. */
+export function cardColumns<C extends { name: string }>(columns: C[], rows: { title: string; values: Record<string, unknown> }[], group: string): C[] {
+  const inTitle = (r: { title: string; values: Record<string, unknown> }, c: string) => {
+    const v = r.values[c]
+    return v === undefined || v === null || v === '' || (typeof v === 'string' && r.title.includes(v))
+  }
+  return columns.filter(c => c.name !== group && !rows.every(r => inTitle(r, c.name))).slice(0, 2)
+}
+
+/**
+ * Rows in their groups, in the result's group order: the key (null: no value), its title (a
+ * reference's record title), its count and rows. `group` "status" falls back to the row's status.
+ */
+export function groupRows<R extends { values: Record<string, unknown>; status?: string; refs?: Record<string, { title: string }> }>(
+  result: { rows: R[]; groups?: { key: string | null; count: number; title?: string }[] }, group: string,
+): { key: string | null; title: string | null; count: number; rows: R[] }[] {
+  const keyOf = (row: R) => {
+    const v = row.values[group] ?? (group === 'status' ? row.status : undefined)
+    return v === null || v === undefined || v === '' ? null : String(v)
+  }
+  // The result's groups first (their order and counts), then any a row has that they leave out.
+  const keys = [...new Set([...(result.groups?.map(g => g.key) ?? []), ...result.rows.map(keyOf)])]
+  return keys.map(k => {
+    const rows = result.rows.filter(r => keyOf(r) === k)
+    const g = result.groups?.find(x => x.key === k)
+    return { key: k, title: k === null ? null : g?.title ?? rows.find(r => r.refs?.[group])?.refs?.[group]?.title ?? k, count: g?.count ?? rows.length, rows }
+  })
 }
 
 // ---------------------------------------------------------------- chart

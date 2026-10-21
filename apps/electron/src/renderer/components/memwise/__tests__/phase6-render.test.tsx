@@ -159,6 +159,13 @@ describe('dashboard, entities, automations, domains', () => {
     // A reference reads as the record's title, not its id.
     expect(html).toContain('AST-301')
     expect(html).not.toContain('stud_ast301')
+    // The kernel keeps a row's status beside its values, not in them: the column still shows it.
+    const bare = { ...S.sampleSitesQuery, rows: S.sampleSitesQuery.rows.map(({ values: { status: _s, ...values }, ...r }) => ({ ...r, values })) }
+    expect(count(render(<EntityView {...base} tab="records" result={bare} />), 'lucide-circle-dot')).toBe(bare.rows.length)
+    // Grouped, the table sets its rows under each group's heading.
+    const grouped = render(<EntityView {...base} tab="records" result={{ ...S.sampleSitesQuery, groups: undefined }} state={{ ...viewToState(null), group: 'study' }} />)
+    expect(grouped).toContain('data-table-group="stud_ast301"')
+    expect(grouped).toMatch(/data-table-group="stud_ast301"[^]*?>AST-301</)
     expect(html).toContain('All records')
     expect(html).toContain('Save as my view')
     const broken = render(<EntityView {...base} tab="records" result={null} error="Unexpected '!' at position 9." state={{ ...viewToState(null), filter: 'status !! 1' }} />)

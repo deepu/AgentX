@@ -132,9 +132,11 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
     async views(domain, actor, opts = {}) {
       const d = deps.project()?.domains?.[domain];
       const match = (v: ViewDef) => !opts.entity || v.entity === opts.entity || entityByName(deps.entities(), v.entity, domain) === entityByName(deps.entities(), opts.entity, domain);
-      const shared = Object.values(d?.views ?? {}).filter(match).map((v) => ({ ...v, personal: false, domain }));
+      // A view file names its entity as written ("Site"); callers match on the key ("etmf.Site").
+      const keyed = (v: ViewDef): ViewDef => { const def = entityByName(deps.entities(), v.entity, domain); return def ? { ...v, entity: keyOf(def) } : v; };
+      const shared = Object.values(d?.views ?? {}).filter(match).map((v) => ({ ...keyed(v), personal: false, domain }));
       const personal = actor.kind === 'person'
-        ? (await views.listPersonal(deps.pool, actor.personId, domain)).filter(match).map((v) => ({ ...v, personal: true, domain }))
+        ? (await views.listPersonal(deps.pool, actor.personId, domain)).filter(match).map((v) => ({ ...keyed(v), personal: true, domain }))
         : [];
       return [...shared, ...personal];
     },

@@ -302,6 +302,8 @@ describe.skipIf(!pgAvailable)('Phase 6 records', () => {
     const mineView = await kernel.records.saveView('qa', { id: 'my-high', title: 'High scores', entity: 'Report', filter: 'score >= 95', layout: 'table' }, lead);
     const views = await kernel.records.views('qa', lead, { entity: 'Report' });
     expect(views.map((v) => [v.id, v.personal])).toEqual([['open-reports', false], [mineView.id, true]]);
+    // Named by key, as the screens match them, whatever the file wrote ("Report").
+    expect(views.map((v) => v.entity)).toEqual(['qa.Report', 'qa.Report']);
     expect(await kernel.records.views('qa', lead2)).toEqual([expect.objectContaining({ id: 'open-reports' })]);
     await expect(kernel.records.saveView('qa', { id: 'open-reports', title: 'x', entity: 'Report', layout: 'table' }, lead)).rejects.toThrow(/shared view/);
 
