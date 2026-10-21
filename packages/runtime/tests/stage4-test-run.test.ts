@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { TestDatabase } from '@memwise/db';
 import { parseExampleFile } from '@memwise/defs';
 import { scriptedProvider } from '@memwise/gateway';
-import { cpSync, mkdtempSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createKernel } from '../src/kernel.ts';
@@ -20,6 +20,7 @@ let db: TestDatabase;
 let kernel: Kernel;
 let authoring: Authoring;
 let manager: PersonActor;
+let cra: PersonActor;
 let root = '';
 let siteId = '';
 let draftId = '';
@@ -39,6 +40,9 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     root = mkdtempSync(join(tmpdir(), 'mw-s4-'));
     cpSync(join(REPO, 'examples/etmf'), root, { recursive: true });
     for (const id of ['create-playbook', 'change-playbook']) cpSync(join(REPO, 'examples/intake/workflows', id), join(root, 'workflows', id), { recursive: true });
+    // The email's body is for the study manager's eyes: a CRA doesn't see the whole chase case.
+    const caseFile = join(root, CHASE, 'case.yaml');
+    writeFileSync(caseFile, readFileSync(caseFile, 'utf8').replace('  email_body:        Text\n', '  email_body:        { type: Text, access: [study_manager] }\n'));
     const script = writerScript();
     kernel = await createKernel({
       databaseUrl: db.url, projectDir: root, filesDir: mkdtempSync(join(tmpdir(), 'mw-s4-files-')),
@@ -51,6 +55,7 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     manager = await kernel.people.actorFor((await kernel.people.create({
       name: 'Anika Rao', email: 'anika@northlight.example', roles: ['study_manager', 'tmf_specialist', 'manager', 'staff'],
     })).id);
+    cra = await kernel.people.actorFor((await kernel.people.create({ name: 'Ola Nowak', email: 'ola@northlight.example', roles: ['cra', 'staff'] })).id);
     // Site DE-104 with three documents missing and one reminder sent; picking it starts the chase.
     const create = async (entity: string, values: Record<string, unknown>, status?: string) => {
       const r = await kernel.records.create({ entity, values, ...(status ? { status } : {}), reason: 'study set-up' }, { kind: 'system' });
@@ -121,6 +126,42 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     const reminder = run.trace?.calls.find((c) => c.tool === 'etmf.reminder.create');
     expect(reminder?.args).toMatchObject({ sent_to: 'coordinator@charite-studien.example', copied: 'priya.shah@northlight.example' });
     expect(await authoring.lastTestRun(draftId)).toMatchObject({ status: 'pass', hash: run.hash });
+  }, 180_000);
+
+  test('what the run saw goes back only to who ran it, and never into the project folder', async () => {
+    const file = readFileSync(join(root, 'drafts', draftId, 'test-run.json'), 'utf8');
+    expect(JSON.parse(file)).toEqual({
+      draftId, workflowId: 'chase-missing', hash: expect.any(String), at: expect.any(String), by: manager.personId,
+      record: { entity: 'etmf.Site', id: siteId }, status: 'pass',
+    });
+    expect(file).not.toContain('priya.shah@northlight.example');
+    expect(file).not.toContain('coordinator@');
+    const mine = await authoring.lastTestRun(draftId, manager);
+    expect(mine && 'trace' in mine && mine.trace?.calls.length).toBeGreaterThan(0);
+    for (const other of [await authoring.lastTestRun(draftId, cra), await authoring.lastTestRun(draftId)]) {
+      expect(other).toMatchObject({ status: 'pass', record: { entity: 'etmf.Site', id: siteId } });
+      expect(other && ('trace' in other || 'copied' in other || 'title' in other.record)).toBe(false);
+    }
+  });
+
+  test("someone who can't see the whole last case gets no replay of it", async () => {
+    const other = await authoring.createDraft({ workflowId: 'chase-missing', title: 'Look at it', kind: 'change', chatId: 'chat-cra' }, cra);
+    const run = await authoring.testRun(other.id, { entity: 'etmf.Site', id: siteId }, cra);
+    expect(run.replayedCase).toBeUndefined();
+    // No model turns to replay, and no live model in a test run: it can't get past the agent step.
+    expect(run.status).toBe('skip');
+    expect(run.trace?.calls ?? []).toEqual([]);
+  }, 120_000);
+
+  test('one test run per draft at a time, and a draft discarded mid-run keeps no result', async () => {
+    const other = await authoring.createDraft({ workflowId: 'chase-missing', title: 'Thrown away', kind: 'change', chatId: 'chat-3' }, manager);
+    const first = authoring.testRun(other.id, { entity: 'etmf.Site', id: siteId }, manager);
+    await expect(authoring.testRun(other.id, { entity: 'etmf.Site', id: siteId }, manager)).rejects.toThrow('already running');
+    await Bun.sleep(1500); // the throwaway database is being made
+    await authoring.discardDraft(other.id);
+    await first.catch(() => undefined);
+    expect(existsSync(join(root, 'drafts', other.id, 'test-run.json'))).toBe(false);
+    expect(await authoring.lastTestRun(other.id, manager)).toBeUndefined();
   }, 180_000);
 
   test('Send for review starts the change run, which checks the draft and waits for its reviewer', async () => {

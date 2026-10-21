@@ -157,23 +157,38 @@ export interface ExampleTrace {
  * Stage 4 (26 §5, D121): the last test run of a draft on one record, `drafts/<id>/test-run.json`.
  * It belongs to the content it ran on (`hash`): a later edit makes it stale.
  */
-export interface DraftTestRun {
+/**
+ * What `drafts/<id>/test-run.json` keeps of a test run: on which record, by whom, against which
+ * content and whether it passed. Never what the run saw (the record's values, the calls' arguments):
+ * the project folder is read by everyone who builds playbooks (D121).
+ */
+export interface DraftTestRunSummary {
   draftId: string;
   workflowId: string;
   hash: string;
   at: string;
   /** Person id. */
   by: string;
-  record: { entity: string; id: string; title: string };
-  /** `pass`: it ran with no problem; `skip`: it couldn't run (`reason`). */
+  record: { entity: string; id: string };
+  /** `pass`: it ran with no problem; `skip`: it couldn't run. */
   status: 'pass' | 'fail' | 'skip';
+}
+
+/** A test run as the person who ran it gets it back. */
+export interface DraftTestRun extends DraftTestRunSummary {
+  record: { entity: string; id: string; title: string };
   differences: string[];
   reason?: string;
   trace?: ExampleTrace;
-  /** The case whose model turns were replayed, when the record had one. */
+  /** The case whose model turns were replayed, when the record had one the person may see whole. */
   replayedCase?: string;
   /** Records copied into the throwaway database, by entity key. */
   copied: Record<string, number>;
+}
+
+/** A full test run, or (for anyone else, or after a restart) its summary. */
+export function isFullTestRun(r: DraftTestRunSummary | DraftTestRun): r is DraftTestRun {
+  return 'copied' in r && 'title' in r.record;
 }
 
 /** A past case replayed on the draft ("try it on past cases"). */

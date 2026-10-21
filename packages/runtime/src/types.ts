@@ -317,7 +317,7 @@ export interface KernelPhase2 {
 // PHASE 3 CONTRACT. `@memwise/server-core` codes against these; change only additively.
 
 import type {
-  DiffHunk as _DiffHunk, Diagnostic as _Diagnostic, DraftDiff, DraftEdit, DraftMeta, DraftReport, DraftTestRun, ExampleCase, ExampleOutcome,
+  DiffHunk as _DiffHunk, Diagnostic as _Diagnostic, DraftDiff, DraftEdit, DraftMeta, DraftReport, DraftTestRun, DraftTestRunSummary, ExampleCase, ExampleOutcome,
   WorkflowVersion,
 } from '@memwise/defs';
 
@@ -396,8 +396,11 @@ export interface Authoring {
    * with their first outcome, outbound effects stubbed); kept as the draft's last test run.
    */
   testRun(draftId: string, record: { entity: string; id: string }, by: Extract<Actor, { kind: 'person' }>): Promise<DraftTestRun>;
-  /** The draft's last test run, if any. */
-  lastTestRun(draftId: string): Promise<DraftTestRun | undefined>;
+  /**
+   * The draft's last test run, if any: in full for the person who ran it (until the app restarts),
+   * otherwise its summary (record, status, who, when), D121.
+   */
+  lastTestRun(draftId: string, by?: Extract<Actor, { kind: 'person' }>): Promise<DraftTestRunSummary | DraftTestRun | undefined>;
   /** Turn a recorded case into an example case in a draft (a correction becomes a test, 05 §12). */
   exampleFromCase(input: {
     caseId: string; name?: string; correction?: { step: string; outcome: string; note?: string }; draftId?: string;

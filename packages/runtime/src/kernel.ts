@@ -650,6 +650,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         const effect = gateway.bound()[name]?.effect ?? gateway.get(name)?.effect;
         return typeof effect === 'string' ? effect : undefined;
       },
+      toolFromPlugin: (name) => !!(gateway.get(name)?.source?.plugin || gateway.get(name)?.source?.mcpServer),
     });
   }
   return kernel;

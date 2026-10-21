@@ -7,7 +7,7 @@ import {
   applyDraft, checkProject, createDraft, draftPlaybookFolder, findPlaybookFolder, readDraftTestRun, writeDraftTestRun, describeStructuralDiff, diffDraft, discardDraftEdit, DraftConflictError, draftContentHash,
   draftDir, DraftStaleError, exampleToYaml, listDrafts, loadDraft, loadWorkflow, readDraft, SCALAR_TYPES, setDraftEditStatus,
   updateDraftMeta, WORKFLOW_ID_PATTERN, writeDraftFiles, writeDraftReport,
-  type CheckEnvironment, type Diagnostic, type DraftReport, type DraftTestRun, type EffectClass, type ExampleCase, type ExampleOutcome, type Impact,
+  DEFAULT_DOMAIN, type CheckEnvironment, type Diagnostic, type DraftReport, type DraftTestRun, type EffectClass, type ExampleCase, type ExampleOutcome, type Impact,
   type DiffNameKind, type ImpactTool, type PastCaseOutcome, type ProjectDefs, type StructuralDiff, type WorkflowDef,
 } from '@memwise/defs';
 import type { ToolGateway } from '@memwise/gateway';
@@ -47,6 +47,8 @@ export interface AuthoringDeps {
   queryRecords?(q: RecordQuery, by: Actor): Promise<RecordQueryResult>;
   /** Stage 4: a bound tool's effect class (a test run stubs what would leave the building). */
   toolEffect?(name: string): EffectClass | undefined;
+  /** Whether a bound tool comes from a plugin: a test run stubs it whatever its class (D121). */
+  toolFromPlugin?(name: string): boolean;
 }
 
 /** Past cases replayed by a check, by default. */
@@ -340,6 +342,70 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     }
   }
 
+  /** Drafts with a test run going, and each draft's last full run (for the person who ran it). */
+  const testRunsInFlight = new Set<string>();
+  const fullTestRuns = new Map<string, DraftTestRun>();
+
+  /**
+   * The record's latest case of this playbook, when the person may see every field of it: its
+   * model turns (and its plugin tools' recorded results) are replayed. A case with fields hidden
+   * from them isn't replayed (as exampleFromCase refuses to save it), and the run says so.
+   */
+  async function replayableCase(workflowId: string, field: string | undefined, recordId: string, by: Actor): Promise<{ id: string; example?: ExampleCase; hidden?: true } | undefined> {
+    if (!field) return undefined;
+    const { rows } = await deps.pool.query<{ id: string; values: Record<string, unknown> }>(
+      `select id, values from mw.cases where workflow_id = $1 and values->$2->>'value' = $3 order by created_at desc limit 1`,
+      [workflowId, field, recordId]);
+    const row = rows[0];
+    if (!row) return undefined;
+    const live = await liveWorkflow(workflowId);
+    const fields = live?.caseType.fields ?? {};
+    if (Object.keys(row.values ?? {}).some((k) => !maySee(by, fields[k], live?.domain ?? DEFAULT_DOMAIN))) return { id: row.id, hidden: true };
+    const example = await deps.caseToExample(row.id).catch(() => undefined);
+    return { id: row.id, ...(example ? { example } : {}) };
+  }
+
+  async function testRunOnce(draftId: string, record: { entity: string; id: string }, by: Extract<Actor, { kind: 'person' }>): Promise<DraftTestRun> {
+    const draft = await loadDraft(root, draftId);
+    if (draft.meta.status !== 'open') throw new Error(`draft ${draftId} is ${draft.meta.status}`);
+    if (!draft.workflow) throw new Error(`the playbook ${draft.meta.workflowId} doesn't load in this draft yet; fix its checks first`);
+    if (!deps.queryRecords) throw new Error('test runs need the records');
+    const errors = errorCount(await quickCheck(draftId));
+    if (errors) throw new Error(`the draft has ${plural(errors, 'error')}; fix ${errors === 1 ? 'it' : 'them'} before a test run`);
+    const hash = await draftContentHash(root, draftId);
+    const field = recordCaseField(draft.project, draft.workflow, record.entity);
+    const latest = await replayableCase(draft.meta.workflowId, field, record.id, by);
+    const latestCase = latest?.example;
+    const built = await testRunExample({
+      project: draft.project, workflow: draft.workflow, record,
+      query: (q) => deps.queryRecords!(q, by),
+      ...(latestCase && latest ? { latestCase, latestCaseId: latest.id } : {}),
+      effectOf: (name) => deps.toolEffect?.(name),
+      fromPlugin: (name) => !!deps.toolFromPlugin?.(name),
+    });
+    const [outcome] = await deps.testRunner({
+      projectDir: draftDir(root, draftId), workflowId: draft.meta.workflowId, extraExamples: [built.example], only: TEST_RUN_EXAMPLE,
+    });
+    const run: DraftTestRun = {
+      draftId, workflowId: draft.meta.workflowId, hash, at: new Date().toISOString(), by: by.personId,
+      record: { entity: record.entity, id: record.id, title: built.title },
+      status: outcome?.status ?? 'fail',
+      differences: outcome?.differences ?? ['the test run did not report back'],
+      ...(outcome?.reason ? { reason: outcome.reason } : latest?.hidden ? { reason: 'The record\'s last case has fields you can\'t see, so its model turns were not replayed.' } : {}),
+      ...(outcome?.trace ? { trace: outcome.trace } : {}),
+      ...(latestCase?.model && latest ? { replayedCase: latest.id } : {}),
+      copied: built.copied,
+    };
+    // A draft discarded (or published) while it ran keeps no result.
+    const now = await readDraft(root, draftId);
+    if (now?.meta.status === 'open') {
+      await writeDraftTestRun(root, draftId, run);
+      fullTestRuns.set(draftId, run);
+      emit(draftId);
+    }
+    return run;
+  }
+
   const authoring: Authoring = {
     projectDir: root,
 
@@ -496,44 +562,23 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async testRun(draftId, record, by) {
-      const draft = await loadDraft(root, draftId);
-      if (!draft.workflow) throw new Error(`the playbook ${draft.meta.workflowId} doesn't load in this draft yet; fix its checks first`);
-      if (!deps.queryRecords) throw new Error('test runs need the records');
-      const errors = errorCount(await quickCheck(draftId));
-      if (errors) throw new Error(`the draft has ${plural(errors, 'error')}; fix ${errors === 1 ? 'it' : 'them'} before a test run`);
-      const hash = await draftContentHash(root, draftId);
-      // The record's latest case of this playbook: its model turns are replayed (no live model here).
-      const field = recordCaseField(draft.project, draft.workflow, record.entity);
-      const { rows } = field ? await deps.pool.query<{ id: string }>(
-        `select id from mw.cases where workflow_id = $1 and values->$2->>'value' = $3 order by created_at desc limit 1`,
-        [draft.meta.workflowId, field, record.id]) : { rows: [] };
-      const latestCaseId = rows[0]?.id;
-      const latestCase = latestCaseId ? await deps.caseToExample(latestCaseId).catch(() => undefined) : undefined;
-      const built = await testRunExample({
-        project: draft.project, workflow: draft.workflow, record,
-        query: (q) => deps.queryRecords!(q, by),
-        ...(latestCase && latestCaseId ? { latestCase, latestCaseId } : {}),
-        effectOf: (name) => deps.toolEffect?.(name),
-      });
-      const [outcome] = await deps.testRunner({
-        projectDir: draftDir(root, draftId), workflowId: draft.meta.workflowId, extraExamples: [built.example], only: TEST_RUN_EXAMPLE,
-      });
-      const run: DraftTestRun = {
-        draftId, workflowId: draft.meta.workflowId, hash, at: new Date().toISOString(), by: by.personId,
-        record: { entity: record.entity, id: record.id, title: built.title },
-        status: outcome?.status ?? 'fail',
-        differences: outcome?.differences ?? ['the test run did not report back'],
-        ...(outcome?.reason ? { reason: outcome.reason } : {}),
-        ...(outcome?.trace ? { trace: outcome.trace } : {}),
-        ...(latestCase?.model && latestCaseId ? { replayedCase: latestCaseId } : {}),
-        copied: built.copied,
-      };
-      await writeDraftTestRun(root, draftId, run);
-      emit(draftId);
-      return run;
+      // One test run per draft at a time: two would race for its result (D121).
+      if (testRunsInFlight.has(draftId)) throw new Error('A test run of this draft is already running; wait for it to finish.');
+      testRunsInFlight.add(draftId);
+      try {
+        return await testRunOnce(draftId, record, by);
+      } finally {
+        testRunsInFlight.delete(draftId);
+      }
     },
 
-    lastTestRun: (draftId) => readDraftTestRun(root, draftId),
+    async lastTestRun(draftId, by) {
+      const summary = await readDraftTestRun(root, draftId);
+      if (!summary) return undefined;
+      // What the run saw goes back only to the person who ran it (kept in memory, not in the folder).
+      const full = fullTestRuns.get(draftId);
+      return full && by && full.by === by.personId && full.at === summary.at && full.hash === summary.hash ? full : summary;
+    },
 
     async publish(draftId, opts) {
       const d = await readDraft(root, draftId);

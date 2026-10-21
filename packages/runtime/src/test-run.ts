@@ -6,6 +6,7 @@
 // building is approved but stubbed, so nothing is sent. What the run did comes back as its trace.
 import { DEFAULT_DOMAIN, keyOf, type EffectClass, type EntityTypeDef, type ExampleCase, type ProjectDefs, type WorkflowDef } from '@memwise/defs';
 import { readOnlyFields } from './domain-tools.ts';
+import { boundPlugins } from './plugins/tools.ts';
 import { domainOfEntity, entityByName } from './records/context.ts';
 import type { RecordQuery, RecordQueryResult } from './types.ts';
 
@@ -28,6 +29,11 @@ export interface TestRunSource {
   latestCaseId?: string;
   /** A bound tool's effect class, for stubbing what would leave the building. */
   effectOf(tool: string): EffectClass | undefined;
+  /**
+   * Whether a tool comes from a plugin (an MCP server, a plugin's HTTP call): such a tool is
+   * stubbed whatever its class, since even a `read` would reach the outside (D121).
+   */
+  fromPlugin?(tool: string): boolean;
 }
 
 export interface TestRunExample {
@@ -135,15 +141,24 @@ export async function testRunExample(src: TestRunSource): Promise<TestRunExample
     const step = s.step ? workflow.steps[s.step] : undefined;
     if (step?.performer === 'person' && step.outcomes[0]) submit[state] = { outcome: step.outcomes[0] };
   }
-  // What would leave the building is approved, and stubbed: nothing is sent.
+  // What would leave the building is approved, and stubbed: nothing is sent. Every plugin tool is
+  // stubbed too, whatever its class: the throwaway kernel binds the draft's plugins, and even a
+  // read would reach their servers. A replayed case's recorded result stands in where it has one.
+  const recorded = src.latestCase?.tools ?? {};
+  const pluginTools = new Set(boundPlugins(project).flatMap((bp) => Object.keys(bp.manifest.tools)));
   const tools: Record<string, unknown> = {};
   const approvals: Record<string, 'approve'> = {};
+  const stub = (t: string) => {
+    tools[t] = Object.hasOwn(recorded, t) ? recorded[t] : { test_run: true, sent: false };
+    approvals[t] = 'approve';
+  };
+  for (const t of pluginTools) stub(t);
   for (const step of Object.values(workflow.steps)) {
-    for (const t of new Set([...step.tools.allowed, ...step.tools.required])) {
+    for (const t of stepTools(step)) {
+      if (Object.hasOwn(tools, t)) continue;
       const effect = src.effectOf(t);
-      if (effect && !OUTSIDE.includes(effect)) continue;
-      tools[t] = { test_run: true, sent: false };
-      approvals[t] = 'approve';
+      if (effect && !OUTSIDE.includes(effect) && !src.fromPlugin?.(t)) continue;
+      stub(t);
     }
   }
 
@@ -159,4 +174,14 @@ export async function testRunExample(src: TestRunSource): Promise<TestRunExample
     file: `${workflow.dir}/examples/${TEST_RUN_EXAMPLE}.yaml`,
   };
   return { example, title: record.title, field, copied };
+}
+
+/** Every tool a step may call: its allowed and required tools, and the ones its front matter names. */
+function stepTools(step: WorkflowDef['steps'][string]): Set<string> {
+  return new Set([
+    ...step.tools.allowed, ...step.tools.required,
+    ...Object.keys(step.map ?? {}), ...Object.keys(step.each ?? {}),
+    ...(step.extract?.tool ? [step.extract.tool] : []),
+    ...(step.outcomeFrom?.tool ? [step.outcomeFrom.tool] : []),
+  ]);
 }

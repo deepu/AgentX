@@ -10,7 +10,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { bindingPath, bindingToYaml, parseBindingFile, pluginIdOfSlug, pluginSlug } from './binding-file.ts';
 import { lineDiff, structuralDiff } from './diff.ts';
-import { DRAFTS_DIR, type DraftDiff, type DraftEdit, type DraftKind, type DraftMeta, type DraftReport, type DraftTestRun, type FileChange } from './draft-types.ts';
+import { DRAFTS_DIR, type DraftDiff, type DraftEdit, type DraftKind, type DraftMeta, type DraftReport, type DraftTestRunSummary, type FileChange } from './draft-types.ts';
 import { loadProject, loadWorkflow } from './load.ts';
 import { parseWorkflowFile } from './parse-workflow.ts';
 import { PLUGIN_ID_PATTERN, type BindingDef } from './plugin-types.ts';
@@ -337,15 +337,26 @@ export async function writeDraftReport(root: string, id: string, report: DraftRe
   await writeFile(join(dir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
 }
 
-/** Stage 4: the draft's last test run on one record (`test-run.json`), or undefined. */
-export async function readDraftTestRun(root: string, id: string): Promise<DraftTestRun | undefined> {
+/**
+ * Stage 4: the draft's last test run on one record (`test-run.json`), or undefined. Only its
+ * summary is kept: a file written before that (with the values the run saw) is read as one.
+ */
+export async function readDraftTestRun(root: string, id: string): Promise<DraftTestRunSummary | undefined> {
   const text = await readText(join(draftDir(root, id), 'test-run.json'));
-  try { return text ? JSON.parse(text) as DraftTestRun : undefined; } catch { return undefined; }
+  try { return text ? testRunSummary(JSON.parse(text) as DraftTestRunSummary) : undefined; } catch { return undefined; }
 }
 
-export async function writeDraftTestRun(root: string, id: string, run: DraftTestRun): Promise<void> {
+/** Writes the run's summary only (D121): never the values it saw or the arguments of its calls. */
+export async function writeDraftTestRun(root: string, id: string, run: DraftTestRunSummary): Promise<void> {
   const { dir } = await requireMeta(root, id);
-  await writeFile(join(dir, 'test-run.json'), `${JSON.stringify(run, null, 2)}\n`);
+  await writeFile(join(dir, 'test-run.json'), `${JSON.stringify(testRunSummary(run), null, 2)}\n`);
+}
+
+export function testRunSummary(r: DraftTestRunSummary): DraftTestRunSummary {
+  return {
+    draftId: r.draftId, workflowId: r.workflowId, hash: r.hash, at: r.at, by: r.by,
+    record: { entity: r.record.entity, id: r.record.id }, status: r.status,
+  };
 }
 
 // ---------------------------------------------------------------- edits
