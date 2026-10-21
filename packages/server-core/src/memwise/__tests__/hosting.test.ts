@@ -11,7 +11,7 @@ import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import { WsRpcServer, type WsRpcServerOptions } from '../../transport/server'
 import { WsRpcClient } from '../../transport/client'
 import { personMayCall } from '../../transport/person-channels'
-import { connectionModels, NO_MODEL_MESSAGE, piAiProviderIdFor, unconfiguredModels } from '../models'
+import { connectionModels, NO_MODEL_MESSAGE, pickPlaybookConnection, piAiProviderIdFor, unconfiguredModels } from '../models'
 import { addMissingMetaPlaybooks, affectsIndex, findExampleProject, seedProject } from '../seed'
 import { createSessionToken, sessionPersonId } from '../../webui/auth'
 
@@ -165,6 +165,15 @@ describe('model roles', () => {
     expect(Object.keys(r.modelRoles).sort()).toEqual([...roles].sort())
     expect(r.modelRoles.checker!.provider).toBe('anthropic')
     expect(r.message).not.toContain('sk-test')
+  })
+
+  it('a subscription default leaves playbook steps to another connection with an API key', () => {
+    const max = { ...conn, slug: 'claude-max', name: 'Claude Max', authType: 'oauth', apiKey: null }
+    const backend = { ...conn, slug: 'backend', name: 'MemWise Backend' }
+    expect(pickPlaybookConnection(max, [backend])!.slug).toBe('backend')
+    expect(pickPlaybookConnection(conn, [backend])!.slug).toBe(conn.slug)
+    expect(pickPlaybookConnection(max, [{ ...backend, apiKey: null }])!.slug).toBe('claude-max')
+    expect(pickPlaybookConnection(null, [])).toBeNull()
   })
 
   it('without a usable connection, every call says to connect a model', async () => {

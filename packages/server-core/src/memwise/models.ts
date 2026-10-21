@@ -130,7 +130,7 @@ export async function connectionModels(input: ModelResolverInput, conn: Connecti
   if (!conn) return unconfiguredModels(input.roles)
   const id = piAiProviderIdFor(conn)
   if (!id) {
-    return unconfiguredModels(input.roles, `The default model connection "${conn.name}" can't run playbook steps yet (it needs an Anthropic or OpenAI API key). Agent steps wait for a person.`)
+    return unconfiguredModels(input.roles, `The default model connection "${conn.name}" can't run playbook steps yet (it needs an Anthropic or OpenAI API key). Add a connection with an API key in Settings → AI; it doesn't have to be the default. Agent steps wait for a person.`)
   }
   if (!conn.apiKey) return unconfiguredModels(input.roles, `The default model connection "${conn.name}" has no API key saved.`)
   const model = await catalogModel(id, conn.defaultModel)
@@ -144,12 +144,8 @@ export async function connectionModels(input: ModelResolverInput, conn: Connecti
   }
 }
 
-/** Reads the app's default LLM connection and its key. */
-export async function readDefaultConnection(): Promise<ConnectionInfo | null> {
-  const { getDefaultLlmConnection, getLlmConnection } = await import('@memwise/shared/config')
-  const slug = getDefaultLlmConnection()
-  const conn = slug ? getLlmConnection(slug) : null
-  if (!conn) return null
+/** A connection with its saved key. */
+async function withKey(conn: { slug: string; name: string; providerType: string; authType: string; piAuthProvider?: string; baseUrl?: string; defaultModel?: string }): Promise<ConnectionInfo> {
   let apiKey: string | null = null
   try {
     const { getCredentialManager } = await import('@memwise/shared/credentials')
@@ -161,6 +157,27 @@ export async function readDefaultConnection(): Promise<ConnectionInfo | null> {
     slug: conn.slug, name: conn.name, providerType: conn.providerType, authType: conn.authType,
     piAuthProvider: conn.piAuthProvider, baseUrl: conn.baseUrl, defaultModel: conn.defaultModel, apiKey,
   }
+}
+
+/**
+ * The connection playbook steps use: the app's default when it has an API key we can call, else the
+ * first other connection that does (a Claude subscription can stay the default for chat).
+ */
+export function pickPlaybookConnection(defaultConn: ConnectionInfo | null, others: ConnectionInfo[]): ConnectionInfo | null {
+  const usable = (c: ConnectionInfo | null) => !!c && !!piAiProviderIdFor(c) && !!c.apiKey
+  if (usable(defaultConn)) return defaultConn
+  return others.find((c) => c.slug !== defaultConn?.slug && usable(c)) ?? defaultConn
+}
+
+/** Reads the connection playbook steps use, with its key. */
+export async function readDefaultConnection(): Promise<ConnectionInfo | null> {
+  const { getDefaultLlmConnection, getLlmConnection, getLlmConnections } = await import('@memwise/shared/config')
+  const slug = getDefaultLlmConnection()
+  const def = slug ? getLlmConnection(slug) : null
+  const defaultConn = def ? await withKey(def) : null
+  if (defaultConn && piAiProviderIdFor(defaultConn) && defaultConn.apiKey) return defaultConn
+  const others = await Promise.all(getLlmConnections().filter((c) => c.slug !== slug && piAiProviderIdFor(c)).map(withKey))
+  return pickPlaybookConnection(defaultConn, others)
 }
 
 /** The default resolver: scripted when asked for, else the default LLM connection. */
