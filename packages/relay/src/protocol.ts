@@ -23,8 +23,11 @@ export const LIMITS = {
   pingEveryMs: 30_000,
 } as const;
 
-/** The path prefixes the relay forwards to a core; anything else never reaches it. */
-export const FORWARDED_PREFIXES = ['/f/', '/i/', '/h/', '/assets/'] as const;
+/**
+ * The path prefixes the relay forwards to a core; anything else never reaches it. `/v/` (Stage 5,
+ * docs/memwise/26-projects-and-pages.md §8) is an inspector's read-only view of a regulated project.
+ */
+export const FORWARDED_PREFIXES = ['/f/', '/i/', '/v/', '/h/', '/assets/'] as const;
 
 /** Close code for a connection replaced by a newer one of the same install. */
 export const CLOSE_REPLACED = 4000;

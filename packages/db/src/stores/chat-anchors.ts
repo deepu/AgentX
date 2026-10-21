@@ -7,7 +7,7 @@
 import type { Queryable } from '../pool.ts';
 import { compact, iso } from '../rows.ts';
 
-export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record';
+export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record' | 'change';
 
 /** The `anchor_id` of a record anchor: `literature.topic:rec_1`. Entity keys have no colon. */
 export function recordAnchorId(entity: string, id: string): string {

@@ -185,6 +185,7 @@ const DRAFT_MESSAGES: Record<string, string> = {
   write_failed: 'The draft could not be changed.',
   in_review: 'This draft is already waiting for approval.',
   in_chat: 'This draft is being built in a chat; finish it there.',
+  change_request: 'This draft is a change request: send it to QA from the change request\'s page.',
   errors: 'Fix the errors in the draft before sending it for review.',
   submit_failed: 'The draft could not be sent for review.',
   create_failed: 'The draft could not be made.',
@@ -221,11 +222,11 @@ function inChatState(c: DtoContext, state: string): boolean {
   return META_PLAYBOOKS.some((id) => isConversationStep(c.project.workflows[id]?.steps[state]))
 }
 
-function clientOf(ctx: RequestContext): ClientIdentity {
+export function clientOf(ctx: RequestContext): ClientIdentity {
   return { clientId: ctx.clientId, personId: ctx.personId ?? null }
 }
 
-function requireService(): MemwiseService {
+export function requireService(): MemwiseService {
   const svc = getMemwiseService()
   if (!svc) throw new Error(getMemwiseHostStatus().message ?? 'Playbooks are not running.')
   return svc
@@ -531,6 +532,12 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       }
       if (item.kind === 'trigger-hold') {
         out.push(d.toTriggerHoldInboxItem(c.project, item))
+        continue
+      }
+      // Stage 5: a change request's sign-off and an inspector's question (no case).
+      if (item.kind === 'change-request' || item.kind === 'inspector-question') {
+        const { toRegulatedInboxItem } = await import('../../memwise/regulated')
+        out.push(toRegulatedInboxItem(item))
         continue
       }
       const v = await view(item.caseId)
@@ -1088,7 +1095,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         title: wf.title ?? d.humanize(wf.id),
         stepCount: Object.keys(wf.steps).length,
         open: cases.filter((s) => s.workflowId === wf.id && s.status === 'active').length,
-        waitingOnMe: inbox.filter((i) => i.kind !== 'identity' && i.kind !== 'reminder' && i.kind !== 'flag' && i.workflowId === wf.id).length,
+        waitingOnMe: inbox.filter((i) => i.kind !== 'identity' && i.kind !== 'reminder' && i.kind !== 'flag' && i.kind !== 'inspector-question'
+          && (i.kind === 'change-request' ? i.changeRequest.workflowId : i.workflowId) === wf.id).length,
         done: cases.filter((s) => s.workflowId === wf.id && s.status === 'done').length,
         ...(wf.origin ? { origin: d.toWorkflowOrigin(c.project, wf.origin) } : {}),
         ...(wf.domain ? { domain: wf.domain } : {}),
@@ -1481,6 +1489,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const got = await authoring.getDraft(draftId)
       if (!got) return { applied: false, code: 'draft.missing', message: DRAFT_MESSAGES.missing }
       if (got.meta.status !== 'open') return { applied: false, code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
+      // Stage 5: a regulated playbook's draft is a change request; it goes to QA from there (26 §8).
+      const cr = await (svc.kernel as { changes?: { forDraft(id: string): Promise<{ label: string } | undefined> } }).changes?.forDraft(draftId).catch(() => undefined)
+      if (cr) return { applied: false, code: 'draft.change_request', message: `${DRAFT_MESSAGES.change_request} (${cr.label})` }
       const facts = await draftLookup(svc, actor, c).facts(got.meta, { got })
       if (facts.run?.status === 'active') {
         // Still in its chat (the meta playbook's conversation step), or past it on the way to review.

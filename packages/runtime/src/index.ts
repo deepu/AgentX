@@ -50,3 +50,4 @@ export { QA_MEANING, RAISER_MEANING, DEFAULT_VALIDATION_LIMIT } from './regulate
 export { INSPECTOR_TOKEN_PREFIX, MAX_INSPECTOR_DAYS } from './regulated/inspectors.ts';
 export { TMF_ZONES, LATE_AFTER_DAYS, zoneOfArtifact } from './regulated/tmf.ts';
 export { wordDiff, listDiff } from './regulated/word-diff.ts';
+export { seedRegulatedWalkthrough, SEED_CHANGE_TITLE, SEED_CHANGE_REASON, SEED_INSPECTION, type RegulatedSeed, type RegulatedSeedOptions } from './regulated/seed.ts';

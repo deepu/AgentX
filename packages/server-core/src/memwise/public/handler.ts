@@ -8,14 +8,16 @@
  * while they stream in, methods are checked, each client address is rate limited as a second line
  * behind the relay and the kernel, and nothing it answers carries a stack trace or a token.
  */
-import type { ChannelService, ExternalService, PublicRequestInfo } from '@memwise/runtime'
+import type { ChannelService, ExternalService, InspectorService, PublicRequestInfo } from '@memwise/runtime'
 import { formApp, FORM_ASSETS_PREFIX, type FormApp } from './form-app'
 import { BodyTooLarge, IpRateLimiter, MAX_JSON_BYTES, MAX_UPLOAD_BYTES, MAX_WEBHOOK_BYTES, readBody, type IpLimit } from './limits'
 
-/** What the handler needs of the kernel: its Phase 5 services. */
+/** What the handler needs of the kernel: its Phase 5 services, and Stage 5's inspector links. */
 export interface PublicKernel {
   readonly external: ExternalService
   readonly channels: ChannelService
+  /** Stage 5 (26 §8): an inspector's read-only view (`/v/<token>`); absent, those links are unknown. */
+  readonly inspectors?: InspectorService
 }
 
 export interface PublicHandlerLogger {
@@ -62,6 +64,11 @@ const HOOK_RE = /^[A-Za-z0-9_-]{4,128}$/
 /** `/x/<installId>` before the route, when the relay runs in path mode (an install id is 16 base32 characters). */
 const PATH_MODE_PREFIX = /^\/x\/[a-z2-7]{16}(?=\/)/
 const MAX_FILE_NAME = 255
+/** Entity keys (`etmf.document`) and record ids, as an inspector's page may name them. */
+const ENTITY_RE = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)?$/
+const RECORD_ID_RE = /^[A-Za-z0-9_-]{1,128}$/
+const MAX_QUESTION = 4000
+const MAX_FILTER = 200
 const MAX_DOCUMENTS = 50
 
 const MESSAGES = {
@@ -74,6 +81,7 @@ const MESSAGES = {
   notFound: 'Not found.',
   method: 'That is not allowed here.',
   noName: 'The file needs a name.',
+  noQuestion: 'Write your question first.',
 }
 
 type Json = Record<string, unknown>
@@ -227,6 +235,91 @@ export function createPublicHandler(opts: PublicHandlerOptions): PublicHandler {
     return notFound()
   }
 
+  /**
+   * An inspector's read-only view (Stage 5, 26 §8): filed documents, their signatures and audit
+   * trail, downloads, and questions to the study team. The kernel checks the link (unknown,
+   * expired, revoked) and logs every view and download; a refusal answers `{ refused }`.
+   */
+  async function inspector(req: Request, token: string, action: string, info: PublicRequestInfo): Promise<Response> {
+    const k = opts.kernel()
+    if (!k) return unavailable()
+    const unknownLink = () => json({ refused: 'unknown' })
+    const insp = k.inspectors
+    if (!insp) return unknownLink()
+    const q = new URL(req.url).searchParams
+    const param = (name: string, re?: RegExp): string | undefined => {
+      const v = q.get(name)?.trim()
+      if (!v) return undefined
+      if (v.length > MAX_FILTER || (re && !re.test(v))) throw new BadRequest(MESSAGES.badJson)
+      return v
+    }
+    const record = (): { entity: string; id: string } => {
+      const entity = param('entity', ENTITY_RE)
+      const id = param('id', RECORD_ID_RE)
+      if (!entity || !id) throw new BadRequest(MESSAGES.badJson)
+      return { entity, id }
+    }
+    const missing = () => json({ status: 'not_found', message: MESSAGES.notFound }, 404)
+    switch (action) {
+      case 'index':
+        if (req.method !== 'GET') return methodNotAllowed('GET')
+        if (!TOKEN_RE.test(token)) return unknownLink()
+        return json(await insp.open(token, info))
+      case 'documents': {
+        if (req.method !== 'GET') return methodNotAllowed('GET')
+        if (!TOKEN_RE.test(token)) return unknownLink()
+        const zone = param('zone'); const site = param('site'); const text = param('q')
+        return json(await insp.documents(token, { ...(zone ? { zone } : {}), ...(site ? { site } : {}), ...(text ? { q: text } : {}) }))
+      }
+      case 'document': {
+        if (req.method !== 'GET') return methodNotAllowed('GET')
+        if (!TOKEN_RE.test(token)) return unknownLink()
+        const r = record()
+        const doc = await insp.document(token, r.entity, r.id)
+        return doc ? json(doc) : missing()
+      }
+      case 'trail': {
+        if (req.method !== 'GET') return methodNotAllowed('GET')
+        if (!TOKEN_RE.test(token)) return unknownLink()
+        const r = record()
+        const trail = await insp.trail(token, r.entity, r.id)
+        return trail ? json(trail) : missing()
+      }
+      case 'download': {
+        if (req.method !== 'GET') return methodNotAllowed('GET')
+        if (!TOKEN_RE.test(token)) return unknownLink()
+        const r = record()
+        const file = await insp.download(token, r.entity, r.id)
+        if (!file) return missing()
+        if ('refused' in file) return json(file)
+        const name = (cleanFileName(file.name) ?? 'document').replace(/["\\]/g, '_')
+        return new Response(file.data, {
+          status: 200,
+          headers: headersFor({
+            'content-type': file.mime || 'application/octet-stream',
+            'content-disposition': `attachment; filename="${name.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+          }, true),
+        })
+      }
+      case 'ask': {
+        if (req.method !== 'POST') return methodNotAllowed('POST')
+        if (!TOKEN_RE.test(token)) return unknownLink() // before any body is read
+        const body = await readJson(req)
+        const question = typeof body.question === 'string' ? body.question.trim() : ''
+        if (!question) return json({ status: 'invalid', message: MESSAGES.noQuestion }, 400)
+        if (question.length > MAX_QUESTION) throw new BadRequest(MESSAGES.tooLarge(MAX_JSON_BYTES))
+        const entity = typeof body.entity === 'string' && ENTITY_RE.test(body.entity) ? body.entity : undefined
+        const recordId = typeof body.recordId === 'string' && RECORD_ID_RE.test(body.recordId) ? body.recordId : undefined
+        return json(await insp.ask(token, { question, ...(entity && recordId ? { entity, recordId } : {}) }))
+      }
+      case 'requests':
+        if (req.method !== 'GET') return methodNotAllowed('GET')
+        if (!TOKEN_RE.test(token)) return unknownLink()
+        return json(await insp.requests(token))
+    }
+    return notFound()
+  }
+
   async function webhook(req: Request, hookId: string): Promise<Response> {
     if (req.method !== 'POST' && req.method !== 'GET') return methodNotAllowed('GET, POST')
     if (!HOOK_RE.test(hookId)) return notFound()
@@ -252,7 +345,7 @@ export function createPublicHandler(opts: PublicHandlerOptions): PublicHandler {
     // `/x/<installId>` (23 §2). Routes are matched below it.
     path = path.replace(PATH_MODE_PREFIX, '')
     const ip = clientIp(req, conn)
-    const isPublicRoute = path.startsWith('/f/') || path.startsWith('/i/') || path.startsWith('/h/') || path.startsWith(FORM_ASSETS_PREFIX)
+    const isPublicRoute = path.startsWith('/f/') || path.startsWith('/i/') || path.startsWith('/v/') || path.startsWith('/h/') || path.startsWith(FORM_ASSETS_PREFIX)
     if (!isPublicRoute) return notFound()
     // Assets are cheap and fetched in bursts by every page load; everything else is counted.
     if (!path.startsWith(FORM_ASSETS_PREFIX) && !limiter.take(ip ?? 'unknown')) {
@@ -270,7 +363,7 @@ export function createPublicHandler(opts: PublicHandlerOptions): PublicHandler {
         const rest = path.slice(FORM_ASSETS_PREFIX.length)
         return rest ? asset(req, rest) : notFound()
       }
-      if ((m = /^\/([fi])\/([^/]+)\/?$/.exec(path))) {
+      if ((m = /^\/([fiv])\/([^/]+)\/?$/.exec(path))) {
         route = 'shell'
         return shell(req, path)
       }
@@ -281,6 +374,10 @@ export function createPublicHandler(opts: PublicHandlerOptions): PublicHandler {
       if ((m = /^\/i\/([^/]+)\/api\/([a-z]+)$/.exec(path))) {
         route = `inbox.${m[2]}`
         return await inbox(req, m[1]!, m[2]!, info)
+      }
+      if ((m = /^\/v\/([^/]+)\/api\/([a-z]+)$/.exec(path))) {
+        route = `inspector.${m[2]}`
+        return await inspector(req, m[1]!, m[2]!, info)
       }
       if ((m = /^\/h\/([^/]+)$/.exec(path))) {
         route = 'webhook'

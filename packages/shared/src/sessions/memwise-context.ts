@@ -20,15 +20,19 @@ export const MEMWISE_CONTEXT_FILE = 'memwise-context.json';
 /** Largest block kept; longer ones are shortened (the system prompt has to stay reasonable). */
 export const MEMWISE_CONTEXT_MAX_CHARS = 24_000;
 
-/** What a chat is anchored to. A record anchor names its entity key (`literature.topic`). */
+/**
+ * What a chat is anchored to. A record anchor names its entity key (`literature.topic`). A
+ * `change` anchor (Stage 5, docs/memwise/26-projects-and-pages.md §8) is a change request of a
+ * regulated playbook (`id`: its `cr_…` id): the chat edits the request's draft and validates it.
+ */
 export type MemwiseChatAnchor =
-  | { kind: 'case' | 'step' | 'workflow'; id: string }
+  | { kind: 'case' | 'step' | 'workflow' | 'change'; id: string }
   | { kind: 'record'; entity: string; id: string };
 
 export interface SessionMemwiseContext {
   /** What the chat is anchored to. A conversation step is a `step` anchor with `conversation`. */
   anchor: MemwiseChatAnchor;
-  /** The chat answers a conversation step: the `playbook_*` tools are offered. */
+  /** The chat answers a conversation step, or edits a change request: the `playbook_*` tools are offered. */
   conversation?: boolean;
   /**
    * Record chats: entity keys (in the record's domain) that say `keep_from_chat`, with their

@@ -653,8 +653,12 @@ export interface MwChange {
   /**
    * `drafts`: a draft was created, edited, checked, published or discarded (`id` = draft id).
    * `plugins` (Phase 4): a plugin was installed, or a binding or identity link changed.
+   * `regulated` (Stage 5): a change request, inspector link or question of `project` changed.
+   * `audit` (Stage 5): `project`'s audit trail grew.
    */
-  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins' | 'external' | 'relay' | 'records' | 'triggers'
+  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins' | 'external' | 'relay' | 'records' | 'triggers' | 'regulated' | 'audit'
+  /** Stage 5 `regulated` / `audit`: the project (domain id). */
+  project?: string
   /** Phase 6 `records`: the entity key and record id that changed. */
   entity?: string
   /** The run id for `run` changes; the record id for `records`. */

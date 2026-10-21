@@ -331,6 +331,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       if (c.kind === 'run') emitMemwiseChange({ kind: 'run', id: c.runId, caseId: c.caseId, workflowId: c.workflowId })
       else if (c.kind === 'drafts') emitMemwiseChange({ kind: 'drafts', id: c.draftId })
       else if (c.kind === 'records') emitMemwiseChange({ kind: 'records', entity: c.entity, ...(c.recordId ? { id: c.recordId } : {}) })
+      else if (c.kind === 'regulated' || c.kind === 'audit') emitMemwiseChange({ kind: c.kind, project: c.project })
       else if (c.kind === 'definitions') {
         // The kernel re-indexed (a publish, or a reindex): the app's view follows it.
         void refreshContext().then(() => {
