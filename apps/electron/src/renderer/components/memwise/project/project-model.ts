@@ -186,6 +186,7 @@ export function chatAnchorFor(projectId: string, details: ProjectDetails, item?:
     case 'playbook': return { kind: 'workflow', id: details.workflowId }
     case 'run': return { kind: 'case', id: details.caseId }
     case 'record': return { kind: 'record', entity: details.entity, id: details.recordId }
+    case 'records': return { kind: 'records', id: details.entity }
     default: return { kind: 'project', id: projectId }
   }
 }

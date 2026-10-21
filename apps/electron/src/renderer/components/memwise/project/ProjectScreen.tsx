@@ -16,9 +16,11 @@ import { memwiseCasesAtom, memwiseDomainsAtom, memwiseInboxAtom, memwisePlaybook
 import { getMemwiseApi, waitForSession } from '@/hooks/useMemwise'
 import { useMemwiseRecordPage } from '@/hooks/useMemwiseRecords'
 import { ALL_PROJECTS, projectRoute, type ProjectView } from '../../../../shared/project-route'
-import { CasePage, InboxDetailPage, PlaybookPage } from '../MemwisePages'
-import { DashboardPage, EntitiesPage } from '../domains/DomainsPages'
-import { RecordPage } from '../records/RecordPages'
+import { DashboardPage } from '../domains/DomainsPages'
+import { PlaybookShellPage } from './pages/PlaybookShellPage'
+import { RecordShellPage, WaitingItemShellPage } from './pages/RecordShellPage'
+import { RecordsShellPage } from './pages/RecordsShellPage'
+import { RunShellPage } from './pages/RunShellPage'
 import { inboxItemStepTitle } from '../format'
 import { AnchoredChat } from './AnchoredChat'
 import { HomeChatColumn, HomePinnedPage } from './ProjectHome'
@@ -143,6 +145,7 @@ function placeholderFor(type: string, all: boolean, t: (k: string) => string): s
   if (type === 'record') return t('memwise.shell.askRecord')
   if (type === 'playbook') return t('memwise.shell.askPlaybook')
   if (type === 'run') return t('memwise.shell.askRun')
+  if (type === 'records') return t('memwise.shell.askRecords')
   return t('memwise.shell.askPage')
 }
 
@@ -167,12 +170,12 @@ function PageColumn({ view, project, projects }: { view: ProjectView; project: S
   if (view.projectId === ALL_PROJECTS) return <WaitingPage projectId={ALL_PROJECTS} projects={projects} />
   switch (d.type) {
     case 'home': return <HomePinnedPage project={project} domain={domain} />
-    case 'waiting': return d.itemId ? <InboxDetailPage itemId={d.itemId} /> : <WaitingPage projectId={project.id} projects={projects} />
+    case 'waiting': return d.itemId ? <WaitingItemShellPage key={d.itemId} itemId={d.itemId} /> : <WaitingPage projectId={project.id} projects={projects} />
     case 'dashboard': return <DashboardPage key={`${d.domain}:${d.pageId}`} domainId={d.domain} pageId={d.pageId} {...(d.params ? { params: d.params } : {})} />
-    case 'playbook': return <PlaybookPage playbookId={d.workflowId} />
-    case 'run': return <CasePage caseId={d.caseId} />
-    case 'record': return <RecordPage key={`${d.entity}:${d.recordId}`} entity={d.entity} recordId={d.recordId} />
-    case 'records': return <EntitiesPage key={`${project.id}:${d.entity}`} domainId={project.id} entity={d.entity} />
+    case 'playbook': return <PlaybookShellPage key={d.workflowId} playbookId={d.workflowId} />
+    case 'run': return <RunShellPage key={d.caseId} caseId={d.caseId} />
+    case 'record': return <RecordShellPage key={`${d.entity}:${d.recordId}`} entity={d.entity} recordId={d.recordId} />
+    case 'records': return <RecordsShellPage key={`${project.id}:${d.entity}`} projectId={project.id} entity={d.entity} />
     case 'settings': return <ProjectSettingsPage project={project} {...(d.tab ? { tab: d.tab } : {})} />
     case 'page': return <div className="flex h-full items-center justify-center p-8 text-label text-tertiary">{t('memwise.shell.pageMissing')}</div>
   }

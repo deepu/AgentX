@@ -115,46 +115,22 @@ function conversationStepRun(kase: MwCase | null | undefined): string | undefine
 
 // ---------------------------------------------------------------- inbox
 
-export function InboxDetailPage({ itemId }: { itemId: string | null }) {
+/**
+ * What an inbox item's answers do (submit, decide, upload, open what it names). The inbox page moves
+ * on to the next item when one is answered; a page that shows the item in place (the project
+ * shell's run page) passes its own `onDone`.
+ */
+export function useInboxActions(item: MwInboxItem | null, opts: { onDone?: (result: MwSubmitResult) => void; onDraftWritten?: () => void } = {}): InboxActions {
   const { t } = useTranslation()
   const inbox = useAtomValue(memwiseInboxAtom)
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
-  const people = peopleById(useAtomValue(memwisePeopleAtom))
-  const roles = useAtomValue(memwiseRolesAtom)
   const refresh = useMemwiseRefresh()
   const upload = useMemwiseUpload()
   const external = useMemwiseExternal()
   const store = useStore()
   const openChatBeside = useOpenChatBeside()
-  const found = itemId ? inbox?.find(i => i.id === itemId) ?? null : null
-  // Phase 6: a document review stays on screen after it is answered (the record page in normal
-  // mode) even once the item has left the inbox.
-  const [kept, setKept] = React.useState<ReviewItem | null>(null)
-  React.useEffect(() => { if (isReviewItem(found, 'document')) setKept(found) }, [found])
-  const item = found ?? (kept && kept.id === itemId ? kept : null)
-  const [queue, setQueue] = useAtom(memwiseReviewQueueAtom)
-  const [queueDone, setQueueDone] = React.useState(0)
-  React.useEffect(() => { if (!queue.active) setQueueDone(0) }, [queue.active])
-  const status = useAtomValue(memwiseStatusAtom)
-  const me = status?.me
-  const signer = React.useMemo(() => (me ? { name: me.name, role: me.roles[0] ? roleTitle(me.roles[0], roles) : undefined } : undefined), [me, roles])
-  // A playbook change's review whose card does not name its draft: read it from the case.
-  const needsCase = item?.kind === 'decision' && isMetaPlaybook(item.workflowId) && typeof item.context.draft?.value !== 'string'
-  const { data: reviewCase } = useMemwiseCase(needsCase ? item!.caseId : null)
-  // A bind-plugin step: the binding review, read from its draft
-  const binding = item && (item.kind === 'input' || item.kind === 'decision') ? item.binding : undefined
-  const { data: bindingView, error: bindingError, reload: reloadBinding } = useMemwiseBinding(binding?.pluginId ?? null, binding?.draftId)
-  // A change's review names its playbook by title: live playbooks, and new ones by their draft's title.
-  const playbooks = useAtomValue(memwisePlaybooksAtom)
-  const drafts = useAtomValue(memwiseDraftsAtom)
-  const playbookTitles = React.useMemo(() => {
-    const out: Record<string, string> = {}
-    for (const d of drafts ?? []) if (d.playbookTitle) out[d.workflowId] = d.playbookTitle
-    for (const p of playbooks ?? []) out[p.id] = p.title
-    return out
-  }, [playbooks, drafts])
-
-  const actions = React.useMemo<InboxActions>(() => {
+  const itemId = item?.id ?? null
+  return React.useMemo<InboxActions>(() => {
     const api = getMemwiseApi()
     return {
       submitStep: input => (api && workspaceId ? api.memwiseSubmitStep(workspaceId, input) : Promise.resolve(notAvailable())),
@@ -186,7 +162,7 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
           if (!workspaceId) return { applied: false, diagnostics: [], message: i18n.t('memwise.notAvailable') }
           const r = await api.memwiseWriteDraft(workspaceId, { draftId, files: [{ path, content }], summary })
           if (r.applied) toast.success(t('memwise.editor.saved'))
-          reloadBinding()
+          opts.onDraftWritten?.()
           return r
         },
       } : {}),
@@ -199,13 +175,51 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
       },
       onDone: result => {
         toast.success(result.message ?? (item ? t('memwise.inbox.doneWith', { title: item.caseTitle }) : t('memwise.inbox.done')))
+        void refresh()
+        if (opts.onDone) { opts.onDone(result); return }
         // Move on to the next item waiting, newest first.
         const rest = sortInbox((inbox ?? []).filter(i => i.id !== itemId))
-        void refresh()
         navigate(routes.view.inbox(rest[0]?.id))
       },
     }
-  }, [workspaceId, upload, external, inbox, itemId, item, refresh, t, store, openChatBeside, reloadBinding])
+  }, [workspaceId, upload, external, inbox, itemId, item, refresh, t, store, openChatBeside, opts.onDraftWritten, opts.onDone])
+}
+
+export function InboxDetailPage({ itemId }: { itemId: string | null }) {
+  const { t } = useTranslation()
+  const inbox = useAtomValue(memwiseInboxAtom)
+  const people = peopleById(useAtomValue(memwisePeopleAtom))
+  const roles = useAtomValue(memwiseRolesAtom)
+  const refresh = useMemwiseRefresh()
+  const found = itemId ? inbox?.find(i => i.id === itemId) ?? null : null
+  // Phase 6: a document review stays on screen after it is answered (the record page in normal
+  // mode) even once the item has left the inbox.
+  const [kept, setKept] = React.useState<ReviewItem | null>(null)
+  React.useEffect(() => { if (isReviewItem(found, 'document')) setKept(found) }, [found])
+  const item = found ?? (kept && kept.id === itemId ? kept : null)
+  const [queue, setQueue] = useAtom(memwiseReviewQueueAtom)
+  const [queueDone, setQueueDone] = React.useState(0)
+  React.useEffect(() => { if (!queue.active) setQueueDone(0) }, [queue.active])
+  const status = useAtomValue(memwiseStatusAtom)
+  const me = status?.me
+  const signer = React.useMemo(() => (me ? { name: me.name, role: me.roles[0] ? roleTitle(me.roles[0], roles) : undefined } : undefined), [me, roles])
+  // A playbook change's review whose card does not name its draft: read it from the case.
+  const needsCase = item?.kind === 'decision' && isMetaPlaybook(item.workflowId) && typeof item.context.draft?.value !== 'string'
+  const { data: reviewCase } = useMemwiseCase(needsCase ? item!.caseId : null)
+  // A bind-plugin step: the binding review, read from its draft
+  const binding = item && (item.kind === 'input' || item.kind === 'decision') ? item.binding : undefined
+  const { data: bindingView, error: bindingError, reload: reloadBinding } = useMemwiseBinding(binding?.pluginId ?? null, binding?.draftId)
+  // A change's review names its playbook by title: live playbooks, and new ones by their draft's title.
+  const playbooks = useAtomValue(memwisePlaybooksAtom)
+  const drafts = useAtomValue(memwiseDraftsAtom)
+  const playbookTitles = React.useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const d of drafts ?? []) if (d.playbookTitle) out[d.workflowId] = d.playbookTitle
+    for (const p of playbooks ?? []) out[p.id] = p.title
+    return out
+  }, [playbooks, drafts])
+
+  const actions = useInboxActions(item, { onDraftWritten: reloadBinding })
 
   // "Review in a row": the document reviews of one step, one after another (24 §11).
   const docReview = isReviewItem(item, 'document') ? item : null

@@ -17,11 +17,11 @@ import { base64ToBytes, downloadBase64, useMemwiseFile, useMemwiseRecordCalls, u
 import { roleTitle } from '../format'
 import type { RecordPageActions } from './RecordBlocks'
 import type { ReviewQueue, ReviewSubmit } from './DocumentReview'
-import { RecordPageView, type ViewerFile } from './RecordPageView'
+import { RecordPageView, type RecordPageViewProps, type ViewerFile } from './RecordPageView'
 import { useProjectShell } from '../project/shell-context'
 
 /** The bytes of the page's first document viewer. */
-function useViewerFiles(page: MwRecordPage | null): Record<string, ViewerFile> {
+export function useViewerFiles(page: MwRecordPage | null): Record<string, ViewerFile> {
   const viewer = page ? Object.values(page.layout.areas).flat().find(b => b?.kind === 'viewer') : undefined
   const field = viewer?.kind === 'viewer' ? viewer.field : undefined
   const doc = field && page ? page.documents[field] ?? null : null
@@ -104,10 +104,14 @@ export function RecordPage({ entity, recordId }: { entity: string; recordId: str
  * Document review from the inbox: the reviewed record's page in review mode. After the step is
  * submitted the page shows the record as it now is (normal mode), unless the queue moves on.
  */
-export function DocumentReviewPage({ item, onDone, queue }: {
+export function DocumentReviewPage({ item, onDone, queue, shell, inlineSignature }: {
   item: Extract<MwInboxItem, { kind: 'input' | 'decision' }>
   onDone?: (result: MwSubmitResult) => void
   queue?: ReviewQueue
+  /** In the project shell: its header (the Sign page, doc 26 §2). */
+  shell?: RecordPageViewProps['shell']
+  /** Sign in the page rather than in a dialog. */
+  inlineSignature?: boolean
 }) {
   const { t } = useTranslation()
   const review = item.review?.kind === 'document' ? item.review : undefined
@@ -144,7 +148,8 @@ export function DocumentReviewPage({ item, onDone, queue }: {
       page={page}
       actions={actions}
       files={files}
-      review={submitted ? undefined : { submit, onDone: done, roleTitle: r => roleTitle(r, roles), queue }}
+      review={submitted ? undefined : { submit, onDone: done, roleTitle: r => roleTitle(r, roles), queue, ...(inlineSignature ? { inlineSignature } : {}) }}
+      {...(shell ? { shell } : {})}
     />
   )
 }
