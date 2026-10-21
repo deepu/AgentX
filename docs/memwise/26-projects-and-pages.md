@@ -378,6 +378,13 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - Record pages (XSite) carry "One record, each fact owned by one app" with "Open in eTMF" / "Open in EDC". A fact one app follows from the other is shown once, as the owner's.
   - `scripts/walkthrough/shell-edc.mjs` runs it in Electron against the fake Rave. Screenshots are in `projects-and-pages-walkthrough/stage-6-edc/`.
 - **Connector reads:** the first read waits for the first index, so the domain tables exist; it used to race them on a fresh workspace. A failed read is tried again within five minutes, not a whole interval later.
+- **After review:**
+  - One owner per fact: a synced connector's fields are refused on create too (only the identity keys may be given). A record the connector hasn't linked shows them as "Not yet in Medidata Rave".
+  - The Rave connection is declared as gateway secrets (injected, redacted), served by the host to builtins only. `RAVE_URL` must be https except to loopback.
+  - Reads scale: linked rows are looked up by id, and only unlinked rows are matched; `list_sites` makes three calls per study; `list_studies` honours `RAVE_STUDY` and caps form-status reads at 25 studies; an age filter asks Rave for open queries only.
+  - A failure anywhere in a read is recorded and doesn't hide its own error, and the screens are told what it wrote before failing. A `{ link }` reference not linked yet keeps its value; a site mid-handover keeps its last coordinator. Values compare by field type, so a sweep writes only real changes.
+  - Example runs don't sweep connectors. `memwise:records:linked` answers only for a record the viewer may see.
+  - The eTMF walkthroughs take EDC's sites from the fake Rave (site numbers 104, 109, 102).
 - **Tests:**
   - `rave-tools.test.ts` covers the fake and the tools.
   - `edc-exit.test.ts` runs end to end against Postgres and the fake: the sync, read-only Rave facts, the study home, site 104 in both apps, a new coordinator asking for a CV, and Chase old queries with five approvals.

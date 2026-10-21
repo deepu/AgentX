@@ -35,7 +35,7 @@ import { scriptedModels } from '../models'
 import { startMemwiseService, type MemwiseService } from '../service'
 import { RAVE_PLUGIN } from '../rave'
 import {
-  FAKE_RAVE_PASSWORD, FAKE_RAVE_USER, startFakeRave, type FakeRave,
+  FAKE_RAVE_PASSWORD, FAKE_RAVE_USER, MW301, startFakeRave, type FakeRave,
 } from '../../../../runtime/tests/fixtures/fake-rave-http'
 
 const REPO = join(import.meta.dir, '..', '..', '..', '..', '..')
@@ -164,6 +164,48 @@ describe.skipIf(!postgresAvailable())('Stage 6 exit: EDC from Medidata Rave, and
     const refused = await api.call(ownerCtx, ch.RECORDS_UPDATE, { entity: 'edc.Site', id: ids.edc104, values: { coordinator: 'Someone Else' }, reason: 'trying' })
     expect(refused).toMatchObject({ applied: false })
   })
+
+  it('one owner per fact: a person can\'t make Rave\'s facts, and a record Rave never read says so', async () => {
+    // Sites come from Rave: their facts are refused on create (only the key Rave matches by may be given).
+    const made = await api.call(dana, ch.RECORDS_CREATE, { entity: 'edc.Site', values: { site_number: '999', name: 'Made here', rave_ref: `${MW301}/999` }, reason: 'trying' })
+    expect(made).toMatchObject({ applied: false, status: 'invalid' })
+    expect(Object.keys(made.errors).sort()).toEqual(['name', 'site_number'])
+    expect(made.errors.name[0]).toContain('read from the memwise/medidata-rave connector')
+
+    // A record no link ties to Rave shows its Rave fields as "not yet in Rave", with no "as of".
+    const s101 = (await query(dana, 'edc.Site', "site_number = '101'")).rows[0]!
+    const link = (await db.pool.query(`select * from mw.identity_links where record_id = $1 and plugin = $2`, [s101.id, RAVE_PLUGIN])).rows[0]
+    expect(link).toBeDefined()
+    await db.pool.query(`delete from mw.identity_links where id = $1`, [link.id])
+    try {
+      const page = await api.call<MwRecordPage>(dana, ch.RECORDS_PAGE, { entity: 'edc.Site', id: s101.id })
+      expect(page.fields.find((f) => f.name === 'coordinator')?.source).toEqual({ kind: 'plugin', plugin: RAVE_PLUGIN, title: 'Medidata Rave', unlinked: true })
+    } finally {
+      await db.pool.query(`insert into mw.identity_links (id, entity, record_id, plugin, source, external_id, method, score, reasons, linked_by, at)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [link.id, link.entity, link.record_id, link.plugin, link.source, link.external_id, link.method, link.score, JSON.stringify(link.reasons), link.linked_by, link.at])
+    }
+    // Reading Rave again with nothing changed there writes nothing ("104" and 104 are the same Text).
+    const again = await svc.kernel.identity.resolve({ plugin: RAVE_PLUGIN })
+    expect(again.refreshed ?? 0).toBe(0)
+  }, 60_000)
+
+  it('a failed read is recorded with its next try within minutes, and its own error is the one thrown', async () => {
+    const was = process.env.RAVE_URL
+    process.env.RAVE_URL = 'http://127.0.0.1:1/RaveWebServices'
+    try {
+      await expect(svc.kernel.identity.resolve({ plugin: RAVE_PLUGIN })).rejects.toThrow(/could not be reached/)
+      const s = (await svc.kernel.identity.syncs()).find((x) => x.plugin === RAVE_PLUGIN)!
+      expect(s.error).toContain('could not be reached')
+      expect(s.error).not.toContain('127.0.0.1:1') // the connection is a secret, redacted
+      const wait = Date.parse(s.nextDue!) - Date.parse(s.errorAt!)
+      expect(wait).toBeGreaterThan(0)
+      expect(wait).toBeLessThanOrEqual(5 * 60_000 + 1000)
+    } finally {
+      process.env.RAVE_URL = was
+    }
+    await svc.kernel.identity.resolve({ plugin: RAVE_PLUGIN })
+    expect((await svc.kernel.identity.syncs()).find((x) => x.plugin === RAVE_PLUGIN)?.error).toBeUndefined()
+  }, 60_000)
 
   it('the EDC study home: randomised against plan, open and old queries, pages verified, by site', async () => {
     const home = await api.call<MwEdcHome>(dana, ch.EDC_HOME, { projectId: 'MW-301' })
