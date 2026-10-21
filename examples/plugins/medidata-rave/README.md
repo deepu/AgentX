@@ -22,16 +22,19 @@ in this plugin can write to Rave.
 
 1. **A Rave account with Web Services access** for the study (read-only is enough). Your Rave
    administrator creates it; it signs in with HTTP Basic, as RWS does.
-2. **These settings for MemWise**, set once for the workspace (the connection). They are read from
-   the app's secret store when one is set up, else from the environment. Nobody types them into a
-   playbook, and a person running a page or a playbook never sees them:
+2. **These settings for MemWise**, set once for the workspace (the connection). Every tool declares
+   `RAVE_URL`, `RAVE_USER` and `RAVE_PASSWORD` as secrets: the tool gateway injects them on each
+   call (the app serves them from its settings, only to the builtins that declare them) and redacts
+   them from results and errors. Nobody types them into a playbook, and a person running a page or a
+   playbook never sees them. `RAVE_URL` must be `https:`, except to this machine (the fake).
+   `RAVE_STUDY` is a plain setting, not a secret: the study OID is in every reference a tool returns.
 
    | Setting | What it is | Example |
    |---|---|---|
    | `RAVE_URL` | The RWS base | `https://acme.mdsol.com/RaveWebServices` |
    | `RAVE_USER` | The Web Services account | `memwise.reader` |
    | `RAVE_PASSWORD` | Its password | |
-   | `RAVE_STUDY` | Optional: the study tools default to | `MW-301(Prod)` |
+   | `RAVE_STUDY` | Optional: the study tools default to (and the only one `list_studies` lists) | `MW-301(Prod)` |
 
 Then install and bind it:
 
@@ -51,6 +54,14 @@ fields the entity says Rave owns (`ownership:`). Every such field shows Rave as 
 MemWise can edit it, and the record page says when it was last read. The copy exists so a change in
 Rave becomes a change event in MemWise: a new study coordinator at a site starts eTMF's
 "New coordinator" playbook, which asks the site for the coordinator's CV and GCP training (D110).
+
+One owner per fact: with `sync:`, a person or step can't give Rave's fields even when creating a
+record (only the key Rave matches by, `rave_ref`), and a record Rave never linked shows those fields
+as "Not yet in Medidata Rave", with no "as of". A failed read is recorded and tried again within five
+minutes. Calls per read: `list_sites` reads a study's sites, users and form status (three calls, not
+one per site); `list_studies` reads form status per study, for at most 25 studies (set `RAVE_STUDY`
+on a larger account); `list_queries` with `older_than_days` asks Rave for open queries only. The
+`query` record source reads every status, so a query closed in Rave is closed here too.
 
 ## Testing without Rave
 

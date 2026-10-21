@@ -356,6 +356,9 @@ function answer(data: FakeRaveData, path: string[], query: URLSearchParams): Res
     }
     case 'formstatus':
       return json({ sites: ofStudy(data.forms) });
+    case 'users':
+      // Every user of the study (optionally of one site), so a client needn't ask site by site.
+      return id ? notFound('resource') : json({ users: ofStudy(data.users) });
     default:
       return notFound('resource');
   }

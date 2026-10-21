@@ -38,7 +38,8 @@ export interface RaveClient {
   studies(): Promise<RaveStudy[]>;
   sites(study: string): Promise<RaveSite[]>;
   site(study: string, site: string): Promise<RaveSite>;
-  users(study: string, site: string): Promise<RaveUser[]>;
+  /** A site's users, or with no site every user of the study (one read for all its sites). */
+  users(study: string, site?: string): Promise<RaveUser[]>;
   subjects(study: string, site?: string): Promise<RaveSubject[]>;
   subject(study: string, key: string): Promise<RaveSubject>;
   queries(study: string, opts?: { site?: string; status?: string }): Promise<RaveQuery[]>;
@@ -76,7 +77,7 @@ export function raveClient(settings: RaveSettings, opts: { fetch?: typeof fetch;
     studies: async () => (await get<{ studies: RaveStudy[] }>('studies')).studies,
     sites: async (oid) => (await get<{ sites: RaveSite[] }>(`${study(oid)}/sites`)).sites,
     site: async (oid, site) => (await get<{ site: RaveSite }>(`${study(oid)}/sites/${encodeURIComponent(site)}`)).site,
-    users: async (oid, site) => (await get<{ users: RaveUser[] }>(`${study(oid)}/sites/${encodeURIComponent(site)}/users`)).users,
+    users: async (oid, site) => (await get<{ users: RaveUser[] }>(site ? `${study(oid)}/sites/${encodeURIComponent(site)}/users` : `${study(oid)}/users`)).users,
     subjects: async (oid, site) => (await get<{ subjects: RaveSubject[] }>(`${study(oid)}/subjects`, { SiteNumber: site })).subjects,
     subject: async (oid, key) => (await get<{ subject: RaveSubject }>(`${study(oid)}/subjects/${encodeURIComponent(key)}`)).subject,
     queries: async (oid, o = {}) => (await get<{ queries: RaveQuery[] }>(`${study(oid)}/queries`, { SiteNumber: o.site, Status: o.status })).queries,

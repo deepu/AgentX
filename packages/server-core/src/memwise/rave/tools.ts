@@ -44,9 +44,27 @@ export function raveSettings(get: Setting): RaveSettings {
   const password = get('RAVE_PASSWORD')
   const missing = [!url && 'RAVE_URL', !user && 'RAVE_USER', !password && 'RAVE_PASSWORD'].filter(Boolean) as string[]
   if (missing.length) throw new Error(`Medidata Rave is not connected: set ${missing.join(', ')} (see the medidata-rave plugin's README).`)
+  let parsed: URL
+  try { parsed = new URL(url!) } catch { throw new Error(`RAVE_URL should be the address of Rave Web Services, like https://<tenant>.mdsol.com/RaveWebServices, not ${JSON.stringify(url)}`) }
+  // The password goes in every request's header: only over TLS, except to this machine (the fake).
+  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && LOOPBACK.has(parsed.hostname))) {
+    throw new Error(`RAVE_URL must use https: (${parsed.protocol}// is allowed only for this machine, as with the fake Rave)`)
+  }
   const study = get('RAVE_STUDY')
   return { url: url!, user: user!, password: password!, ...(study ? { study } : {}) }
 }
+
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
+
+/**
+ * The connection, as secrets the gateway injects and redacts from results and errors. RAVE_STUDY
+ * is a setting, not a secret: the study OID is in every reference a tool returns
+ * (`MW-301(Prod)/104`), and redacting it would blank them. It is read from the host's settings.
+ */
+export const RAVE_SECRETS = ['RAVE_URL', 'RAVE_USER', 'RAVE_PASSWORD'] as const
+
+/** Studies whose form status `list_studies` reads (one call each); past this, set RAVE_STUDY. */
+export const MAX_STUDIES_WITH_STATUS = 25
 
 // ---------------------------------------------------------------- records as the plugin gives them
 
@@ -79,7 +97,10 @@ function siteRecord(study: RaveStudy, s: RaveSite, users: RaveUser[], forms?: Ra
   const active = users.filter((u) => u.Active && u.SiteNumber === s.SiteNumber)
   const pi = active.find((u) => u.Role === 'Investigator')
   // The coordinator who started last, when a site has two for a while.
-  const crc = active.filter((u) => u.Role === 'Study Coordinator').sort((a, b) => (b.StartDate ?? '').localeCompare(a.StartDate ?? ''))[0]
+  const latest = (us: RaveUser[]) => us.filter((u) => u.Role === 'Study Coordinator').sort((a, b) => (b.StartDate ?? '').localeCompare(a.StartDate ?? ''))[0]
+  // Mid-handover (the old coordinator made inactive before the new one is added) the site keeps
+  // the last one it had, rather than reading as having none for a sync or two.
+  const crc = latest(active) ?? latest(users.filter((u) => u.SiteNumber === s.SiteNumber))
   return {
     Ref: ref(s.StudyOID, s.SiteNumber), StudyOID: s.StudyOID, Study: study.ProtocolName, SiteNumber: s.SiteNumber, SiteName: s.SiteName,
     ...(s.City ? { City: s.City } : {}), ...(s.Country ? { Country: s.Country } : {}), Status: s.Status,
@@ -101,7 +122,7 @@ function queryRecord(study: RaveStudy, q: RaveQuery, now: Date) {
   return {
     Ref: ref(q.StudyOID, `Q${q.QueryId}`), SiteRef: ref(q.StudyOID, q.SiteNumber), SubjectRef: ref(q.StudyOID, q.SubjectKey), Study: study.ProtocolName, ...q,
     // Days open: to today while it is open, else to the day it closed.
-    AgeDays: q.Status === 'Open' || !q.ClosedDate ? ageInDays(q.OpenedDate, now) : ageInDays(q.OpenedDate, new Date(`${q.ClosedDate}T00:00:00Z`)),
+    AgeDays: q.Status === 'Open' || !q.ClosedDate ? ageInDays(q.OpenedDate, now) : ageInDays(q.OpenedDate, new Date(`${q.ClosedDate.slice(0, 10)}T00:00:00Z`)),
   }
 }
 
@@ -144,15 +165,19 @@ export function raveTools(opts: RaveToolsOptions = {}): ToolDefinition[] {
 
   const source = { plugin: RAVE_PLUGIN }
   const tool = <A,>(name: string, description: string, inputSchema: Record<string, unknown>, execute: (args: A, ctx: ToolContext) => Promise<unknown>): ToolDefinition<A> =>
-    ({ name, description, inputSchema, effect: 'read', idempotent: true, source, execute })
+    ({ name, description, inputSchema, effect: 'read', idempotent: true, source, secrets: [...RAVE_SECRETS], execute })
 
   return [
     tool<Record<string, never>>(RAVE_BUILTINS.listStudies, 'List the studies this Rave account can see, with their enrolment target and plan, and how many entered pages are source-verified.', object({}),
       async (_args, ctx) => {
-        const { client } = clientOf(ctx)
+        const { client, settings } = clientOf(ctx)
         const studies = []
-        for (const s of await client.studies()) {
-          // With the study's form status, so a page can say "91% of pages verified" without a second read.
+        // The connection's study when it names one (RAVE_STUDY), else every study the account sees.
+        const all = await studiesFor(client, settings)
+        for (const [i, s] of all.entries()) {
+          // With the study's form status, so a page can say "91% of pages verified" without a second
+          // read: one call per study, so only for the first MAX_STUDIES_WITH_STATUS.
+          if (i >= MAX_STUDIES_WITH_STATUS) { studies.push({ ...s, Ref: s.StudyOID, Study: s.ProtocolName }); continue }
           const forms = await client.formStatus(s.StudyOID)
           const entered = forms.reduce((n, f) => n + f.PagesEntered, 0)
           const verified = forms.reduce((n, f) => n + f.PagesVerified, 0)
@@ -169,11 +194,9 @@ export function raveTools(opts: RaveToolsOptions = {}): ToolDefinition[] {
         const { client, settings } = clientOf(ctx)
         const sites: SiteRecord[] = []
         for (const s of await studiesFor(client, settings, study)) {
-          const [list, forms] = await Promise.all([client.sites(s.StudyOID), client.formStatus(s.StudyOID)])
-          for (const site of list) {
-            const users = await client.users(s.StudyOID, site.SiteNumber)
-            sites.push(siteRecord(s, site, users, forms.find((f) => f.SiteNumber === site.SiteNumber)))
-          }
+          // Three reads per study, not one per site: the study's sites, its users, its form status.
+          const [list, users, forms] = await Promise.all([client.sites(s.StudyOID), client.users(s.StudyOID), client.formStatus(s.StudyOID)])
+          for (const site of list) sites.push(siteRecord(s, site, users, forms.find((f) => f.SiteNumber === site.SiteNumber)))
         }
         return { sites }
       }),
@@ -220,17 +243,19 @@ export function raveTools(opts: RaveToolsOptions = {}): ToolDefinition[] {
         study: studyArg,
         site: { ...str, description: 'Only this site: its number (104) or reference' },
         status: { type: 'string', enum: ['open', 'answered', 'closed', 'all'], description: 'Default all' },
-        older_than_days: { type: 'integer', description: 'Only queries open longer than this many days' },
+        older_than_days: { type: 'integer', description: 'Only open queries, open longer than this many days' },
       }), async ({ study, site, status, older_than_days }, ctx) => {
         const { client, settings } = clientOf(ctx)
         const named = study ?? (site?.includes('/') ? parseRef(site, 'site').study : undefined)
         const today = now()
         const queries = []
         for (const s of await studiesFor(client, settings, named)) {
-          const list = await client.queries(s.StudyOID, { ...(siteNumber(site) ? { site: siteNumber(site)! } : {}), ...(status && status !== 'all' ? { status: status[0]!.toUpperCase() + status.slice(1) } : {}) })
+          // An age asks about open queries: Rave filters them (Status=Open), not this loop.
+          const want = older_than_days !== undefined ? 'Open' : status && status !== 'all' ? status[0]!.toUpperCase() + status.slice(1) : undefined
+          const list = await client.queries(s.StudyOID, { ...(siteNumber(site) ? { site: siteNumber(site)! } : {}), ...(want ? { status: want } : {}) })
           for (const q of list) {
             const r = queryRecord(s, q, today)
-            if (older_than_days === undefined || r.AgeDays > older_than_days) queries.push(r)
+            if (older_than_days === undefined || (q.Status === 'Open' && r.AgeDays > older_than_days)) queries.push(r)
           }
         }
         return { queries, total: queries.length }

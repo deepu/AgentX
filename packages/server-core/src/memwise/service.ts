@@ -24,6 +24,7 @@ import { createPublicHandler, findFormAppDir, type PublicHandler } from './publi
 import { createPublicAddress, type PublicAddress, type PublicAddressOptions } from './relay'
 import { channelTools, pgSentStore } from './channels'
 import { raveTools } from './rave'
+import { builtinSecrets } from './secrets'
 
 export interface MemwiseLogger {
   info(...args: unknown[]): void
@@ -283,6 +284,8 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       projectDir,
       tools,
       builtins,
+      // The connections builtins declare (Rave's URL, user and password), injected per call.
+      secrets: builtinSecrets(builtins),
       resolveMcpSource: (slug) => connectors.resolveMcpSource(slug),
       modelRoles: models.modelRoles,
       providers: models.providers,

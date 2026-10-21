@@ -5,9 +5,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import type { ToolContext, ToolDefinition } from '@memwise/gateway'
+import { createToolGateway, type GatewayDecision, type SecretProvider, type ToolContext, type ToolDefinition } from '@memwise/gateway'
+import type { EffectLedger, LedgerState } from '@memwise/defs'
 import { parsePluginManifest } from '@memwise/defs'
-import { RAVE_BUILTINS, RAVE_PLUGIN, ageInDays, parseRef, raveTools } from '../rave'
+import { MAX_STUDIES_WITH_STATUS, RAVE_BUILTINS, RAVE_PLUGIN, RAVE_SECRETS, ageInDays, parseRef, raveSettings, raveTools } from '../rave'
+import { builtinSecrets } from '../secrets'
 import {
   FAKE_RAVE_PASSWORD, FAKE_RAVE_USER, MW207, MW301, startFakeRave, type FakeRave,
 } from '../../../../runtime/tests/fixtures/fake-rave-http'
@@ -120,8 +122,9 @@ describe('the Rave plugin tools', () => {
 
     const { totals } = await call(RAVE_BUILTINS.formStatus)
     expect(Math.round(totals.PercentVerified)).toBe(91)
+    // The connection names MW-301 (RAVE_STUDY): list_studies reads only it.
     const { studies } = await call(RAVE_BUILTINS.listStudies)
-    expect(studies).toHaveLength(2)
+    expect(studies).toHaveLength(1)
     expect(studies.find((s: any) => s.Study === 'MW-301')).toMatchObject({ Ref: MW301, EnrollmentTarget: 300, PlannedByNow: 190, Sites: 12 })
     expect(Math.round(studies.find((s: any) => s.Study === 'MW-301').PagesVerifiedPercent)).toBe(91)
   })
@@ -145,5 +148,95 @@ describe('the Rave plugin tools', () => {
   it('parses references and counts days', () => {
     expect(parseRef(`${MW301}/104-007`, 'subject')).toEqual({ study: MW301, id: '104-007' })
     expect(ageInDays('2026-10-01', NOW)).toBe(20)
+  })
+})
+
+describe('review fixes: secrets through the gateway, TLS, fewer calls, query ages', () => {
+  class Ledger implements EffectLedger {
+    rows = new Map<string, LedgerState>()
+    async begin(key: string): Promise<LedgerState> { const r = this.rows.get(key); if (r) return r; this.rows.set(key, { status: 'pending', startedAt: NOW.toISOString() }); return { status: 'new' } }
+    async complete(key: string, result: unknown) { this.rows.set(key, { status: 'done', result }) }
+    async fail(key: string, error: string) { this.rows.set(key, { status: 'failed', error }) }
+  }
+  const allow = (tool: string): GatewayDecision => ({ tool, effect: 'read', classified: true, decision: { verdict: 'allow', reason: 'test', origins: [] } })
+  let n = 0
+  const viaGateway = async (list: ToolDefinition[], secrets: SecretProvider, tool: string, args: Record<string, unknown> = {}) => {
+    const ledger = new Ledger()
+    const gw = createToolGateway({ tools: list, ledger, secrets })
+    const key = `k${++n}`
+    const r = await gw.execute({ tool, args, callId: key, idempotencyKey: key, token: { stepRunId: 'sr_1' } as ToolContext['token'] }, allow(tool))
+    return { r: r as { status: string; result?: any; error?: string }, ledger: JSON.stringify([...ledger.rows.values()]) }
+  }
+
+  it('declares the connection as secrets; the host serves them to builtins only, and the gateway redacts them', async () => {
+    const list = raveTools({ env: {}, now: () => NOW })
+    for (const t of list) expect(t.secrets).toEqual([...RAVE_SECRETS])
+    const env = { RAVE_URL: rave.url, RAVE_USER: FAKE_RAVE_USER, RAVE_PASSWORD: FAKE_RAVE_PASSWORD, HOME_SECRET: 'not for plugins' }
+    const provider = builtinSecrets(list, env)
+    expect(await provider.get('RAVE_PASSWORD', {} as ToolContext['token'])).toBe(FAKE_RAVE_PASSWORD)
+    expect(await provider.get('HOME_SECRET', {} as ToolContext['token'])).toBeUndefined() // no builtin declares it
+
+    // Through the gateway, as a step (and the sync) calls it: injected, not from the tool's own env.
+    const ok = await viaGateway(list, provider, RAVE_BUILTINS.listSites, { study: 'MW-301' })
+    expect(ok.r.status).toBe('ok')
+    expect(ok.r.result.sites).toHaveLength(12)
+    // An address that can't be reached is named in the error: redacted, as the connection is a secret.
+    const wrong = builtinSecrets(list, { ...env, RAVE_URL: 'http://127.0.0.1:1/hunter2-wrong' })
+    const bad = await viaGateway(list, wrong, RAVE_BUILTINS.listStudies)
+    expect(bad.r.status).toBe('error')
+    expect(bad.r.error).not.toContain('hunter2-wrong')
+    expect(bad.ledger).not.toContain('hunter2-wrong')
+    // Not connected: the gateway refuses before the tool runs, naming the missing setting.
+    const none = await viaGateway(list, builtinSecrets(list, {}), RAVE_BUILTINS.listStudies)
+    expect(none.r).toEqual({ status: 'error', error: `secret "RAVE_URL" is not configured for ${RAVE_BUILTINS.listStudies}` })
+  })
+
+  it('sends the password only over https, except to this machine', () => {
+    const base = { RAVE_USER: 'u', RAVE_PASSWORD: 'p' } as Record<string, string>
+    const s = (url: string) => raveSettings((k) => ({ ...base, RAVE_URL: url })[k])
+    expect(s('https://acme.mdsol.com/RaveWebServices').url).toBe('https://acme.mdsol.com/RaveWebServices')
+    expect(s('http://127.0.0.1:4790/RaveWebServices').url).toContain('127.0.0.1')
+    expect(s('http://localhost:4790/RaveWebServices').url).toContain('localhost')
+    expect(() => s('http://acme.mdsol.com/RaveWebServices')).toThrow('RAVE_URL must use https:')
+    expect(() => s('not a url')).toThrow('RAVE_URL should be the address')
+  })
+
+  it('reads a study\'s staff in one call, not one per site; list_studies caps its form status reads', async () => {
+    const before = rave.calls.length
+    await call(RAVE_BUILTINS.listSites)
+    const paths = rave.calls.slice(before).map((c) => c.path)
+    expect(paths.filter((p) => p.endsWith('/users'))).toEqual([`/RaveWebServices/studies/${MW301}/users`])
+    expect(paths.length).toBeLessThanOrEqual(4) // studies, sites, users, form status
+    expect(MAX_STUDIES_WITH_STATUS).toBeGreaterThan(0)
+  })
+
+  it('an age asks Rave for open queries only, and a closed date with a time still counts in days', async () => {
+    const before = rave.calls.length
+    const old = (await call(RAVE_BUILTINS.listQueries, { older_than_days: 14 })).queries
+    expect(old).toHaveLength(23)
+    expect(old.every((q: any) => q.Status === 'Open')).toBe(true)
+    expect(rave.calls.slice(before).find((c) => c.path.endsWith('/queries'))?.query).toMatchObject({ Status: 'Open' })
+    // Answered or closed queries are never "older than", even if asked with status all.
+    expect((await call(RAVE_BUILTINS.listQueries, { status: 'all', older_than_days: 0 })).queries.every((q: any) => q.Status === 'Open')).toBe(true)
+    const closed = rave.data.queries.find((q) => q.StudyOID === MW301 && q.Status === 'Closed' && q.ClosedDate)!
+    const was = closed.ClosedDate!
+    closed.ClosedDate = `${was.slice(0, 10)}T15:42:00`
+    try {
+      const got = (await call(RAVE_BUILTINS.getQuery, { query: `${MW301}/Q${closed.QueryId}` })).query
+      expect(got.AgeDays).toBe(ageInDays(closed.OpenedDate, new Date(`${was.slice(0, 10)}T00:00:00Z`)))
+    } finally {
+      closed.ClosedDate = was
+    }
+  })
+
+  it('mid-handover a site keeps its last coordinator rather than none', async () => {
+    const users = rave.data.users.filter((u) => u.StudyOID === MW301 && u.SiteNumber === '104' && u.Role === 'Study Coordinator')
+    const was = users.map((u) => u.Active)
+    for (const u of users) u.Active = false
+    try {
+      expect((await call(RAVE_BUILTINS.getSite, { site: `${MW301}/104` })).site.Coordinator).toBe('Lena Hoffmann')
+    } finally {
+      users.forEach((u, i) => { u.Active = was[i]! })
+    }
   })
 })
