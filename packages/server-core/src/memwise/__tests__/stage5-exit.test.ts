@@ -20,7 +20,7 @@
  * 6. The TMF index counts the zone and site documents.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { cpSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTestDatabase, postgresAvailable, type TestDatabase } from '@memwise/db'
@@ -48,6 +48,8 @@ const ch = RPC_CHANNELS.memwise
 const PASSWORD = 'a long enough password'
 const SIGNED_RULE = 'A CV is signed and dated by the person it is about.'
 const QC_PATH = 'domains/etmf/workflows/file-document/steps/qc.md'
+/** Screenshots of the inspector's page (EInspector) are written here when it is set. */
+const SHOTS = process.env.MEMWISE_WALKTHROUGH_DIR
 const CLASSIFY_PATH = 'domains/etmf/workflows/file-document/steps/classify.md'
 
 describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the eTMF example', () => {
@@ -68,6 +70,7 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
   let chatId: string
   let inspectorToken: string
   let unsignedCase = ''
+  let oldCase = ''
   let liveHash = ''
 
   const kernel = () => svc.kernel
@@ -91,6 +94,47 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
       ? await svc.publicHandler(new Request(`http://core.test${path}`, { ...init, headers: { 'content-type': 'application/json', 'x-memwise-client-ip': '203.0.113.9' } }))
       : await publicGet(path)
     return res.json() as Promise<T>
+  }
+
+  /** The inspector's page in a browser, through the public handler on a free port (Playwright, when this machine has it). */
+  async function shootInspector(token: string) {
+    let pw: any
+    for (const spec of ['playwright', '/opt/node-tools/node_modules/playwright/index.mjs']) {
+      try { pw = await import(spec); break } catch { /* next */ }
+    }
+    if (!pw) return
+    mkdirSync(SHOTS!, { recursive: true })
+    const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (req) => {
+      const headers = new Headers(req.headers)
+      headers.set('x-memwise-client-ip', '203.0.113.9')
+      return svc.publicHandler(new Request(req, { headers }))
+    } })
+    const browser = await pw.chromium.launch()
+    try {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 820 }, deviceScaleFactor: 2 })
+      const shot = (name: string) => page.screenshot({ path: join(SHOTS!, `${name}.png`) })
+      await page.goto(`http://127.0.0.1:${server.port}/v/${token}`)
+      await page.locator('[data-inspector]').waitFor({ timeout: 15_000 })
+      await page.waitForLoadState('networkidle')
+      await shot('EInspector-01-index')
+      await page.locator('[data-zone="05"]').click()
+      await page.locator('[data-doc]').first().waitFor({ timeout: 10_000 })
+      await page.locator('[data-doc]').first().click()
+      await page.locator('[data-document]').waitFor({ timeout: 10_000 })
+      await page.waitForLoadState('networkidle')
+      await shot('EInspector-02-document')
+      await page.locator('[data-action="trail"]').click()
+      await page.locator('[data-trail]').waitFor({ timeout: 10_000 })
+      await shot('EInspector-03-trail')
+      await page.locator('[data-action="ask"]').click()
+      await page.locator('[data-ask] textarea').fill('Please show the site 109 CV that was sent back.')
+      await shot('EInspector-04-ask')
+      const requests = page.locator('[data-requests]')
+      if (await requests.count()) { await requests.first().scrollIntoViewIfNeeded(); await shot('EInspector-05-requests') }
+    } finally {
+      await browser.close()
+      server.stop(true)
+    }
   }
 
   beforeAll(async () => {
@@ -231,6 +275,7 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     // A CV arrives before QA signs: its case pins version 1.
     const old = await fileAtQc(kernel(), await cvFor('site101', 'pi101', 'Investigator CV - site 101 renewal.pdf', true, 45))
     expect((await kernel().getRun(old.runId))!.workflowHash).toBe(liveHash)
+    oldCase = old.caseId
 
     const qaItem = (await until('QA\'s sign-off', () => inbox(graceCtx), (xs) => xs.some((i) => i.kind === 'change-request')))
       .find((i) => i.kind === 'change-request')!
@@ -254,6 +299,9 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
 
   it('the audit trail: the AI names its model and quote; the signed export verifies and a tampered one fails', async () => {
     const log = await api.call<MwAuditLog>(anikaCtx, ch.AUDIT_LOG, { project: 'etmf', limit: 2000 })
+    // The case that finished on version 1 keeps version 1's step titles; one on version 2 has the new ones.
+    expect(log.entries.find((e) => e.caseId === oldCase && e.data?.step === 'qc')?.stepTitle).toBe('QC and sign')
+    expect(log.entries.some((e) => e.data?.step === 'qc' && e.stepTitle?.startsWith('QC by the TMF lead'))).toBe(true)
     expect(log.chain.ok).toBe(true)
     const ai = log.entries.find((e) => e.actorKind === 'ai' && e.caseId === unsignedCase && e.data.step === 'classify')!
     expect(ai).toMatchObject({ action: 'step.completed', data: { model: FAKE_CLASSIFIER_MODEL, quote: 'Investigator CV' }, stepTitle: expect.any(String) })
@@ -337,6 +385,7 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     expect(views.entries.map((e) => e.action)).toEqual(['inspector.opened', 'inspector.listed', 'inspector.viewed', 'inspector.viewed', 'inspector.downloaded', 'inspector.asked'])
     const [link] = await api.call<MwInspectorLink[]>(anikaCtx, ch.INSPECTORS_LIST, { project: 'etmf' })
     expect(link).toMatchObject({ name: 'MHRA inspection', views: 4, downloads: 1, questions: { open: 0, answered: 1 } })
+    if (SHOTS) await shootInspector(t)
     // Only the domain's owner gives inspectors access.
     await expect(api.call(tomCtx, ch.INSPECTORS_CREATE, { project: 'etmf', name: 'x', inspectors: [{ name: 'y' }], expiresAt: new Date(Date.now() + 86_400_000).toISOString() })).rejects.toThrow()
 
