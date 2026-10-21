@@ -360,7 +360,8 @@ export function toCaseLink(project: ProjectDefs, l: CaseLinkView): MwCaseLink {
   const wf = project.workflows[l.workflowId]
   return {
     kind: l.kind, caseId: l.caseId, runId: l.runId, workflowId: l.workflowId,
-    title: l.title || (wf?.title ?? humanize(l.workflowId)), state: l.state, status: l.status,
+    // The step's title ("Finished", "QC and sign"), not the state's id ("end").
+    title: l.title || (wf?.title ?? humanize(l.workflowId)), state: stateTitle(wf, l.state), status: l.status,
   }
 }
 

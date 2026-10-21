@@ -12,6 +12,7 @@ import type { MwCaseValue, MwField } from '@memwise/shared/protocol'
 import { Info_Badge } from '@/components/info/Info_Badge'
 import type { BadgeColor } from '@/components/info/Info_Badge'
 import { cn } from '@/lib/utils'
+import { formatTypedValue } from './records/record-model'
 import {
   formatBytes,
   formatValueInline,
@@ -77,7 +78,8 @@ const looksLikeFileName = (v: unknown): v is string => typeof v === 'string' && 
  * A case value, laid out for reading: documents as chips, lists of records as a small table.
  * `fieldNames`: the case's fields, so a record naming one (a flag's `field: pan`) shows its label.
  */
-export function CaseValueView({ value, fieldNames }: { value: unknown; fieldNames?: ReadonlySet<string> }) {
+/** `type`: the field's declared type ("Date", "DateTime", "Enum[...]"), so a plain value reads as one. */
+export function CaseValueView({ value, fieldNames, type }: { value: unknown; fieldNames?: ReadonlySet<string>; type?: string }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language
 
@@ -125,8 +127,8 @@ export function CaseValueView({ value, fieldNames }: { value: unknown; fieldName
     }
   }
   if (isDocumentValue(value)) return <DocumentChip doc={value} />
-  const text = formatValueInline(value, t, locale)
   const empty = isEmptyValue(value)
+  const text = type && !empty ? formatTypedValue(type, value, t, locale) : formatValueInline(value, t, locale)
   return <span className={cn('[overflow-wrap:anywhere]', empty && 'text-tertiary')}>{text}</span>
 }
 
@@ -168,7 +170,7 @@ export function CaseFieldList({ values, fields, people, only, className }: CaseF
           >
             <dt className="text-secondary" title={def?.description}>{humanize(name)}</dt>
             <dd className="min-w-0 text-foreground">
-              {cv.hidden ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span> : <CaseValueView value={cv.refTitle ?? cv.value} fieldNames={fieldNames} />}
+              {cv.hidden ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span> : <CaseValueView value={cv.refTitle ?? cv.value} fieldNames={fieldNames} type={cv.refTitle ? undefined : def?.type} />}
             </dd>
             {/* Nothing there: no "who set it" badge for an empty value */}
             {(cv.hidden || !isEmptyValue(cv.value)) && <div className="col-start-2 justify-self-start @lg/fields:col-start-3"><ProvenanceBadge value={cv} people={people} /></div>}

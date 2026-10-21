@@ -233,6 +233,20 @@ describe('case view', () => {
     expect(html).toContain('Now: Start up pack: 90')
   })
 
+  test('case values read by their declared type: a date as a date, an enum as words', async () => {
+    const { CaseFieldList } = await import('../CaseValues')
+    const at = { kind: 'system' as const, at: '2026-10-21T01:06:07Z' }
+    const html = render(
+      <CaseFieldList
+        fields={[{ name: 'document_date', type: 'Date', schema: {} }, { name: 'kind', type: 'Enum[documents, question, other]', schema: {} }]}
+        values={{ document_date: { value: '2026-03-14', provenance: at }, kind: { value: 'documents', provenance: at } }}
+      />,
+    )
+    expect(html).toContain('Mar 14, 2026')
+    expect(html).not.toContain('2026-03-14')
+    expect(html).toContain('Documents')
+  })
+
   test('a case without them shows neither panel', () => {
     const html = render(<CaseView kase={sampleCase} now={S.SAMPLE_NOW} />)
     expect(html).not.toContain('data-case-links')

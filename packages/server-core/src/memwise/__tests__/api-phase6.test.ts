@@ -223,7 +223,7 @@ describe('signing, the inbox and cases', () => {
   it('the case view carries hand-offs, the wait condition and the domain', async () => {
     const { call, priya } = setup()
     const c = await call(priya, ch.CASES_GET, 'case_1')
-    expect(c.caseLinks).toEqual([{ kind: 'started_by', caseId: 'case_0', runId: 'run_0', workflowId: 'file-document', title: 'File a TMF document: vogel-cv.pdf', state: 'file', status: 'done' }])
+    expect(c.caseLinks).toEqual([{ kind: 'started_by', caseId: 'case_0', runId: 'run_0', workflowId: 'file-document', title: 'File a TMF document: vogel-cv.pdf', state: 'File', status: 'done' }])
     expect(c.waiting).toMatchObject({ condition: 'start_up_pack_complete = 100%', holds: false, values: { start_up_pack_complete: 90 } })
     expect(c.domain).toBe('etmf')
   })
