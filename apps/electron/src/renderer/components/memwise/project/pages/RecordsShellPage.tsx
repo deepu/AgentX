@@ -17,7 +17,7 @@ import { getMemwiseApi } from '@/hooks/useMemwise'
 import { useMemwiseRecordQuery } from '@/hooks/useMemwiseRecords'
 import { useMemwiseRecordsChatFilter, useMemwiseShellCalls } from '@/hooks/useMemwiseShellPages'
 import { formatCell, humanize } from '../../format'
-import { statusLabel } from '../../records/record-model'
+import { formatFieldValue, statusLabel } from '../../records/record-model'
 import { pluralTitle } from '../project-model'
 import { useProjectShell } from '../shell-context'
 import { ShellPageFrame } from '../WaitingPage'
@@ -162,8 +162,8 @@ function cardLines(row: MwRecordQueryResult['rows'][number], result: MwRecordQue
     const ref = row.refs?.[c.name]
     const v = ref ? ref.title : row.values[c.name]
     if (v === null || v === undefined || v === '' || c.name === 'title') continue
-    const text = typeof v === 'string' ? v : formatCell(c.name, v, t as never, locale)
-    if (text && text !== row.title && text.length <= 40) out.push(text)
+    const text = ref ? ref.title : formatFieldValue({ type: c.type, value: v as never, name: c.name }, t as never, locale)
+    if (text && text !== row.title && text.length >= 3 && text.length <= 40) out.push(text)
   }
   return out
 }

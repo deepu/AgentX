@@ -71,10 +71,13 @@ function pickItem(items: MwInboxItem[], row: TimelineRow): MwInboxItem | undefin
 
 function RunTag({ kase, waiting, mine }: { kase: MwCase; waiting?: TimelineRow; mine: boolean }) {
   const { t } = useTranslation()
+  const roles = useAtomValue(memwiseRolesAtom)
   if (kase.status === 'done') return <Tag tone="green">{t('memwise.everyPage.finished')}</Tag>
   if (kase.status === 'stopped') return <Tag tone="red">{humanize(kase.status)}</Tag>
   if (mine && waiting) return <Tag tone="amber" data-testid="run-waiting-tag">{t('memwise.everyPage.waitingForYouStep', { n: waiting.n })}</Tag>
   if (kase.waiting) return <Tag tone="muted">{t('memwise.everyPage.waitingOnRecord')}</Tag>
+  const role = waiting?.step.performer === 'person' ? waiting.step.assignee : undefined
+  if (role) return <Tag tone="muted">{t('memwise.everyPage.waitingForRole', { role: roleTitle(role, roles) ?? humanize(role) })}</Tag>
   return <Tag tone="muted">{t('memwise.everyPage.running')}</Tag>
 }
 

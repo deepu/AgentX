@@ -125,7 +125,7 @@ export default async ({ win, shot }) => {
     const reason = page.locator('[data-testid="records-board"] input').first()
     if (await reason.count()) {
       await reason.fill('The site sent a signed copy')
-      await page.getByRole('button', { name: 'Confirm' }).first().click().catch((e) => console.log('confirm', e.message))
+      await page.getByRole('button', { name: 'Save with reason' }).first().click().catch((e) => console.log('confirm', e.message))
       await wait(win, 3000)
       await shot('14-drag-moved')
     }

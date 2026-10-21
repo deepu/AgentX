@@ -131,11 +131,11 @@ function BoardColumn({ state, total, children }: { state: string; total: number;
       className={cn(
         'flex flex-col gap-2 self-start rounded-[10px] bg-fill-hover p-2 transition-colors',
         // An empty state stays a narrow drop target, so a lifecycle's columns fit the page.
-        total > 0 ? 'min-w-[104px] flex-1 basis-0' : 'w-[76px] flex-none',
+        total > 0 ? 'min-w-[88px] flex-1 basis-0' : 'w-[68px] flex-none',
         isOver && 'bg-accent-tint/60 outline-dashed outline-1 outline-accent/50',
       )}
     >
-      <h3 className="px-1 text-label-sm font-semibold text-foreground">
+      <h3 className="truncate px-1 text-label-sm font-semibold text-foreground" title={humanize(state)}>
         {humanize(state)} <span className="font-normal text-tertiary">{total}</span>
       </h3>
       {children}
@@ -154,9 +154,9 @@ function Card({ row, lines, onOpen }: { row: Row; lines: string[]; onOpen: () =>
 
 function CardBody({ row, lines, lifted }: { row: Row; lines: string[]; lifted?: boolean }) {
   return (
-    <div className={cn('rounded-[8px] border border-foreground/8 bg-background px-2.5 py-2 text-label', lifted && 'shadow-elev-2')}>
-      <p className="font-medium leading-snug text-foreground">{row.title}</p>
-      {lines.map((l, i) => <p key={i} className="mt-0.5 text-label-sm text-secondary">{l}</p>)}
+    <div className={cn('min-w-0 rounded-[8px] border border-foreground/8 bg-background px-2 py-2 text-label', lifted && 'shadow-elev-2')}>
+      <p className="break-words font-medium leading-snug text-foreground [overflow-wrap:anywhere]">{row.title}</p>
+      {lines.map((l, i) => <p key={i} className="mt-0.5 line-clamp-2 text-label-sm text-secondary [overflow-wrap:anywhere]">{l}</p>)}
     </div>
   )
 }
