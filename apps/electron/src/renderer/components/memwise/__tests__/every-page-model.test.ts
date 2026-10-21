@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test'
 import type { MwDraftSummary, MwTransitionOption } from '@memwise/shared/protocol'
 import { samplePlaybook, sampleCase, sampleCaseSummaries } from '../sample-data'
 import {
-  boardColumns, draftChangeCount, dropDecision, listColumns, numberedSteps, pageDraft, recordsFence, runTimeline, runWhere,
+  boardColumns, combineFilters, draftChangeCount, hiddenByFilters, dropDecision, listColumns, numberedSteps, pageDraft, recordsFence, runTimeline, runWhere,
   runsThisWeek, stepNumber, stepRows, whoDoes,
 } from '../project/pages/every-page-model'
 import { chatAnchorFor } from '../project/project-model'
@@ -134,5 +134,21 @@ describe('record lists', () => {
 
   test("a records list's chat is anchored to the record type", () => {
     expect(chatAnchorFor('etmf', { type: 'records', entity: 'etmf.site' })).toEqual({ kind: 'records', id: 'etmf.site' })
+  })
+})
+
+describe('records list filters', () => {
+  test("a saved view's filter, the typed one and the chat's all apply", () => {
+    expect(combineFilters(undefined, ' ', null)).toBeUndefined()
+    expect(combineFilters("status = 'open'")).toBe("status = 'open'")
+    expect(combineFilters("status = 'open'", '', 'missing_documents > 0 or reminders_sent > 2'))
+      .toBe("(status = 'open') and (missing_documents > 0 or reminders_sent > 2)")
+  })
+
+  test('what the filters hide is counted against the records the person sees, not the type count', () => {
+    expect(hiddenByFilters(3, 2)).toBe(1)
+    expect(hiddenByFilters(2, 2)).toBe(0)
+    expect(hiddenByFilters(undefined, 2)).toBe(0)
+    expect(hiddenByFilters(1, 4)).toBe(0)
   })
 })

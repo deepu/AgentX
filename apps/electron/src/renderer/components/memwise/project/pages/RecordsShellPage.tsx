@@ -14,19 +14,21 @@ import { cn } from '@/lib/utils'
 import { navigate, routes } from '@/lib/navigate'
 import { memwiseDomainsAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { getMemwiseApi } from '@/hooks/useMemwise'
-import { useMemwiseRecordQuery } from '@/hooks/useMemwiseRecords'
+import { useMemwiseRecordQuery, useMemwiseViews } from '@/hooks/useMemwiseRecords'
 import { useMemwiseRecordsChatFilter, useMemwiseShellCalls } from '@/hooks/useMemwiseShellPages'
 import { formatCell, humanize } from '../../format'
 import { formatFieldValue, statusLabel } from '../../records/record-model'
 import { pluralTitle } from '../project-model'
 import { useProjectShell } from '../shell-context'
 import { ShellPageFrame } from '../WaitingPage'
-import { listColumns, recordsFence } from './every-page-model'
+import { combineFilters, hiddenByFilters, listColumns, recordsFence } from './every-page-model'
 import { RecordsBoard } from './RecordsBoard'
 import { ChatChip, ShellButton, ShellTable } from './shell-ui'
 
 type Layout = 'list' | 'cards'
 const LAYOUT_KEY = 'memwise.records.layout.'
+/** Rows loaded at a time; "Show more" loads the next lot. */
+const PAGE = 100
 
 function readLayout(entity: string): Layout {
   try { return localStorage.getItem(LAYOUT_KEY + entity) === 'cards' ? 'cards' : 'list' } catch { return 'list' }
@@ -45,13 +47,24 @@ export function RecordsShellPage({ projectId, entity }: { projectId: string; ent
   const title = pluralTitle(type?.title ?? humanize(entity.split('.').pop() ?? entity))
   const [layout, setLayout] = React.useState<Layout>(() => readLayout(entity))
   const { data: chatFilter } = useMemwiseRecordsChatFilter(entity)
-  const filter = chatFilter?.filter
-  const { data: result, error } = useMemwiseRecordQuery({ entity, ...(filter ? { filter } : {}), ...(chatFilter?.sort?.length ? { sort: chatFilter.sort } : {}), limit: 200 })
-  const asked = chatFilter?.columns
+  // The type's saved views, a filter typed above the list and the chat's filter all apply.
+  const { data: views } = useMemwiseViews(domain?.id ?? null, entity)
+  const [viewId, setViewId] = React.useState<string | null>(null)
+  const view = (views ?? []).find(v => v.id === viewId && v.entity === entity)
+  const [typed, setTyped] = React.useState('')
+  const [applied, setApplied] = React.useState('')
+  const [limit, setLimit] = React.useState(PAGE)
+  const filter = combineFilters(view?.filter, applied, chatFilter?.filter)
+  const sort = chatFilter?.sort?.length ? chatFilter.sort : view?.sort
+  React.useEffect(() => setLimit(PAGE), [entity, filter])
+  const { data: result, error } = useMemwiseRecordQuery({ entity, ...(filter ? { filter } : {}), ...(sort?.length ? { sort } : {}), limit })
+  // What the person sees with no filter: the count in the header, and what the filters hide.
+  const { data: unfiltered } = useMemwiseRecordQuery(filter ? { entity, limit: 1 } : null)
+  const asked = chatFilter?.columns ?? view?.columns
   const calls = useMemwiseShellCalls()
   const shell = useProjectShell()
   const [saving, setSaving] = React.useState(false)
-  const total = type?.count ?? result?.total ?? 0
+  const total = (filter ? unfiltered?.total : result?.total) ?? type?.count ?? 0
 
   const choose = (l: Layout) => {
     setLayout(l)
@@ -87,7 +100,8 @@ export function RecordsShellPage({ projectId, entity }: { projectId: string; ent
 
   const states = type?.lifecycle ?? []
   const rows = result?.rows ?? []
-  const hidden = filter && result ? Math.max(0, total - result.total) : 0
+  const hidden = filter ? hiddenByFilters(unfiltered?.total, result?.total) : 0
+  const more = result ? result.total - rows.length : 0
 
   return (
     <ShellPageFrame
@@ -111,6 +125,30 @@ export function RecordsShellPage({ projectId, entity }: { projectId: string; ent
           <ShellButton className="ml-auto" onClick={() => void saveAsPage(chatFilter)} busy={saving} data-action="save-as-page">{t('memwise.everyPage.saveAsPage')}</ShellButton>
         </div>
       )}
+      <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="records-controls">
+        {(views ?? []).some(v => v.entity === entity) && (
+          <div className="flex flex-wrap items-center gap-1.5" data-views>
+            <ViewButton on={!viewId} onClick={() => setViewId(null)}>{t('memwise.entities.allRecords')}</ViewButton>
+            {(views ?? []).filter(v => v.entity === entity).map(v => (
+              <ViewButton key={v.id} on={viewId === v.id} onClick={() => setViewId(v.id)} data-view={v.id}>
+                {v.title}{v.personal && <span className="text-tertiary"> · {t('memwise.entities.mine')}</span>}
+              </ViewButton>
+            ))}
+          </div>
+        )}
+        <form className="ml-auto flex min-w-[14rem] items-center gap-2" onSubmit={e => { e.preventDefault(); setApplied(typed.trim()) }}>
+          <input
+            className="h-8 min-w-0 flex-1 rounded-[7px] border border-foreground/15 bg-background px-2 font-mono text-label-sm"
+            value={typed}
+            onChange={e => setTyped(e.target.value)}
+            placeholder={t('memwise.entities.filterPlaceholder')}
+            aria-label={t('memwise.entities.filter')}
+            aria-invalid={!!error || undefined}
+            data-filter
+          />
+          {typed.trim() !== applied && <ShellButton type="submit">{t('memwise.entities.applyFilter')}</ShellButton>}
+        </form>
+      </div>
       {error && <p className="mb-3 text-label text-destructive" role="alert">{error}</p>}
       {layout === 'cards' && states.length > 0 ? (
         <RecordsBoard
@@ -124,9 +162,29 @@ export function RecordsShellPage({ projectId, entity }: { projectId: string; ent
       ) : (
         <RecordsList result={result} entity={entity} projectId={shell?.projectId ?? projectId} title={title} asked={asked} />
       )}
+      {more > 0 && (
+        <div className="mt-3 flex items-center gap-3 text-label-sm text-secondary" data-testid="records-more">
+          <span>{t('memwise.entities.showing', { shown: rows.length, total: result?.total ?? rows.length })}</span>
+          <ShellButton onClick={() => setLimit(l => l + PAGE)} data-action="show-more">{t('memwise.everyPage.showMore')}</ShellButton>
+        </div>
+      )}
       {hidden > 0 && <p className="mt-3 text-label-sm text-secondary" data-testid="hidden-by-filter">{t('memwise.everyPage.hiddenByFilter', { count: hidden, records: title.toLowerCase() })}</p>}
       <p className="mt-4 rounded-[10px] bg-fill-hover px-4 py-3 text-label text-secondary">{t('memwise.everyPage.recordsExplain')}</p>
     </ShellPageFrame>
+  )
+}
+
+function ViewButton({ on, onClick, children, ...rest }: { on: boolean; onClick: () => void; children: React.ReactNode } & React.HTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      className={cn('rounded-[7px] px-2.5 py-1 text-label', on ? 'bg-foreground/10 font-medium text-foreground' : 'text-secondary hover:bg-fill-hover')}
+      {...rest}
+    >
+      {children}
+    </button>
   )
 }
 

@@ -146,7 +146,7 @@ function StepTableRow({ row, who, roles }: { row: StepRow; who: Who; roles: MwRo
 }
 
 /** The draft its chat made: what changed, a test run on one record, Discard and Send for review. */
-function DraftPanel({ draft, playbook, onChanged }: { draft: MwDraft; playbook: MwPlaybook; onChanged: () => void }) {
+export function DraftPanel({ draft, playbook, onChanged }: { draft: MwDraft; playbook: MwPlaybook; onChanged: () => void }) {
   const { t } = useTranslation()
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
   const [busy, setBusy] = React.useState<'discard' | 'send' | null>(null)
@@ -157,6 +157,8 @@ function DraftPanel({ draft, playbook, onChanged }: { draft: MwDraft; playbook: 
   const checking = draft.stage !== 'in_review' && !draft.inChat && changeRun?.status === 'active' && changeRun.state !== 'review'
   const inReview = draft.stage === 'in_review' || checking
   const test = draft.lastTestRun && !draft.testRunStale ? draft.lastTestRun : undefined
+  // Discard, Send for review and Run test are for someone who may change it (D122).
+  const mayChange = draft.mayChange !== false
 
   const act = async (what: 'discard' | 'send') => {
     const api = getMemwiseApi()
@@ -186,7 +188,7 @@ function DraftPanel({ draft, playbook, onChanged }: { draft: MwDraft; playbook: 
             </span>
           </span>
         </button>
-        {!inReview && (
+        {!inReview && mayChange && (
           <>
             <ShellButton onClick={() => void act('discard')} busy={busy === 'discard'} disabled={!!busy} data-action="discard-draft">{t('memwise.everyPage.discard')}</ShellButton>
             <ShellButton kind="solid" onClick={() => void act('send')} busy={busy === 'send'} disabled={!!busy} data-action="send-for-review">{t('memwise.everyPage.sendForReview')}</ShellButton>
@@ -199,13 +201,13 @@ function DraftPanel({ draft, playbook, onChanged }: { draft: MwDraft; playbook: 
       {open && (
         <div className="space-y-4 border-t border-accent/15 bg-background/70 px-4 py-3">
           <DraftChanges draft={draft} />
-          {!inReview && <TestRunBox draft={draft} playbook={playbook} />}
-          {inReview && draft.lastTestRun && <TestRunResult run={draft.lastTestRun} stale={draft.testRunStale} />}
+          {!inReview && mayChange && <TestRunBox draft={draft} playbook={playbook} />}
+          {(inReview || !mayChange) && draft.lastTestRun && <TestRunResult run={draft.lastTestRun} stale={draft.testRunStale} />}
         </div>
       )}
       {!open && test && (
         <div className="border-t border-accent/15 bg-background/70 px-4 py-2 text-label-sm text-secondary" data-testid="test-run-summary">
-          {t('memwise.everyPage.testRunOn', { record: test.record.title })} · {sendsLine(test.trace, t) ?? t('memwise.everyPage.sendsNothing')}
+          {testRunTitle(test, t)}{test.detail ? ` · ${sendsLine(test.trace, t) ?? t('memwise.everyPage.sendsNothing')}` : ''}
         </div>
       )}
     </div>
@@ -298,6 +300,11 @@ function TestRunBox({ draft, playbook }: { draft: MwDraft; playbook: MwPlaybook 
   )
 }
 
+/** "Test run on DE-104", or just "Test run" when the viewer may not see the record. */
+function testRunTitle(run: MwDraftTestRun, t: (k: string, o?: Record<string, unknown>) => string): string {
+  return run.record.title ? t('memwise.everyPage.testRunOn', { record: run.record.title }) : t('memwise.everyPage.testRun')
+}
+
 /** What a test run would send: the calls it stubbed, in a line ("to … · copied …"). */
 function sendsLine(trace: MwRunTrace | undefined, t: (k: string, o?: Record<string, unknown>) => string): string | undefined {
   const call = trace?.calls.find(c => typeof c.args.sent_to === 'string' || typeof c.args.to === 'string')
@@ -307,7 +314,7 @@ function sendsLine(trace: MwRunTrace | undefined, t: (k: string, o?: Record<stri
   return cc ? t('memwise.everyPage.wouldSendCopied', { to, cc: String(cc) }) : t('memwise.everyPage.wouldSend', { to })
 }
 
-function TestRunResult({ run, stale }: { run: MwDraftTestRun; stale?: boolean }) {
+export function TestRunResult({ run, stale }: { run: MwDraftTestRun; stale?: boolean }) {
   const { t } = useTranslation()
   const trace = run.trace
   const effects = (trace?.calls ?? []).filter(c => !/\.(get|list|query|search)$/.test(c.tool))
@@ -315,11 +322,12 @@ function TestRunResult({ run, stale }: { run: MwDraftTestRun; stale?: boolean })
     <div className="rounded-[8px] border border-foreground/10 bg-background px-3 py-2.5 text-label" data-testid="test-run-result" data-status={run.status}>
       <p className="flex flex-wrap items-center gap-2">
         {run.status === 'pass' ? <Check className="size-3.5 text-success" /> : <CircleAlert className="size-3.5 text-destructive" />}
-        <span className="font-medium text-foreground">{t('memwise.everyPage.testRunOn', { record: run.record.title })}</span>
+        <span className="font-medium text-foreground">{testRunTitle(run, t)}</span>
         <span className="text-secondary">{run.status === 'pass' ? t('memwise.everyPage.passed') : run.status === 'skip' ? t('memwise.everyPage.couldNotRun') : t('memwise.everyPage.failed')}</span>
         {stale && <Tag tone="amber">{t('memwise.everyPage.staleTestRun')}</Tag>}
         <span className="ml-auto text-label-sm text-tertiary">{absoluteTime(run.at)}</span>
       </p>
+      {!run.detail && <p className="mt-1 text-secondary" data-testid="test-run-not-mine">{t('memwise.everyPage.testRunOnlyForRunner', { name: run.byName ?? t('memwise.everyPage.someoneElse') })}</p>}
       {run.reason && <p className="mt-1 text-secondary">{run.reason}</p>}
       {run.differences.map((d, i) => <p key={i} className="mt-1 text-destructive">{d}</p>)}
       {trace && (

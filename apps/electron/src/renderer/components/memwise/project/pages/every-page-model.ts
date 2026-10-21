@@ -201,3 +201,16 @@ export function recordsFence(input: { entity: string; filter: string; title: str
   }
   return ['```records', JSON.stringify(spec, null, 2), '```'].join('\n')
 }
+
+/** Filters that all apply (a saved view's, the one typed above the list, the chat's), joined with `and`. */
+export function combineFilters(...filters: (string | null | undefined)[]): string | undefined {
+  const parts = filters.map(f => f?.trim()).filter((f): f is string => !!f)
+  if (parts.length <= 1) return parts[0]
+  return parts.map(f => `(${f})`).join(' and ')
+}
+
+/** How many records the filters hide: of those the person sees without them (never the type's count, which can include records they can't see). */
+export function hiddenByFilters(visibleTotal: number | null | undefined, filteredTotal: number | null | undefined): number {
+  if (typeof visibleTotal !== 'number' || typeof filteredTotal !== 'number') return 0
+  return Math.max(0, visibleTotal - filteredTotal)
+}

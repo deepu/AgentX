@@ -14,6 +14,7 @@ import { navigate, routes } from '@/lib/navigate'
 import { memwiseInboxAtom, memwisePeopleAtom, memwiseRolesAtom, memwiseStatusAtom } from '@/atoms/memwise'
 import { useMemwiseCase, useMemwisePlaybook } from '@/hooks/useMemwise'
 import { absoluteDate, absoluteTime, humanize, peopleById, personName, roleTitle } from '../../format'
+import { CaseFieldList } from '../../CaseValues'
 import { InboxItemView } from '../../InboxItemView'
 import { useInboxActions } from '../../MemwisePages'
 import { useProjectShell } from '../shell-context'
@@ -26,6 +27,7 @@ export function RunShellPage({ caseId }: { caseId: string }) {
   const { data: kase, error, reload } = useMemwiseCase(caseId)
   const { data: playbook } = useMemwisePlaybook(kase?.workflowId ?? null)
   const inbox = useAtomValue(memwiseInboxAtom)
+  const people = peopleById(useAtomValue(memwisePeopleAtom))
   const shell = useProjectShell()
   if (!kase || !playbook) {
     return <div className="flex h-full items-center justify-center p-8 text-label text-tertiary">{error ?? t('memwise.entities.loading')}</div>
@@ -60,6 +62,15 @@ export function RunShellPage({ caseId }: { caseId: string }) {
         <p className="mt-2 rounded-[10px] bg-fill-hover px-4 py-3 text-label text-secondary" data-testid="run-waiting-condition">
           {t('memwise.everyPage.waitingForCondition', { record: kase.waiting.record.title, condition: kase.waiting.condition })}
         </p>
+      )}
+      {Object.keys(kase.values).length > 0 && (
+        // What the run knows so far (the case page's fields), below its steps.
+        <section className="mt-8" data-testid="run-values">
+          <h2 className="mb-2 text-label font-semibold text-foreground">
+            {t('memwise.case.fields')} <span className="font-normal tabular-nums text-tertiary">{Object.keys(kase.values).length}</span>
+          </h2>
+          <CaseFieldList values={kase.values} fields={kase.fields} people={people} />
+        </section>
       )}
     </ShellPageFrame>
   )

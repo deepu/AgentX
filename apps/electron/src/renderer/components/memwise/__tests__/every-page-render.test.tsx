@@ -17,6 +17,8 @@ const { SignatureCard } = await import('../records/SignatureCard')
 const { ChatChip, ShellTable, Tag } = await import('../project/pages/shell-ui')
 const { signsDocument } = await import('../project/pages/RecordShellPage')
 const S = await import('../records/sample-records')
+const { DraftPanel, TestRunResult } = await import('../project/pages/PlaybookShellPage')
+const { samplePlaybook } = await import('../sample-data')
 
 beforeAll(() => {
   setI18n(setupI18n([initReactI18next]))
@@ -121,5 +123,44 @@ describe('shell pieces', () => {
     expect(html).toContain('data-testid="t"')
     expect(html).toContain('>Who</th>')
     expect(render(<Tag tone="amber">Waiting for you</Tag>)).toContain('text-amber-700')
+  })
+})
+
+describe('a draft on its playbook page (D121, D122)', () => {
+  const run = {
+    draftId: 'd1', workflowId: 'chase-missing', at: '2026-10-21T10:00:00Z', by: 'person_a', byName: 'Anika Rao', status: 'pass' as const,
+  }
+  const draft = {
+    id: 'd1', title: 'Copy the CRA', workflowId: 'chase-missing', playbookTitle: 'Chase missing documents', kind: 'change' as const,
+    stage: 'draft' as const, createdBy: 'person_a', createdAt: '2026-10-21T09:00:00Z', updatedAt: '2026-10-21T10:00:00Z',
+    pendingEdits: 0, changedFiles: 1, chatId: 'chat-1', edits: [], files: [], conflicts: [], reportStale: false, diagnostics: [],
+    lastTestRun: { ...run, record: { entity: 'etmf.Site', id: 'site_1' }, detail: false, differences: [] }, testRunStale: false, testRun: 'pass' as const,
+  }
+
+  test("someone who may not change it sees no Discard or Send for review, and no part of someone else's run", () => {
+    const html = render(<DraftPanel draft={{ ...draft, mayChange: false } as never} playbook={samplePlaybook} onChanged={() => {}} />)
+    expect(html).not.toContain('data-action="send-for-review"')
+    expect(html).not.toContain('data-action="discard-draft"')
+    expect(html).toContain('test run passed')
+    expect(html).not.toContain('Would send')
+  })
+
+  test('who may change it gets the buttons', () => {
+    const html = render(<DraftPanel draft={{ ...draft, mayChange: true } as never} playbook={samplePlaybook} onChanged={() => {}} />)
+    expect(html).toContain('data-action="send-for-review"')
+    expect(html).toContain('data-action="discard-draft"')
+  })
+
+  test("a run's summary names who ran it and keeps what it saw to them; the runner's own shows the calls", () => {
+    const summary = render(<TestRunResult run={draft.lastTestRun as never} />)
+    expect(summary).toContain('Run by Anika Rao. What it saw is shown only to them.')
+    expect(summary).toContain('>Test run<')
+    const full = render(<TestRunResult run={{
+      ...run, detail: true, record: { entity: 'etmf.Site', id: 'site_1', title: 'DE-104' }, differences: [], copied: { 'etmf.Site': 1 },
+      trace: { state: 'wait_for_upload', status: 'active', steps: [], calls: [{ state: 'send', tool: 'etmf.reminder.create', args: { sent_to: 'coordinator@site.example' }, stubbed: true }] },
+    } as never} />)
+    expect(full).toContain('Test run on DE-104')
+    expect(full).toContain('coordinator@site.example')
+    expect(full).not.toContain('shown only to them')
   })
 })
