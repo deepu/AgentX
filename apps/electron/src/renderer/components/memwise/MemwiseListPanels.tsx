@@ -6,7 +6,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { AlertTriangle, Bell, BookOpen, Briefcase, CheckCircle2, ClipboardCheck, ClipboardList, FilePen, Link2, MessagesSquare, Play, ShieldCheck, Sparkles, Wrench } from 'lucide-react'
+import { AlertTriangle, Bell, BookOpen, Briefcase, CheckCircle2, ClipboardCheck, ClipboardList, FileCheck2, FilePen, HelpCircle, Link2, MessagesSquare, Play, ShieldCheck, Sparkles, Wrench } from 'lucide-react'
 import type { MwCaseSummary, MwDraftSummary, MwInboxItem, MwPlaybookSummary, MwRole, MwRunStatus } from '@memwise/shared/protocol'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { EntityRow } from '@/components/ui/entity-row'
@@ -54,6 +54,8 @@ const KIND_ICON: Record<MwInboxItem['kind'], React.ComponentType<{ className?: s
   identity: Link2,
   flag: AlertTriangle,
   'trigger-hold': Bell,
+  'change-request': FileCheck2,
+  'inspector-question': HelpCircle,
 }
 
 function ListSkeleton() {

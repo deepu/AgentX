@@ -7,7 +7,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { AlertTriangle, Bell, CheckCircle2, ClipboardList, FilePen, Link2, Mail, MessageCircle, MessagesSquare, Puzzle, ScanText, ShieldCheck, Undo2 } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCircle2, ClipboardList, FileCheck2, FilePen, HelpCircle, Link2, Mail, MessageCircle, MessagesSquare, Puzzle, ScanText, ShieldCheck, Undo2 } from 'lucide-react'
 import type {
   MwBindingView,
   MwCaseValue,
@@ -41,6 +41,7 @@ import { identityRows, matchMethodLabel, scorePercent } from './plugins/plugin-m
 import { useNow } from './use-now'
 import { DiffReview, diffSides } from './records/DiffReview'
 import { FlagBody, TriggerHoldBody } from './records/InboxRecordBodies'
+import { ChangeRequestBody, InspectorQuestionBody } from './regulated/RegulatedInboxBodies'
 import { useSignGate, type Signer } from './records/SignGate'
 import { TableReview } from './records/TableReview'
 import { buildSubmission, initialFormValue, initialFormValues, toFormField, type FormError, type FormValues } from './form-model'
@@ -92,6 +93,10 @@ export interface InboxActions {
   releaseTrigger?: (triggerId: string, decision: 'start' | 'discard') => Promise<MwSubmitResult & { started?: number }>
   /** Phase 6: open the automations page. */
   openAutomations?: () => void
+  /** Stage 5: open a change request's page (`crId`: its id or `CR-014`). */
+  openChangeRequest?: (project: string, crId: string) => void
+  /** Stage 5: answer an inspector's question (`memwise:inspectors:answer`). */
+  answerInspectorQuestion?: (questionId: string, answer: string) => Promise<unknown>
 }
 
 export interface InboxItemViewProps {
@@ -122,6 +127,8 @@ const KIND_ICON: Record<MwInboxItem['kind'], React.ReactNode> = {
   identity: <Link2 />,
   flag: <AlertTriangle />,
   'trigger-hold': <Bell />,
+  'change-request': <FileCheck2 />,
+  'inspector-question': <HelpCircle />,
 }
 
 /** The draft a playbook change's decision is about: the case value `draft`. */
@@ -221,8 +228,12 @@ export function InboxItemView({ item, actions: given, people = {}, roles, review
               actions.openRecord
                 ? <button type="button" className="font-medium text-foreground hover:underline" onClick={() => actions.openRecord!(item.flag.entity, item.flag.recordId)}>{item.caseTitle}</button>
                 : <span className="font-medium text-foreground">{item.caseTitle}</span>
-            ) : item.kind === 'trigger-hold' ? (
+            ) : item.kind === 'trigger-hold' || item.kind === 'inspector-question' ? (
               <span className="font-medium text-foreground">{item.caseTitle}</span>
+            ) : item.kind === 'change-request' ? (
+              actions.openChangeRequest
+                ? <button type="button" className="font-medium text-foreground hover:underline" onClick={() => actions.openChangeRequest!(item.changeRequest.project, item.changeRequest.label)}>{item.caseTitle}</button>
+                : <span className="font-medium text-foreground">{item.caseTitle}</span>
             ) : (
               <button type="button" className="font-medium text-foreground hover:underline" onClick={() => item.caseId && actions.openCase(item.caseId)}>
                 {item.caseTitle}
@@ -251,6 +262,16 @@ export function InboxItemView({ item, actions: given, people = {}, roles, review
           item={item}
           release={actions.releaseTrigger ? d => actions.releaseTrigger!(item.triggerId, d) : undefined}
           openAutomations={actions.openAutomations}
+          now={now}
+        />
+      )}
+      {item.kind === 'change-request' && <ChangeRequestBody item={item} openChangeRequest={actions.openChangeRequest} />}
+      {item.kind === 'inspector-question' && (
+        <InspectorQuestionBody
+          item={item}
+          answer={actions.answerInspectorQuestion}
+          openRecord={actions.openRecord}
+          onDone={() => actions.onDone?.({ applied: true })}
           now={now}
         />
       )}

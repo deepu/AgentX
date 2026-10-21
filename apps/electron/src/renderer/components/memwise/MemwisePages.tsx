@@ -163,6 +163,10 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
       openPlugin: pluginId => navigate(routes.view.plugins(pluginId)),
       openRecord: (entity, recordId) => navigate(routes.view.record(entity, recordId)),
       openAutomations: () => navigate(routes.view.domains({ type: 'automations' })),
+      openChangeRequest: (domain, crId) => navigate(routes.view.domains({ type: 'regulated', domain, screen: 'change', id: crId })),
+      ...(api && typeof api.memwiseAnswerInspectorQuestion === 'function' ? {
+        answerInspectorQuestion: (questionId: string, answer: string) => (workspaceId ? api.memwiseAnswerInspectorQuestion(workspaceId, { questionId, answer }) : Promise.reject(new Error(i18n.t('memwise.notAvailable')))),
+      } : {}),
       ...(api && typeof api.memwiseReleaseTrigger === 'function' ? {
         releaseTrigger: async (trigger: string, decision: 'start' | 'discard') => {
           if (!workspaceId) return notAvailable()
@@ -554,6 +558,10 @@ export function DraftPage({ draftId }: { draftId: string }) {
           if (r.applied) {
             toast.success(t('memwise.draft.submitted'), { description: t('memwise.draft.submittedDescription') })
             void refresh()
+          } else if (r.changeRequest) {
+            // Stage 5: a regulated playbook's draft is a change request: its page sends it to QA.
+            const cr = r.changeRequest
+            navigate(routes.view.domains({ type: 'regulated', domain: cr.project, screen: 'change', id: cr.label }))
           } else fail(t('memwise.draft.submitFailed'), r)
         } catch (err) {
           fail(t('memwise.draft.submitFailed'), { message: err instanceof Error ? err.message : String(err) })

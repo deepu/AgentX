@@ -355,6 +355,8 @@ export function inboxKindLabel(kind: MwInboxItem['kind'], t: TFunction): string 
     case 'identity': return t('memwise.inbox.kind.identity')
     case 'flag': return t('memwise.inbox.kind.flag')
     case 'trigger-hold': return t('memwise.inbox.kind.triggerHold')
+    case 'change-request': return t('memwise.inbox.kind.changeRequest')
+    case 'inspector-question': return t('memwise.inbox.kind.inspectorQuestion')
   }
 }
 

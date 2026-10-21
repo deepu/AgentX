@@ -10,6 +10,9 @@
  *   dashboard   `{domain}:{pageId}` plus `?{params}`  (the params a tree page node carries)
  *   automations `*` or `{domain}`
  *   domain      `{domain}` or `{domain}:rules`
+ *   regulated   `{domain}:{screen}` or `{domain}:{screen}:{id}` (Stage 5: a change request, the audit
+ *               trail (id `{entity}:{recordId}` for one record's), inspector access, the TMF index
+ *               (id: a zone)). Interim: the shell mounts these under `mw/{projectId}/…` later.
  */
 
 export type DomainsDetails =
@@ -18,8 +21,12 @@ export type DomainsDetails =
   | { type: 'dashboard'; domain: string; pageId: string; params?: Record<string, string> }
   | { type: 'automations'; domain?: string }
   | { type: 'domain'; domain: string; tab?: 'rules' }
+  | { type: 'regulated'; domain: string; screen: RegulatedScreen; id?: string }
 
-export const DOMAINS_DETAIL_TYPES = ['record', 'entities', 'dashboard', 'automations', 'domain'] as const
+export type RegulatedScreen = 'change' | 'audit' | 'inspectors' | 'tmf'
+const REGULATED_SCREENS: readonly string[] = ['change', 'audit', 'inspectors', 'tmf']
+
+export const DOMAINS_DETAIL_TYPES = ['record', 'entities', 'dashboard', 'automations', 'domain', 'regulated'] as const
 
 function splitFirst(value: string, sep: string): [string, string | undefined] {
   const i = value.indexOf(sep)
@@ -39,6 +46,7 @@ export function packDomainsDetail(d: DomainsDetails): { type: DomainsDetails['ty
     }
     case 'automations': return { type: 'automations', id: d.domain ?? '*' }
     case 'domain': return { type: 'domain', id: d.tab ? `${d.domain}:${d.tab}` : d.domain }
+    case 'regulated': return { type: 'regulated', id: `${d.domain}:${d.screen}${d.id ? `:${d.id}` : ''}` }
   }
 }
 
@@ -67,6 +75,15 @@ export function unpackDomainsDetail(type: string, id: string): DomainsDetails | 
       const [domain, tab] = splitFirst(id, ':')
       if (!domain) return null
       return tab === 'rules' ? { type: 'domain', domain, tab: 'rules' } : { type: 'domain', domain }
+    }
+    case 'regulated': {
+      const [domain, rest] = splitFirst(id, ':')
+      if (!domain || !rest) return null
+      const [screen, sub] = splitFirst(rest, ':')
+      if (!REGULATED_SCREENS.includes(screen)) return null
+      // A change request's screen needs its id.
+      if (screen === 'change' && !sub) return null
+      return { type: 'regulated', domain, screen: screen as RegulatedScreen, ...(sub ? { id: sub } : {}) }
     }
     default:
       return null

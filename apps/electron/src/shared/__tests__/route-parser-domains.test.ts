@@ -20,6 +20,13 @@ const CASES: DomainsDetails[] = [
   { type: 'automations', domain: 'etmf' },
   { type: 'domain', domain: 'etmf' },
   { type: 'domain', domain: 'etmf', tab: 'rules' },
+  // Stage 5: the regulated screens of a domain (a project, for now)
+  { type: 'regulated', domain: 'etmf', screen: 'change', id: 'CR-014' },
+  { type: 'regulated', domain: 'etmf', screen: 'audit' },
+  { type: 'regulated', domain: 'etmf', screen: 'audit', id: 'etmf.Document:doc_101_signature' },
+  { type: 'regulated', domain: 'etmf', screen: 'inspectors' },
+  { type: 'regulated', domain: 'etmf', screen: 'tmf' },
+  { type: 'regulated', domain: 'etmf', screen: 'tmf', id: 'site-management' },
 ]
 
 describe('domains routes', () => {
@@ -36,6 +43,9 @@ describe('domains routes', () => {
       expect(unpackDomainsDetail(type, id)).toEqual(d)
     }
     expect(unpackDomainsDetail('nope', 'x')).toBeNull()
+    expect(unpackDomainsDetail('regulated', 'etmf:change')).toBeNull()
+    expect(unpackDomainsDetail('regulated', 'etmf:other')).toBeNull()
+    expect(unpackDomainsDetail('regulated', 'etmf')).toBeNull()
   })
 
   test('route ⇄ navigation state ⇄ panel key', () => {
