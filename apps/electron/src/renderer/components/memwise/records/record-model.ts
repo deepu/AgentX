@@ -165,12 +165,15 @@ export function layoutColumns(layout: MwPageLayout): { columns: AreaName[]; belo
   return { columns, below: (layout.areas.below?.length ?? 0) > 0 }
 }
 
-/** The blocks of an area; `details` is added to the first area when the layout left it out (24 §6). */
+/**
+ * The blocks of an area; `details` is added to the first area when the layout left it out (24 §6),
+ * unless the page is a written one (a `markdown` block): that page is the record.
+ */
 export function areaBlocks(layout: MwPageLayout, area: AreaName): MwPageBlock[] {
   const blocks = layout.areas[area] ?? []
   const first = layoutColumns(layout).columns[0]
   const all = Object.values(layout.areas).flat()
-  if (area === first && !all.some(b => b?.kind === 'details')) return [...blocks, { kind: 'details' }]
+  if (area === first && !all.some(b => b?.kind === 'details' || b?.kind === 'markdown')) return [...blocks, { kind: 'details' }]
   return blocks
 }
 
@@ -203,7 +206,7 @@ export function detailFields(page: MwRecordPage): MwRecordField[] {
   const shown = new Set<string>(['status'])
   for (const b of Object.values(page.layout.areas).flat()) {
     if (b?.kind === 'fields') b.fields.forEach(f => shown.add(f))
-    if (b?.kind === 'viewer') shown.add(b.field)
+    if (b?.kind === 'viewer' || b?.kind === 'markdown') shown.add(b.field)
     if (b?.kind === 'kpis') b.fields.forEach(f => shown.add(f))
   }
   return page.fields.filter(f => !shown.has(f.name))

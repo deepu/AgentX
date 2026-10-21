@@ -94,6 +94,7 @@ function homeOf(raw: unknown): DomainHomeDef | undefined {
     entity: raw.entity.trim(),
     question: raw.question.trim(),
     name: asString(raw.name),
+    page: asString(raw.page),
     suggested: Array.isArray(raw.suggested) ? asStrings(raw.suggested) : [],
   });
 }

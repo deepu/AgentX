@@ -6,6 +6,8 @@ fields:
   found_count:   { type: Number, description: How many papers PubMed added since the last check }
   new_articles:  { type: List<Ref<Article>>, description: "The papers found that this topic hasn't screened yet" }
   screening:     { type: List<ScreeningRow>, description: "Include or exclude, for each new paper" }
+  to_read:       { type: List<Ref<Article>>, description: "The new papers the screener included, to read" }
+  answer:        { type: Text, description: "What the included papers say so far about the question" }
 types:
   ScreeningRow:
     article:    Ref<Article>

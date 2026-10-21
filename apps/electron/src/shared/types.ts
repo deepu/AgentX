@@ -770,6 +770,8 @@ export interface ElectronAPI {
   memwiseListEntityTypes(workspaceId: string): Promise<import('@memwise/shared/protocol').MwEntityType[]>
   memwiseUploadFile(workspaceId: string, input: import('@memwise/shared/protocol').MwUploadInput): Promise<import('@memwise/shared/protocol').MwDocument>
   memwiseOpenChat(workspaceId: string, input: import('@memwise/shared/protocol').MwOpenChatInput): Promise<{ sessionId: string }>
+  /** A question on a domain's home: makes its draft and opens a chat answering it. */
+  memwiseAsk(workspaceId: string, input: import('@memwise/shared/protocol').MwAskInput): Promise<import('@memwise/shared/protocol').MwAskResult>
   // Phase 3: drafts, versions, building by chat (docs/memwise/20-phase-3-interfaces.md §6)
   memwiseListVersions(workspaceId: string, workflowId: string): Promise<import('@memwise/shared/protocol').MwVersion[]>
   memwiseBuildPlaybook(workspaceId: string, input: import('@memwise/shared/protocol').MwBuildPlaybookInput): Promise<import('@memwise/shared/protocol').MwBuildPlaybookResult>

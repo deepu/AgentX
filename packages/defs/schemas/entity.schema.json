@@ -369,6 +369,14 @@
                         "description": "Regulated domains: needs a matching signature on the record.",
                         "type": "boolean"
                       },
+                      "label": {
+                        "description": "The button's words, e.g. \"Keep watching, every Monday\".",
+                        "type": "string"
+                      },
+                      "primary": {
+                        "description": "Shown as the page's main button.",
+                        "type": "boolean"
+                      },
                       "description": {
                         "type": "string"
                       }
@@ -440,7 +448,7 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
+            "description": "fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
           }
         },
         "left": {
@@ -458,7 +466,7 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
+            "description": "fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
           }
         },
         "right": {
@@ -476,7 +484,7 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
+            "description": "fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
           }
         },
         "side": {
@@ -494,7 +502,7 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
+            "description": "fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
           }
         },
         "below": {
@@ -512,7 +520,7 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
+            "description": "fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat."
           }
         }
       },

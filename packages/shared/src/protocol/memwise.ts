@@ -1478,6 +1478,8 @@ export type MwPageBlock =
   | { kind: 'details' }
   /** A Document, File or Image field; Literature: a Text field, its data in `MwRecordPage.texts`. */
   | { kind: 'viewer'; field: string }
+  /** A Text field holding markdown (with ```chart blocks), shown full width; its value is in `fields`. */
+  | { kind: 'markdown'; field: string }
   | { kind: 'related'; relationships: string[] }
   | { kind: 'cases' }
   | { kind: 'lifecycle' }

@@ -149,7 +149,7 @@ export function parseLifecycle(raw: unknown, report: Reporter): { states?: strin
 
 /** Blocks written as a bare word. */
 const WORD_BLOCKS = ['details', 'cases', 'lifecycle', 'checks', 'notes', 'mentions', 'start', 'history', 'chat'] as const;
-export const PAGE_BLOCK_KINDS = [...WORD_BLOCKS, 'fields', 'viewer', 'related', 'chart', 'kpis'] as const;
+export const PAGE_BLOCK_KINDS = [...WORD_BLOCKS, 'fields', 'viewer', 'markdown', 'related', 'chart', 'kpis'] as const;
 
 const CHART_KINDS: ChartKind[] = ['bar', 'line', 'donut', 'interval'];
 /** The keys of a record page chart, besides `kind` (24 §6, 25 §5). */
@@ -185,6 +185,7 @@ function parseBlock(raw: unknown, report: Reporter, path: PathKey[]): PageBlock 
     case 'kpis': return Array.isArray(v) ? { kind, fields: asStrings(v) } : bad('a list of calculated or Number fields');
     case 'related': return Array.isArray(v) ? { kind, relationships: asStrings(v) } : bad('a list of many relationships');
     case 'viewer': return typeof v === 'string' ? { kind, field: v } : bad('a Document, File or Text field');
+    case 'markdown': return typeof v === 'string' ? { kind, field: v } : bad('a Text field');
     case 'chart': {
       const c = asRecord(v);
       const chart = asString(c.kind) as ChartKind | undefined;
@@ -225,7 +226,8 @@ export function parsePageLayout(raw: unknown, report: Reporter): PageLayoutDef |
     areas[area] = (raw[area] as unknown[]).map((b, i) => parseBlock(b, report, ['page', area, i])).filter((b): b is PageBlock => !!b);
   }
   const all = Object.values(areas).flat();
-  if (!all.some((b) => b.kind === 'details')) (areas[LAYOUT_AREAS[layout][0]!] ??= []).push({ kind: 'details' });
+  // A written page (`markdown`) is the record; it gets no list of fields under it.
+  if (!all.some((b) => b.kind === 'details' || b.kind === 'markdown')) (areas[LAYOUT_AREAS[layout][0]!] ??= []).push({ kind: 'details' });
   return { layout, header: asStrings(raw.header), areas };
 }
 

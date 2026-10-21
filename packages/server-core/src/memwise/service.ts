@@ -345,6 +345,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       const diagnostics = await k.index()
       await refreshContext()
       setMemwiseHostStatus({ diagnostics: diagnosticsOf() })
+      log.info(`[memwise] re-read the playbooks: ${diagnostics.filter((d) => d.severity === 'error').length} error(s)`)
       return diagnostics
     }
 

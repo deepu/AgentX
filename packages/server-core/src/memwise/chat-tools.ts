@@ -454,6 +454,7 @@ function describeBlock(block: { kind: string; [k: string]: unknown }): string {
     case 'kpis': return `tiles: ${list(block.fields)}`
     case 'related': return `related: ${list(block.relationships)}`
     case 'viewer': return `viewer: ${String(block.field)} (the text, with the quotes of its values lit)`
+    case 'markdown': return `page: ${String(block.field)} (markdown, with chart blocks)`
     case 'chart': {
       const what = block.chart === 'interval'
         ? `interval of ${String(block.of)}: ${String(block.value ?? '')} with ${String(block.low ?? '')}–${String(block.high ?? '')}${block.label ? `, labelled ${String(block.label)}` : ''}`

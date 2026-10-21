@@ -263,16 +263,17 @@ describe('Literature walkthrough: tools on the playbook page', () => {
     const { project } = await loadProject(join(import.meta.dir, '..', '..', '..', '..', '..', 'examples', 'literature'))
     const builtins = new Map([['PubMed.search_articles', { name: 'PubMed.search_articles', description: 'from the builtin', effect: 'irreversible' as const }]])
     const tools = projectToolInfo(new Map(), builtins, entityTools(project.entities), boundPluginTools(project))
-    const wf = project.workflows['set-up-watch']!
-    const step = Object.values(wf.steps).find((s) => s.title === 'Draft the PubMed search')!
+    const wf = project.workflows['check-topic']!
+    const step = Object.values(wf.steps).find((s) => s.title === 'Search PubMed for new papers')!
     const out = toStep({ project, diagnostics: [], tools, jsonSchema: valueTypeToJsonSchema }, wf, step)
-    expect(out.tools.map((t) => [t.name, t.effect, t.classified])).toEqual([
+    const reads = out.tools.filter((t) => t.name === 'literature.topic.get' || t.name.startsWith('PubMed.'))
+    expect(reads.map((t) => [t.name, t.effect, t.classified])).toEqual([
       ['literature.topic.get', 'read', true],
       ['PubMed.search_articles', 'read', true],
       ['PubMed.get_article_metadata', 'read', true],
     ])
     // The binding's class wins over a builtin of the same name; the plugin is named.
-    expect(out.tools[1]).toMatchObject({ plugin: 'claude/pubmed', required: true })
+    expect(reads[1]).toMatchObject({ plugin: 'claude/pubmed', required: true })
     expect(tools.get('literature.topic.create')?.effect).toBe('write')
     // A tool passed directly keeps its own entry.
     const direct = projectToolInfo(new Map([['literature.topic.get', { name: 'literature.topic.get', effect: 'write' as const }]]), new Map(), entityTools(project.entities), {})

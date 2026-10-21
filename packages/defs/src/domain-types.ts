@@ -70,6 +70,8 @@ export interface DomainHomeDef {
   entity: string;
   question: string;
   name?: string;
+  /** Text field the chat writes the record's page into (markdown with chart blocks). */
+  page?: string;
   suggested: string[];
 }
 
@@ -189,6 +191,8 @@ export type PageBlock =
   | { kind: 'details' }
   /** A Document, File or Image field, or (25 §4) a Text field shown with its quotes lit. */
   | { kind: 'viewer'; field: string }
+  /** A Text field written as markdown (with ```chart blocks), shown full width: a page the chat wrote. */
+  | { kind: 'markdown'; field: string }
   | { kind: 'related'; relationships: string[] }
   | { kind: 'cases' }
   | { kind: 'lifecycle' }

@@ -1,21 +1,15 @@
 ---
-title: Start the weekly watch
+title: Set the weekly check
 performer: system
 strictness: strict
-reads: [case.topic, case.query, case.inclusion]
+reads: [case.topic]
 tools:
-  allowed:  [literature.topic.update, literature.topic.transition]
-  required: [literature.topic.update, literature.topic.transition]
+  allowed:  [literature.topic.update]
+  required: [literature.topic.update]
 map:
   literature.topic.update:
     id:         case.topic
-    query:      case.query
-    inclusion:  case.inclusion
-    next_check: { today: 0 }
-  literature.topic.transition:
-    id:         case.topic
-    transition: activate
+    next_check: { today: 7 }
 outcomes: [done]
 ---
-Write the approved search and inclusion rules onto the topic, make it active, and set its first
-check for today: "Check a topic" starts within the minute.
+Set the topic's next weekly check a week from today; the first check starts now.

@@ -45,6 +45,7 @@ import {
   type RecordPageActions,
 } from './RecordBlocks'
 import { Info_Section } from '@/components/info/Info_Section'
+import { Markdown } from '@memwise/ui'
 import { areaBlocks, blockFields, detailFields, formatFieldValue, headerFields, layoutColumns, splitRelated, textQuotes, valueQuoteTargets, type AreaName } from './record-model'
 
 export interface ViewerFile { data?: Uint8Array | null; loading?: boolean; error?: string | null }
@@ -141,6 +142,21 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
             active={activeQuote >= 0 ? activeQuote : null}
             missing={missingQuotes}
           />
+        )
+      }
+      case 'markdown': {
+        const value = page.fields.find(f => f.name === block.field)?.value
+        if (typeof value === 'string' && value.trim()) {
+          return <article key={key} className="min-w-0 px-1 text-label-lg leading-relaxed [&_table]:text-label-sm" data-markdown-page><Markdown mode="full">{value}</Markdown></article>
+        }
+        // A draft whose chat is still writing it: say so, rather than an empty box.
+        const lc = page.lifecycle
+        if (!lc || lc.current !== lc.states[0]) return null
+        return (
+          <p key={key} className="flex items-center gap-2 px-1 py-6 text-label text-tertiary">
+            <span className="size-2 animate-pulse rounded-full bg-foreground/40" />
+            {t('memwise.record.pageBeingWritten')}
+          </p>
         )
       }
       case 'related': {

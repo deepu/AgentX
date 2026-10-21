@@ -1,20 +1,16 @@
 workflow: set-up-watch
-version: 1
+version: 2
 title: Set up a watch
 owner: lead
-# Starts when a topic is created. The searcher turns the question into a PubMed search and tries
-# it; the lead approves it (or sends it back with a note); then the topic is active and its first
-# weekly check is due today.
-start: draft_query
+# Starts when someone chooses "Keep watching" on a topic (it becomes active). The chat that answered
+# its question already wrote the search; this sets the next weekly check a week out and starts the
+# first check now ("Check a topic" writes a search itself when a topic has none).
+start: activate
 starts_on:
-  - created: Topic
+  - entered: Topic.active
     with: { topic: record }
 steps:
-  draft_query:
-    on:
-      drafted: approve_query
-      failed:  approve_query     # the lead writes the search by hand
-  approve_query:
-    on: { approved: activate, redo: draft_query }
-    wait: { remind: 3d, timeout: 30d → end }
-  activate:    { on: { done: end } }
+  activate: { on: { done: first_check } }
+  first_check:
+    start: { workflow: check-topic, with: { topic: case.topic } }
+    on: { started: end }

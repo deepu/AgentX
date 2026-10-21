@@ -1,6 +1,5 @@
 /**
- * Literature watch exit test (docs/memwise/25-literature-poc.md §9): the PubMed proof of concept
- * end to end.
+ * Literature exit test (docs/memwise/25-literature-poc.md §9): the ask-first flow, end to end.
  *
  * Against a real Postgres with scripted models, the `examples/literature` project (domain
  * `literature`) and the fake PubMed MCP server on a local port (streamable HTTP, stateless, the
@@ -8,24 +7,22 @@
  * plugin's server URL is pointed at the fake, so every `PubMed.*` call goes through the binding,
  * the gateway and the real HTTP MCP route.
  *
- * 1. The lead creates Topic "Oral GLP-1s for weight in T2D". "Set up a watch" drafts the search,
- *    tries it on PubMed (3 found); the lead approves it; the Topic is `active`, next check today.
- * 2. The date sweep starts "Check a topic". `search` stores 3 Articles, keyed by PMID: Example
- *    Trial A, stored and read before for another topic, comes back `existed: true` and is not
- *    created twice.
- * 3. `read_all` calls "Read a paper" per paper: Trial A was read before and ends at its status
- *    check; ATTAIN-2's `n` is 1613 with the quote "1613 (757 [46·9%] female) were randomly
- *    assigned", after a first answer whose quote isn't in the abstract failed the structural check
- *    and was repaired.
- * 4. `suggest` proposes include for all three (the review with low confidence); the reviewer
- *    accepts two and rejects one in the table review; `record` makes three Screenings (`each:`);
- *    the topic's `included` is 2 and `next_check` a week from today.
- * 5. A chat anchored to the Topic calls `record_query` and `record_get`, then `record_keep` with
+ * 1. The lead asks a question on the Literature home. A draft Topic holds the question and a short
+ *    name; a chat is opened with the question as its first, visible message; no playbook starts.
+ *    The chat fills the draft in through `record_update` (name, query, inclusion, the answer page);
+ *    once the Topic is kept, `record_update` is refused.
+ * 2. The lead chooses "Keep watching, every week": the Topic is `active`, "Set up a watch" sets
+ *    the next check a week out and starts "Check a topic" at once.
+ * 3. The first check: `search` stores three Articles keyed by PMID (Example Trial A was stored
+ *    and read before for another topic); `suggest` includes ATTAIN-2 and Trial A and excludes the
+ *    review, and rewrites the page; `record` puts three AI Screenings and the page on the Topic at
+ *    once. `read_included` reads ATTAIN-2 (n is 1613 with its quote, after a made-up quote was
+ *    sent back) and skips Trial A (read before). The reviewer confirms; the case ends.
+ * 4. A chat anchored to the Topic calls `record_query` and `record_get`, then `record_keep` with
  *    three ATTAIN-2 findings (the permission prompt answered yes): three Evidence records `kept`,
  *    quotes found. A fourth with a made-up quote is kept but flagged "Quote not found in the source".
- * 6. The reviewer rejects the made-up one; the Topic page's interval chart has three rows and the
- *    dashboard's bar chart counts the included papers by year.
- * 7. A week later the sweep starts "Check a topic" again: PubMed has nothing new since the last
+ * 5. The reviewer rejects the made-up one; the dashboard's charts count what is included and kept.
+ * 6. A week later the sweep starts "Check a topic" again: PubMed has nothing new since the last
  *    check, so nothing is stored, read or screened twice; the check is noted (`mark_checked`).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -35,12 +32,12 @@ import { join } from 'node:path'
 import { createTestDatabase, postgresAvailable, type TestDatabase } from '@memwise/db'
 import { loadProject, type ScriptedTurn } from '@memwise/defs'
 import { scriptedProvider, type ModelProvider, type ModelRequest } from '@memwise/gateway'
-import { handleRecordGet, handleRecordKeep, handleRecordQuery } from '@memwise/session-tools-core'
-import type { MwCase, MwDashboard, MwDomain, MwInboxItem, MwPlaybook, MwRecordPage, MwStepRecord } from '@memwise/shared/protocol'
+import { handleRecordGet, handleRecordKeep, handleRecordQuery, handleRecordUpdate } from '@memwise/session-tools-core'
+import type { MwAskResult, MwCase, MwDashboard, MwDomain, MwInboxItem, MwPlaybook, MwRecordPage, MwStepRecord } from '@memwise/shared/protocol'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import type { RequestContext } from '../../transport/types'
 import { ctxFor, fakeServer, fakeSessions, quiet, until } from './api-harness'
-import { registerMemwiseHandlers } from '../../handlers/rpc/memwise'
+import { registerMemwiseHandlers, shortQuestion } from '../../handlers/rpc/memwise'
 import type { HandlerDeps } from '../../handlers/handler-deps'
 import { buildMemwiseRecordToolCallbacks } from '../chat-tools'
 import { resetMemwiseHost } from '../host'
@@ -60,7 +57,42 @@ const ARTICLE = 'literature.Article'
 const SCREENING = 'literature.Screening'
 const EVIDENCE = 'literature.Evidence'
 
+const QUESTION = 'How much weight do adults with type 2 diabetes lose on oral GLP-1 receptor agonists, compared with placebo?'
+const TOPIC_NAME = 'Oral GLP-1s for weight in T2D'
 const INCLUSION = 'Include randomised trials in adults with type 2 diabetes and overweight or obesity that compare an oral GLP-1 receptor agonist with placebo or another treatment and report the change in bodyweight. Exclude reviews, animal and laboratory studies, injectable GLP-1s, and trials without a weight outcome.'
+/** The page the chat writes into the draft: markdown with a chart block. */
+const CHAT_ANSWER = [
+  'Orforglipron lowered bodyweight against placebo in adults with type 2 diabetes ([ATTAIN-2](https://doi.org/10.1016/S0140-6736(25)02165-8)).',
+  '',
+  '## Effect on bodyweight',
+  '',
+  '```chart',
+  JSON.stringify({ kind: 'interval', title: 'Weight change vs placebo', unit: 'percentage points', reference: 0, data: [{ label: 'Orforglipron 36 mg', value: -7.1, low: -8.2, high: -6.1 }] }),
+  '```',
+  '',
+  '## What is unknown',
+  '',
+  'Longer-term outcomes.',
+].join('\n')
+/** The page the check's screener rewrites: the same sections, this week's papers marked New. */
+const CHECK_ANSWER = [
+  'Orforglipron (ATTAIN-2) and oral semaglutide 50 mg (Example Trial A) both lowered bodyweight against placebo (PMID 41275875, PMID 99000001).',
+  '',
+  '## Effect on bodyweight',
+  '',
+  '```chart',
+  JSON.stringify({ kind: 'interval', title: 'Weight change vs placebo', unit: 'percentage points', reference: 0, data: [{ label: 'Orforglipron 36 mg', value: -7.1, low: -8.2, high: -6.1 }] }),
+  '```',
+  '',
+  '| Study | Design and n | Result |',
+  '| --- | --- | --- |',
+  '| ATTAIN-2 **New** | Phase 3, n 1613 | -7.1 points (36 mg) |',
+  '| Example Trial A **New** | Phase 3, n 412 | Lower bodyweight than placebo |',
+  '',
+  '## What is unknown',
+  '',
+  'Longer-term outcomes.',
+].join('\n')
 /** The quote the extractor's first answer gives for `n`: the screened count, in words that aren't in the abstract. */
 const BAD_N_QUOTE = '2859 participants were randomised'
 const N_QUOTE = '1613 (757 [46·9%] female) were randomly assigned'
@@ -96,7 +128,10 @@ const caseRef = (r: ModelRequest, field: string) => new RegExp(`^- ${field} \\(.
 const finish = (args: Record<string, unknown>): ScriptedTurn => ({ toolCalls: [{ name: 'step.finish', args }] })
 const call = (name: string, args: Record<string, unknown>) => ({ name, args })
 
-describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to end', () => {
+/** The text of a record tool's reply, as the model reads it. */
+const textOf = (r: { content: { type: string; text?: string }[] }) => r.content[0]!.text ?? ''
+
+describe.skipIf(!postgresAvailable())('Literature exit: ask a question, keep watching, end to end', () => {
   let db: TestDatabase
   let dir: string
   let projectDir: string
@@ -110,6 +145,7 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
 
   // Records made along the story.
   const ids: Record<string, string> = {}
+  let askSessionId: string
   let setupCaseId: string
   let checkCaseId: string
   /** Every model role call, in order, so the test can say who was asked. */
@@ -129,25 +165,6 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
    */
   async function scriptFor(role: string, request: ModelRequest): Promise<ScriptedTurn[]> {
     const state = stateOf(request)
-    if (role === 'searcher' && state === 'draft_query') {
-      const topic = caseRef(request, 'topic')!
-      const pmids = [EXAMPLE_REVIEW_B, ATTAIN_2, EXAMPLE_TRIAL_A].map((a) => a.identifiers.pmid)
-      return [
-        { toolCalls: [call('literature.topic.get', { id: topic })] },
-        { toolCalls: [call('PubMed.search_articles', { query: GLP1_QUERY, max_results: 20 })] },
-        { toolCalls: [call('PubMed.get_article_metadata', { pmids })] },
-        finish({
-          outcome: 'drafted',
-          writes: {
-            query: GLP1_QUERY,
-            inclusion: INCLUSION,
-            found_count: 3,
-            sample: [EXAMPLE_REVIEW_B, ATTAIN_2, EXAMPLE_TRIAL_A].map((a) => ({ pmid: a.identifiers.pmid, title: a.title, year: Number(a.publication_date.year) })),
-          },
-          rationale: 'The two oral GLP-1 receptor agonists by name and the class, with type 2 diabetes and obesity or weight; three papers today, ATTAIN-2 among them.',
-        }),
-      ]
-    }
     if (role === 'searcher' && state === 'search') {
       const topic = caseRef(request, 'topic')!
       const { rows } = await pool().query(`select last_checked from domain.literature__topic where id = $1`, [topic])
@@ -165,12 +182,12 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
           }),
         ]
       }
-      // The first check: no date limit; store each paper (keyed by PMID), then see what this topic has screened.
+      // The first check: the 20 most relevant, no paging; store each paper (keyed by PMID), then see what this topic has screened.
       const found = [EXAMPLE_REVIEW_B, ATTAIN_2, EXAMPLE_TRIAL_A]
       const stored = await articleIds()
       return [
         { toolCalls: [call('literature.topic.get', { id: topic })] },
-        { toolCalls: [call('PubMed.search_articles', { query: GLP1_QUERY, datetype: 'edat', max_results: 50 })] },
+        { toolCalls: [call('PubMed.search_articles', { query: GLP1_QUERY, sort: 'relevance', max_results: 20 })] },
         { toolCalls: [call('PubMed.get_article_metadata', { pmids: found.map((a) => a.identifiers.pmid) })] },
         {
           toolCalls: [
@@ -218,23 +235,7 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
           }),
         ]
       }
-      if (pmid === EXAMPLE_REVIEW_B.identifiers.pmid) {
-        return [
-          get,
-          finish({
-            outcome: 'extracted',
-            writes: { study_type: 'review', phase: 'not_a_trial', intervention: 'Oral semaglutide and orforglipron', condition: 'Obesity and type 2 diabetes' },
-            quotes: {
-              study_type: 'We review the published trials',
-              phase: 'No new data are reported.',
-              intervention: 'trials of oral semaglutide and orforglipron',
-              condition: 'people with obesity and type 2 diabetes',
-            },
-            rationale: 'A narrative review of published trials; it reports no new data.',
-          }),
-        ]
-      }
-      return [] // Example Trial A was read before: no model is asked (an exhausted script would fail the step)
+      return [] // Example Trial A was read before, and the review isn't read: no model is asked (an exhausted script would fail the step)
     }
     if (role === 'screener' && state === 'suggest') {
       const topic = caseRef(request, 'topic')!
@@ -248,19 +249,21 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
           outcome: 'suggested',
           writes: {
             screening: [
-              row(EXAMPLE_REVIEW_B, 'not_a_trial', 'include', 'A review of the oral GLP-1 trials in this population; the abstract may not say enough to decide, so the reviewer decides.', 0.35),
+              row(EXAMPLE_REVIEW_B, 'not_a_trial', 'exclude', 'A narrative review with no new data; the rules exclude reviews.', 0.97),
               row(ATTAIN_2, 'phase_3', 'include', 'A randomised phase 3 trial of oral orforglipron against placebo in adults with type 2 diabetes and obesity, reporting bodyweight.', 0.98),
               row(EXAMPLE_TRIAL_A, 'phase_3', 'include', 'A randomised phase 3 trial of oral semaglutide against placebo in adults with type 2 diabetes, reporting bodyweight.', 0.95),
             ],
+            to_read: [a[ATTAIN_2.identifiers.pmid], a[EXAMPLE_TRIAL_A.identifiers.pmid]],
+            answer: CHECK_ANSWER,
           },
-          rationale: 'Two randomised trials meet every rule; the review is included with low confidence for the reviewer to decide.',
+          rationale: 'Two randomised trials meet every rule; the review is excluded as a review.',
         }),
       ]
     }
     if (role === 'verifier') {
       return [{ toolCalls: [call('checkpoint.verdict', { results: [
         { rule: 1, passed: true, reason: 'Three new papers and three rows.' },
-        { rule: 2, passed: true, reason: 'No paper is excluded.' },
+        { rule: 2, passed: true, reason: 'The one exclusion names the rule against reviews.' },
       ] })] }]
     }
     return []
@@ -285,6 +288,9 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
   const valueOf = (p: MwRecordPage, field: string) => p.fields.find((f) => f.name === field)?.value
   const caseOf = (caseId: string) => api.call<MwCase>(lead, ch.CASES_GET, caseId)
   const ended = (caseId: string, what: string, timeoutMs = 90_000) => until(what, () => caseOf(caseId), (c) => c.status !== 'active', timeoutMs)
+  const casesOf = (workflowId: string) => api.call<any[]>(lead, ch.CASES_LIST, { workflowId })
+  /** The record tools, as a chat's session calls them (the anchor resolves the person). */
+  const toolCtx = (sessionId: string) => ({ sessionId, memwiseRecords: buildMemwiseRecordToolCallbacks({ sessionId }) }) as never
 
   beforeAll(async () => {
     fake = await startFakePubmed()
@@ -339,19 +345,21 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
     if (dir) rmSync(dir, { recursive: true, force: true })
   }, 60_000)
 
-  it('has the Literature domain, and PubMed bound through its HTTP server', async () => {
+  it('has the Literature domain with its question box, and PubMed bound through its HTTP server', async () => {
     const domains = await api.call<MwDomain[]>(lead, ch.DOMAINS_LIST)
     expect(domains.find((d) => d.id === 'literature')).toMatchObject({ name: 'Literature' })
     const { project, diagnostics } = await svc.kernel.project()
     expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    expect(project.domains?.literature?.home).toMatchObject({ entity: 'Topic', question: 'question', name: 'name', page: 'answer' })
     expect(project.bindings?.['claude/pubmed']?.tools['PubMed.search_articles']).toEqual({ effect: 'read' })
     expect(project.pluginVersions?.['claude/pubmed']?.['1.0.0']?.manifest.mcpServers).toEqual({ PubMed: { url: fake.url } })
-    // The playbook page shows the searcher's tools as the kernel binds them: all three only read.
-    const watch = await api.call<MwPlaybook>(lead, ch.PLAYBOOKS_GET, 'set-up-watch')
-    const draft = Object.values(watch.steps).find((s) => s.title === 'Draft the PubMed search')!
-    expect(draft.tools.map((t) => [t.name, t.effect, t.classified])).toEqual([
+    // "Set up a watch" starts when a topic is kept; "Check a topic" does the searching.
+    expect(await api.call<MwPlaybook>(lead, ch.PLAYBOOKS_GET, 'set-up-watch')).toMatchObject({ id: 'set-up-watch' })
+    const check = await api.call<MwPlaybook>(lead, ch.PLAYBOOKS_GET, 'check-topic')
+    const search = Object.values(check.steps).find((s) => s.title === 'Search PubMed for new papers')!
+    expect(search.tools.map((t) => [t.name, t.effect, t.classified])).toEqual(expect.arrayContaining([
       ['literature.topic.get', 'read', true], ['PubMed.search_articles', 'read', true], ['PubMed.get_article_metadata', 'read', true],
-    ])
+    ]))
   })
 
   it('before: Example Trial A was stored and read last week, for another topic', async () => {
@@ -364,51 +372,103 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
     ids.trialA = r.id!
   })
 
-  it('1. the lead creates a topic; "Set up a watch" drafts and tries the search; the lead approves it; the topic is active, due today', async () => {
-    const created = await api.call(lead, ch.RECORDS_CREATE, {
-      entity: TOPIC, reason: 'a new question from the medical team',
-      values: { name: 'Oral GLP-1s for weight in T2D', question: 'How much weight do adults with type 2 diabetes lose on oral GLP-1 receptor agonists, compared with placebo?' },
+  it('1. the lead asks on the home: a draft topic and a chat that answers it, with no playbook started yet', async () => {
+    const asked = await api.call<MwAskResult>(lead, ch.ASK, { domain: 'literature', question: QUESTION })
+    expect(asked).toMatchObject({ entity: TOPIC })
+    ids.topic = asked.recordId
+    askSessionId = asked.sessionId
+
+    // The draft holds the question and a short name, in the lifecycle's first state.
+    const draft = await page(lead, TOPIC, ids.topic)
+    expect(draft.status).toBe('draft')
+    expect(valueOf(draft, 'question')).toBe(QUESTION)
+    expect(valueOf(draft, 'name')).toBe(shortQuestion(QUESTION))
+    expect(String(valueOf(draft, 'name')).length).toBeLessThanOrEqual(61)
+    expect(draft.lifecycle?.transitions.find((t) => t.name === 'activate')).toMatchObject({ label: 'Keep watching, every week', primary: true, allowed: true })
+    expect(draft.layout.areas.main).toContainEqual({ kind: 'markdown', field: 'answer' })
+
+    // The chat: named for the question, anchored to the draft, the question sent as its visible first message.
+    expect(sessions.created.find((s) => s.id === askSessionId)).toMatchObject({ name: shortQuestion(QUESTION) })
+    expect(sessions.contexts.get(askSessionId)).toMatchObject({ anchor: { kind: 'record', entity: TOPIC, id: ids.topic }, draft: true })
+    expect(sessions.contexts.get(askSessionId)!.block).toContain(QUESTION)
+    const sent = sessions.sent.filter((m) => m.sessionId === askSessionId)
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toMatchObject({ message: QUESTION })
+    expect(sent[0]!.hidden).toBeFalsy()
+
+    // A question alone starts no playbook: nothing is watched until the lead keeps it.
+    await svc.kernel.triggers.sweep()
+    expect(await casesOf('set-up-watch')).toHaveLength(0)
+    expect(await casesOf('check-topic')).toHaveLength(0)
+    expect(fake.calls).toEqual([])
+  }, 60_000)
+
+  it('1b. the chat fills the draft in through record_update, only until the topic is kept', async () => {
+    const ctx = toolCtx(askSessionId)
+    const saved = await handleRecordUpdate(ctx, {
+      values: { name: TOPIC_NAME, query: GLP1_QUERY, inclusion: INCLUSION, found_count: 3, trials: 2, answer: CHAT_ANSWER },
     })
-    expect(created).toMatchObject({ applied: true })
-    ids.topic = created.id
-    expect((await page(lead, TOPIC, ids.topic)).status).toBe('draft')
+    expect(saved.isError).toBeFalsy()
+    expect(textOf(saved)).toContain('Saved name, query, inclusion, found_count, trials, answer on the draft.')
 
-    const cases = await until('the set-up case', () => api.call<any[]>(lead, ch.CASES_LIST, { workflowId: 'set-up-watch' }), (xs) => xs.length > 0, 30_000)
-    expect(cases).toHaveLength(1)
-    setupCaseId = cases[0].caseId
+    const draft = await page(lead, TOPIC, ids.topic)
+    expect(draft.status).toBe('draft')
+    expect(valueOf(draft, 'name')).toBe(TOPIC_NAME)
+    expect(draft.title).toBe(TOPIC_NAME)
+    expect(valueOf(draft, 'query')).toBe(GLP1_QUERY)
+    expect(valueOf(draft, 'inclusion')).toBe(INCLUSION)
+    expect(valueOf(draft, 'answer')).toBe(CHAT_ANSWER)
+    expect(draft.history[0]).toMatchObject({ reason: 'Filled in from chat', by: leadId })
 
-    const item = await itemFor(lead, 'input', (i) => i.caseId === setupCaseId)
-    expect(item.stepTitle).toBe('Approve the search')
-    expect(item.prefill.query?.value).toBe(GLP1_QUERY)
-    const view = await caseOf(setupCaseId)
-    expect(view.values.found_count?.value).toBe(3)
-    expect((view.values.sample?.value as { pmid: string }[]).map((s) => s.pmid)).toEqual(['99000002', '41275875', '99000001'])
-    // Tried on PubMed itself, through the HTTP route.
-    expect(fake.calls.map((c) => c.name)).toEqual(['search_articles', 'get_article_metadata'])
-    expect(fake.calls[0]!.args).toEqual({ query: GLP1_QUERY, max_results: 20 })
+    // Only the draft's own fields, and a bad value is refused with its reason.
+    const refused = await handleRecordUpdate(ctx, { values: { found_count: 'many' } })
+    expect(refused.isError).toBe(true)
+    expect(textOf(refused)).toContain('Not saved')
+    expect(valueOf(await page(lead, TOPIC, ids.topic), 'found_count')).toBe(3)
 
-    const approved = await api.call(lead, ch.INBOX_SUBMIT, {
-      stepRunId: item.stepRunId, outcome: 'approved', values: { query: item.prefill.query?.value, inclusion: item.prefill.inclusion?.value },
-    })
-    expect(approved).toMatchObject({ applied: true })
-    expect((await ended(setupCaseId, 'the watch set up')).state).toBe('end')
+    // Still a draft: nothing was started by filling it in.
+    await svc.kernel.triggers.sweep()
+    expect(await casesOf('set-up-watch')).toHaveLength(0)
+    expect(await casesOf('check-topic')).toHaveLength(0)
+  }, 60_000)
 
+  it('2. the lead chooses "Keep watching": the topic is active, "Set up a watch" sets the next check and starts the first check', async () => {
+    const applied = await api.call(lead, ch.RECORDS_TRANSITION, { entity: TOPIC, id: ids.topic, transition: 'activate', reason: 'Keep watching, every week' })
+    expect(applied).toMatchObject({ applied: true })
+    expect((await page(lead, TOPIC, ids.topic)).status).toBe('active')
+
+    const setups = await until('the set-up case', () => casesOf('set-up-watch'), (xs) => xs.length > 0, 30_000)
+    expect(setups).toHaveLength(1)
+    setupCaseId = setups[0].caseId
+    const setup = await ended(setupCaseId, 'the watch set up')
+    expect(setup).toMatchObject({ state: 'end', status: 'done' })
+    expect(setup.timeline.map((s) => [s.stepId, s.outcome])).toEqual([['activate', 'done']])
+    expect(setup.path).toEqual(['activate', 'first_check', 'end'])
+
+    // The first check was started by it, and is linked both ways.
+    const started = setup.caseLinks!.find((l) => l.kind === 'started')!
+    expect(started).toMatchObject({ workflowId: 'check-topic' })
+    checkCaseId = started.caseId
+    expect((await casesOf('check-topic')).map((c) => c.caseId)).toEqual([checkCaseId])
+    const check = await caseOf(checkCaseId)
+    expect(check.caseLinks!.find((l) => l.kind === 'started_by')).toMatchObject({ caseId: setupCaseId, workflowId: 'set-up-watch' })
+    expect(check.values.topic?.value).toBe(ids.topic)
+
+    // The weekly check is a week out, so the date sweep starts nothing else.
     const topic = await page(lead, TOPIC, ids.topic)
-    expect(topic.status).toBe('active')
-    expect(valueOf(topic, 'query')).toBe(GLP1_QUERY)
-    expect(valueOf(topic, 'inclusion')).toBe(INCLUSION)
-    expect(String(valueOf(topic, 'next_check')).slice(0, 10)).toBe(localDate(new Date()))
+    expect(String(valueOf(topic, 'next_check')).slice(0, 10)).toBe(localDate(new Date(), 7))
+    await svc.kernel.triggers.sweep()
+    expect(await casesOf('check-topic')).toHaveLength(1)
+    expect(await casesOf('set-up-watch')).toHaveLength(1)
+
+    // Kept now: the chat can no longer write to the topic.
+    const refused = await handleRecordUpdate(toolCtx(askSessionId), { values: { name: 'Changed from the chat' } })
+    expect(refused.isError).toBe(true)
+    expect(textOf(refused)).toContain('no longer a draft')
+    expect(valueOf(await page(lead, TOPIC, ids.topic), 'name')).toBe(TOPIC_NAME)
   }, 120_000)
 
-  it('2. the date sweep starts "Check a topic"; search stores three papers, one of them already stored', async () => {
-    // The minute sweep may already have fired it; firing again starts nothing new.
-    await svc.kernel.triggers.sweep()
-    const checks = await until('the check case', () => api.call<any[]>(lead, ch.CASES_LIST, { workflowId: 'check-topic' }), (xs) => xs.length > 0, 30_000)
-    expect(checks).toHaveLength(1)
-    checkCaseId = checks[0].caseId
-    await svc.kernel.triggers.sweep()
-    expect(await api.call<any[]>(lead, ch.CASES_LIST, { workflowId: 'check-topic' })).toHaveLength(1)
-
+  it('3. the first check searches and stores three papers, one of them already stored', async () => {
     const view = await until('searched', () => caseOf(checkCaseId), (c) => !!c.values.new_articles || c.status !== 'active', 60_000)
     const a = await articleIds()
     expect(Object.keys(a).sort()).toEqual(['41275875', '99000001', '99000002'])
@@ -425,26 +485,68 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
     expect(creates.map((j) => (j.response as { result: unknown }).result)).toEqual([
       { id: ids.reviewB, existed: false }, { id: ids.attain, existed: false }, { id: ids.trialA, existed: true },
     ])
+    // The topic already had its search from the chat: the step wrote none.
+    expect(record.journal.some((j) => j.kind === 'tool' && j.name === 'literature.topic.update')).toBe(false)
     const trialA = await page(lead, ARTICLE, ids.trialA)
     expect(trialA.history).toHaveLength(1)
-    // PubMed answered over HTTP, by entry date, with the whole metadata.
-    expect(fake.calls.slice(2).map((c) => c.name)).toEqual(['search_articles', 'get_article_metadata'])
-    expect(fake.calls[2]!.args).toEqual({ query: GLP1_QUERY, datetype: 'edat', max_results: 50 })
+    // PubMed answered over HTTP: the 20 most relevant the first time, with the whole metadata.
+    expect(fake.calls.map((c) => c.name)).toEqual(['search_articles', 'get_article_metadata'])
+    expect(fake.calls[0]!.args).toEqual({ query: GLP1_QUERY, sort: 'relevance', max_results: 20 })
     expect(valueOf(await page(lead, ARTICLE, ids.attain), 'abstract')).toBe(ATTAIN_2.abstract)
   }, 120_000)
 
-  it('3. each paper is read once; ATTAIN-2 has n 1613 with its words, after a made-up quote was sent back', async () => {
-    const reads = await until('three readings', () => api.call<any[]>(lead, ch.CASES_LIST, { workflowId: 'read-paper' }),
-      (xs) => xs.length === 3 && xs.every((c) => c.status !== 'active'), 90_000)
+  it('4. the screener includes two and excludes the review; the decisions and the page go on the topic at once', async () => {
+    // The reviewer's confirmation comes last: by then the screenings and the page are already recorded.
+    const item = await itemFor(reviewer, 'decision', (i) => i.caseId === checkCaseId)
+    expect(item.stepTitle).toBe(`Check the AI's screening`)
+    expect(item.review).toEqual({ kind: 'table', items: 'screening' })
+    const suggested = item.context.screening!.value as Record<string, unknown>[]
+    expect(suggested.map((r) => [r.article, r.decision])).toEqual([[ids.reviewB, 'exclude'], [ids.attain, 'include'], [ids.trialA, 'include']])
+
+    // Three screenings, all by the AI, from the screener's rows.
+    const { rows } = await pool().query(`select article, decision, "by", year, phase, confidence from domain.literature__screening where topic = $1 order by article`, [ids.topic])
+    expect(rows.map((r) => [r.article, r.decision, r.by, Number(r.year), r.phase]).sort()).toEqual([
+      [ids.attain, 'include', 'ai', 2025, 'phase_3'],
+      [ids.reviewB, 'exclude', 'ai', 2026, 'not_a_trial'],
+      [ids.trialA, 'include', 'ai', 2025, 'phase_3'],
+    ].sort())
+    expect(await count('literature__screening', `topic = $1 and "by" <> 'ai'`, [ids.topic])).toBe(0)
+
+    // The page was rewritten with this week's papers; the check is noted and the next one is a week out.
+    const topic = await page(lead, TOPIC, ids.topic)
+    expect(valueOf(topic, 'answer')).toBe(CHECK_ANSWER)
+    expect(String(valueOf(topic, 'answer'))).toContain('**New**')
+    expect(valueOf(topic, 'last_checked')).toBeTruthy()
+    expect(String(valueOf(topic, 'next_check')).slice(0, 10)).toBe(localDate(new Date(), 7))
+    expect(topic.related.screenings).toMatchObject({ total: 3 })
+    expect(topic.cases.map((c) => c.workflowId)).toContain('check-topic')
+
+    // The screener's suggestion was checked against the step's rules by the verifier, once.
+    expect(modelCalls.filter((m) => m.role === 'screener').map((m) => m.turn)).toEqual([0, 1])
+    expect(modelCalls.filter((m) => m.role === 'verifier')).toHaveLength(1)
+
+    // The lead isn't a reviewer: the step isn't theirs.
+    expect((await api.call<MwInboxItem[]>(lead, ch.INBOX_LIST)).some((i) => i.kind === 'decision' && i.caseId === checkCaseId)).toBe(false)
+    ids.confirmStep = item.stepRunId
+  }, 120_000)
+
+  it('5. each included paper is read once; ATTAIN-2 has n 1613 with its words, Trial A (read before) is skipped', async () => {
+    // Two included papers, two readings; the excluded review is not read.
+    const reads = await casesOf('read-paper')
+    expect(reads).toHaveLength(2)
     const byArticle = new Map<string, MwCase>()
     for (const c of reads) {
       const v = await caseOf(c.caseId)
       byArticle.set(v.values.article!.value as string, v)
     }
+    expect([...byArticle.keys()].sort()).toEqual([ids.attain, ids.trialA].sort())
+    expect([...byArticle.values()].every((c) => c.status === 'done')).toBe(true)
+
     // Trial A was read before: its case ended at the status check, and no model was asked about it.
     const trialA = byArticle.get(ids.trialA)!
     expect(trialA.timeline.map((s) => [s.stepId, s.outcome])).toEqual([['status', 'read']])
-    expect(modelCalls.filter((m) => m.role === 'extractor').length).toBe(2 + 3) // Review B: 2 turns; ATTAIN-2: 3
+    expect(modelCalls.filter((m) => m.role === 'extractor').length).toBe(3) // ATTAIN-2: 3 turns
+    expect(valueOf(await page(lead, ARTICLE, ids.trialA), 'n')).toBe(412)
 
     const attainCase = byArticle.get(ids.attain)!
     expect(attainCase.state).toBe('end')
@@ -469,69 +571,58 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
     expect(n).toMatchObject({ found: true })
     expect(ATTAIN_2.abstract.slice(n.start!, n.end!)).toBe(N_QUOTE)
 
+    // The excluded review was stored but never read.
     const review = await page(lead, ARTICLE, ids.reviewB)
-    expect(review.status).toBe('read')
-    expect(valueOf(review, 'study_type')).toBe('review')
+    expect(review.status).not.toBe('read')
+    expect(valueOf(review, 'study_type')).toBeFalsy()
   }, 120_000)
 
-  it('4. the reviewer screens the suggestions in a table: two accepted, one rejected; three screenings, next check in a week', async () => {
-    const item = await itemFor(reviewer, 'input', (i) => i.caseId === checkCaseId)
-    expect(item.stepTitle).toBe('Screen the new papers')
-    expect(item.review).toEqual({ kind: 'table', items: 'screening' })
-    const suggested = item.prefill.screening!.value as Record<string, unknown>[]
-    expect(suggested.map((r) => [r.article, r.decision])).toEqual([[ids.reviewB, 'include'], [ids.attain, 'include'], [ids.trialA, 'include']])
-    // The lead isn't a reviewer: the step isn't theirs.
-    expect((await api.call<MwInboxItem[]>(lead, ch.INBOX_LIST)).some((i) => i.kind === 'input' && i.caseId === checkCaseId)).toBe(false)
-
-    const screening = suggested.map((r) => (r.article === ids.reviewB
-      ? { ...r, decision: 'exclude', reason: 'A narrative review with no new data; the rules exclude reviews.', confidence: 1 }
-      : r))
-    expect(await api.call(reviewer, ch.INBOX_SUBMIT, { stepRunId: item.stepRunId, outcome: 'done', values: { screening } })).toMatchObject({ applied: true })
-    const done = await ended(checkCaseId, 'the screenings recorded')
+  it('6. the reviewer confirms the AI\'s decisions; the check ends', async () => {
+    const pending = await caseOf(checkCaseId)
+    expect(pending).toMatchObject({ status: 'active', state: 'confirm' })
+    expect(await api.call(reviewer, ch.INBOX_SUBMIT, { stepRunId: ids.confirmStep, outcome: 'confirmed', values: {} })).toMatchObject({ applied: true })
+    const done = await ended(checkCaseId, 'the check confirmed')
     expect(done).toMatchObject({ state: 'end', status: 'done' })
-    expect(done.path).toEqual(['status', 'search', 'read_all', 'suggest', 'screen', 'record', 'end'])
-    expect(done.timeline.map((s) => s.stepId)).toEqual(['status', 'search', 'suggest', 'screen', 'record'])
-    // The screener's suggestion was checked against the step's rules by the verifier, once.
-    expect(modelCalls.filter((m) => m.role === 'screener').map((m) => m.turn)).toEqual([0, 1])
-    expect(modelCalls.filter((m) => m.role === 'verifier')).toHaveLength(1)
+    expect(done.path).toEqual(['status', 'search', 'suggest', 'record', 'read_included', 'confirm', 'end'])
+    expect(done.timeline.map((s) => s.stepId)).toEqual(['status', 'search', 'suggest', 'record', 'confirm'])
+    expect(done.values.to_read?.value).toEqual([ids.attain, ids.trialA])
+    expect(done.caseLinks!.filter((l) => l.kind === 'called').map((l) => l.workflowId)).toEqual(['read-paper', 'read-paper'])
 
-    const { rows } = await pool().query(`select article, decision, year, phase from domain.literature__screening where topic = $1 order by article`, [ids.topic])
-    expect(rows.map((r) => [r.article, r.decision, Number(r.year), r.phase]).sort()).toEqual([
-      [ids.attain, 'include', 2025, 'phase_3'],
-      [ids.reviewB, 'exclude', 2026, 'not_a_trial'],
-      [ids.trialA, 'include', 2025, 'phase_3'],
-    ].sort())
-
-    const topic = await page(lead, TOPIC, ids.topic)
-    expect(topic.kpis).toMatchObject({ included: { value: 2 }, excluded: { value: 1 }, evidence_kept: { value: 0 }, evidence_reviewed: { value: 0 } })
-    expect(String(valueOf(topic, 'next_check')).slice(0, 10)).toBe(localDate(new Date(), 7))
-    expect(valueOf(topic, 'last_checked')).toBeTruthy()
+    // Confirming changes nothing: the decisions stay the AI's until a reviewer changes one.
+    expect(await count('literature__screening', `topic = $1 and "by" = 'ai'`, [ids.topic])).toBe(3)
+    expect((await page(lead, TOPIC, ids.topic)).status).toBe('active')
   }, 120_000)
 
   let sessionId: string
-  it('5. a chat about the topic reads its records and keeps four findings: three quoted, one flagged', async () => {
+  it('7. a chat about the topic reads its records and keeps four findings: three quoted, one flagged', async () => {
     ({ sessionId } = await api.call<{ sessionId: string }>(lead, ch.CHAT_OPEN, { anchor: { kind: 'record', entity: TOPIC, id: ids.topic } }))
+    expect(sessionId).not.toBe(askSessionId)
     // Keeping is always asked: the chat opens in Ask mode, and may keep Evidence.
-    expect(sessions.created.find((s) => s.id === sessionId)).toMatchObject({ name: 'About Oral GLP-1s for weight in T2D', permissionMode: 'ask' })
+    expect(sessions.created.find((s) => s.id === sessionId)).toMatchObject({ name: `About ${TOPIC_NAME}`, permissionMode: 'ask' })
     const context = sessions.contexts.get(sessionId)!
     expect(context.anchor).toEqual({ kind: 'record', entity: TOPIC, id: ids.topic })
     expect(context.keep).toEqual([{ entity: EVIDENCE, name: 'Evidence' }])
-    expect(context.block).toContain('Topic "Oral GLP-1s for weight in T2D"')
+    expect(context.block).toContain(`Topic "${TOPIC_NAME}"`)
 
     // The record tools, as the chat's session calls them (the anchor resolves the person).
-    const cb = buildMemwiseRecordToolCallbacks({ sessionId })
-    const toolCtx = { sessionId, memwiseRecords: cb } as never
+    const toolCtxOfChat = toolCtx(sessionId)
     const body = (r: { content: { type: string; text?: string }[] }) => {
-      const text = r.content[0]!.text ?? ''
+      const text = textOf(r)
       expect(text).toContain('<untrusted_record_data>')
       return JSON.parse(text.slice(text.indexOf('<untrusted_record_data>') + 24, text.lastIndexOf('</untrusted_record_data>')))
     }
-    const included = body(await handleRecordQuery(toolCtx, { entity: 'Screening', filter: `topic = '${ids.topic}' and decision = 'include'` }))
+    const included = body(await handleRecordQuery(toolCtxOfChat, { entity: 'Screening', filter: `topic = '${ids.topic}' and decision = 'include'` }))
     expect(included).toMatchObject({ entity: SCREENING, total: 2 })
     expect(included.rows.map((r: { values: { article: string } }) => r.values.article).sort()).toEqual([ids.attain, ids.trialA].sort())
-    const paper = body(await handleRecordGet(toolCtx, { entity: 'Article', id: ids.attain }))
+    expect(included.rows.every((r: { values: { by: string } }) => r.values.by === 'ai')).toBe(true)
+    const paper = body(await handleRecordGet(toolCtxOfChat, { entity: 'Article', id: ids.attain }))
     expect(paper.values.find((v: { field: string }) => v.field === 'n')).toMatchObject({ value: 1613 })
     expect(paper.values.find((v: { field: string }) => v.field === 'abstract').value).toBe(ATTAIN_2.abstract)
+    // The topic's own page is there to read: the answer the check wrote.
+    const topic = body(await handleRecordGet(toolCtxOfChat, { entity: 'Topic', id: ids.topic }))
+    expect(topic.values.find((v: { field: string }) => v.field === 'answer').value).toContain('ATTAIN-2 **New**')
+    // And an active topic is not a draft: this chat cannot rewrite it.
+    expect((await handleRecordUpdate(toolCtxOfChat, { values: { name: 'Nope' } })).isError).toBe(true)
 
     // record_keep: the permission prompt that shows these rows is answered "Keep".
     const finding = (dose: string, effect: number, low: number, high: number, quote: string) => ({
@@ -544,7 +635,7 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
       finding('36 mg', -7.1, -8.2, -6.1, '-9·6% (-10·5 to -8·7) with 36 mg orforglipron (ETD -7·1 [-8·2 to -6·1]'),
       { ...finding('36 mg', -1.8, -2.0, -1.6, MADE_UP_QUOTE), outcome: 'Change in HbA1c' },
     ]
-    const kept = JSON.parse((await handleRecordKeep(toolCtx, { entity: 'Evidence', rows })).content[0]!.text as string)
+    const kept = JSON.parse(textOf(await handleRecordKeep(toolCtxOfChat, { entity: 'Evidence', rows })))
     expect(kept.entity).toBe(EVIDENCE)
     expect(kept.rows.map((r: { quoteFound: boolean }) => r.quoteFound)).toEqual([true, true, true, false])
     expect(kept.rows.every((r: { id?: string }) => !!r.id)).toBe(true)
@@ -565,41 +656,50 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
     expect(await count('literature__evidence', 'topic = $1', [ids.topic])).toBe(4)
   }, 60_000)
 
-  it('6. the reviewer rejects the made-up finding; the topic page and the dashboard chart what is kept', async () => {
+  it('8. the reviewer rejects the made-up finding; the topic page lists what is kept and the dashboard charts it', async () => {
     expect(await api.call(reviewer, ch.RECORDS_TRANSITION, { entity: EVIDENCE, id: ids.madeUp, transition: 'reject', reason: 'The quote is not in the abstract.' }))
       .toMatchObject({ applied: true })
     expect(await api.call(reviewer, ch.RECORDS_TRANSITION, { entity: EVIDENCE, id: ids.evidence6, transition: 'review', reason: 'Checked against the abstract.' }))
       .toMatchObject({ applied: true })
 
+    // The topic's page is the written answer (charts are its markdown blocks), its cases and its related rows.
     const topic = await page(lead, TOPIC, ids.topic)
-    expect(topic.kpis).toMatchObject({ included: { value: 2 }, excluded: { value: 1 }, evidence_kept: { value: 2 }, evidence_reviewed: { value: 1 } })
-    expect(topic.charts!['main:1']).toMatchObject({ kind: 'bar', title: 'Included papers by year', total: 2, data: [{ label: '2025', value: 2 }] })
-    const interval = topic.charts!['main:2']!
-    expect(interval).toMatchObject({ kind: 'interval', title: 'Effect vs comparator', unit: 'percentage points', total: 3 })
+    expect(topic.layout.layout).toBe('single')
+    expect(topic.layout.areas.main?.map((b) => b.kind)).toEqual(['markdown', 'cases', 'related'])
+    expect(topic.layout.areas.main?.find((b) => b.kind === 'related')).toMatchObject({ relationships: ['screenings', 'evidence'] })
+    expect(topic.layout.areas.main?.some((b) => b.kind === 'fields' || b.kind === 'details')).toBe(false)
+    expect(String(valueOf(topic, 'answer'))).toContain('```chart')
+    expect(topic.related.screenings!.total).toBe(3)
+    expect(topic.related.evidence!.total).toBe(4)
+    // The topic's counts, as the lists and the dashboard read them.
+    expect(await count('literature__screening', `topic = $1 and decision = 'include'`, [ids.topic])).toBe(2)
+    expect(await count('literature__screening', `topic = $1 and decision = 'exclude'`, [ids.topic])).toBe(1)
+    expect(topic.related.evidence!.rows.map((r) => r.status).sort()).toEqual(['kept', 'kept', 'rejected', 'reviewed'])
+
+    const dash = await api.call<MwDashboard>(lead, ch.PAGES_DASHBOARD, { domain: 'literature', pageId: 'literature', params: {} })
+    const kpis = Object.fromEntries(dash.blocks.flatMap((b) => (b.kind === 'kpi' ? [[b.label, b.value]] : [])))
+    expect(kpis).toEqual({ 'Topics watched': 1, 'Papers read': 2, 'Papers included': 2, 'Evidence to review': 2 })
+    const charts = dash.blocks.flatMap((b) => (b.kind === 'chart' ? [b.chart] : []))
+    expect(charts.find((c) => c.title === 'Included papers by year')).toMatchObject({ kind: 'bar', total: 2, data: [{ label: '2025', value: 2 }] })
+    expect(charts.find((c) => c.title === 'Included papers by trial phase')).toMatchObject({ kind: 'donut', total: 2, data: [{ label: 'phase_3', value: 2 }] })
+    const interval = charts.find((c) => c.title === 'Effects kept as evidence')!
+    expect(interval).toMatchObject({ kind: 'interval', total: 3 })
     expect(interval.data.map((d) => [d.label, d.value, d.low, d.high]).sort()).toEqual([
       ['Orforglipron 12 mg vs Placebo', -4.5, -5.5, -3.6],
       ['Orforglipron 36 mg vs Placebo', -7.1, -8.2, -6.1],
       ['Orforglipron 6 mg vs Placebo', -2.7, -3.7, -1.6],
     ].sort())
-
-    const dash = await api.call<MwDashboard>(lead, ch.PAGES_DASHBOARD, { domain: 'literature', pageId: 'literature', params: {} })
-    const kpis = Object.fromEntries(dash.blocks.flatMap((b) => (b.kind === 'kpi' ? [[b.label, b.value]] : [])))
-    expect(kpis).toEqual({ 'Topics watched': 1, 'Papers read': 3, 'Papers included': 2, 'Evidence to review': 2 })
-    const charts = dash.blocks.flatMap((b) => (b.kind === 'chart' ? [b.chart] : []))
-    expect(charts.find((c) => c.title === 'Included papers by year')).toMatchObject({ kind: 'bar', total: 2, data: [{ label: '2025', value: 2 }] })
-    expect(charts.find((c) => c.title === 'Included papers by trial phase')).toMatchObject({ kind: 'donut', total: 2, data: [{ label: 'phase_3', value: 2 }] })
-    expect(charts.find((c) => c.title === 'Effects kept as evidence')).toMatchObject({ kind: 'interval', total: 3 })
   }, 60_000)
 
-  it('7. a week later the check runs again: nothing new, nothing stored or screened twice', async () => {
-    const before = { articles: await count('literature__article'), screenings: await count('literature__screening'), reads: (await api.call<any[]>(lead, ch.CASES_LIST, { workflowId: 'read-paper' })).length }
+  it('9. a week later the check runs again: nothing new, nothing stored or screened twice', async () => {
+    const before = { articles: await count('literature__article'), screenings: await count('literature__screening'), reads: (await casesOf('read-paper')).length }
     const pubmedCalls = fake.calls.length
     const topicBefore = await page(lead, TOPIC, ids.topic)
     const lastChecked = String(valueOf(topicBefore, 'last_checked'))
 
     // The sweep a week on: the topic's next_check has come round.
     await svc.kernel.triggers.sweep(new Date(Date.now() + 7 * DAY_MS))
-    const checks = await until('the second check', () => api.call<any[]>(lead, ch.CASES_LIST, { workflowId: 'check-topic' }), (xs) => xs.length === 2, 30_000)
+    const checks = await until('the second check', () => casesOf('check-topic'), (xs) => xs.length === 2, 30_000)
     const second = checks.find((c) => c.caseId !== checkCaseId)!
     const done = await ended(second.caseId, 'the second check')
     expect(done).toMatchObject({ state: 'end', status: 'done' })
@@ -612,13 +712,16 @@ describe.skipIf(!postgresAvailable())('Literature exit: a PubMed watch, end to e
 
     expect(await count('literature__article')).toBe(before.articles)
     expect(await count('literature__screening')).toBe(before.screenings)
-    expect((await api.call<any[]>(lead, ch.CASES_LIST, { workflowId: 'read-paper' })).length).toBe(before.reads)
+    expect((await casesOf('read-paper')).length).toBe(before.reads)
+    // Nothing new: no one is asked to confirm, and the page and the decisions are as they were.
+    expect((await api.call<MwInboxItem[]>(reviewer, ch.INBOX_LIST)).some((i) => i.kind === 'decision' && i.caseId === second.caseId)).toBe(false)
     const topic = await page(lead, TOPIC, ids.topic)
-    expect(topic.kpis).toMatchObject({ included: { value: 2 }, excluded: { value: 1 } })
+    expect(valueOf(topic, 'answer')).toBe(CHECK_ANSWER)
+    expect(topic.related.screenings!.total).toBe(3)
     expect(String(valueOf(topic, 'last_checked'))).not.toBe(lastChecked)
     expect(String(valueOf(topic, 'next_check')).slice(0, 10)).toBe(localDate(new Date(), 7))
     // The same sweep again starts nothing new.
     await svc.kernel.triggers.sweep(new Date(Date.now() + 7 * DAY_MS))
-    expect(await api.call<any[]>(lead, ch.CASES_LIST, { workflowId: 'check-topic' })).toHaveLength(2)
+    expect(await casesOf('check-topic')).toHaveLength(2)
   }, 120_000)
 })

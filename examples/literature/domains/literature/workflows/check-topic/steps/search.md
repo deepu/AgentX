@@ -10,14 +10,19 @@ writes:
   found_count:   Number
   new_articles:  List<Ref<Article>>
 tools:
-  allowed:  [literature.topic.get, literature.screening.list, literature.article.create, PubMed.search_articles, PubMed.get_article_metadata]
+  allowed:  [literature.topic.get, literature.topic.update, literature.screening.list, literature.article.create, PubMed.search_articles, PubMed.get_article_metadata]
   required: [literature.topic.get, PubMed.search_articles]
 budget: { modelCalls: 20 }
 outcomes: [found, nothing_new]
 ---
-Read the topic, then search PubMed with its `query`, by entry date (`datetype: edat`) from the day
-it was last checked (`date_from` is `last_checked` as YYYY/MM/DD; leave it out the first time). Ask
-for 50 at a time and page on (`retstart`) while `has_more` says there are more.
+Read the topic, then search PubMed with its `query`. When it has none yet, write one from its question
+and inclusion rules (MeSH terms and synonyms, joined with AND and OR) and save it on the topic
+(`literature.topic.update`).
+
+- The first time (no `last_checked`): ask for the 20 most relevant (`sort: relevance`,
+  `max_results: 20`) and don't page on; the weekly checks find what is added after.
+- After that: search by entry date (`datetype: edat`) from the day it was last checked
+  (`date_from` is `last_checked` as YYYY/MM/DD), up to 50 papers.
 
 Get the details of the papers found (`PubMed.get_article_metadata`) and store each as an Article:
 its PMID, DOI, PMC id, title, journal, publication date and year, publication types, authors (last

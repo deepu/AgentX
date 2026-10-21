@@ -304,7 +304,8 @@ export function RelatedBlock({ page, names, actions }: { page: MwRecordPage; nam
     <>
       {names.map(name => {
         const rel = page.related[name]
-        if (!rel) return null
+        // Nothing linked: no empty section (a page shows only what it has).
+        if (!rel || rel.total === 0) return null
         const columns = relatedColumns(rel.rows)
         return (
           <Info_Section
@@ -355,12 +356,11 @@ export function RelatedBlock({ page, names, actions }: { page: MwRecordPage; nam
 
 export function CasesBlock({ page, actions, now }: { page: MwRecordPage; actions?: RecordPageActions; now?: number }) {
   const { t, i18n } = useTranslation()
+  // No cases yet: no empty section (a page shows only what it has).
+  if (page.cases.length === 0) return null
   return (
     <Info_Section title={t('memwise.record.cases')} count={page.cases.length}>
-      {page.cases.length === 0 ? (
-        <p className="px-3.5 py-3 text-label text-tertiary">{t('memwise.record.noCases')}</p>
-      ) : (
-        <ul className="divide-y divide-separator" data-record-cases>
+      <ul className="divide-y divide-separator" data-record-cases>
           {page.cases.map(c => (
             <li key={c.caseId}>
               <button
@@ -383,7 +383,6 @@ export function CasesBlock({ page, actions, now }: { page: MwRecordPage; actions
             </li>
           ))}
         </ul>
-      )}
     </Info_Section>
   )
 }
@@ -399,7 +398,9 @@ export function TransitionButtons({ transitions, onTransition, busy, size = 'sm'
   const { t } = useTranslation()
   if (transitions.length === 0) return null
   // A move only a playbook step (or a connector) makes is no button of a person's: it is said in words.
-  const buttons = transitions.filter(tr => !tr.automatic)
+  // The page's main button (`primary`), when it has one, is the only one: one clear thing to do.
+  const manual = transitions.filter(tr => !tr.automatic)
+  const buttons = manual.some(tr => tr.primary && tr.allowed) ? manual.filter(tr => tr.primary) : manual
   const automatic = transitions.filter(tr => tr.automatic)
   return (
     <div className="flex flex-wrap items-start gap-2" data-transitions>

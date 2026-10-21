@@ -93,7 +93,7 @@ export function toDiagnostic(d: Diagnostic): MwDiagnostic {
 
 /** `needs_person` → "Needs person". */
 /** Words that read as initials in labels ("PMID", "DOI"), like the renderer's own labels. */
-const ACRONYMS = new Set(['id', 'pmid', 'pmc', 'doi', 'ci', 'url', 'api'])
+const ACRONYMS = new Set(['id', 'pmid', 'pmc', 'doi', 'ci', 'url', 'api', 'ai'])
 
 export function humanize(id: string): string {
   const words = id.replace(/[_-]+/g, ' ').trim()

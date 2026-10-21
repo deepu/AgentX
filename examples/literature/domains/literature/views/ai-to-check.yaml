@@ -1,0 +1,6 @@
+title: AI decisions to check
+entity: Screening
+filter: "by = 'ai'"
+group: topic
+sort: [confidence]
+columns: [article, decision, reason, confidence, year, phase]

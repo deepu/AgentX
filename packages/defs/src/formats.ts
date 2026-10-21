@@ -96,7 +96,7 @@ const lifecycleChart = z.strictObject({
 
 /** A record page block, as written: `details`, or `{ fields: [...] }`, `{ viewer: file }`, ... (the parser checks which). */
 const pageBlock = z.union([z.string(), z.record(z.string(), z.unknown())])
-  .meta({ description: 'fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat.' });
+  .meta({ description: 'fields: [names], details, viewer: <field>, markdown: <Text field>, related: [relationships], cases, lifecycle, chart: { kind, of, by, where, title, label, value, low, high, unit }, kpis: [fields], checks, notes, mentions, start, history, chat.' });
 const pageArea = z.array(pageBlock);
 
 export const pageLayoutFormat = z.strictObject({
@@ -335,6 +335,7 @@ export const domainFormat = z.strictObject({
     entity: z.string().meta({ description: 'The entity a question becomes a draft of (a bare name in this domain), e.g. Topic. It needs a lifecycle.' }),
     question: z.string().meta({ description: "The draft's Text field the question goes into." }),
     name: z.string().optional().meta({ description: "The draft's Text field for a short name; the chat writes a better one." }),
+    page: z.string().optional().meta({ description: "The draft's Text field the chat writes its page into (markdown, laid out for the question, with chart blocks)." }),
     suggested: z.array(z.string()).optional().meta({ description: 'Questions offered under the box.' }),
   }).optional().meta({ description: "The domain's home: a question box. Asking opens a chat with a draft record beside it; recent drafts and the records being worked on are listed under the box." }),
 }).meta({ title: 'MemWise domain', description: 'domains/<id>/domain.yaml (or domain/domain.yaml for the default domain).' });

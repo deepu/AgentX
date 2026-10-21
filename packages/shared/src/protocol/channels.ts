@@ -445,6 +445,7 @@ export const RPC_CHANNELS = {
     ENTITIES_TYPES: 'memwise:entities:types',
     FILES_UPLOAD: 'memwise:files:upload',
     CHAT_OPEN: 'memwise:chat:open',
+    ASK: 'memwise:ask',
     CHANGED: 'memwise:changed',
     // Phase 3 (docs/memwise/20-phase-3-interfaces.md)
     PLAYBOOKS_VERSIONS: 'memwise:playbooks:versions',

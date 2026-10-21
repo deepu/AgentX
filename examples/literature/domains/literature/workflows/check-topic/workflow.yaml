@@ -3,8 +3,10 @@ version: 1
 title: Check a topic
 owner: lead
 # One case per topic per week, on its next_check date ("Check now" sets next_check to today).
-# Searches PubMed for what was added since the last check, reads each new paper once, and a
-# reviewer screens them; the screenings are recorded and the next check is set for a week later.
+# Searches PubMed for what was added since the last check (the first time, the most relevant 20),
+# the screener decides include or exclude for each and writes what the papers say so far; those
+# decisions go on the topic at once. Then the included papers are read, and a reviewer checks the
+# AI's decisions (changing any on the screening's page). The next check is a week later.
 start: status
 starts_on:
   - before: { field: Topic.next_check, by: 0d }
@@ -14,26 +16,27 @@ steps:
     on: { active: search, draft: end, paused: end, closed: end }
   search:
     on:
-      found:        read_all
+      found:        suggest
       nothing_new:  mark_checked
       failed:       needs_person
-  read_all:                                          # "Read a paper" once per new paper
+  suggest:
+    on: { suggested: record, failed: needs_person }
+  record:                                            # the AI's decisions and answer, on the topic now
+    on: { done: read_included }
+  read_included:                                     # "Read a paper" once per included paper
     for_each:
-      items: case.new_articles
+      items: case.to_read
       as: article
       call:
         workflow: read-paper
         with: { article: item }
       join: all
-    on: { done: suggest, failed: needs_person }
-  suggest:
-    on: { suggested: screen, failed: needs_person }
-  screen:                                            # the reviewer decides, paper by paper
-    on: { done: record }
-    wait: { remind: 3d, timeout: 14d → needs_person }
-  record:       { on: { done: end } }
+    on: { done: confirm, failed: confirm }
+  confirm:                                           # the reviewer checks the AI's decisions
+    on: { confirmed: end }
+    wait: { remind: 3d, timeout: 14d → end }
   mark_checked: { on: { done: end } }
-  needs_person:                                      # PubMed was down, or the screening is overdue
+  needs_person:                                      # PubMed was down, or screening failed
     assignee: lead
-    on: { retry: search, screen: screen, closed: end }
+    on: { retry: search, closed: end }
     wait: { timeout: 14d → end }

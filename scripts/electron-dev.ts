@@ -586,7 +586,11 @@ async function main(): Promise<void> {
   console.log("🚀 Starting Electron...\n");
 
   const electronProc = spawn({
-    cmd: [ELECTRON_BIN, "apps/electron"],
+    cmd: [
+      ELECTRON_BIN, "apps/electron",
+      // MEMWISE_REMOTE_DEBUG_PORT=9333 lets a test driver attach over CDP.
+      ...(process.env.MEMWISE_REMOTE_DEBUG_PORT ? [`--remote-debugging-port=${process.env.MEMWISE_REMOTE_DEBUG_PORT}`] : []),
+    ],
     cwd: ROOT_DIR,
     stdin: "ignore",
     stdout: "inherit",

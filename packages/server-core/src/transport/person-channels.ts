@@ -16,7 +16,7 @@ const MEMWISE_PREFIX = 'memwise:'
  * `memwise:*` channels a person may not call: an anchored chat is an agent session on the server,
  * and building a playbook opens one.
  */
-const MEMWISE_EXCLUDED: ReadonlySet<string> = new Set([RPC_CHANNELS.memwise.CHAT_OPEN, RPC_CHANNELS.memwise.PLAYBOOKS_BUILD])
+const MEMWISE_EXCLUDED: ReadonlySet<string> = new Set([RPC_CHANNELS.memwise.CHAT_OPEN, RPC_CHANNELS.memwise.ASK, RPC_CHANNELS.memwise.PLAYBOOKS_BUILD])
 
 /** Read-only shell channels outside `memwise:*` (plus switching which workspace this connection follows). */
 export const PERSON_SHELL_CHANNELS: ReadonlySet<string> = new Set<string>([

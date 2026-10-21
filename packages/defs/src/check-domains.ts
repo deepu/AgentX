@@ -104,7 +104,7 @@ function checkHome(add: ReturnType<typeof collector>['add'], project: ProjectDef
     return;
   }
   if (!def.lifecycleChart) add('error', 'home-needs-lifecycle', `home.entity: ${def.entity} needs a lifecycle, so a question can make a draft of it`, file, domain, ['home', 'entity']);
-  for (const key of ['question', 'name'] as const) {
+  for (const key of ['question', 'name', 'page'] as const) {
     const field = home[key];
     if (field === undefined) continue;
     const f = def.fields[field];
@@ -323,6 +323,9 @@ function checkEntity(add: Add, project: ProjectDefs, def: EntityTypeDef, roles: 
         } else if (b.kind === 'viewer') {
           const f = def.fields[b.field];
           if (!f || !(isDocumentField(f.type) || isTextField(f.type))) at('error', 'unknown-field', `page ${area}: viewer \`${b.field}\` is not a Document, File, Image or Text field of ${def.entity}`, path);
+        } else if (b.kind === 'markdown') {
+          const f = def.fields[b.field];
+          if (!f || !isTextField(f.type)) at('error', 'unknown-field', `page ${area}: markdown \`${b.field}\` is not a Text field of ${def.entity}`, path);
         } else if (b.kind === 'related') {
           for (const n of b.relationships) {
             if (def.relationships[n]?.cardinality !== 'many' && !['versions', 'signatures'].includes(n)) {

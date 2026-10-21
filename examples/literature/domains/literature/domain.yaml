@@ -1,4 +1,16 @@
 domain: literature
 name: Literature
-description: "What the published literature says on the questions Meridian's medical team follows: a weekly PubMed search per topic, each paper read once, screened by a person, and the evidence kept from it."
+description: "Ask what the published literature says; keep watching the questions that matter, with a weekly PubMed search, AI screening checked by a person, and the evidence kept from the papers."
 owner: lead                    # flags, held automations and triggered cases go to the medical affairs lead
+home:
+  ask: What does the literature say?
+  placeholder: Ask a question, e.g. How much weight do adults with type 2 diabetes lose on oral GLP-1s?
+  entity: Topic
+  question: question
+  name: name
+  page: answer
+  suggested:
+    - How much weight do adults with type 2 diabetes lose on oral GLP-1 receptor agonists, compared with placebo?
+    - Does orforglipron lower HbA1c more than oral semaglutide in type 2 diabetes?
+    - What are the gastrointestinal side effects of oral GLP-1 receptor agonists?
+    - Do SGLT2 inhibitors reduce heart failure hospitalisation in people without diabetes?
