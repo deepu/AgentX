@@ -32,6 +32,7 @@ import { chatStartersComponents } from './chat-starters'
 import { memwisePlaybookComponents } from './memwise-playbook'
 import { memwiseScreensComponents } from './memwise-screens'
 import { memwiseDraftsComponents } from './memwise-drafts'
+import { memwiseRecordsComponents } from './memwise-records'
 
 export * from './types'
 
@@ -70,6 +71,7 @@ export const componentRegistry: ComponentEntry[] = [
   ...memwisePlaybookComponents,
   ...memwiseScreensComponents,
   ...memwiseDraftsComponents,
+  ...memwiseRecordsComponents,
 ]
 
 export function getCategories(): CategoryGroup[] {

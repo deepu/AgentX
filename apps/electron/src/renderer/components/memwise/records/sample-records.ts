@@ -104,7 +104,7 @@ export const sampleDomains: MwDomain[] = [
 /** A project that never split into domains: everything lives in the default one. */
 export const sampleDefaultDomains: MwDomain[] = [
   {
-    id: 'main',
+    id: 'domain',
     name: 'Main',
     regulated: false,
     entities: [{ key: 'customer', entity: 'Customer', title: 'Customers', count: 18 }],
@@ -704,4 +704,35 @@ export const sampleAuditTrail: MwAuditTrail = {
   cases: [],
   flags: sampleDocumentPage.flags,
   exportedAt: T('2026-10-20T10:00:00'),
+}
+
+// ---------------------------------------------------------------- a small real PDF for the viewer
+
+/** The CV's text as ASCII lines by page ("Version 2026 rev. B" is left out, so one quote is not found). */
+export const samplePdfLines: string[][] = [
+  ['Dr. med. Lena Vogel', 'Curriculum vitae', 'Principal Investigator', 'Clinical research experience', 'Charite Berlin, 2012-2026'],
+  ['GCP training', 'L. Vogel', 'Signature', '14 Mar 2026', 'Date'],
+]
+
+/** A small real PDF (one text line per row, Helvetica) for the playground's viewer. */
+export function samplePdf(pages: string[][] = samplePdfLines): Uint8Array {
+  const esc = (s: string) => s.replace(/[\\()]/g, c => `\\${c}`)
+  const pageIds = pages.map((_, i) => 4 + i * 2)
+  const objects: string[] = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ]
+  for (const [i, lines] of pages.entries()) {
+    const content = `BT /F1 16 Tf 72 760 Td ${lines.map(l => `(${esc(l)}) Tj 0 -28 Td`).join(' ')} ET`
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${pageIds[i]! + 1} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`)
+    objects.push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`)
+  }
+  let out = '%PDF-1.4\n'
+  const offsets: number[] = []
+  objects.forEach((o, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n` })
+  const xref = out.length
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return new TextEncoder().encode(out)
 }

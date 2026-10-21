@@ -265,7 +265,7 @@ export function queueKeyAction(e: { key: string; metaKey?: boolean; ctrlKey?: bo
   }
 }
 
-type ReviewItem = Extract<MwInboxItem, { kind: 'input' | 'decision' }>
+export type ReviewItem = Extract<MwInboxItem, { kind: 'input' | 'decision' }>
 
 export function isReviewItem(item: MwInboxItem | null | undefined, kind?: 'document' | 'table' | 'diff'): item is ReviewItem {
   if (!item || (item.kind !== 'input' && item.kind !== 'decision') || !item.review) return false

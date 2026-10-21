@@ -153,14 +153,14 @@ describe('domains and records', () => {
     const r = await call(priya, ch.RECORDS_QUERY, { entity: 'etmf.Site', filter: " status = 'open' ", sort: [{ field: 'site_number', desc: true }, null], limit: 10_000 })
     expect(r.columns[0]).toEqual({ name: 'site_number', label: 'Site number', type: 'Text' })
     expect(calls.find((c) => c.method === 'records.query')!.args[0]).toEqual({ entity: 'etmf.Site', filter: "status = 'open'", sort: [{ field: 'site_number', desc: true }], limit: 500 })
-    expect(await call(priya, ch.RECORDS_TREE, { domain: 'etmf', parent: { entity: 'etmf.Study', id: 'st_1' } })).toEqual([{ kind: 'group', entity: 'etmf.Site', parent: { entity: 'etmf.Study', id: 'st_1' }, title: 'Sites', count: 7 }])
+    expect(await call<unknown>(priya, ch.RECORDS_TREE, { domain: 'etmf', parent: { entity: 'etmf.Study', id: 'st_1' } })).toEqual([{ kind: 'group', entity: 'etmf.Site', parent: { entity: 'etmf.Study', id: 'st_1' }, title: 'Sites', count: 7 }])
     expect(await call(priya, ch.PAGES_DASHBOARD, { domain: 'etmf', pageId: 'tmf-health', params: { study: 'st_1', bad: 3 } })).toMatchObject({ domain: 'etmf', blocks: [{ kind: 'kpi', value: 87 }] })
     expect(calls.find((c) => c.method === 'records.dashboard')!.args.slice(0, 3)).toEqual(['etmf', 'tmf-health', { study: 'st_1' }])
   })
 
   it('views: shared ones listed without their file; "Save as my view" saves a personal one', async () => {
     const { call, priya } = setup()
-    expect(await call(priya, ch.VIEWS_LIST, { domain: 'etmf', entity: 'Site' })).toEqual([{ id: 'activating', title: 'Activating', domain: 'etmf', entity: 'Site', layout: 'table', personal: false }])
+    expect(await call<unknown>(priya, ch.VIEWS_LIST, { domain: 'etmf', entity: 'Site' })).toEqual([{ id: 'activating', title: 'Activating', domain: 'etmf', entity: 'Site', layout: 'table', personal: false }])
     const saved = await call(priya, ch.VIEWS_SAVE, { domain: 'etmf', view: { title: 'My sites', entity: 'Site', layout: 'board', filter: "status = 'open'" } })
     expect(saved).toEqual({ id: 'my-my-sites', title: 'My sites', domain: 'etmf', entity: 'Site', filter: "status = 'open'", layout: 'board', personal: true })
     await expect(call(priya, ch.VIEWS_SAVE, { domain: 'etmf', view: { title: ' ', entity: 'Site' } })).rejects.toThrow('Give the view a name.')
@@ -171,7 +171,7 @@ describe('automations, audit, files', () => {
   it('lists triggers and releases held firings as the person', async () => {
     const { call, calls, priya, pushes } = setup()
     expect((await call(priya, ch.TRIGGERS_LIST))[0]).toMatchObject({ workflowTitle: 'Activate a site', held: 300 })
-    expect(await call(priya, ch.TRIGGERS_RELEASE, { trigger: 'activate-site#0', decision: 'start' })).toEqual({ applied: true, started: 300 })
+    expect(await call<unknown>(priya, ch.TRIGGERS_RELEASE, { trigger: 'activate-site#0', decision: 'start' })).toEqual({ applied: true, started: 300 })
     expect(calls.find((c) => c.method === 'triggers.release')!.args.slice(0, 2)).toEqual(['activate-site#0', 'start'])
     expect(pushes.some((p) => (p.args[0] as { kind: string }).kind === 'triggers')).toBe(true)
     expect(await call(priya, ch.TRIGGERS_RELEASE, { trigger: 'x', decision: 'maybe' })).toMatchObject({ applied: false, code: 'trigger.invalid' })
@@ -186,7 +186,7 @@ describe('automations, audit, files', () => {
 
   it('reads a file for the viewer', async () => {
     const { call, priya } = setup()
-    expect(await call(priya, ch.FILES_READ, 'file_1')).toEqual({ id: 'file_1', name: 'vogel-cv.pdf', mime: 'application/pdf', dataBase64: 'JVBE' })
+    expect(await call<unknown>(priya, ch.FILES_READ, 'file_1')).toEqual({ id: 'file_1', name: 'vogel-cv.pdf', mime: 'application/pdf', dataBase64: 'JVBE' })
     await expect(call(priya, ch.FILES_READ, 'file_x')).rejects.toThrow('That file was not found.')
   })
 
@@ -200,7 +200,7 @@ describe('automations, audit, files', () => {
 describe('signing, the inbox and cases', () => {
   it('a signed submit passes the password; refusals map to codes, with when to retry', async () => {
     const ok = setup()
-    expect(await ok.call(ok.priya, ch.INBOX_SUBMIT, { stepRunId: 'sr_qc', outcome: 'approved', signature: { password: 'correct horse' } })).toEqual({ applied: true })
+    expect(await ok.call<unknown>(ok.priya, ch.INBOX_SUBMIT, { stepRunId: 'sr_qc', outcome: 'approved', signature: { password: 'correct horse' } })).toEqual({ applied: true })
     expect((ok.calls.find((c) => c.method === 'submitStep')!.args[0] as { signature: unknown }).signature).toEqual({ password: 'correct horse' })
     for (const [status, code] of [['signature-required', 'submit.signature-required'], ['signature-failed', 'submit.signature-failed']] as const) {
       const s = setup({ submit: { applied: false, status } })

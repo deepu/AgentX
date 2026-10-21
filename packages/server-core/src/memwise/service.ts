@@ -292,6 +292,10 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
 
     // ---- changes and re-indexing
     const unsubscribe = k.onChange((c) => {
+      // Phase 6: the flow dispatcher's own wake-ups (`entity` comes with a `records` change, `flow`
+      // is the hand-off queue); the app has nothing to reload for them.
+      const raw = (c as { kind: string }).kind
+      if (raw === 'entity' || raw === 'flow') return
       if (c.kind === 'run') emitMemwiseChange({ kind: 'run', id: c.runId, caseId: c.caseId, workflowId: c.workflowId })
       else if (c.kind === 'drafts') emitMemwiseChange({ kind: 'drafts', id: c.draftId })
       else if (c.kind === 'records') emitMemwiseChange({ kind: 'records', entity: c.entity, ...(c.recordId ? { id: c.recordId } : {}) })
