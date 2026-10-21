@@ -330,7 +330,13 @@ export interface MwStartCaseInput {
 
 // ---------------------------------------------------------------- inbox
 
-export type MwInboxItem =
+/**
+ * What waits for a person. Stage 3 (docs/memwise/26-projects-and-pages.md §3): `project`, the
+ * project the item belongs to, so Waiting for you can be one project's or every project's.
+ */
+export type MwInboxItem = MwInboxItemBody & { project?: string }
+
+export type MwInboxItemBody =
   /** A person or external step waiting for input (a form generated from the step's writes). */
   | {
       kind: 'input'
@@ -626,6 +632,8 @@ export interface MwChange {
    * `plugins` (Phase 4): a plugin was installed, or a binding or identity link changed.
    */
   kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins' | 'external' | 'relay' | 'records' | 'triggers'
+    /** Stage 3: a project was made, started, archived or changed, or its template moved on (`id` = project id). */
+    | 'projects'
   /** Phase 6 `records`: the entity key and record id that changed. */
   entity?: string
   /** The run id for `run` changes; the record id for `records`. */
@@ -1630,6 +1638,8 @@ export interface MwRecordWriteResult {
 export interface MwRecordQueryInput {
   entity: string
   domain?: string
+  /** Stage 3: only this project's records (a project's lists); absent: every project the person sees. */
+  project?: string
   filter?: string
   sort?: { field: string; desc?: boolean }[]
   group?: string
@@ -1934,4 +1944,259 @@ export interface MwRecordKeepResult {
     /** Per field, what needs fixing. */
     errors?: Record<string, string[]>
   }[]
+}
+
+// ================================================================ Stage 3: projects inside apps (doc 26 §3)
+//
+// An app is a domain used as a template (eTMF); a project is one copy of it (Study MW-301) with
+// its own records, pages, runs, chats, people and connections. The switcher is app first:
+// eTMF › MW-301 (D104). "Project" here is always a MemWise project, never the Craft
+// session-group projects (`projects:*` channels).
+
+/** A project's state: a draft runs nothing until Start study. */
+export type MwProjectStatus = 'draft' | 'active' | 'archived'
+
+/** Where a project came from: a template card at a version, a copy of a project, or blank. */
+export type MwProjectSource = { template: string; version: number } | { project: string } | { blank: true }
+
+/** A card in New project ("Phase 3 study · Many sites, visits"). */
+export interface MwTemplateCard {
+  id: string
+  title: string
+  description?: string
+  /** Template paths a project made from it leaves out (`workflows/chase-missing`). */
+  without?: string[]
+  settings?: Record<string, unknown>
+}
+
+/** A project in the switcher and lists. */
+export interface MwProjectSummary {
+  id: string
+  /** The app it is a copy of (its template, updates and owner role). */
+  app: string
+  /** Every app it runs, `app` first (D105: a firm's one project running several apps on the same records). */
+  apps: string[]
+  appTitle: string
+  name: string
+  status: MwProjectStatus
+  study?: string
+  /** The app version its template was taken from, and the app's current one. */
+  templateVersion: number
+  appVersion: number
+  from?: MwProjectSource
+  /** An app's own project (no project.yaml): today's single-domain workspaces. */
+  implicit?: boolean
+  /** A newer template version waits for this person's review. */
+  update?: { to: number }
+  /** What waits for this person here (the switcher's count). */
+  waiting: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+/** An app with its projects (the switcher, app first). */
+export interface MwApp {
+  id: string
+  title: string
+  description?: string
+  version: number
+  /** What a project is called here: { one: study, many: studies }. */
+  nouns: { one: string; many: string }
+  /** The app home ("TMF across studies", link "All studies"). */
+  home?: { title: string; link?: string }
+  templates: MwTemplateCard[]
+  projects: MwProjectSummary[]
+  /** The person may make projects here. */
+  canCreate: boolean
+}
+
+export interface MwProjectPerson {
+  email: string
+  name?: string
+  roles: string[]
+  /** Shown beside the role ("owner"). */
+  note?: string
+  /** The person, when they are in the workspace. */
+  personId?: string
+}
+
+export interface MwProjectConnection {
+  id: string
+  title: string
+  plugin?: string
+  access?: 'read' | 'write'
+  settings?: Record<string, unknown>
+  /** Where its binding comes from: the project's own, else the app's. */
+  bound: 'project' | 'app' | 'none'
+}
+
+/** Project settings. */
+export interface MwProjectDetail extends MwProjectSummary {
+  people: MwProjectPerson[]
+  connections: MwProjectConnection[]
+  settings: Record<string, unknown>
+  without: string[]
+  templateTitle?: string
+  /** The files it changed from its template, with the playbook they belong to. */
+  overrides: { path: string; workflow?: string; title: string }[]
+  /** The playbooks it runs, and which it changed. */
+  playbooks: { id: string; title: string; version: number; overridden: boolean }[]
+  /** Its pages (the template's, minus what it leaves out). */
+  pages: { id: string; title: string }[]
+  /** The record types it keeps records of, by entity key. */
+  recordTypes: { entity: string; name: string }[]
+  canEdit: boolean
+}
+
+/** New project: a template card, a copy of a project ("Start from MW-301", no records), or blank. */
+export interface MwCreateProjectInput {
+  app?: string
+  name: string
+  template?: string
+  copyFrom?: string
+  /** Other apps it also runs (D105); a copy keeps its source's. */
+  also?: string[]
+  study?: string
+  people?: Omit<MwProjectPerson, 'personId'>[]
+  without?: string[]
+  settings?: Record<string, unknown>
+  id?: string
+}
+
+export interface MwUpdateProjectInput {
+  projectId: string
+  name?: string
+  study?: string | null
+  people?: Omit<MwProjectPerson, 'personId'>[]
+  connections?: Omit<MwProjectConnection, 'bound'>[]
+  settings?: Record<string, unknown>
+}
+
+/** "Describe it in chat": starts the app's create-project conversation; `sessionId` is its chat. */
+export interface MwDescribeProjectInput {
+  app: string
+  request: string
+}
+export interface MwDescribeProjectResult {
+  runId: string
+  caseId: string
+  /** The conversation step the chat is anchored to. */
+  stepRunId: string
+  /** The chat it opened (absent when no chat could be opened; "Continue" in Waiting opens it). */
+  sessionId?: string
+}
+
+/** "Save as template": the project's way of working becomes its app's next version, or a new app. */
+export interface MwSaveAsTemplateInput {
+  projectId: string
+  newApp?: { id: string; title: string }
+}
+export interface MwSaveAsTemplateResult {
+  app: string
+  version: number
+}
+
+/** "Review template update" (Waiting for you). */
+export interface MwTemplateUpdateItem {
+  kind: 'template-update'
+  /** `template-update:<projectId>:<to>` */
+  id: string
+  project: string
+  projectName: string
+  app: string
+  appTitle: string
+  from: number
+  to: number
+  /** English; the screens word it from app, from and to. */
+  title: string
+  since: string
+}
+
+export interface MwTemplateUpdateChange {
+  /** The template path (`workflows/chase-missing/workflow.yaml`). */
+  path: string
+  kind: 'added' | 'changed' | 'removed'
+  workflow?: string
+  /** What it means here: taken, already done the same way, changed here differently, left out. */
+  project: 'takes' | 'overridden-same' | 'overridden-differs' | 'left-out'
+  title: string
+  /** English ("This project already does that, so nothing changes here"); the screens word it from `project`. */
+  note: string
+}
+
+/** One of the project's past cases replayed on the new template. */
+export interface MwTemplateTestRun {
+  workflowId: string
+  caseId?: string
+  title?: string
+  status: 'same' | 'different' | 'error' | 'skip'
+  differences: string[]
+  examples: { passed: number; total: number }
+}
+
+export interface MwTemplateUpdateReview {
+  item: MwTemplateUpdateItem
+  changes: MwTemplateUpdateChange[]
+  nothingChanges: boolean
+  summary: string
+  test?: MwTemplateTestRun
+}
+
+export interface MwTemplateUpdateInput {
+  projectId: string
+  /** Review: also replay one of the project's past cases on the new template (slow). */
+  test?: boolean
+}
+
+/** The app home ("TMF across studies"). */
+export interface MwAppHome {
+  app: string
+  title: string
+  link?: string
+  nouns: { one: string; many: string }
+  /** The columns after the project's name (app.yaml `home.columns`); "Next" comes after them. */
+  columns: { label: string; format?: 'number' | 'percent' }[]
+  rows: {
+    project: string
+    name: string
+    study?: string
+    status: MwProjectStatus
+    /** One per column; null: nothing to count (a draft). */
+    values: (number | string | null)[]
+    next?: { label: string; date?: string }
+    waiting: number
+  }[]
+  totals: { projects: number; active: number; draft: number; archived: number }
+  /** The first percent column across running projects ("Documents filed 96%"). */
+  headline?: { label: string; value: number | null }
+  milestones: { project: string; name: string; label: string; date?: string }[]
+  /** Who has the most waiting on them, across projects. */
+  bottlenecks: { personId?: string; name: string; roles: string[]; waiting: { project: string; projectName: string; count: number }[]; total: number }[]
+}
+
+/** Waiting for you across all projects, one group per project (what belongs to none: `project` ''). */
+export interface MwWaitingGroup {
+  project: string
+  projectName: string
+  app: string
+  appTitle: string
+  items: MwInboxItem[]
+  updates: MwTemplateUpdateItem[]
+}
+
+/** Taking an update: the version the project is now on, and the overrides that went (they now say the same). */
+export interface MwTakeTemplateUpdateResult {
+  version: number
+  removed: string[]
+}
+
+export interface MwPublishTemplateResult {
+  version: number
+  updates: MwTemplateUpdateItem[]
+}
+
+export interface MwPublishTemplateInput {
+  appId: string
+  /** Template path → new content; null removes the file. */
+  files: Record<string, string | null>
 }

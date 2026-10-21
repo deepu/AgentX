@@ -512,6 +512,23 @@ export const CHANNEL_MAP = {
   memwiseGetAuditTrail: invoke(RPC_CHANNELS.memwise.AUDIT_GET),
   memwiseExportAuditTrail: invoke(RPC_CHANNELS.memwise.AUDIT_EXPORT),
   memwiseReadFile: invoke(RPC_CHANNELS.memwise.FILES_READ),
+  // Stage 3: projects inside apps (docs/memwise/26-projects-and-pages.md §3)
+  memwiseListApps: invoke(RPC_CHANNELS.memwise.APPS_LIST),
+  memwiseGetAppHome: invoke(RPC_CHANNELS.memwise.APPS_HOME),
+  memwisePublishTemplate: invoke(RPC_CHANNELS.memwise.APPS_PUBLISH_TEMPLATE),
+  memwiseListProjects: invoke(RPC_CHANNELS.memwise.PROJECTS_LIST),
+  memwiseGetProject: invoke(RPC_CHANNELS.memwise.PROJECTS_GET),
+  memwiseCreateProject: invoke(RPC_CHANNELS.memwise.PROJECTS_CREATE),
+  memwiseUpdateProject: invoke(RPC_CHANNELS.memwise.PROJECTS_UPDATE),
+  memwiseStartProject: invoke(RPC_CHANNELS.memwise.PROJECTS_START),
+  memwiseArchiveProject: invoke(RPC_CHANNELS.memwise.PROJECTS_ARCHIVE),
+  memwiseDiscardProject: invoke(RPC_CHANNELS.memwise.PROJECTS_DISCARD),
+  memwiseDescribeProject: invoke(RPC_CHANNELS.memwise.PROJECTS_DESCRIBE),
+  memwiseSaveAsTemplate: invoke(RPC_CHANNELS.memwise.PROJECTS_SAVE_AS_TEMPLATE),
+  memwiseReviewTemplateUpdate: invoke(RPC_CHANNELS.memwise.TEMPLATE_UPDATE_REVIEW),
+  memwiseTakeTemplateUpdate: invoke(RPC_CHANNELS.memwise.TEMPLATE_UPDATE_TAKE),
+  memwiseSkipTemplateUpdate: invoke(RPC_CHANNELS.memwise.TEMPLATE_UPDATE_SKIP),
+  memwiseWaitingAll: invoke(RPC_CHANNELS.memwise.WAITING_ALL),
   onMemwiseChanged: listener(RPC_CHANNELS.memwise.CHANGED),
 
   // Automations
