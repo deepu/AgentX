@@ -147,10 +147,21 @@ export function raveTools(opts: RaveToolsOptions = {}): ToolDefinition[] {
     ({ name, description, inputSchema, effect: 'read', idempotent: true, source, execute })
 
   return [
-    tool<Record<string, never>>(RAVE_BUILTINS.listStudies, 'List the studies this Rave account can see, with their enrolment target and plan.', object({}),
+    tool<Record<string, never>>(RAVE_BUILTINS.listStudies, 'List the studies this Rave account can see, with their enrolment target and plan, and how many entered pages are source-verified.', object({}),
       async (_args, ctx) => {
         const { client } = clientOf(ctx)
-        return { studies: (await client.studies()).map((s) => ({ ...s, Study: s.ProtocolName })) }
+        const studies = []
+        for (const s of await client.studies()) {
+          // With the study's form status, so a page can say "91% of pages verified" without a second read.
+          const forms = await client.formStatus(s.StudyOID)
+          const entered = forms.reduce((n, f) => n + f.PagesEntered, 0)
+          const verified = forms.reduce((n, f) => n + f.PagesVerified, 0)
+          studies.push({
+            ...s, Ref: s.StudyOID, Study: s.ProtocolName, Sites: forms.length,
+            PagesEntered: entered, PagesVerified: verified, PagesVerifiedPercent: entered ? Math.round((verified / entered) * 1000) / 10 : 0,
+          })
+        }
+        return { studies }
       }),
 
     tool<{ study?: string }>(RAVE_BUILTINS.listSites, "List a study's sites with their principal investigator, study coordinator (and since when), enrolment target and how many entered pages are source-verified.",

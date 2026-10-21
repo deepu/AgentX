@@ -11,7 +11,7 @@ trust: first-party
 
 tools:
   rave.list_studies:
-    description: List the studies this Rave account can see, with their enrolment target and plan.
+    description: List the studies this Rave account can see, with their enrolment target and plan, and how many entered pages are source-verified.
     effect: read
     input: { type: object, properties: {}, additionalProperties: false }
     run: { builtin: rave.rws.list_studies }
@@ -101,6 +101,21 @@ tools:
 # What a binding can map onto the EDC app's entities (22 §5). Each is listed for the sync and read
 # one at a time for the record page (read-through), by its `Ref`.
 records:
+  study:
+    title: Studies
+    list: { tool: rave.list_studies, items: studies }
+    key: Ref
+    fields:
+      Ref: Text
+      Study: Text
+      StudyName: Text
+      Environment: Text
+      EnrollmentTarget: Number
+      PlannedByNow: Number
+      Sites: Number
+      PagesEntered: Number
+      PagesVerified: Number
+      PagesVerifiedPercent: Number
   site:
     title: Sites
     list: { tool: rave.list_sites, items: sites }

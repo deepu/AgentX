@@ -364,7 +364,7 @@ describe('the eTMF example (examples/etmf)', () => {
     expect(Object.keys(project.domains!).sort()).toEqual(['domain', 'edc', 'etmf']);
     expect(project.domains!.etmf).toMatchObject({ name: 'eTMF', regulated: true, retentionMs: 25 * 365 * 86_400_000, owner: 'study_manager', intake: { address: 'etmf' } });
     expect(project.domains!.etmf!.policy!.modelRoles).toEqual(expect.arrayContaining(['router', 'classifier', 'verifier']));
-    expect(Object.keys(project.entities).sort()).toEqual(['edc.Query', 'edc.Site', 'edc.Subject', 'etmf.Document', 'etmf.ExpectedDocument', 'etmf.Person', 'etmf.Site', 'etmf.Sponsor', 'etmf.Study']);
+    expect(Object.keys(project.entities).sort()).toEqual(['edc.Query', 'edc.Site', 'edc.Study', 'edc.Subject', 'etmf.Document', 'etmf.ExpectedDocument', 'etmf.Person', 'etmf.Site', 'etmf.Sponsor', 'etmf.Study']);
     expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'chase-old-queries', 'file-document', 'fix-rejected-document', 'new-coordinator', 'route-message', 'watch-expiries']);
     expect(Object.keys(project.domains!.etmf!.views).sort()).toEqual(['documents-in-qc', 'missing-documents', 'sites', 'sites-board']);
     expect(Object.keys(project.domains!.etmf!.pages)).toEqual(['tmf-health']);
@@ -396,7 +396,7 @@ describe('the eTMF example (examples/etmf)', () => {
     const cases: [keyof typeof formats, string][] = [
       ['workspace', 'workspace.yaml'], ['domain', 'domains/etmf/domain.yaml'], ['domain', 'domains/edc/domain.yaml'], ['policy', 'domains/etmf/policy.yaml'],
       ...['sponsor', 'study', 'site', 'person', 'document', 'expected_document'].map((e): [keyof typeof formats, string] => ['entity', `domains/etmf/entities/${e}.yaml`]),
-      ...['site', 'subject', 'query'].map((e): [keyof typeof formats, string] => ['entity', `domains/edc/entities/${e}.yaml`]),
+      ...['study', 'site', 'subject', 'query'].map((e): [keyof typeof formats, string] => ['entity', `domains/edc/entities/${e}.yaml`]),
       ['policy', 'domains/edc/policy.yaml'], ['page', 'domains/etmf/pages/tmf-health.yaml'], ['page', 'domains/edc/pages/enrolment.yaml'],
       ...['old-queries', 'open-queries', 'sites'].map((v): [keyof typeof formats, string] => ['view', `domains/edc/views/${v}.yaml`]),
       ['workflow', 'domains/edc/workflows/chase-old-queries/workflow.yaml'], ['case', 'domains/edc/workflows/chase-old-queries/case.yaml'],
@@ -421,7 +421,7 @@ describe('the eTMF example (examples/etmf)', () => {
     const rows = defs.filter((d) => d.kind !== 'step' && d.kind !== 'case_type' && d.kind !== 'workflow').map((d) => `${d.kind} ${d.id}`).sort();
     expect(rows).toEqual([
       'domain edc', 'domain etmf',
-      'entity_type edc.Query', 'entity_type edc.Site', 'entity_type edc.Subject',
+      'entity_type edc.Query', 'entity_type edc.Site', 'entity_type edc.Study', 'entity_type edc.Subject',
       'entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person',
       'entity_type etmf.Site', 'entity_type etmf.Sponsor', 'entity_type etmf.Study',
       'page edc/enrolment', 'page etmf/tmf-health',

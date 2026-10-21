@@ -37,13 +37,13 @@ describe('the fake Rave', () => {
   })
 
   it('serves MW-301 with 12 sites, 186 subjects and 142 open queries, and MW-207 beside it', async () => {
-    const studies = (await (await get('studies')).json()).studies
+    const studies = ((await (await get('studies')).json()) as any).studies
     expect(studies.map((s: any) => s.StudyOID).sort()).toEqual([MW207, MW301])
-    const sites = (await (await get(`studies/${encodeURIComponent(MW301)}/sites`)).json()).sites
+    const sites = ((await (await get(`studies/${encodeURIComponent(MW301)}/sites`)).json()) as any).sites
     expect(sites).toHaveLength(12)
     expect(sites.map((s: any) => s.SiteNumber)).toEqual(expect.arrayContaining(['101', '102', '104', '109']))
-    expect((await (await get(`studies/${encodeURIComponent(MW301)}/subjects`)).json()).subjects).toHaveLength(186)
-    expect((await (await get(`studies/${encodeURIComponent(MW301)}/queries?Status=Open`)).json()).queries).toHaveLength(142)
+    expect(((await (await get(`studies/${encodeURIComponent(MW301)}/subjects`)).json()) as any).subjects).toHaveLength(186)
+    expect(((await (await get(`studies/${encodeURIComponent(MW301)}/queries?Status=Open`)).json()) as any).queries).toHaveLength(142)
   })
 
   it('wants the Web Services account and only reads', async () => {
@@ -83,7 +83,7 @@ describe('the Rave plugin tools', () => {
     expect(routes).toEqual(Object.values(RAVE_BUILTINS).sort())
     for (const t of Object.values(r.value!.tools)) expect(t.effect).toBe('read')
     for (const t of tools.values()) expect([t.effect, t.idempotent, t.source]).toEqual(['read', true, { plugin: RAVE_PLUGIN }])
-    expect(Object.keys(r.value!.records ?? {}).sort()).toEqual(['query', 'site', 'subject'])
+    expect(Object.keys(r.value!.records ?? {}).sort()).toEqual(['query', 'site', 'study', 'subject'])
     expect(readFileSync(join(REPO, 'examples/plugins/medidata-rave/README.md'), 'utf8')).toContain('Needs Sandeep')
   })
 
@@ -120,7 +120,10 @@ describe('the Rave plugin tools', () => {
 
     const { totals } = await call(RAVE_BUILTINS.formStatus)
     expect(Math.round(totals.PercentVerified)).toBe(91)
-    expect((await call(RAVE_BUILTINS.listStudies)).studies).toHaveLength(2)
+    const { studies } = await call(RAVE_BUILTINS.listStudies)
+    expect(studies).toHaveLength(2)
+    expect(studies.find((s: any) => s.Study === 'MW-301')).toMatchObject({ Ref: MW301, EnrollmentTarget: 300, PlannedByNow: 190, Sites: 12 })
+    expect(Math.round(studies.find((s: any) => s.Study === 'MW-301').PagesVerifiedPercent)).toBe(91)
   })
 
   it('takes the connection\'s settings over the environment and says plainly what is wrong', async () => {

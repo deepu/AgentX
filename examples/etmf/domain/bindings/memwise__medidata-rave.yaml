@@ -1,11 +1,11 @@
 # Medidata Rave, bound for the workspace (bindings are workspace-wide until Stage 3 makes them per
-# project). Every tool only reads. Rave's sites, subjects and queries map onto EDC's Site, Subject
-# and Query, keyed by their Rave reference; the fields they fill are owned by the plugin (read only
-# here) and read again every 15 minutes (`sync:`), so a change in Rave (a new coordinator) is a
-# change event in MemWise (26 §9, D110).
+# project). Every tool only reads. Rave's studies, sites, subjects and queries map onto EDC's
+# Study, Site, Subject and Query, keyed by their Rave reference; the fields they fill are owned by
+# the plugin (read only here) and read again every 15 minutes (`sync:`), so a change in Rave (a new
+# coordinator) is a change event in MemWise (26 §9, D110).
 plugin: memwise/medidata-rave
 plugin_version: 1.0.0
-plugin_hash: 1e1f66b7a641b5cbf74543fe166f543ce76186a493b0046ca36828a06b17f4e2
+plugin_hash: 903bc5fd17262f453705f7cfcbadcf1c070600679d2475537a1be7241fc7c735
 version: 1
 frozen:
   by: example
@@ -24,7 +24,21 @@ capabilities: {}
 entities: {}
 roles: {}
 records:
-  site:                                    # first: subjects and queries link to sites
+  study:
+    entity: edc.Study
+    fields:
+      rave_ref: Ref
+      protocol: Study
+      name: StudyName
+      environment: Environment
+      enrolment_target: EnrollmentTarget
+      planned_by_now: PlannedByNow
+      site_count: Sites
+      pages_verified: PagesVerifiedPercent
+    identity:
+      keys: [rave_ref]
+      create_missing: true
+  site:                                    # before subjects and queries, which link to sites
     entity: edc.Site
     fields:
       rave_ref: Ref
