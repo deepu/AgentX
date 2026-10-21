@@ -814,6 +814,25 @@ export interface ElectronAPI {
   memwiseUpdateRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordUpdateInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
   /** Literature (25 §6): rows kept from a record chat. */
   memwiseKeepRecords(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordKeepInput): Promise<import('@memwise/shared/protocol').MwRecordKeepResult>
+  // Projects and pages, Stage 2 (docs/memwise/26-projects-and-pages.md §4)
+  /** A project's pages (not archived), parents before their sub-pages. */
+  memwiseListPages(workspaceId: string, input: { projectId: string }): Promise<import('@memwise/shared/protocol').MwPageSummary[]>
+  /** One page as it opens: live blocks computed, sub-pages, history. */
+  memwiseGetPage(workspaceId: string, input: { pageId: string }): Promise<import('@memwise/shared/protocol').MwPage | null>
+  memwisePageVersions(workspaceId: string, input: { pageId: string }): Promise<import('@memwise/shared/protocol').MwPageVersion[]>
+  /** Back one version (a new version with the body before the last change). */
+  memwiseUndoPage(workspaceId: string, input: { pageId: string; version?: number }): Promise<import('@memwise/shared/protocol').MwPageWriteResult>
+  /** Keep a draft: refreshed on a schedule, optionally under a parent page. */
+  memwiseKeepPage(workspaceId: string, input: import('@memwise/shared/protocol').MwPageKeepInput): Promise<import('@memwise/shared/protocol').MwPageWriteResult>
+  memwiseArchivePage(workspaceId: string, input: { pageId: string }): Promise<import('@memwise/shared/protocol').MwPageWriteResult>
+  /** Start the page's refresh now. */
+  memwiseRefreshPage(workspaceId: string, input: { pageId: string }): Promise<import('@memwise/shared/protocol').MwPageRefreshResult>
+  /** "Review an answer change". */
+  memwiseGetPageChange(workspaceId: string, input: { changeId: string }): Promise<import('@memwise/shared/protocol').MwPageChange | null>
+  /** Accept an answer change or send it back (with a comment). */
+  memwiseDecidePageChange(workspaceId: string, input: import('@memwise/shared/protocol').MwPageChangeDecideInput): Promise<import('@memwise/shared/protocol').MwSubmitResult>
+  /** A question in a project: a draft page and a chat anchored to it, answering. */
+  memwiseProjectAsk(workspaceId: string, input: import('@memwise/shared/protocol').MwProjectAskInput): Promise<import('@memwise/shared/protocol').MwProjectAskResult>
   memwiseTransitionRecord(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordTransitionInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult>
   memwiseQueryRecords(workspaceId: string, input: import('@memwise/shared/protocol').MwRecordQueryInput): Promise<import('@memwise/shared/protocol').MwRecordQueryResult>
   memwiseRecordTree(workspaceId: string, input: import('@memwise/shared/protocol').MwTreeInput): Promise<import('@memwise/shared/protocol').MwTreeNode[]>

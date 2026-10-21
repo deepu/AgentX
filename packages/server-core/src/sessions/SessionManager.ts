@@ -79,8 +79,8 @@ import { listTaskSlugs, parseTaskSpec, uniqueTaskSlug } from '@memwise/shared/ta
 import { createTaskFromSpec, resolveCreateTaskProjectId } from '../tasks'
 import { buildPagesToolCallbacks } from '../pages/tool-callbacks'
 import { buildDecisionToolCallbacks } from '../decisions/tool-callbacks'
-import { buildMemwiseRecordToolCallbacks, buildMemwiseToolCallbacks } from '../memwise/chat-tools'
-import { sessionHasPlaybookTools, sessionHasRecordTools, writeSessionMemwiseContext, type SessionMemwiseContext } from '@memwise/shared/sessions'
+import { buildMemwisePageToolCallbacks, buildMemwiseRecordToolCallbacks, buildMemwiseToolCallbacks } from '../memwise/chat-tools'
+import { sessionHasPageTools, sessionHasPlaybookTools, sessionHasRecordTools, writeSessionMemwiseContext, type SessionMemwiseContext } from '@memwise/shared/sessions'
 import { buildServersFromSources as buildServersFromSourcesShared } from '../sources/build-servers'
 import { buildMcpSourceToolCallbacks } from '../sources/mcp-source-tool-callbacks'
 import { ConfigWatcher, type ConfigWatcherCallbacks } from '@memwise/shared/config'
@@ -3074,9 +3074,15 @@ export class SessionManager implements ISessionManager {
         memwise: buildMemwiseToolCallbacks({ sessionId, log: (message: string) => sessionLog.info(message) }),
       })
     }
-    if (ctx.anchor.kind === 'record') {
+    if (ctx.anchor.kind === 'record' || ctx.anchor.kind === 'page') {
       mergeSessionScopedToolCallbacks(sessionId, {
         memwiseRecords: buildMemwiseRecordToolCallbacks({ sessionId, log: (message: string) => sessionLog.info(message) }),
+      })
+    }
+    // Pages (26 §4): a chat anchored to a page reads and writes it, as the person, with Undo.
+    if (ctx.anchor.kind === 'page') {
+      mergeSessionScopedToolCallbacks(sessionId, {
+        memwisePages: buildMemwisePageToolCallbacks({ sessionId, log: (message: string) => sessionLog.info(message) }),
       })
     }
     return true
@@ -5076,6 +5082,10 @@ export class SessionManager implements ISessionManager {
         // MemWise record tools (record_*; doc 25 §6): only for a chat anchored to a record.
         ...(sessionHasRecordTools(managed.workspace.rootPath, managed.id)
           ? { memwiseRecords: buildMemwiseRecordToolCallbacks({ sessionId: managed.id, log: (message: string) => sessionLog.info(message) }) }
+          : {}),
+        // MemWise page tools (page_*; 26 §4): only for a chat anchored to a page.
+        ...(sessionHasPageTools(managed.workspace.rootPath, managed.id)
+          ? { memwisePages: buildMemwisePageToolCallbacks({ sessionId: managed.id, log: (message: string) => sessionLog.info(message) }) }
           : {}),
         getSessionInfoFn: (sessionId?: string) => {
           const targetId = sessionId ?? managed.id

@@ -201,6 +201,10 @@ export type {
   PlaybookToolDiagnostic,
   // MemWise record tool types
   MemwiseRecordToolCallbacks,
+  MemwisePageToolCallbacks,
+  PageGetInput,
+  PageUpdateInput,
+  PageCreateInput,
   RecordGetInput,
   RecordQueryInput,
   RecordKeepInput,
@@ -265,6 +269,10 @@ export {
   handleRecordKeep,
   handleRecordUpdate,
   untrustedRecordData,
+  // MemWise pages
+  handlePageGet,
+  handlePageUpdate,
+  handlePageCreate,
 } from './handlers/index.ts';
 
 export type {

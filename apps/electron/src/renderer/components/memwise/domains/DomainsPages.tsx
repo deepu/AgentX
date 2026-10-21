@@ -79,8 +79,10 @@ function DomainPage({ domainId, tab }: { domainId: string; tab?: 'rules' }) {
   const home = domain?.home
   const showHome = !!home && !tab && !about
   const ends = home ? [home.draftState, ...home.endStates].map(s => `'${s}'`).join(', ') : ''
-  const watching = useMemwiseRecordQuery(showHome ? { entity: home.entity, domain: domainId, filter: `not (status in (${ends}))`, limit: 8 } : null)
-  const drafts = useMemwiseRecordQuery(showHome ? { entity: home.entity, domain: domainId, filter: `status = '${home.draftState}'`, limit: 8 } : null)
+  // A home without an entity asks into draft pages (26 §4): the project's pages list them, not records.
+  const homeEntity = showHome ? home.entity : undefined
+  const watching = useMemwiseRecordQuery(homeEntity ? { entity: homeEntity, domain: domainId, filter: `not (status in (${ends}))`, limit: 8 } : null)
+  const drafts = useMemwiseRecordQuery(homeEntity ? { entity: homeEntity, domain: domainId, filter: `status = '${home!.draftState}'`, limit: 8 } : null)
   const store = useStore()
   const reconcile = useSetAtom(reconcilePanelStackAtom)
   // Asking: the draft and its chat are made together; the chat (answering) on the left, the
@@ -92,6 +94,11 @@ function DomainPage({ domainId, tab }: { domainId: string; tab?: 'rules' }) {
     try {
       const r = await api.memwiseAsk(ws, { domain: domainId, question })
       await waitForSession(store, r.sessionId)
+      // Asked into a draft page: the project shell shows the chat beside the page.
+      if (r.pageId || !r.entity) {
+        reconcile({ entries: [{ route: routes.view.allSessions(r.sessionId), proportion: 1 }], focusedIndex: 0 })
+        return
+      }
       reconcile({
         entries: [
           { route: routes.view.allSessions(r.sessionId), proportion: 0.55 },

@@ -6,14 +6,14 @@
  *
  * Loaded by SessionManager at module level, so no kernel imports here except lazily.
  */
-import type { MemwiseRecordToolCallbacks, MemwiseToolCallbacks, PlaybookToolDiagnostic, RecordKeepRowResult } from '@memwise/session-tools-core'
+import type { MemwisePageToolCallbacks, MemwiseRecordToolCallbacks, MemwiseToolCallbacks, PlaybookToolDiagnostic, RecordKeepRowResult } from '@memwise/session-tools-core'
 import { untrustedRecordData } from '@memwise/session-tools-core'
 import type { Diagnostic, DraftDiff, DraftMeta, DraftReport } from '@memwise/defs'
 import { emitMemwiseChange, getMemwiseService } from './host'
 import { authoringOf, conversationState, isConversationStep, type ConversationState } from './conversation'
 import type { MemwiseService, PersonActor } from './service'
 import type { ProjectDefs } from '@memwise/defs'
-import type { RecordField, RecordFieldSource, RecordPage, RecordQueryResult, RecordsService } from '@memwise/runtime'
+import type { PageView, PageWriteResult, RecordField, RecordFieldSource, RecordPage, RecordQueryResult, RecordsService } from '@memwise/runtime'
 
 export interface MemwiseChatToolsOptions {
   sessionId: string
@@ -356,6 +356,17 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
     if (!svc) throw new Error('MemWise is not running in this app right now.')
     const { PgChatAnchorStore, parseRecordAnchorId } = await import('@memwise/db')
     const anchor = await new PgChatAnchorStore().get(svc.kernel.pool, sessionId)
+    // A chat anchored to a page (26 §4) reads the records of the page's project too.
+    if (anchor?.anchorKind === 'page') {
+      if (!anchor.personId) throw new Error('This chat has no person to act for.')
+      const records = (svc.kernel as { records?: RecordsService }).records
+      if (!records) throw new Error('Records are not available in this version.')
+      const { rows } = await svc.kernel.pool.query<{ domain: string }>('select domain from mw.pages where id = $1', [anchor.anchorId])
+      if (!rows[0]) throw new Error('The page this chat is about was not found.')
+      const actor = await svc.kernel.people.actorFor(anchor.personId)
+      const { project } = await svc.kernel.project()
+      return { svc, actor, records, project, entity: '', id: '', domain: rows[0].domain }
+    }
     const rec = anchor?.anchorKind === 'record' ? parseRecordAnchorId(anchor.anchorId) : undefined
     if (!anchor || !rec) throw new Error('This chat is not about a record.')
     if (!anchor.personId) throw new Error('This chat has no person to act for.')
@@ -425,6 +436,7 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
      */
     async update(input) {
       const c = await ctx()
+      if (!c.entity) throw new Error('This chat is about a page: change it with page_update.')
       const initial = c.project.entities[c.entity]?.lifecycleChart?.initial
       const page = await c.records.page(c.entity, c.id, c.actor)
       if (!page) throw new Error('The draft was not found, or this person may not see it.')
@@ -435,6 +447,105 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
       if (r.applied) emitMemwiseChange({ kind: 'records', entity: c.entity, id: c.id })
       opts.log?.(`[memwise] chat ${sessionId} filled in ${Object.keys(input.values).join(', ')} on ${c.entity} ${c.id}: ${r.status}`)
       return { applied: r.applied, ...(r.message ? { message: r.message } : {}), ...(r.errors ? { errors: r.errors } : {}) }
+    },
+  }
+}
+
+/** The page as `page_get` returns it: the body as written, its place in the tree, its refresh. */
+export function pageForChat(p: PageView): Record<string, unknown> {
+  return {
+    id: p.id, title: p.title, status: p.status, version: p.version, project: p.project,
+    ...(p.question ? { question: p.question } : {}),
+    ...(p.breadcrumb.length ? { under: p.breadcrumb.map((b) => `${b.title} (${b.id})`).join(' › ') } : {}),
+    body: p.written,
+    ...(p.sumsChildren ? { sums_children: true } : {}),
+    ...(p.children.length ? { sub_pages: p.children.map((c) => ({ id: c.id, title: c.title, status: c.status, in_summary: c.inSummary, headline: c.headline })) } : {}),
+    ...(p.refresh ? { refresh: { every: p.refresh.every, ...(p.refresh.last ? { last: p.refresh.last } : {}), ...(p.refresh.next ? { next: p.refresh.next } : {}) } } : {}),
+    ...(p.pendingChange ? { answer_change_waiting: p.pendingChange.label ?? true } : {}),
+    ...(p.regulated && p.status === 'kept' ? { note: 'A kept page in a regulated project: it changes through a change request, not from chat.' } : {}),
+  }
+}
+
+/** What a page write returns to the chat. */
+function writeForChat(r: PageWriteResult): { applied: boolean; message?: string; status?: string; [k: string]: unknown } {
+  return {
+    applied: r.applied, ...(r.status ? { status: r.status } : {}), ...(r.message ? { message: r.message } : {}),
+    ...(r.page ? { page: { id: r.page.id, title: r.page.title, status: r.page.status, version: r.page.version } } : {}),
+  }
+}
+
+export interface PageChatContext {
+  svc: MemwiseService
+  actor: PersonActor
+  /** The page the chat is anchored to. */
+  pageId: string
+}
+
+/**
+ * The page tools' callbacks (`page_get`, `page_update`, `page_create`; 26 §4), wired by
+ * SessionManager for a chat anchored to a page. Each call resolves the anchor (mw.chat_anchors →
+ * the page and the person) and acts as that person: every write is a new version that says it
+ * came from this chat (`via: chat:<id>`), with Undo on the page. The chat changes its own page and
+ * the pages it made; a kept page in a regulated project is refused by the kernel.
+ */
+export function buildMemwisePageToolCallbacks(opts: MemwiseChatToolsOptions & {
+  /** Tests: the anchor context without the process's service. */
+  resolve?: () => Promise<PageChatContext>
+}): MemwisePageToolCallbacks {
+  const { sessionId } = opts
+  const via = `chat:${sessionId}`
+
+  async function ctx(): Promise<PageChatContext> {
+    if (opts.resolve) return opts.resolve()
+    const svc = getMemwiseService()
+    if (!svc) throw new Error('MemWise is not running in this app right now.')
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    const anchor = await new PgChatAnchorStore().get(svc.kernel.pool, sessionId)
+    if (!anchor || anchor.anchorKind !== 'page') throw new Error('This chat is not about a page.')
+    if (!anchor.personId) throw new Error('This chat has no person to act for.')
+    return { svc, actor: await svc.kernel.people.actorFor(anchor.personId), pageId: anchor.anchorId }
+  }
+
+  /** The anchored page, or a page this chat made. */
+  async function writable(c: PageChatContext, id: string | undefined): Promise<string> {
+    const target = id ?? c.pageId
+    if (target === c.pageId) return target
+    const p = await c.svc.kernel.pages.get(target, c.actor)
+    if (!p) throw new Error(`There is no page ${target}.`)
+    if (p.chatId !== sessionId) throw new Error(`This chat changes only its own page and the pages it made; open ${p.title} to change it.`)
+    return target
+  }
+
+  return {
+    async get(input) {
+      const c = await ctx()
+      const p = await c.svc.kernel.pages.get(input.page ?? c.pageId, c.actor)
+      if (!p) throw new Error(`There is no page ${input.page ?? c.pageId}.`)
+      return pageForChat(p)
+    },
+
+    async update(input) {
+      const c = await ctx()
+      const id = await writable(c, input.page)
+      const r = await c.svc.kernel.pages.update(id, {
+        ...(input.title ? { title: input.title } : {}), ...(input.body !== undefined ? { body: input.body } : {}),
+        via, reason: input.reason ?? 'Changed from chat',
+      }, c.actor)
+      opts.log?.(`[memwise] chat ${sessionId} changed page ${id}: ${r.status ?? (r.applied ? 'applied' : 'refused')}`)
+      return writeForChat(r)
+    },
+
+    async create(input) {
+      const c = await ctx()
+      const here = await c.svc.kernel.pages.get(c.pageId, c.actor)
+      if (!here) throw new Error('The page this chat is about was not found.')
+      const r = await c.svc.kernel.pages.create({
+        project: here.project, title: input.title, ...(input.body !== undefined ? { body: input.body } : {}),
+        ...(input.question ? { question: input.question } : {}), ...(input.parent ? { parent: input.parent } : {}),
+        chatId: sessionId, via, reason: input.question ? 'Asked a question' : 'Made from chat',
+      }, c.actor)
+      opts.log?.(`[memwise] chat ${sessionId} made page ${r.page?.id ?? '(refused)'}`)
+      return writeForChat(r)
     },
   }
 }
