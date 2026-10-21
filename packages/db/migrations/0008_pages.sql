@@ -34,8 +34,9 @@ alter table mw.page_versions
 
 -- ------------------------------------------------------------------ answer changes
 
--- A refresh that changed the answer: the new page waits here until someone accepts it (it then
--- becomes `to_version`) or sends it back (the page keeps its body). `summary` is what the review
+-- What each refresh found. One that changed the answer waits here until someone accepts it (it
+-- then becomes `to_version`) or sends it back (the page keeps its body); one that found nothing
+-- material is kept as `nothing_new`, for the page's history line. `summary` is what the review
 -- shows: { label, before, after, plus?, sections: [{ heading, markdown, origin }], left_out: [{ title,
 -- href?, why }], numbers: { added, removed }, from }.
 create table mw.page_changes (
@@ -46,7 +47,7 @@ create table mw.page_changes (
   run_id        text,
   case_id       text,
   step_run_id   text,                            -- the "Review an answer change" step, once it waits
-  status        text not null default 'pending' check (status in ('pending', 'accepted', 'sent_back')),
+  status        text not null default 'pending' check (status in ('pending', 'accepted', 'sent_back', 'nothing_new')),
   title         text not null,
   body          text not null,                   -- the page as the refresh rewrote it
   summary       jsonb not null default '{}'::jsonb,

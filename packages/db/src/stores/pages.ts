@@ -261,7 +261,7 @@ export class PgPageStore {
 
 // ---------------------------------------------------------------- answer changes (26 §4)
 
-export type PageChangeStatus = 'pending' | 'accepted' | 'sent_back';
+export type PageChangeStatus = 'pending' | 'accepted' | 'sent_back' | 'nothing_new';
 
 /** What "Review an answer change" shows: the headline before and after, the new sections and what was left out. */
 export interface PageChangeSummary {
@@ -279,8 +279,10 @@ export interface PageChangeSummary {
   /** Papers or sources the refresh looked at and left out, with why. */
   leftOut?: { title: string; href?: string; why: string }[];
   numbers?: { added: string[]; removed: string[] };
-  /** What found it: "Monday's refresh" (the schedule), "a refresh started by Leah". */
-  from?: string;
+  /** For the history: what changed, in a few words ("ATTAIN-MAINTAIN added"). */
+  title?: string;
+  /** What started the refresh: `schedule` (with the weekday), `manual`, `summary` (a sub-page changed). */
+  from?: { kind: 'schedule' | 'manual' | 'summary'; every?: string; by?: string };
 }
 
 export interface PageChange {
@@ -364,6 +366,16 @@ export class PgPageChangeStore {
       `update mw.page_changes set body = coalesce($2, body), title = coalesce($3, title), summary = coalesce($4, summary)
         where id = $1 and status = 'pending' returning *`, [id, change.body ?? null, change.title ?? null, json(change.summary)]);
     return rows[0] ? toChange(rows[0]) : undefined;
+  }
+
+  /** A refresh that found nothing material: one row, for the page's history ("nothing new"). */
+  async nothingNew(db: Queryable, c: { pageId: string; fromVersion: number; runId?: string; caseId?: string; summary?: PageChangeSummary }): Promise<PageChange> {
+    const { rows } = await db.query<ChangeDbRow>(
+      `insert into mw.page_changes (id, page_id, from_version, run_id, case_id, status, title, body, summary, reviewed_at)
+       select $1, p.id, $3, $4, $5, 'nothing_new', p.title, '', $6, now() from mw.pages p where p.id = $2
+       returning *`, [`pch_${ulid()}`, c.pageId, c.fromVersion, c.runId ?? null, c.caseId ?? null, json(c.summary ?? {})]);
+    if (!rows[0]) throw new Error(`There is no page ${c.pageId}`);
+    return toChange(rows[0]);
   }
 
   async setStepRun(db: Queryable, id: string, stepRunId: string): Promise<void> {
