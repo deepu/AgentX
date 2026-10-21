@@ -738,7 +738,8 @@ export interface RecordPage {
   /** `types`: each row value's declared type ("Date", "Enum[...]"), so the page formats it. */
   related: Record<string, { entity: string; total: number; rows: (RecordRef & { values: Record<string, unknown> })[]; types?: Record<string, string> }>;
   cases: { caseId: string; runId: string; workflowId: string; title: string; state: string; status: RunStatus; updatedAt: string; waitingOn?: string }[];
-  lifecycle?: { states: string[]; current?: string; transitions: RecordTransitionOption[] };
+  /** `passed`: the states on the way from the first to the current one (a rejected Evidence never was reviewed). */
+  lifecycle?: { states: string[]; current?: string; passed?: string[]; transitions: RecordTransitionOption[] };
   flags: RecordFlag[];
   signatures: SignatureView[];
   notes?: { body: string; version: number; by: string; at: string };

@@ -22,7 +22,7 @@ import type {
 } from '@memwise/shared/protocol'
 import type { KpiTile } from '@memwise/ui'
 import type { TextQuote } from './quote-highlight'
-import { absoluteTime, formatMoney, formatValueInline, humanize, isDocumentValue, isMoney, isNegativeOutcome, sortInbox } from '../format'
+import { absoluteTime, formatCell, formatMoney, formatValueInline, humanize, isDocumentValue, isMoney, isNegativeOutcome, isYearField, sortInbox } from '../format'
 
 // ---------------------------------------------------------------- values
 
@@ -61,6 +61,18 @@ export function baseType(type: string): string {
   return type.replace(/[<([].*$/, '').trim()
 }
 
+/** The choices of an `Enum[a, b]` type expression, else undefined. */
+export function enumChoices(type: string | undefined): string[] | undefined {
+  const m = type ? /^Enum\[(.*)\]$/.exec(type.trim()) : null
+  return m ? m[1]!.split(',').map(s => s.trim()).filter(Boolean) : undefined
+}
+
+/** A table review's edited cell, kept as its column's type: a number stays a number. */
+export function editedCell(type: string | undefined, text: string): unknown {
+  if (type && baseType(type) === 'Number' && text.trim() !== '' && Number.isFinite(Number(text))) return Number(text)
+  return text
+}
+
 /** A percent type: `Percentage` as the definitions write it (`Percent` is accepted too). */
 export function isPercentType(base: string): boolean {
   return base === 'Percentage' || base === 'Percent'
@@ -84,10 +96,11 @@ export function formatPercent(value: number, locale?: string): string {
 }
 
 /** One value by its declared type: percents, dates, money, references by title, documents by name. */
-export function formatTypedValue(type: string, value: unknown, t: TFunction, locale?: string, ref?: { title: string }): string {
+export function formatTypedValue(type: string, value: unknown, t: TFunction, locale?: string, ref?: { title: string }, name?: string): string {
   if (ref) return ref.title
   if (value === null || value === undefined || value === '') return t('memwise.case.noValue')
   const base = baseType(type)
+  if (typeof value === 'number' && Number.isInteger(value) && isYearField(name)) return String(value)
   if (isPercentType(base) && typeof value === 'number') return formatPercent(value, locale)
   if (base === 'Date' && typeof value === 'string') return formatDate(value, locale)
   if ((base === 'DateTime' || base === 'Timestamp') && typeof value === 'string') return absoluteTime(value, locale)
@@ -100,8 +113,8 @@ export function formatTypedValue(type: string, value: unknown, t: TFunction, loc
   return formatValueInline(value, t, locale)
 }
 
-export function formatFieldValue(field: Pick<MwRecordField, 'type' | 'value' | 'ref'>, t: TFunction, locale?: string): string {
-  return formatTypedValue(field.type, field.value, t, locale, field.ref)
+export function formatFieldValue(field: Pick<MwRecordField, 'type' | 'value' | 'ref'> & { name?: string }, t: TFunction, locale?: string): string {
+  return formatTypedValue(field.type, field.value, t, locale, field.ref, field.name)
 }
 
 // ---------------------------------------------------------------- sources
@@ -201,9 +214,11 @@ export function detailFields(page: MwRecordPage): MwRecordField[] {
 export interface LifecycleStep { name: string; label: string; state: 'done' | 'current' | 'todo' }
 
 /** The lifecycle as a row of steps: the ones before the current state done, the rest to come. */
-export function lifecycleSteps(states: string[], current?: string): LifecycleStep[] {
+export function lifecycleSteps(states: string[], current?: string, passed?: string[]): LifecycleStep[] {
   const at = current ? states.indexOf(current) : -1
-  return states.map((name, i) => ({ name, label: statusLabel(name), state: at < 0 ? 'todo' : i < at ? 'done' : i === at ? 'current' : 'todo' }))
+  // With the way the record took (`passed`), a state it skipped isn't ticked (kept → rejected).
+  const done = (name: string, i: number) => (passed ? passed.includes(name) : i < at)
+  return states.map((name, i) => ({ name, label: statusLabel(name), state: at < 0 ? 'todo' : i === at ? 'current' : done(name, i) ? 'done' : 'todo' }))
 }
 
 /** "Move to Open" for a transition button. */
@@ -297,12 +312,16 @@ export type KpiView = MwRecordKpi
 
 /** The kit's rows for a chart: a row with its own unit (the chart has none) says it in its label. */
 export function chartRows(chart: ChartView): { label: string; value: number; low?: number; high?: number }[] {
-  return chart.data.map(d => ({
-    label: d.unit && !chart.unit ? `${d.label} (${d.unit})` : d.label,
-    value: d.value,
-    ...(d.low !== undefined && d.low !== null ? { low: d.low } : {}),
-    ...(d.high !== undefined && d.high !== null ? { high: d.high } : {}),
-  }))
+  return chart.data.map(d => {
+    // A group's raw value in snake case (an enum like "phase_3") reads as words: "Phase 3".
+    const label = d.key && d.label === d.key && /^[a-z0-9]+(_[a-z0-9]+)+$/.test(d.key) ? statusLabel(d.key) : d.label
+    return {
+      label: d.unit && !chart.unit ? `${label} (${d.unit})` : label,
+      value: d.value,
+      ...(d.low !== undefined && d.low !== null ? { low: d.low } : {}),
+      ...(d.high !== undefined && d.high !== null ? { high: d.high } : {}),
+    }
+  })
 }
 
 /** A record page `chart` block the server sent no rows for: its related rows counted by `by`. */
@@ -458,6 +477,24 @@ export function tableColumns(rows: TableRow[]): string[] {
   const keys: string[] = []
   for (const r of rows) for (const k of Object.keys(r.value)) if (!META_KEYS.has(k) && !keys.includes(k)) keys.push(k)
   return keys
+}
+
+/**
+ * A list of records' columns for display: the row type's order when known (`itemTypes`; stored rows
+ * come back with their keys reordered), without a Ref column whose record titles the row's own
+ * `title` already shows (a screening's paper beside its title).
+ */
+export function orderRowColumns(keys: string[], rows: Record<string, unknown>[], itemTypes?: Record<string, string>, titles?: Record<string, string>): string[] {
+  const ordered = itemTypes ? [...Object.keys(itemTypes).filter(c => keys.includes(c)), ...keys.filter(c => !(c in itemTypes))] : keys
+  return ordered.filter(c => !(itemTypes?.[c]?.startsWith('Ref<') && keys.includes('title') && rows.length > 0
+    && rows.every(r => typeof r[c] === 'string' && !!titles?.[r[c] as string] && titles[r[c] as string] === r.title)))
+}
+
+/** One cell of a list of records: by its column's type when known, a Ref by its record's title, a year as a year. */
+export function formatRowCell(column: string, cell: unknown, t: TFunction, locale: string | undefined, itemTypes?: Record<string, string>, titles?: Record<string, string>): string {
+  const title = typeof cell === 'string' ? titles?.[cell] : undefined
+  if (itemTypes?.[column]) return formatTypedValue(itemTypes[column]!, cell, t, locale, title ? { title } : undefined, column)
+  return formatCell(column, title ?? cell, t, locale)
 }
 
 /** "Accept all at 90% or higher": accept every pending row at or above the threshold. */

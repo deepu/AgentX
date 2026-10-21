@@ -102,9 +102,10 @@ const SOURCE_ICON: Record<MwRecordFieldSource['kind'], React.ReactNode> = {
 export function FieldSourceBadge({ source }: { source: MwRecordFieldSource }) {
   const { t } = useTranslation()
   return (
-    <Pill className={SOURCE_TONE_CLASS[fieldSourceTone(source)]} title={t('memwise.record.source.title')}>
+    // In a narrow column the label is cut with an ellipsis rather than running past the card.
+    <Pill className={cn(SOURCE_TONE_CLASS[fieldSourceTone(source)], 'max-w-full min-w-0 shrink')} title={`${fieldSourceLabel(source, t)} · ${t('memwise.record.source.title')}`}>
       {SOURCE_ICON[source.kind]}
-      <span data-source={source.kind}>{fieldSourceLabel(source, t)}</span>
+      <span className="truncate" data-source={source.kind}>{fieldSourceLabel(source, t)}</span>
     </Pill>
   )
 }
@@ -280,7 +281,7 @@ export function FieldRows({ fields, regulated, actions, emptyText, quotedFields,
                   </>
                 )}
               </dd>
-              <div className="col-start-2 flex flex-wrap gap-1 justify-self-start @2xl/fields:col-start-3">
+              <div className="col-start-2 flex min-w-0 max-w-full flex-wrap gap-1 justify-self-start @2xl/fields:col-start-3">
                 {/* Nothing there: no "where it came from" badge (a calculated field still says so). */}
                 {(f.hidden || f.calculated || !(f.value === null || f.value === undefined || f.value === '')) && <FieldSourceBadge source={f.source} />}
                 {f.followed && <Pill className="bg-fill-hover text-secondary" title={t('memwise.record.followedHint')}>{t('memwise.record.followed')}</Pill>}
@@ -331,7 +332,7 @@ export function RelatedBlock({ page, names, actions }: { page: MwRecordPage; nam
                       >
                         <td className="px-3.5 py-2 font-medium text-foreground">{row.title}</td>
                         {columns.map(c => (
-                          <td key={c} className="px-3.5 py-2 text-secondary">{formatTypedValue(rel.types?.[c] ?? '', row.values[c], t, i18n.language)}</td>
+                          <td key={c} className="px-3.5 py-2 text-secondary">{formatTypedValue(rel.types?.[c] ?? '', row.values[c], t, i18n.language, undefined, c)}</td>
                         ))}
                         <td className="px-3.5 py-2 text-right"><StatusPill status={row.status} /></td>
                       </tr>
@@ -426,7 +427,7 @@ export function LifecycleBlock({ page, onTransition, busy }: { page: MwRecordPag
   const { t } = useTranslation()
   const lc = page.lifecycle
   if (!lc) return null
-  const steps = lifecycleSteps(lc.states, lc.current ?? page.status)
+  const steps = lifecycleSteps(lc.states, lc.current ?? page.status, lc.passed)
   const guards = lc.transitions.filter(tr => tr.guard)
   return (
     <Info_Section title={t('memwise.record.lifecycle')}>

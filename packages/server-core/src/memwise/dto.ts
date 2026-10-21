@@ -67,9 +67,15 @@ export function toDiagnostic(d: Diagnostic): MwDiagnostic {
 // ---------------------------------------------------------------- titles
 
 /** `needs_person` → "Needs person". */
+/** Words that read as initials in labels ("PMID", "DOI"), like the renderer's own labels. */
+const ACRONYMS = new Set(['id', 'pmid', 'pmc', 'doi', 'ci', 'url', 'api'])
+
 export function humanize(id: string): string {
   const words = id.replace(/[_-]+/g, ' ').trim()
-  return words ? words[0]!.toUpperCase() + words.slice(1) : id
+  if (!words) return id
+  const parts = words.split(' ').map((w, i) => (ACRONYMS.has(w.toLowerCase()) && (i > 0 || w !== 'id') ? w.toUpperCase() : w))
+  const out = parts.join(' ')
+  return out[0]!.toUpperCase() + out.slice(1)
 }
 
 export function stateTitle(wf: WorkflowDef | undefined, state: string): string {
@@ -106,15 +112,62 @@ export function caseSubject(values: Record<string, unknown>, caseType?: CaseType
   return caseRefs(values, caseType)[0]
 }
 
-/** Ref values with their record's title (`titles`, by record id), so a screen shows the title, not the id. */
+/** The record type a list or named field holds its rows in (`List<ScreeningRow>` → ScreeningRow's fields). */
+function rowFields(type: FieldDef['type'], caseType: CaseTypeDef | undefined): Record<string, FieldDef> | undefined {
+  const inner = type.kind === 'list' ? type.of : type
+  return inner.kind === 'named' ? caseType?.types?.[inner.name]?.fields : undefined
+}
+
+/**
+ * The records a case's lists point at: each id of a `List<Ref<X>>`, and the Ref fields of the
+ * rows of a list of records (`screening[].article`), in field order.
+ */
+export function caseNestedRefs(values: Record<string, unknown>, caseType?: CaseTypeDef): { field: string; entity: string; id: string }[] {
+  const out: { field: string; entity: string; id: string }[] = []
+  for (const [field, f] of Object.entries(caseType?.fields ?? {})) {
+    const v = plainValue(values[field])
+    if (f.type.kind === 'list' && f.type.of.kind === 'ref') {
+      const entity = f.type.of.entity
+      if (Array.isArray(v)) for (const id of v) if (typeof id === 'string' && id) out.push({ field, entity, id })
+      continue
+    }
+    const rows = rowFields(f.type, caseType)
+    if (!rows) continue
+    for (const row of Array.isArray(v) ? v : [v]) {
+      if (!row || typeof row !== 'object') continue
+      for (const [col, cf] of Object.entries(rows)) {
+        const id = (row as Record<string, unknown>)[col]
+        if (cf.type.kind === 'ref' && typeof id === 'string' && id) out.push({ field, entity: cf.type.entity, id })
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * Ref values with their record's title (`titles`, by record id), so a screen shows the title, not
+ * the id; a list of refs, or rows with Ref columns, carry `refTitles` (id → title); a list of
+ * records carries its columns' types (`itemTypes`), so its cells read as dates, choices and years.
+ */
 export function withRefTitles(values: Record<string, MwCaseValue>, caseType: CaseTypeDef | undefined, titles?: ReadonlyMap<string, string>): Record<string, MwCaseValue> {
-  if (!titles?.size) return values
   const out = { ...values }
   for (const [field, f] of Object.entries(caseType?.fields ?? {})) {
     const v = out[field]
-    if (f.type.kind !== 'ref' || !v || v.hidden || typeof v.value !== 'string') continue
-    const title = titles.get(v.value)
-    if (title) out[field] = { ...v, refTitle: title }
+    if (!v || v.hidden) continue
+    if (f.type.kind === 'ref') {
+      const title = typeof v.value === 'string' ? titles?.get(v.value) : undefined
+      if (title) out[field] = { ...v, refTitle: title }
+      continue
+    }
+    const rows = rowFields(f.type, caseType)
+    if (rows) out[field] = { ...out[field]!, itemTypes: Object.fromEntries(Object.entries(rows).map(([col, cf]) => [col, cf.typeSource])) }
+    if (!titles?.size) continue
+    const found: Record<string, string> = {}
+    for (const r of caseNestedRefs({ [field]: v.value }, { ...caseType!, fields: { [field]: f } })) {
+      const title = titles.get(r.id)
+      if (title) found[r.id] = title
+    }
+    if (Object.keys(found).length) out[field] = { ...out[field]!, refTitles: found }
   }
   return out
 }
@@ -132,6 +185,11 @@ export function caseTitle(values: Record<string, unknown>, caseId: string, caseT
   // The first text in the order the case type lists its fields (values come back in any order:
   // a document's "version" must not name it before its "artifact").
   const fields = Object.keys(caseType?.fields ?? {})
+  // A case type whose first field is the record it is about ("Set up a watch" on a Topic, "Read
+  // a paper" on an Article) is named after that record, not after the first text a step wrote
+  // (the drafted PubMed query).
+  const first = fields[0]
+  if (subjectTitle?.trim() && first && caseType?.fields[first]?.type.kind === 'ref' && plain(values[first])) return subjectTitle.trim()
   for (const key of [...fields, ...Object.keys(values).filter((k) => !fields.includes(k))]) {
     const v = plain(values[key])
     const type = caseType?.fields[key]?.type
@@ -524,7 +582,7 @@ export function toInboxExtract(step: StepDef | undefined): { documentsField: str
 }
 
 /** `subjects`: the titles of the records the case points at (its Ref values, what it waits on), by record id. */
-export function toCase(ctx: DtoContext, view: CaseView, extra: { links?: ExternalLinkSummary[]; deliveries?: Delivery[]; subjects?: ReadonlyMap<string, string> } = {}): MwCase {
+export function toCase(ctx: DtoContext, view: CaseView, extra: { links?: ExternalLinkSummary[]; deliveries?: Delivery[]; subjects?: ReadonlyMap<string, string>; linkTitles?: ReadonlyMap<string, string> } = {}): MwCase {
   const wf = ctx.project.workflows[view.summary.workflowId]
   const values = Object.fromEntries(Object.entries(view.values).map(([k, v]) => [k, v.hidden ? undefined : v.value]))
   const subject = caseSubject(values, wf?.caseType)
@@ -539,7 +597,7 @@ export function toCase(ctx: DtoContext, view: CaseView, extra: { links?: Externa
     ...(extra.links ? { links: [...extra.links].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(toExternalLink) } : {}),
     ...(extra.deliveries ? { deliveries: [...extra.deliveries].sort((a, b) => b.at.localeCompare(a.at)).map(toDelivery) } : {}),
     // Phase 6: hand-offs, the `wait_until` condition, the domain
-    ...(view.links?.length ? { caseLinks: view.links.map((l) => toCaseLink(ctx.project, l)) } : {}),
+    ...(view.links?.length ? { caseLinks: view.links.map((l) => toCaseLink(ctx.project, l, extra.linkTitles?.get(l.caseId))) } : {}),
     ...(view.waiting ? { waiting: toWaiting(view.waiting, ctx.project, extra.subjects) } : {}),
     ...(view.domain ?? wf?.domain ? { domain: view.domain ?? wf?.domain } : {}),
   }

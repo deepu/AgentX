@@ -9,7 +9,7 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, ArrowUpDown, Boxes, Columns3, Database, Filter, Kanban, Link2, Save, Table2 } from 'lucide-react'
+import { AlertTriangle, ArrowUpDown, Boxes, Columns3, Database, Filter, Kanban, Link2, Plus, Save, Table2 } from 'lucide-react'
 import type { MwDomain, MwEntityType, MwRecordQueryInput, MwRecordQueryResult, MwSaveViewInput, MwView } from '@memwise/shared/protocol'
 import { Info_Alert } from '@/components/info/Info_Alert'
 import { Info_Badge } from '@/components/info/Info_Badge'
@@ -125,9 +125,11 @@ export interface EntityViewProps {
   onOpenRecord?: (entity: string, id: string) => void
   onOpenPlaybook?: (workflowId: string) => void
   onSaveView?: (view: MwSaveViewInput['view']) => Promise<MwView>
+  /** "New <entity>": a person creates a record (NewRecordDialog). */
+  onCreate?: () => void
 }
 
-export function EntityView({ domain, type, tab, onTab, ...rest }: EntityViewProps) {
+export function EntityView({ domain, type, tab, onTab, onCreate, ...rest }: EntityViewProps) {
   const { t } = useTranslation()
   const summary = domain.entities.find(e => e.key === type.key)
   return (
@@ -135,6 +137,9 @@ export function EntityView({ domain, type, tab, onTab, ...rest }: EntityViewProp
       <Info_Page.Hero
         avatar={<div className="grid size-full place-items-center bg-fill-hover text-secondary"><Database className="size-4" /></div>}
         title={summary?.title ?? humanize(type.name)}
+        actions={onCreate && (
+          <Button size="sm" variant="secondary" onClick={onCreate}><Plus />{t('memwise.entities.newRecord', { entity: summary?.title ?? humanize(type.name) })}</Button>
+        )}
         meta={
           <>
             <span>{domain.name}</span>
@@ -316,7 +321,7 @@ export function EntityRecordsTab({ domain, type, views, state, onState, result, 
                         <td key={c.name} className="px-4 py-2 text-secondary">
                           {row.hidden.includes(c.name) ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span>
                             : c.type === 'Lifecycle' || c.name === 'status' ? <StatusPill status={(row.values[c.name] ?? (c.name === 'status' ? row.status : undefined)) as string | undefined} />
-                            : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}
+                            : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name], c.name)}
                         </td>
                       ))}
                     </tr>
@@ -349,7 +354,7 @@ function Board({ result, group, columns, onOpenRecord }: { result: MwRecordQuery
               <button key={row.id} type="button" className="block w-full rounded-md bg-raised p-2.5 text-left shadow-elev-1 hover:bg-fill-hover" onClick={() => onOpenRecord?.(row.entity, row.id)}>
                 <span className="block text-label font-medium text-foreground">{row.title}</span>
                 {extra.map(c => (
-                  <span key={c.name} className="block text-label-sm text-secondary">{row.hidden.includes(c.name) ? t('memwise.case.restrictedValue') : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}</span>
+                  <span key={c.name} className="block text-label-sm text-secondary">{row.hidden.includes(c.name) ? t('memwise.case.restrictedValue') : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name], c.name)}</span>
                 ))}
               </button>
             ))}

@@ -18,7 +18,7 @@ import type {
 
 // ---------------------------------------------------------------- words
 
-const ACRONYMS = new Set(['gst', 'gstin', 'pan', 'crm', 'id', 'ifsc', 'vat', 'tds', 'kyc', 'pdf', 'url', 'api', 'qc', 'cv', 'tmf', 'cra', 'irb', 'edc', 'brsr', 'sso', 'mfa'])
+const ACRONYMS = new Set(['gst', 'gstin', 'pan', 'crm', 'id', 'ifsc', 'vat', 'tds', 'kyc', 'pdf', 'url', 'api', 'qc', 'cv', 'tmf', 'cra', 'irb', 'edc', 'brsr', 'sso', 'mfa', 'pmid', 'pmc', 'doi', 'ci'])
 
 /** `client_name` → "Client name", `gst.validate_gstin` → "GST validate GSTIN". */
 export function humanize(name: string): string {
@@ -214,6 +214,17 @@ export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
   return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** A field that holds a calendar year (`year`, `publication_year`): shown as 2025, never 2,025. */
+export function isYearField(name: string | undefined): boolean {
+  return !!name && /(^|_)year$/i.test(name)
+}
+
+/** A table cell: like formatValueInline, but a year column reads as a year. */
+export function formatCell(column: string, v: unknown, t: TFunction, locale?: string): string {
+  if (typeof v === 'number' && Number.isInteger(v) && isYearField(column)) return String(v)
+  return formatValueInline(v, t, locale)
 }
 
 /** A one-line rendering of any case value (lists and records are summarised). */

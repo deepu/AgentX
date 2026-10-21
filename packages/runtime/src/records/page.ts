@@ -87,6 +87,18 @@ async function titleOf(deps: RecordsDeps, actor: Actor, def: EntityTypeDef, id: 
   return row ? { row, title: recordTitle(def, id, { ...row.values, ...(row.lifecycle ? { status: row.lifecycle } : {}) }) } : undefined;
 }
 
+/** Values with the title template's references named by their records' titles ("{article}" reads as the paper, not its id). */
+async function refsNamed(deps: RecordsDeps, actor: Actor, entities: Record<string, EntityTypeDef>, def: EntityTypeDef, values: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const out = { ...values };
+  for (const [, name] of (def.title ?? '').matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) {
+    const target = refEntity(entities, def, name!);
+    const v = values[name!];
+    const t = target && typeof v === 'string' && v ? await titleOf(deps, actor, target, v) : undefined;
+    if (t) out[name!] = t.title;
+  }
+  return out;
+}
+
 export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: string, actor: Actor, opts: { review?: { stepRunId: string } } = {}): Promise<RecordPage | undefined> {
   const entities = deps.entities();
   const project = deps.project();
@@ -155,7 +167,7 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
   }
 
   const status = row.lifecycle;
-  const title = recordTitle(def, id, { ...values, ...(status ? { status } : {}) });
+  const title = recordTitle(def, id, await refsNamed(deps, actor, entities, def, { ...values, ...(status ? { status } : {}) }));
 
   // ---- parents (root first)
   const parents: RecordPage['parents'] = [];
@@ -180,7 +192,7 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
     // A row's own values: not the reference back to this record, nor other references (bare ids
     // that mean nothing on the page; the row's title names it).
     const own = (v: Record<string, unknown>) => Object.fromEntries(Object.entries(v).filter(([f]) => f !== inv.via && !refEntity(entities, inv.target, f)));
-    const rows = r.rows.map((x) => ({ entity: keyOf(inv.target), id: x.id, title: recordTitle(inv.target, x.id, x.values), ...(x.lifecycle ? { status: x.lifecycle } : {}), values: own(x.values) }));
+    const rows = await Promise.all(r.rows.map(async (x) => ({ entity: keyOf(inv.target), id: x.id, title: recordTitle(inv.target, x.id, await refsNamed(deps, actor, entities, inv.target, x.values)), ...(x.lifecycle ? { status: x.lifecycle } : {}), values: own(x.values) })));
     const shown = new Set(rows.flatMap((x) => Object.keys(x.values)));
     const types = Object.fromEntries(Object.entries(inv.target.fields).filter(([f]) => shown.has(f)).map(([f, d]) => [f, d.typeSource]));
     related[rel] = { entity: keyOf(inv.target), total: r.total, rows, ...(Object.keys(types).length ? { types } : {}) };
@@ -228,7 +240,16 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
         transitions.push({ name, to, allowed: check.ok, ...(!check.ok ? { reason: check.message } : {}), ...(guard ? { guard } : {}), ...(t?.signed ? { signed: true } : {}) });
       }
     });
-    lifecycle = { states: Object.keys(chart.states), ...(status ? { current: status } : {}), transitions };
+    // The states on the shortest way from the first state to the current one, so a page doesn't
+    // tick a branch the record never took (kept → rejected skips reviewed).
+    const via = new Map<string, string | null>([[chart.initial, null]]);
+    for (let queue = [chart.initial]; queue.length && status && !via.has(status);) {
+      const s = queue.shift()!;
+      for (const to of Object.values(chart.states[s]?.on ?? {})) if (!via.has(to)) { via.set(to, s); queue.push(to); }
+    }
+    const passed: string[] = [];
+    for (let s = status && via.has(status) ? via.get(status)! : null; s; s = via.get(s) ?? null) passed.unshift(s);
+    lifecycle = { states: Object.keys(chart.states), ...(status ? { current: status, passed } : {}), transitions };
   }
 
   // ---- flags, signatures, notes, mentions

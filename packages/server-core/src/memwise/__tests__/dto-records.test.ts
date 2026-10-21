@@ -220,6 +220,15 @@ describe('cases about records', () => {
     expect(caseTitle({ body: 'Please find attached…', subject: 'AST-301 US-012: PI CV' }, 'case_2', message)).toBe('AST-301 US-012: PI CV')
   })
 
+  it('a case whose first field is its record is named after the record, not the first text a step wrote', () => {
+    const textField = { type: { kind: 'scalar', name: 'Text' }, typeSource: 'Text' }
+    const watch = { fields: { topic: { type: { kind: 'ref', entity: 'Topic' }, typeSource: 'Ref<Topic>' }, query: textField } } as never
+    const values = { topic: 'topi_1', query: '(orforglipron OR "oral semaglutide") AND obesity' }
+    expect(caseTitle(values, 'case_3', watch, undefined, 'Oral GLP-1s for weight in T2D')).toBe('Oral GLP-1s for weight in T2D')
+    // Without the record's title (not readable to this viewer), the text still names it.
+    expect(caseTitle(values, 'case_3', watch)).toBe('(orforglipron OR "oral semaglutide") AND obesity')
+  })
+
   it('a wait_until waits on a condition, not on the owner; its values keep their types', () => {
     const wf = { id: 'activate-site', owner: 'study_manager', steps: {}, states: { collect_pack: { name: 'collect_pack', on: { met: 'approve' }, block: { kind: 'wait_until' } } } } as never
     expect(waitingOn(wf, 'collect_pack', 'active')).toEqual({ kind: 'condition' })

@@ -190,6 +190,10 @@ export interface MwCaseValue {
   hidden?: boolean
   /** Phase 6: a Ref value's record, by its title (`value` keeps the id). */
   refTitle?: string
+  /** Literature: the records a list of refs, or its rows' Ref columns, point at: id → title. */
+  refTitles?: Record<string, string>
+  /** Literature: a list of records' column types as written (`year: Number`, `phase: Enum[...]`). */
+  itemTypes?: Record<string, string>
 }
 
 /** A file attached to a case (`Document` and `File` values). */
@@ -1551,7 +1555,8 @@ export interface MwRecordPage {
   /** `types`: each row value's declared type, so a date or an enum reads as one. */
   related: Record<string, { entity: string; label: string; total: number; rows: (MwRecordRef & { values: Record<string, unknown> })[]; types?: Record<string, string> }>
   cases: { caseId: string; runId: string; workflowId: string; title: string; state: string; status: MwRunStatus; updatedAt: string; waitingOn?: string }[]
-  lifecycle?: { states: string[]; current?: string; transitions: MwTransitionOption[] }
+  /** `passed`: the states on the way to the current one; others before it in `states` were skipped. */
+  lifecycle?: { states: string[]; current?: string; passed?: string[]; transitions: MwTransitionOption[] }
   flags: MwRecordFlag[]
   signatures: MwSignature[]
   notes?: { body: string; version: number; by: string; at: string }
@@ -1672,6 +1677,8 @@ export interface MwCaseLink {
   title: string
   state: string
   status: MwRunStatus
+  /** The linked case's own name ("Read a paper" about ATTAIN-2), when it differs from `title`. */
+  caseTitle?: string
 }
 
 /** `types`: each value's declared type (a percent rollup is `Percentage`), so the screen formats it. */

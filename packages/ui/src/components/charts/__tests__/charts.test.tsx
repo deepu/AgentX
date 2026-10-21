@@ -23,6 +23,8 @@ describe('chart utils', () => {
     expect(niceTicks(0, 47, 5)).toEqual([0, 10, 20, 30, 40, 50])
     expect(niceTicks(-1.8, 0.4, 5)).toEqual([-2, -1.5, -1, -0.5, 0, 0.5])
     expect(niceTicks(0, 0)).toEqual([0, 1])
+    expect(niceTicks(0, 2, 5, true)).toEqual([0, 1, 2])
+    expect(valueDomain([2]).ticks).toEqual([0, 1, 2])
     expect(niceTicks(5, 5)[0]).toBe(0)
     const d = valueDomain([3, 9], [0])
     expect(d.min).toBe(0)

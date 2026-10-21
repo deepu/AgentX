@@ -58,7 +58,7 @@ export async function queryRecords(deps: RecordsDeps, def: EntityTypeDef, q: Omi
     entity: keyOf(def),
     columns: columnsOf(def, q.columns),
     rows: r.rows.map((row, i) => ({
-      entity: keyOf(def), id: row.id, title: recordTitle(def, row.id, row.values), ...(row.lifecycle ? { status: row.lifecycle } : {}),
+      entity: keyOf(def), id: row.id, title: recordTitle(def, row.id, { ...row.values, ...Object.fromEntries(Object.entries(r.refs[i]!).map(([f, ref]) => [f, ref.title])) }), ...(row.lifecycle ? { status: row.lifecycle } : {}),
       values: row.values, hidden: row.hidden, ...(Object.keys(r.refs[i]!).length ? { refs: r.refs[i]! } : {}),
     })),
     total: r.total,

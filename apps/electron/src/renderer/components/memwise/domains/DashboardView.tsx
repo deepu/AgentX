@@ -119,7 +119,7 @@ function ResultBlock({ title, result, list, onOpenRecord }: { title?: string; re
               <button type="button" className="flex w-full flex-col items-start px-3.5 py-2.5 text-left hover:bg-fill-hover disabled:hover:bg-transparent" onClick={() => onOpenRecord?.(row.entity, row.id)} disabled={!onOpenRecord}>
                 <span className="font-medium text-label text-foreground">{row.title}</span>
                 <span className="text-label-sm text-secondary">
-                  {result.columns.map(c => (row.hidden.includes(c.name) ? null : `${c.label}: ${formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}`)).filter(Boolean).join(' · ')}
+                  {result.columns.map(c => (row.hidden.includes(c.name) ? null : `${c.label}: ${formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name], c.name)}`)).filter(Boolean).join(' · ')}
                 </span>
               </button>
             </li>
@@ -142,7 +142,7 @@ function ResultBlock({ title, result, list, onOpenRecord }: { title?: string; re
                     <td key={c.name} className="px-3.5 py-2 text-secondary">
                       {row.hidden.includes(c.name) ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span>
                         : c.name === 'status' ? <StatusPill status={String(row.values[c.name] ?? '')} />
-                        : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}
+                        : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name], c.name)}
                     </td>
                   ))}
                 </tr>

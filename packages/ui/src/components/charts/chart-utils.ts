@@ -52,9 +52,10 @@ function clean(n: number): number {
 
 /**
  * Evenly spaced round ticks covering [min, max], about `count` of them. The first tick is at or
- * below `min` and the last at or above `max`, so they are the axis's domain.
+ * below `min` and the last at or above `max`, so they are the axis's domain. `integer`: steps of
+ * at least 1.
  */
-export function niceTicks(min: number, max: number, count = 5): number[] {
+export function niceTicks(min: number, max: number, count = 5, integer = false): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1]
   if (min > max) [min, max] = [max, min]
   if (min === max) {
@@ -62,7 +63,8 @@ export function niceTicks(min: number, max: number, count = 5): number[] {
     const pad = Math.abs(min) * 0.5
     ;[min, max] = min > 0 ? [0, max + pad] : [min - pad, 0]
   }
-  const step = niceStep(max - min, count)
+  // Whole numbers (counts) get whole ticks: 0, 1, 2 rather than 0, 0.5, 1, 1.5, 2.
+  const step = integer ? Math.max(1, niceStep(max - min, count)) : niceStep(max - min, count)
   const start = Math.floor(clean(min / step)) * step
   const end = Math.ceil(clean(max / step)) * step
   const ticks: number[] = []
@@ -73,7 +75,7 @@ export function niceTicks(min: number, max: number, count = 5): number[] {
 /** The axis domain for values that should include zero (bars) or a reference line. */
 export function valueDomain(values: number[], include: number[] = [0], count = 5): { ticks: number[]; min: number; max: number } {
   const all = [...values, ...include].filter(Number.isFinite)
-  const ticks = niceTicks(Math.min(...all), Math.max(...all), count)
+  const ticks = niceTicks(Math.min(...all), Math.max(...all), count, all.every(Number.isInteger))
   return { ticks, min: ticks[0]!, max: ticks[ticks.length - 1]! }
 }
 

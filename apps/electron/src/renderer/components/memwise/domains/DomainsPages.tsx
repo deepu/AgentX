@@ -19,6 +19,7 @@ import { AutomationsView } from '../automations/AutomationsView'
 import { DashboardView } from './DashboardView'
 import { DomainView, PagesOverview } from './DomainView'
 import { EntitiesHome, EntityView, stateToQuery, viewToState, type RecordsViewState } from './EntitiesView'
+import { NewRecordDialog } from './NewRecordDialog'
 
 const openRecord = (entity: string, id: string) => navigate(routes.view.record(entity, id))
 const openPlaybook = (workflowId: string) => navigate(routes.view.playbooks(workflowId))
@@ -108,6 +109,7 @@ function EntitiesPage({ domainId, entity }: { domainId: string; entity?: string 
   const query = useMemwiseRecordQuery(entity && tab === 'records' ? stateToQuery(entity, domainId, state) : null)
   const calls = useMemwiseRecordCalls()
   const saveView = React.useCallback((view: MwSaveViewInput['view']) => calls.saveView({ domain: domainId, view }), [calls, domainId])
+  const [creating, setCreating] = React.useState(false)
 
   const title = entity ? domain?.entities.find(e => e.key === entity)?.title ?? entity : t('memwise.entities.title')
   return (
@@ -131,7 +133,11 @@ function EntitiesPage({ domainId, entity }: { domainId: string; entity?: string 
           onOpenRecord={openRecord}
           onOpenPlaybook={openPlaybook}
           onSaveView={saveView}
+          onCreate={() => setCreating(true)}
         />
+      )}
+      {type && (
+        <NewRecordDialog open={creating} type={type} title={title} onClose={() => setCreating(false)} create={calls.create} onCreated={openRecord} />
       )}
       {domain && entity && types !== null && !type && <p className="p-6 text-label text-tertiary">{t('memwise.entities.missing')}</p>}
     </Info_Page>

@@ -249,7 +249,7 @@ export function toRecordPage(ctx: Pick<DtoContext, 'project'>, p: RecordPage, na
       state: stateTitle(project.workflows[c.workflowId], c.state), status: c.status, updatedAt: c.updatedAt,
       ...(c.waitingOn ? { waitingOn: names.get(c.waitingOn) ?? project.roles?.[c.waitingOn]?.title ?? humanize(c.waitingOn) } : {}),
     })),
-    ...(p.lifecycle ? { lifecycle: { states: [...p.lifecycle.states], ...(p.lifecycle.current ? { current: p.lifecycle.current } : {}), transitions: p.lifecycle.transitions.map(toTransitionOption) } } : {}),
+    ...(p.lifecycle ? { lifecycle: { states: [...p.lifecycle.states], ...(p.lifecycle.current ? { current: p.lifecycle.current } : {}), ...(p.lifecycle.passed ? { passed: [...p.lifecycle.passed] } : {}), transitions: p.lifecycle.transitions.map(toTransitionOption) } } : {}),
     flags: p.flags.map((f) => ({ ...f })),
     signatures: p.signatures.map(toSignature),
     ...(p.notes ? { notes: { body: p.notes.body, version: p.notes.version, by: names.get(p.notes.by) ?? p.notes.by, at: p.notes.at } } : {}),
@@ -405,12 +405,15 @@ export function auditFileName(entity: string, id: string, format: 'json' | 'pdf'
 
 // ---------------------------------------------------------------- cases and the inbox
 
-export function toCaseLink(project: ProjectDefs, l: CaseLinkView): MwCaseLink {
+/** `caseTitle`: the linked case's own name (the paper a "Read a paper" case reads), when known. */
+export function toCaseLink(project: ProjectDefs, l: CaseLinkView, caseTitle?: string): MwCaseLink {
   const wf = project.workflows[l.workflowId]
+  const title = l.title || (wf?.title ?? humanize(l.workflowId))
   return {
     kind: l.kind, caseId: l.caseId, runId: l.runId, workflowId: l.workflowId,
     // The step's title ("Finished", "QC and sign"), not the state's id ("end").
-    title: l.title || (wf?.title ?? humanize(l.workflowId)), state: stateTitle(wf, l.state), status: l.status,
+    title, state: stateTitle(wf, l.state), status: l.status,
+    ...(caseTitle && caseTitle !== title ? { caseTitle } : {}),
   }
 }
 

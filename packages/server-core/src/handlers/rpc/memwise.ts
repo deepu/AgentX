@@ -419,6 +419,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const wf = c.project.workflows[s.workflowId]
       const refs = d.caseRefs(s.values, wf?.caseType)
       for (const r of opts.all ? refs : refs.slice(0, 1)) want(r.entity, wf?.domain, r.id)
+      // A case's page also names the records its lists point at (new papers, a screening's paper).
+      if (opts.all) for (const r of d.caseNestedRefs(s.values, wf?.caseType)) want(r.entity, wf?.domain, r.id)
     }
     const out = new Map<string, string>()
     const records = (svc.kernel as { records?: RecordsService }).records
@@ -504,7 +506,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
             const fields = d.stepWriteFields(c, wf, step)
             const extract = d.toInboxExtract(step)
             out.push({
-              kind: 'input', ...common, fields, prefill: d.toCaseValues(values, fields.map((f) => f.name).filter((f) => f in values)),
+              kind: 'input', ...common, fields, prefill: d.withRefTitles(d.toCaseValues(values, fields.map((f) => f.name).filter((f) => f in values)), wf.caseType, subjects),
               ...(returned ? { returned } : {}), ...(binding ? { binding } : {}), ...(extract ? { extract } : {}),
             })
           } else {
@@ -995,7 +997,20 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       ])
       const shown = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value]))
       const subjects = await subjectTitles(svc, actor, c, d, [{ workflowId: v.summary.workflowId, values: shown }], { all: true, ...(v.waiting ? { also: [v.waiting.record] } : {}) })
-      return d.toCase(c, v, { ...(links ? { links } : {}), ...(deliveries ? { deliveries } : {}), subjects })
+      // Linked cases by their own names too ("Called Read a paper · ATTAIN-2"), not only their playbook's
+      const linkTitles = new Map<string, string>()
+      if (v.links?.length) {
+        const linked = (await Promise.all(v.links.slice(0, 50).map((l) => svc.kernel.getCaseView(l.caseId, actor).catch(() => undefined))))
+          .filter((x): x is NonNullable<typeof x> => !!x)
+          .map((x) => ({ caseId: x.summary.caseId, workflowId: x.summary.workflowId, values: Object.fromEntries(Object.entries(x.values).map(([k, y]) => [k, y.hidden ? undefined : y.value])) }))
+        const titles = await subjectTitles(svc, actor, c, d, linked)
+        for (const l of linked) {
+          const caseType = c.project.workflows[l.workflowId]?.caseType
+          const subject = d.caseSubject(l.values, caseType)
+          linkTitles.set(l.caseId, d.caseTitle(l.values, l.caseId, caseType, c.project, subject && titles.get(subject.id)))
+        }
+      }
+      return d.toCase(c, v, { ...(links ? { links } : {}), ...(deliveries ? { deliveries } : {}), subjects, linkTitles })
     },
 
     async startCase(ctx: RequestContext, input: MwStartCaseInput): Promise<MwCaseSummary | MwStartCaseRefusal> {
@@ -1686,11 +1701,19 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
      * initial state as them ("kept from chat <id>"), with whether its quote is in the source.
      * Refused for an entity whose type doesn't say `keep_from_chat`.
      */
-    async keepRecords(ctx: RequestContext, input: MwRecordKeepInput): Promise<MwRecordKeepResult> {
+    async keepRecords(ctx: RequestContext, workspaceId: string, input: MwRecordKeepInput): Promise<MwRecordKeepResult> {
       const { svc, actor, d } = await begin(ctx)
       if (!input?.entity || !Array.isArray(input.rows) || !input.rows.length) throw new Error('Choose the rows to keep.')
       if (typeof input.chatId !== 'string' || !input.chatId.trim()) throw new Error('Say which chat the rows come from.')
-      const r = await recordsOf(svc).keep({ entity: input.entity, rows: input.rows, chatId: input.chatId.trim() }, actor)
+      const chatId = input.chatId.trim()
+      // The chat names the rows' source on every version ("kept from chat <id>"): it must be a
+      // chat of this workspace about a record, not any id the client sends.
+      const session = await deps.sessionManager.getSession(chatId).catch(() => null)
+      if (!session || session.workspaceId !== workspaceId) throw new Error('Rows can only be kept from a chat in this workspace; that chat was not found here.')
+      const { PgChatAnchorStore } = await import('@memwise/db')
+      const anchor = await new PgChatAnchorStore().get(svc.kernel.pool, chatId)
+      if (anchor?.anchorKind !== 'record') throw new Error('Rows can only be kept from a chat about a record; that chat is not about one.')
+      const r = await recordsOf(svc).keep({ entity: input.entity, rows: input.rows, chatId }, actor)
       if (r.rows.some((x) => x.id)) emitMemwiseChange({ kind: 'records', entity: r.entity })
       return d.toKeepResult(r)
     },
@@ -1924,7 +1947,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.RECORDS_PAGE, (ctx, _ws: string, input) => api.recordPage(ctx, input))
   server.handle(ch.RECORDS_CREATE, (ctx, _ws: string, input) => api.createRecord(ctx, input))
   server.handle(ch.RECORDS_UPDATE, (ctx, _ws: string, input) => api.updateRecord(ctx, input))
-  server.handle(ch.RECORDS_KEEP, (ctx, _ws: string, input) => api.keepRecords(ctx, input))
+  server.handle(ch.RECORDS_KEEP, (ctx, ws: string, input) => api.keepRecords(ctx, ws, input))
   server.handle(ch.RECORDS_TRANSITION, (ctx, _ws: string, input) => api.transitionRecord(ctx, input))
   server.handle(ch.RECORDS_QUERY, (ctx, _ws: string, input) => api.queryRecords(ctx, input))
   server.handle(ch.RECORDS_TREE, (ctx, _ws: string, input) => api.recordTree(ctx, input))
