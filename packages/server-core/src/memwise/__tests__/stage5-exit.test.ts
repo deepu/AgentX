@@ -233,8 +233,11 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     expect((await api.call<{ sessionId: string }>(anikaCtx, ch.CHANGES_CHAT, { crId })).sessionId).toBe(chatId)
     expect(await api.call<MwChangeRequest>(anikaCtx, ch.CHANGES_GET, { crId })).toMatchObject({ sessionId: chatId })
     // The project shell finds the same chat by the request's label, and continues it.
-    expect(await api.call<unknown>(anikaCtx, ch.CHAT_FIND, { anchor: { kind: 'change', id: 'CR-014' } })).toMatchObject({ sessionId: chatId })
-    expect(await api.call<{ sessionId: string }>(anikaCtx, ch.CHAT_OPEN, { anchor: { kind: 'change', id: 'CR-014' }, reuse: true })).toEqual({ sessionId: chatId })
+    expect(await api.call<unknown>(anikaCtx, ch.CHAT_FIND, { anchor: { kind: 'change', id: 'CR-014', project: 'etmf' } })).toMatchObject({ sessionId: chatId })
+    expect(await api.call<{ sessionId: string }>(anikaCtx, ch.CHAT_OPEN, { anchor: { kind: 'change', id: 'CR-014', project: 'etmf' }, reuse: true })).toEqual({ sessionId: chatId })
+    // A bare number could be another project's request: calls that change one, or chat on it, need its id or its project.
+    await expect(api.call(anikaCtx, ch.CHAT_FIND, { anchor: { kind: 'change', id: 'CR-014' } })).rejects.toThrow(/which project/)
+    await expect(api.call(anikaCtx, ch.CHANGES_UPDATE, { crId: 'CR-014', reason: 'x' })).rejects.toThrow(/which project/)
 
     // The chat's agent, through its playbook tools.
     const tools = buildMemwiseToolCallbacks({ sessionId: chatId })
@@ -271,6 +274,9 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     expect(sent.changeRequest!.signoffs.map((s) => [s.role, s.status])).toEqual([['raiser', 'signed'], ['qa', 'waiting']])
     // The chat can't change it while QA has it.
     await expect(buildMemwiseToolCallbacks({ sessionId: chatId }).write({ summary: 'x', files: [{ path: QC_PATH, content: 'x' }] })).rejects.toThrow(/in review/)
+    // Nor the app's draft editor.
+    const draftId = sent.changeRequest!.draftId
+    expect(await api.call(anikaCtx, ch.DRAFTS_WRITE, { draftId, summary: 'x', files: [{ path: QC_PATH, content: 'x' }] })).toMatchObject({ applied: false, message: expect.stringMatching(/in review/) })
 
     // A CV arrives before QA signs: its case pins version 1.
     const old = await fileAtQc(kernel(), await cvFor('site101', 'pi101', 'Investigator CV - site 101 renewal.pdf', true, 45))

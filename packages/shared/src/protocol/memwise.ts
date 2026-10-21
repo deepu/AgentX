@@ -638,10 +638,11 @@ export type MwChatAnchor =
   | { kind: 'project' | 'waiting'; id: string }
   | { kind: 'dashboard'; domain: string; id: string }
   /**
-   * Stage 5 (doc 26 §8): a change request (`id`: its id or label, `CR-014`), and a project's audit
-   * trail and TMF index (`id`: the project).
+   * Stage 5 (doc 26 §8): a change request (`id`: its id, or its label `CR-014` with its `project`:
+   * numbers are per project), and a project's audit trail and TMF index (`id`: the project).
    */
-  | { kind: 'change' | 'audit' | 'tmf'; id: string }
+  | { kind: 'change'; id: string; project?: string }
+  | { kind: 'audit' | 'tmf'; id: string }
 
 /** The person's latest chat on an anchor (`memwise:chat:find`): null when there is none yet. */
 export interface MwFindChatResult {

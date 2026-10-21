@@ -11,11 +11,13 @@
  * memwise:changes:list        (ws, { project?, workflowId?, status? })           → MwChangeRequestSummary[]
  * memwise:changes:get         (ws, { crId, project? })                            → MwChangeRequest | null   (crId: id or `CR-014`)
  * memwise:changes:open        (ws, MwOpenChangeInput)                             → MwOpenChangeResult
- * memwise:changes:update      (ws, { crId, title?, reason?, validationSet? })     → MwChangeRequest
- * memwise:changes:validate    (ws, { crId, set? })                                → MwChangeValidation
- * memwise:changes:sign        (ws, { crId, password })                            → MwChangeSignResult
- * memwise:changes:withdraw    (ws, { crId, reason? })                             → MwChangeRequest
- * memwise:changes:chat        (ws, { crId })                                      → { sessionId: string }
+ * memwise:changes:update      (ws, { crId, project?, title?, reason?, validationSet? }) → MwChangeRequest
+ * memwise:changes:validate    (ws, { crId, project?, set? })                      → MwChangeValidation
+ * memwise:changes:sign        (ws, { crId, project?, password })                  → MwChangeSignResult
+ * memwise:changes:withdraw    (ws, { crId, project?, reason? })                   → MwChangeRequest
+ * memwise:changes:chat        (ws, { crId, project? })                            → { sessionId: string }
+ *   The calls that change a request (update, validate, sign, withdraw, chat) take its id (`cr_…`),
+ *   or its label with its `project`: numbers are per project, so a bare `CR-014` is refused.
  * memwise:audit:log           (ws, MwAuditQuery)                                  → MwAuditLog
  * memwise:audit:logExport     (ws, MwAuditQuery)                                  → MwAuditExport (JSON, signed)
  * memwise:audit:verify        (ws, { project } | { exportJson })                  → MwAuditVerifyResult

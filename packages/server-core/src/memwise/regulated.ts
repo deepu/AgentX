@@ -204,7 +204,7 @@ export function buildChangeToolCallbacks(opts: { sessionId: string; log?: (messa
 
   function requireOpen(v: ChangeRequestView): void {
     if (v.status !== 'open') {
-      throw new Error(`${v.label} is ${v.status.replace('_', ' ')}: its draft can't be changed now.${v.status === 'in_review' ? ' Withdraw it and raise a new one to change it again.' : ''}`)
+      throw new Error(`${v.label} is ${v.status.replace('_', ' ')}: its draft can't be changed now.${v.status === 'in_review' ? ' Withdraw it to change it, or QA sends it back.' : ''}`)
     }
   }
 

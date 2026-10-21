@@ -832,11 +832,11 @@ export interface ElectronAPI {
   memwiseListChangeRequests(workspaceId: string, filter: { project?: string; workflowId?: string; status?: import('@memwise/shared/protocol').MwChangeRequestStatus | import('@memwise/shared/protocol').MwChangeRequestStatus[] }): Promise<import('@memwise/shared/protocol').MwChangeRequestSummary[]>
   memwiseGetChangeRequest(workspaceId: string, input: { crId: string; project?: string }): Promise<import('@memwise/shared/protocol').MwChangeRequest | null>
   memwiseOpenChangeRequest(workspaceId: string, input: import('@memwise/shared/protocol').MwOpenChangeInput): Promise<import('@memwise/shared/protocol').MwOpenChangeResult>
-  memwiseUpdateChangeRequest(workspaceId: string, input: { crId: string; title?: string; reason?: string; validationSet?: import('@memwise/shared/protocol').MwValidationSet }): Promise<import('@memwise/shared/protocol').MwChangeRequest>
-  memwiseValidateChangeRequest(workspaceId: string, input: { crId: string; set?: import('@memwise/shared/protocol').MwValidationSet }): Promise<import('@memwise/shared/protocol').MwChangeValidation>
-  memwiseSignChangeRequest(workspaceId: string, input: { crId: string; password: string }): Promise<import('@memwise/shared/protocol').MwChangeSignResult>
-  memwiseWithdrawChangeRequest(workspaceId: string, input: { crId: string; reason?: string }): Promise<import('@memwise/shared/protocol').MwChangeRequest>
-  memwiseOpenChangeChat(workspaceId: string, input: { crId: string }): Promise<{ sessionId: string }>
+  memwiseUpdateChangeRequest(workspaceId: string, input: { crId: string; project?: string; title?: string; reason?: string; validationSet?: import('@memwise/shared/protocol').MwValidationSet }): Promise<import('@memwise/shared/protocol').MwChangeRequest>
+  memwiseValidateChangeRequest(workspaceId: string, input: { crId: string; project?: string; set?: import('@memwise/shared/protocol').MwValidationSet }): Promise<import('@memwise/shared/protocol').MwChangeValidation>
+  memwiseSignChangeRequest(workspaceId: string, input: { crId: string; project?: string; password: string }): Promise<import('@memwise/shared/protocol').MwChangeSignResult>
+  memwiseWithdrawChangeRequest(workspaceId: string, input: { crId: string; project?: string; reason?: string }): Promise<import('@memwise/shared/protocol').MwChangeRequest>
+  memwiseOpenChangeChat(workspaceId: string, input: { crId: string; project?: string }): Promise<{ sessionId: string }>
   memwiseGetAuditLog(workspaceId: string, query: import('@memwise/shared/protocol').MwAuditQuery): Promise<import('@memwise/shared/protocol').MwAuditLog>
   memwiseExportAuditLog(workspaceId: string, query: import('@memwise/shared/protocol').MwAuditQuery): Promise<import('@memwise/shared/protocol').MwAuditExport>
   memwiseVerifyAuditLog(workspaceId: string, input: { project: string } | { exportJson: string }): Promise<import('@memwise/shared/protocol').MwAuditVerifyResult>

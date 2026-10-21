@@ -110,6 +110,17 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
   }
 
   /**
+   * The request a call changes (or anchors a chat to): by its id, or by its label with its project.
+   * A bare `CR-014` isn't enough: numbers are per project, and it could be another project's.
+   */
+  async function requireTarget(svc: MemwiseService, actor: PersonActor, crId: unknown, project: unknown): Promise<ChangeRequestView> {
+    const id = requireId(crId, 'change request')
+    const p = str(project)
+    if (!id.startsWith('cr_') && !p) throw new Error(`Say which project ${id} is in: change request numbers are per project.`)
+    return requireView(svc, actor, id, id.startsWith('cr_') ? undefined : p)
+  }
+
+  /**
    * The person's chat on a change request (anchor kind `change`): reused while its session is
    * there, else made, with the request as its `<memwise_context>` and the `playbook_*` tools on
    * the request's draft. `request` becomes its first, visible message; without one the agent
@@ -192,7 +203,7 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
 
   /** Where a Stage 5 anchor's chats are stored: a change request by its id (the anchor may name its label). */
   async function anchorKeyOf(svc: MemwiseService, actor: PersonActor, anchor: StageFiveAnchor): Promise<{ kind: 'change' | 'audit' | 'tmf'; id: string }> {
-    if (anchor.kind === 'change') return { kind: 'change', id: (await requireView(svc, actor, anchor.id)).id }
+    if (anchor.kind === 'change') return { kind: 'change', id: (await requireTarget(svc, actor, anchor.id, anchor.project)).id }
     return { kind: anchor.kind, id: requireId(anchor.id, 'project') }
   }
 
@@ -225,7 +236,7 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
       const { svc, actor } = await begin(ctx)
       const message = str(input.message)
       if (input.anchor.kind === 'change') {
-        const v = await requireView(svc, actor, input.anchor.id)
+        const v = await requireTarget(svc, actor, input.anchor.id, input.anchor.project)
         return { sessionId: await openChangeChat(svc, actor, workspaceId, v, message, !!input.reuse) }
       }
       const key = await anchorKeyOf(svc, actor, input.anchor)
@@ -281,9 +292,9 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
       return { changeRequest: toChangeRequest(fresh), ...(sessionId ? { sessionId } : {}) }
     },
 
-    async updateChange(ctx: RequestContext, input: { crId: string; title?: string; reason?: string; validationSet?: MwValidationSet }): Promise<MwChangeRequest> {
+    async updateChange(ctx: RequestContext, input: { crId: string; project?: string; title?: string; reason?: string; validationSet?: MwValidationSet }): Promise<MwChangeRequest> {
       const { svc, actor, r } = await begin(ctx)
-      const v = await requireView(svc, actor, input?.crId)
+      const v = await requireTarget(svc, actor, input?.crId, input?.project)
       const set = validationSet(input.validationSet)
       return toChangeRequest(await r.changes.update(v.id, {
         ...(typeof input.title === 'string' ? { title: input.title } : {}),
@@ -292,30 +303,30 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
       }, actor))
     },
 
-    async validateChange(ctx: RequestContext, input: { crId: string; set?: MwValidationSet }): Promise<MwChangeValidation> {
+    async validateChange(ctx: RequestContext, input: { crId: string; project?: string; set?: MwValidationSet }): Promise<MwChangeValidation> {
       const { svc, actor, r } = await begin(ctx)
-      const v = await requireView(svc, actor, input?.crId)
+      const v = await requireTarget(svc, actor, input?.crId, input?.project)
       const set = validationSet(input.set)
       return toChangeValidation(await r.changes.validate(v.id, actor, set ? { set } : {}))
     },
 
-    async signChange(ctx: RequestContext, input: { crId: string; password: string }): Promise<MwChangeSignResult> {
+    async signChange(ctx: RequestContext, input: { crId: string; project?: string; password: string }): Promise<MwChangeSignResult> {
       const { svc, actor, r } = await begin(ctx)
-      const v = await requireView(svc, actor, input?.crId)
+      const v = await requireTarget(svc, actor, input?.crId, input?.project)
       const result = toChangeSignResult(await r.changes.sign(v.id, { password: typeof input.password === 'string' ? input.password : '' }, actor))
       const retryAfter = result.status === 'locked' ? (await svc.kernel.people.get(actor.personId).catch(() => undefined))?.lockedUntil : undefined
       return retryAfter ? { ...result, retryAfter } : result
     },
 
-    async withdrawChange(ctx: RequestContext, input: { crId: string; reason?: string }): Promise<MwChangeRequest> {
+    async withdrawChange(ctx: RequestContext, input: { crId: string; project?: string; reason?: string }): Promise<MwChangeRequest> {
       const { svc, actor, r } = await begin(ctx)
-      const v = await requireView(svc, actor, input?.crId)
+      const v = await requireTarget(svc, actor, input?.crId, input?.project)
       return toChangeRequest(await r.changes.withdraw(v.id, actor, str(input.reason)))
     },
 
-    async changeChat(ctx: RequestContext, workspaceId: string, input: { crId: string }): Promise<{ sessionId: string }> {
+    async changeChat(ctx: RequestContext, workspaceId: string, input: { crId: string; project?: string }): Promise<{ sessionId: string }> {
       const { svc, actor } = await begin(ctx)
-      const v = await requireView(svc, actor, input?.crId)
+      const v = await requireTarget(svc, actor, input?.crId, input?.project)
       return { sessionId: await openChangeChat(svc, actor, workspaceId, v) }
     },
 
