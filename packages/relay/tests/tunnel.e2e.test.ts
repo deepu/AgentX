@@ -67,14 +67,16 @@ describe('forwarding through the tunnel', () => {
     cleanup.push(() => t.tunnel.close());
     const base = `${r.url}/x/${t.identity.installId}`;
     // Over the core's limit: refused by the core, though the relay would carry it.
-    expect((await fetch(`${base}/f/t/api/files`, { method: 'POST', body: bytes(1024 * 1024 + 1) })).status).toBe(413);
-    expect(await (await fetch(`${base}/f/t/api/files`, { method: 'POST', body: bytes(1024 * 1024) })).text()).toBe(String(1024 * 1024));
+    // Fresh connections: a refusal sent before the body is read leaves the connection unusable,
+    // and Bun 1.3's fetch can hang reusing it.
+    expect((await fetch(`${base}/f/t/api/files`, { method: 'POST', body: bytes(1024 * 1024 + 1), keepalive: false })).status).toBe(413);
+    expect(await (await fetch(`${base}/f/t/api/files`, { method: 'POST', body: bytes(1024 * 1024), keepalive: false })).text()).toBe(String(1024 * 1024));
     // Bodies still arriving count against the total; the handler has them once complete.
     const streaming = (n: number) => new ReadableStream<Uint8Array>({
       async start(c) { for (let i = 0; i < n; i++) { c.enqueue(bytes(256 * 1024)); await Bun.sleep(5); } c.close(); },
     });
     const statuses = await Promise.all([0, 1, 2, 3, 4].map(() =>
-      fetch(`${base}/f/t/api/files`, { method: 'POST', body: streaming(4), duplex: 'half' } as RequestInit).then((x) => x.status)));
+      fetch(`${base}/f/t/api/files`, { method: 'POST', body: streaming(4), duplex: 'half', keepalive: false } as RequestInit).then((x) => x.status)));
     // Five 1 MiB bodies at once against 2 MiB: some wait their turn (503), the rest arrive whole.
     expect(statuses).toContain(200);
     expect(statuses).toContain(503);

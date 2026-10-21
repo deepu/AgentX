@@ -160,7 +160,9 @@ describe('the API refuses', () => {
   });
 
   test('content that does not match its digest, a bad manifest, and too much', async () => {
-    const post = (f: FormData) => fetch(`${r.url}/p/api/publications`, { method: 'POST', body: f });
+    // A fresh connection each time: a refusal sent before the body is read leaves the connection
+    // unusable, and Bun 1.3's fetch can hang reusing it.
+    const post = (f: FormData) => fetch(`${r.url}/p/api/publications`, { method: 'POST', body: f, keepalive: false });
     expect((await post(form({ manifest: await manifestFor('<p>a</p>'), content: new Blob(['<p>b</p>']) }))).status).toBe(400);
     expect((await post(form({ manifest: '{"version":2}', content: new Blob(['x']) }))).status).toBe(400);
     expect((await post(form({ content: new Blob(['x']) }))).status).toBe(400);
@@ -168,7 +170,7 @@ describe('the API refuses', () => {
     expect((await post(form({ manifest: await manifestFor(big), content: new Blob([big]) }))).status).toBe(413);
     const huge = new Uint8Array(12 * 1024 * 1024);
     expect((await post(form({ manifest: await manifestFor('a'), content: new Blob([huge]) }))).status).toBe(413);
-    expect((await fetch(`${r.url}/p/api/publications`, { method: 'POST', body: 'plain', headers: { 'content-type': 'text/plain' } })).status).toBe(400);
+    expect((await fetch(`${r.url}/p/api/publications`, { method: 'POST', body: 'plain', headers: { 'content-type': 'text/plain' }, keepalive: false })).status).toBe(400);
   });
 
   test('unknown pages and ids are a plain 404', async () => {
