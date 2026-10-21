@@ -19,7 +19,7 @@ import type {
   MwAuditExport, MwAuditExportInput, MwAuditTrail, MwSetPasswordInput, MwSetPasswordResult, MwDashboard, MwDashboardInput, MwDomain, MwFileData, MwRecordCreateInput,
   MwRecordPage, MwRecordPageInput, MwRecordQueryInput, MwRecordQueryResult, MwRecordTransitionInput, MwRecordUpdateInput,
   MwRecordKeepInput, MwRecordKeepResult,
-  MwPage, MwPageChange, MwPageChangeDecideInput, MwPageKeepInput, MwPageRefreshResult, MwPageSummary, MwPageVersion, MwPageWriteResult,
+  MwPage, MwPageChange, MwPageChangeDecideInput, MwPageCreateInput, MwPageKeepInput, MwPageRefreshResult, MwPageSummary, MwPageVersion, MwPageWriteResult,
   MwProjectAskInput, MwProjectAskResult,
   MwRecordWriteResult, MwReleaseTriggerInput, MwSaveNoteInput, MwSaveViewInput, MwTreeInput, MwTreeNode, MwTrigger, MwView,
 } from '@memwise/shared/protocol'
@@ -132,6 +132,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.PAGES_UNDO,
   RPC_CHANNELS.memwise.PAGES_KEEP,
   RPC_CHANNELS.memwise.PAGES_ARCHIVE,
+  RPC_CHANNELS.memwise.PAGES_CREATE,
   RPC_CHANNELS.memwise.PAGES_REFRESH,
   RPC_CHANNELS.memwise.PAGE_CHANGES_GET,
   RPC_CHANNELS.memwise.PAGE_CHANGES_DECIDE,
@@ -1497,6 +1498,19 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       return toMwPageWriteResult(r, await peopleNames(svc))
     },
 
+    async createPage(ctx: RequestContext, input: MwPageCreateInput): Promise<MwPageWriteResult> {
+      const { svc, actor } = await begin(ctx)
+      if (!input?.projectId) return { applied: false, status: 'invalid', message: 'Choose a project.' }
+      const made = await svc.kernel.pages.create({
+        project: input.projectId, title: input.title, body: input.body ?? '',
+        ...(input.question ? { question: input.question } : {}), ...(input.parent ? { parent: input.parent } : {}),
+        ...(input.sumsChildren ? { sumsChildren: true } : {}),
+      }, actor)
+      if (!made.applied || input.status !== 'kept' || !made.page) return toMwPageWriteResult(made, await peopleNames(svc))
+      const kept = await svc.kernel.pages.keep(made.page.id, { ...(input.every ? { every: input.every } : {}), ...(input.until ? { until: input.until } : {}) }, actor)
+      return toMwPageWriteResult(kept, await peopleNames(svc))
+    },
+
     async archivePage(ctx: RequestContext, input: { pageId: string }): Promise<MwPageWriteResult> {
       const { svc, actor } = await begin(ctx)
       if (!input?.pageId) return { applied: false, status: 'invalid', message: 'Choose a page.' }
@@ -2267,6 +2281,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.PAGES_UNDO, (ctx, _ws: string, input) => api.undoPage(ctx, input))
   server.handle(ch.PAGES_KEEP, (ctx, _ws: string, input) => api.keepPage(ctx, input))
   server.handle(ch.PAGES_ARCHIVE, (ctx, _ws: string, input) => api.archivePage(ctx, input))
+  server.handle(ch.PAGES_CREATE, (ctx, _ws: string, input) => api.createPage(ctx, input))
   server.handle(ch.PAGES_REFRESH, (ctx, _ws: string, input) => api.refreshPage(ctx, input))
   server.handle(ch.PAGE_CHANGES_GET, (ctx, _ws: string, input) => api.getPageChange(ctx, input))
   server.handle(ch.PAGE_CHANGES_DECIDE, (ctx, _ws: string, input) => api.decidePageChange(ctx, input))

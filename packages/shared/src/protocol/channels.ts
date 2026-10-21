@@ -508,6 +508,7 @@ export const RPC_CHANNELS = {
     PAGES_UNDO: 'memwise:pages:undo',
     PAGES_KEEP: 'memwise:pages:keep',
     PAGES_ARCHIVE: 'memwise:pages:archive',
+    PAGES_CREATE: 'memwise:pages:create',
     PAGES_REFRESH: 'memwise:pages:refresh',
     PAGE_CHANGES_GET: 'memwise:pageChanges:get',
     PAGE_CHANGES_DECIDE: 'memwise:pageChanges:decide',

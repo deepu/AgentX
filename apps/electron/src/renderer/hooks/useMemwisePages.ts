@@ -11,7 +11,7 @@ import { useMemo } from 'react'
 import { useStore } from 'jotai'
 import i18n from 'i18next'
 import type {
-  MwChange, MwPage, MwPageChange, MwPageChangeDecideInput, MwPageKeepInput, MwPageRefreshResult, MwPageSummary, MwPageVersion,
+  MwChange, MwPage, MwPageChange, MwPageCreateInput, MwPageChangeDecideInput, MwPageKeepInput, MwPageRefreshResult, MwPageSummary, MwPageVersion,
   MwPageWriteResult, MwProjectAskInput, MwProjectAskResult, MwSubmitResult,
 } from '@memwise/shared/protocol'
 import { memwiseWorkspaceIdAtom } from '@/atoms/memwise'
@@ -87,6 +87,7 @@ export interface MemwisePageCalls {
   refresh: (pageId: string) => Promise<MwPageRefreshResult>
   decide: (input: MwPageChangeDecideInput) => Promise<MwSubmitResult>
   ask: (input: MwProjectAskInput) => Promise<MwProjectAskResult>
+  create: (input: MwPageCreateInput) => Promise<MwPageWriteResult>
 }
 
 export function useMemwisePageCalls(): MemwisePageCalls {
@@ -105,6 +106,7 @@ export function useMemwisePageCalls(): MemwisePageCalls {
       refresh: async pageId => { const { ws, api } = need('memwiseRefreshPage'); return api.memwiseRefreshPage(ws, { pageId }) },
       decide: async input => { const { ws, api } = need('memwiseDecidePageChange'); return api.memwiseDecidePageChange(ws, input) },
       ask: async input => { const { ws, api } = need('memwiseProjectAsk'); return api.memwiseProjectAsk(ws, input) },
+      create: async input => { const { ws, api } = need('memwiseCreatePage'); return api.memwiseCreatePage(ws, input) },
     }
   }, [store])
 }

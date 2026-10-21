@@ -825,6 +825,7 @@ export interface ElectronAPI {
   /** Keep a draft: refreshed on a schedule, optionally under a parent page. */
   memwiseKeepPage(workspaceId: string, input: import('@memwise/shared/protocol').MwPageKeepInput): Promise<import('@memwise/shared/protocol').MwPageWriteResult>
   memwiseArchivePage(workspaceId: string, input: { pageId: string }): Promise<import('@memwise/shared/protocol').MwPageWriteResult>
+  memwiseCreatePage(workspaceId: string, input: import('@memwise/shared/protocol').MwPageCreateInput): Promise<import('@memwise/shared/protocol').MwPageWriteResult>
   /** Start the page's refresh now. */
   memwiseRefreshPage(workspaceId: string, input: { pageId: string }): Promise<import('@memwise/shared/protocol').MwPageRefreshResult>
   /** "Review an answer change". */

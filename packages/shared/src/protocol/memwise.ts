@@ -1957,6 +1957,7 @@ export interface MwRecordKeepResult {
 // memwise:pages:versions        (workspaceId, { pageId })                            → MwPageVersion[]
 // memwise:pages:undo            (workspaceId, { pageId, version? })                  → MwPageWriteResult
 // memwise:pages:keep            (workspaceId, MwPageKeepInput)                       → MwPageWriteResult
+// memwise:pages:create         (workspaceId, MwPageCreateInput)                     → MwPageWriteResult
 // memwise:pages:archive         (workspaceId, { pageId })                            → MwPageWriteResult
 // memwise:pages:refresh         (workspaceId, { pageId })                            → MwPageRefreshResult
 // memwise:pageChanges:get       (workspaceId, { changeId })                          → MwPageChange | null
@@ -2066,6 +2067,23 @@ export interface MwPageWriteResult {
   status?: 'applied' | 'forbidden' | 'invalid' | 'stale' | 'missing' | 'regulated'
   message?: string
   page?: MwPage
+}
+
+/**
+ * A page made by a person, not from a question ("Save as a page" from a records list). With
+ * `status: 'kept'` it is kept at once (`every`, `until` as in MwPageKeepInput).
+ */
+export interface MwPageCreateInput {
+  projectId: string
+  title: string
+  /** Markdown with fenced blocks, e.g. a ```records block `{ "entity": "etmf.Site", "filter": "status = 'active'", "columns": ["country"] }`. */
+  body?: string
+  question?: string
+  parent?: string
+  sumsChildren?: boolean
+  status?: 'draft' | 'kept'
+  every?: string
+  until?: string
 }
 
 export interface MwPageKeepInput {

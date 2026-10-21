@@ -101,36 +101,49 @@ describe('pages channels', () => {
 
   it('maps pages for the screens: project, owner and history names', async () => {
     const { call, client } = setup()
-    const [s] = await call(client, ch.PAGES_LIST, { projectId: 'literature' })
+    const [s] = await call<any>(client, ch.PAGES_LIST, { projectId: 'literature' })
     expect(s).toMatchObject({ id: 'page_wl', projectId: 'literature', parent: 'page_glp1', ownerName: 'Leah Okafor', pendingChange: { label: '1 new trial' } })
     expect(s.domain).toBeUndefined()
-    const page = await call(client, ch.PAGES_GET, { pageId: 'page_wl' })
+    const page = await call<any>(client, ch.PAGES_GET, { pageId: 'page_wl' })
     expect(page).toMatchObject({ breadcrumb: [{ title: 'GLP-1' }], history: [{ kind: 'accepted', byName: 'Leah Okafor' }], changedFromChat: { sections: ['Trials'] } })
-    expect(await call(client, ch.PAGES_GET, { pageId: 'nope' })).toBeNull()
-    expect(await call(client, ch.PAGES_VERSIONS, { pageId: 'page_wl' })).toEqual([{ version: 1, title: 'Weight loss', body: 'b', by: LEAH.id, byName: 'Leah Okafor', via: 'chat:s1', reason: 'Asked a question', at: 't' }])
+    expect(await call<any>(client, ch.PAGES_GET, { pageId: 'nope' })).toBeNull()
+    expect(await call<any>(client, ch.PAGES_VERSIONS, { pageId: 'page_wl' })).toEqual([{ version: 1, title: 'Weight loss', body: 'b', by: LEAH.id, byName: 'Leah Okafor', via: 'chat:s1', reason: 'Asked a question', at: 't' }])
   })
 
   it('writes go to the kernel as the person; refusals keep their status', async () => {
     const { call, calls, client } = setup()
-    expect(await call(client, ch.PAGES_UNDO, { pageId: 'page_wl', version: 4 })).toEqual({ applied: false, status: 'regulated', message: 'Regulated.' })
-    expect((await call(client, ch.PAGES_KEEP, { pageId: 'page_wl', every: 'daily', until: '2026-10-28', parent: null })).applied).toBe(true)
+    expect(await call<any>(client, ch.PAGES_UNDO, { pageId: 'page_wl', version: 4 })).toEqual({ applied: false, status: 'regulated', message: 'Regulated.' })
+    expect((await call<any>(client, ch.PAGES_KEEP, { pageId: 'page_wl', every: 'daily', until: '2026-10-28', parent: null })).applied).toBe(true)
     expect(calls.find((c) => c.method === 'pages.keep')!.args.slice(0, 2)).toEqual(['page_wl', { every: 'daily', until: '2026-10-28', parent: null }])
-    expect(await call(client, ch.PAGES_REFRESH, { pageId: 'page_wl' })).toEqual({ started: true, runId: 'run_2', caseId: 'case_2' })
-    expect((await call(client, ch.PAGES_ARCHIVE, { pageId: 'page_wl' })).page.status).toBe('archived')
+    expect(await call<any>(client, ch.PAGES_REFRESH, { pageId: 'page_wl' })).toEqual({ started: true, runId: 'run_2', caseId: 'case_2' })
+    expect((await call<any>(client, ch.PAGES_ARCHIVE, { pageId: 'page_wl' })).page.status).toBe('archived')
+  })
+
+  it('"Save as a page": a page made by the person, kept at once when asked', async () => {
+    const { call, calls, client } = setup()
+    const body = '```records\n{"entity":"etmf.Site","filter":"status = \'active\'"}\n```'
+    const draft = await call<any>(client, ch.PAGES_CREATE, { projectId: 'literature', title: 'Active sites', body })
+    expect(draft).toMatchObject({ applied: true, page: { id: 'page_new', title: 'Active sites', status: 'draft' } })
+    expect(calls.find((c) => c.method === 'pages.create')!.args[0]).toEqual({ project: 'literature', title: 'Active sites', body })
+    expect(calls.some((c) => c.method === 'pages.keep')).toBe(false)
+    const kept = await call<any>(client, ch.PAGES_CREATE, { projectId: 'literature', title: 'Active sites', body, status: 'kept', every: 'daily' })
+    expect(kept.applied).toBe(true)
+    expect(calls.find((c) => c.method === 'pages.keep')!.args.slice(0, 2)).toEqual(['page_new', { every: 'daily' }])
+    expect(await call<any>(client, ch.PAGES_CREATE, { title: 'x' })).toMatchObject({ applied: false, status: 'invalid' })
   })
 
   it('an answer change: the review screen, decisions with codes, and the waiting list item', async () => {
     const { call, client } = setup()
-    const change = await call(client, ch.PAGE_CHANGES_GET, { changeId: 'pch_1' })
+    const change = await call<any>(client, ch.PAGE_CHANGES_GET, { changeId: 'pch_1' })
     expect(change).toMatchObject({
       projectId: 'literature', label: '1 new trial', title: 'ATTAIN-MAINTAIN added', before: 'About 15% across 9 trials.', after: 'About 15% across 10 trials.',
       beforeBody: 'old', afterBody: 'new', from: { kind: 'schedule', every: 'mon' }, mayDecide: true, removed: [], leftOut: [],
     })
-    expect(await call(client, ch.PAGE_CHANGES_DECIDE, { changeId: 'pch_1', decision: 'accept' })).toEqual({ applied: true })
-    expect(await call(client, ch.PAGE_CHANGES_DECIDE, { changeId: 'pch_1', decision: 'send_back', comment: 'No' })).toEqual({ applied: false, message: 'Only the owner.', code: 'page.forbidden' })
-    expect((await call(client, ch.PAGE_CHANGES_DECIDE, { changeId: 'pch_1', decision: 'maybe' })).applied).toBe(false)
+    expect(await call<any>(client, ch.PAGE_CHANGES_DECIDE, { changeId: 'pch_1', decision: 'accept' })).toEqual({ applied: true })
+    expect(await call<any>(client, ch.PAGE_CHANGES_DECIDE, { changeId: 'pch_1', decision: 'send_back', comment: 'No' })).toEqual({ applied: false, message: 'Only the owner.', code: 'page.forbidden' })
+    expect((await call<any>(client, ch.PAGE_CHANGES_DECIDE, { changeId: 'pch_1', decision: 'maybe' })).applied).toBe(false)
 
-    const [item] = await call(client, ch.INBOX_LIST)
+    const [item] = await call<any>(client, ch.INBOX_LIST)
     expect(item).toMatchObject({
       kind: 'decision', caseTitle: 'Weight loss', stepTitle: 'Review an answer change',
       pageChange: { changeId: 'pch_1', pageId: 'page_wl', pageTitle: 'Weight loss', projectId: 'literature', label: '1 new trial', from: { kind: 'schedule', every: 'mon' } },
@@ -139,7 +152,7 @@ describe('pages channels', () => {
 
   it('asking in a project makes a draft page and a chat anchored to it that answers at once', async () => {
     const { call, calls, sessions, client } = setup()
-    const r = await call(client, ch.PROJECT_ASK, { projectId: 'literature', question: 'What are the side effects of GLP-1s, and how often?' })
+    const r = await call<any>(client, ch.PROJECT_ASK, { projectId: 'literature', question: 'What are the side effects of GLP-1s, and how often?' })
     expect(r).toEqual({ sessionId: 'session-1', pageId: 'page_new' })
     const create = calls.find((c) => c.method === 'pages.create')!.args[0] as Record<string, unknown>
     expect(create).toMatchObject({ project: 'literature', title: 'What are the side effects of GLP-1s', question: 'What are the side effects of GLP-1s, and how often?', chatId: 'session-1' })
@@ -149,7 +162,7 @@ describe('pages channels', () => {
     await expect(call(client, ch.PROJECT_ASK, { projectId: 'nowhere', question: 'x' })).rejects.toThrow('project')
     await expect(call(client, ch.PROJECT_ASK, { projectId: 'literature', question: ' ' })).rejects.toThrow('question')
     // The old home ask, on a home without an entity, asks into a page too.
-    const old = await call(client, ch.ASK, { domain: 'literature', question: 'And in teenagers?' })
+    const old = await call<any>(client, ch.ASK, { domain: 'literature', question: 'And in teenagers?' })
     expect(old).toMatchObject({ sessionId: 'session-2', pageId: 'page_new', entity: '', recordId: '' })
   })
 

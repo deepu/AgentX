@@ -507,6 +507,7 @@ export const CHANNEL_MAP = {
   memwiseUndoPage: invoke(RPC_CHANNELS.memwise.PAGES_UNDO),
   memwiseKeepPage: invoke(RPC_CHANNELS.memwise.PAGES_KEEP),
   memwiseArchivePage: invoke(RPC_CHANNELS.memwise.PAGES_ARCHIVE),
+  memwiseCreatePage: invoke(RPC_CHANNELS.memwise.PAGES_CREATE),
   memwiseRefreshPage: invoke(RPC_CHANNELS.memwise.PAGES_REFRESH),
   memwiseGetPageChange: invoke(RPC_CHANNELS.memwise.PAGE_CHANGES_GET),
   memwiseDecidePageChange: invoke(RPC_CHANNELS.memwise.PAGE_CHANGES_DECIDE),
