@@ -239,7 +239,7 @@ describe('review an answer change', () => {
   })
 
   test('a left-out link with an unsafe scheme shows as text', () => {
-    const html = render(<P.PageChangeView change={{ ...CHANGE, leftOut: [{ title: 'Sneaky', href: 'javascript:alert(1)' }] }} />)
+    const html = render(<P.PageChangeView change={{ ...CHANGE, leftOut: [{ title: 'Sneaky', href: 'javascript:alert(1)', why: 'Not a paper' }] }} />)
     expect(html).toContain('Sneaky')
     expect(html).not.toContain('javascript:')
   })
