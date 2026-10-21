@@ -116,7 +116,7 @@ describe('draft model', () => {
     expect(texts).toContain('No longer uses: Send welcome and Similar cases')
     expect(texts.join('\n')).not.toMatch(/\b[a-z]+\.[a-z_]+\b|`/)
     expect(texts).toContain("After “Check the client's answers”, checked now goes to “Screen for sanctions”")
-    expect(texts).toContain('New example cases: “Sanctions hit”')
+    expect(texts).toContain('New example runs: “Sanctions hit”')
     expect(texts.join('\n')).not.toMatch(/workflow|yaml|API/i)
     expect(lines.find(l => l.text.startsWith('New step'))).toMatchObject({ kind: 'added', step: 'screen' })
   })

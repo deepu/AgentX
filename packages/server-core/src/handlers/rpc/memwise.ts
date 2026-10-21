@@ -3,10 +3,10 @@
  * in @memwise/shared/protocol. The kernel is one per process (see memwise/host.ts); requests
  * act as the client's person: the signed-in person on a server, else who the owner acts as.
  */
-import { RPC_CHANNELS } from '@memwise/shared/protocol'
+import { RPC_CHANNELS, inboxItemProject, inboxItemLine as inboxItemLineOf } from '@memwise/shared/protocol'
 import type {
   MwCase, MwCaseSummary, MwDecideApprovalInput, MwDocument, MwEntityRow, MwEntityType, MwExplainInput, MwExplanation,
-  MwInboxItem, MwReturnedNote, MwLiveCounts, MwOpenChatInput, MwAskInput, MwAskResult, MwPerson, MwPlaybook, MwPlaybookSummary, MwRole, MwRunStatus,
+  MwInboxItem, MwReturnedNote, MwLiveCounts, MwOpenChatInput, MwChatAnchor, MwFindChatResult, MwAskInput, MwAskResult, MwPerson, MwPlaybook, MwPlaybookSummary, MwRole, MwRunStatus,
   MwSendEventInput, MwStartCaseInput, MwStartCaseRefusal, MwStatus, MwStepRecord, MwSubmitResult, MwSubmitStepInput,
   MwBuildPlaybookInput, MwBuildPlaybookResult, MwCheckDraftInput, MwCreateDraftInput, MwDraft, MwDraftEditInput,
   MwDraftReport, MwDraftSummary, MwExampleFromCaseInput, MwExampleFromCaseResult, MwSubmitDraftResult, MwVersion,
@@ -71,6 +71,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.ENTITIES_TYPES,
   RPC_CHANNELS.memwise.FILES_UPLOAD,
   RPC_CHANNELS.memwise.CHAT_OPEN,
+  RPC_CHANNELS.memwise.CHAT_FIND,
   RPC_CHANNELS.memwise.ASK,
   // Phase 3
   RPC_CHANNELS.memwise.PLAYBOOKS_VERSIONS,
@@ -145,7 +146,16 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 const DIGEST_MAX_CHARS = 16_000
 
 /** A chat about a case, step or playbook (a record chat is opened by `openRecordChat`). */
-type ExplainAnchor = Exclude<MwOpenChatInput['anchor'], { kind: 'record' } | { kind: 'page' }>
+type ExplainAnchor = Extract<MwChatAnchor, { kind: 'case' | 'step' | 'workflow' }>
+/** A chat about a project page (doc 26 §2): its Home, its Waiting for you page, or a dashboard. */
+type ProjectAnchor = Extract<MwChatAnchor, { kind: 'project' | 'waiting' | 'dashboard' }>
+/** How a chat in the project shell answers: the page on the right holds the detail (doc 26 §2). */
+const SHELL_STYLE = 'Keep replies short and conversational: a few sentences, a list at most. The page beside this chat holds the detail; point to it instead of repeating it.'
+
+function clipText(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n)}…` : s
+}
+
 /** Of that, the share a step's journal may take. */
 const DIGEST_JOURNAL_CHARS = 9_000
 
@@ -799,7 +809,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
   }
 
   /** An ordinary chat about a case, step or playbook: its record goes into the chat's system prompt. */
-  async function openExplainChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, workspaceId: string, anchor: ExplainAnchor): Promise<string> {
+  async function openExplainChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, workspaceId: string, anchor: ExplainAnchor, message?: string): Promise<string> {
     const { title, digest } = await caseDigest(svc, actor, c, d, anchor)
     const session = await deps.sessionManager.createSession(workspaceId, { name: `About ${title}` })
     const { PgChatAnchorStore } = await import('@memwise/db')
@@ -814,10 +824,12 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         digest,
         '',
         `This chat is about the ${kind} above. Answer only from this record; say "not recorded" when it does not say.`,
+        ...(message ? ['', SHELL_STYLE] : []),
       ].join('\n'),
       personName: (await personName(svc, actor.personId)) ?? undefined,
     })
-    kickoff(session.id, 'explain')
+    if (message) sendFirst(session.id, message)
+    else kickoff(session.id, 'explain')
     return session.id
   }
 
@@ -826,7 +838,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
    * chat's context, and the chat gets `record_get` / `record_query` (and `record_keep` when the
    * record's domain has an entity with `keep_from_chat`), acting as the person.
    */
-  async function openRecordChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, anchor: { entity: string; id: string }): Promise<string> {
+  async function openRecordChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, anchor: { entity: string; id: string }, message?: string): Promise<string> {
     if (!anchor.entity || !anchor.id) throw new Error(RECORD_MESSAGES.missing)
     const page = await recordsOf(svc).page(anchor.entity, anchor.id, actor)
     if (!page) throw new Error('That record was not found, or you may not see it.')
@@ -845,11 +857,117 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         recordDigest(page),
         '',
         `This chat is about the ${page.entityName.toLowerCase()} above, as it stands on its page. Look further with record_get and record_query; say "not recorded" when the records do not say.`,
+        ...(message ? ['', SHELL_STYLE] : []),
       ].join('\n'),
       personName: (await personName(svc, actor.personId)) ?? undefined,
     })
-    kickoff(session.id, 'explain')
+    if (message) sendFirst(session.id, message)
+    else kickoff(session.id, 'explain')
     return session.id
+  }
+
+  /** The anchors table's kind and id for an anchor. */
+  async function anchorKey(anchor: MwChatAnchor): Promise<{ kind: import('@memwise/db').ChatAnchorKind; id: string }> {
+    if (anchor.kind === 'record') {
+      const { recordAnchorId } = await import('@memwise/db')
+      return { kind: 'record', id: recordAnchorId(anchor.entity, anchor.id) }
+    }
+    if (anchor.kind === 'dashboard') return { kind: 'dashboard', id: `${anchor.domain}:${anchor.id}` }
+    return { kind: anchor.kind, id: anchor.id }
+  }
+
+  /** The person's latest chat on the anchor whose session still exists, or null. */
+  async function findAnchoredChat(svc: MemwiseService, actor: PersonActor, anchor: MwChatAnchor): Promise<string | null> {
+    return (await anchoredChats(svc, actor, anchor, 1))[0] ?? null
+  }
+
+  /** The person's chats on the anchor whose sessions still exist, latest first. */
+  async function anchoredChats(svc: MemwiseService, actor: PersonActor, anchor: MwChatAnchor, limit: number): Promise<string[]> {
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    const key = await anchorKey(anchor)
+    const found: string[] = []
+    for (const a of await new PgChatAnchorStore().forAnchor(svc.kernel.pool, key.kind, key.id, actor.personId)) {
+      if (found.includes(a.chatId)) continue
+      if (await deps.sessionManager.getSession(a.chatId).catch(() => null)) found.push(a.chatId)
+      if (found.length >= limit) break
+    }
+    return found
+  }
+
+  /**
+   * A chat about a project page (doc 26 §2): its Home, its Waiting for you page, or one of its
+   * dashboards. What the page shows goes into the chat's context; the chat looks records up with
+   * `record_get` and `record_query` as the person. It starts with the person's own question.
+   */
+  async function openProjectChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, workspaceId: string, anchor: ProjectAnchor, message?: string): Promise<string> {
+    const domainId = anchor.kind === 'dashboard' ? anchor.domain : anchor.id
+    const domain = c.project.domains?.[domainId]
+    const domainName = domainId === '*' ? 'all projects' : domain?.name ?? domainId
+    const who = (await personName(svc, actor.personId)) ?? undefined
+    const lines: string[] = []
+    if (anchor.kind === 'dashboard') {
+      const board = await recordsOf(svc).dashboard(domainId, anchor.id, {}, actor).catch(() => undefined)
+      if (!board) throw new Error('That page was not found.')
+      const shown = d.toDashboard(domainId, board)
+      lines.push(`The page "${shown.title}" in the project ${domainName}, as the person sees it now:`)
+      lines.push(clipText(JSON.stringify(shown.blocks ?? shown), DIGEST_MAX_CHARS / 2))
+    } else if (domainId === '*') {
+      // Waiting for you across every project.
+      const items = await enrichInbox(svc, actor, c, d, await svc.kernel.inbox(actor)).catch(() => [] as MwInboxItem[])
+      lines.push(items.length ? `Waiting for ${who ?? 'this person'} across all projects (${items.length}):` : `Nothing is waiting for ${who ?? 'this person'} in any project.`)
+      for (const i of items.slice(0, 60)) {
+        const p = inboxItemDomain(c, i)
+        lines.push(`- [${c.project.domains?.[p]?.name ?? p}] ${inboxItemLine(c, i)}`)
+      }
+    } else {
+      lines.push(`The project ${domainName}${domain?.description ? `: ${domain.description}` : ''}.`)
+      const entities = Object.entries(c.project.entities).filter(([, e]) => (e.domain ?? 'domain') === domainId)
+      if (entities.length) lines.push(`Record types: ${entities.map(([key, e]) => `${e.title ?? e.entity} (${key})`).join(', ')}.`)
+      const playbooks = Object.values(c.project.workflows).filter((w) => (w.domain ?? 'domain') === domainId && !META_PLAYBOOKS.includes(w.id as typeof META_PLAYBOOKS[number]))
+      if (playbooks.length) lines.push(`Playbooks: ${playbooks.map((w) => w.title ?? w.id).join(', ')}.`)
+      const items = (await enrichInbox(svc, actor, c, d, await svc.kernel.inbox(actor)).catch(() => [] as MwInboxItem[]))
+        .filter((i) => inboxItemDomain(c, i) === domainId)
+      lines.push('')
+      lines.push(items.length ? `Waiting for ${who ?? 'this person'} (${items.length}):` : `Nothing is waiting for ${who ?? 'this person'}.`)
+      for (const i of items.slice(0, 40)) lines.push(`- ${inboxItemLine(c, i)}`)
+    }
+    lines.push('')
+    lines.push(anchor.kind === 'waiting'
+      ? 'This chat is about the Waiting for you page above. Help the person decide what to do first; name items as the page does.'
+      : `This chat is about ${anchor.kind === 'project' ? 'the project above' : 'the page above'}. Look further with record_get and record_query; say "not recorded" when the records do not say.`)
+    lines.push('')
+    lines.push(SHELL_STYLE)
+    const name = message ? shortQuestion(message) : anchor.kind === 'waiting' ? 'Waiting for you' : domainName
+    const session = await deps.sessionManager.createSession(workspaceId, { name })
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    const key = await anchorKey(anchor)
+    await new PgChatAnchorStore().set(svc.kernel.pool, { chatId: session.id, anchorKind: key.kind, anchorId: key.id, personId: actor.personId })
+    deps.sessionManager.setMemwiseContext(session.id, {
+      anchor: { kind: anchor.kind, id: key.id },
+      block: lines.join('\n'),
+      ...(who ? { personName: who } : {}),
+    })
+    if (message) sendFirst(session.id, message)
+    return session.id
+  }
+
+  /** Which project (domain) an inbox item is in. */
+  function inboxItemDomain(c: DtoContext, item: MwInboxItem): string {
+    return inboxItemProject(item, {
+      workflowDomain: (id) => c.project.workflows[id]?.domain,
+      entityDomain: (key) => c.project.entities[key]?.domain,
+    })
+  }
+
+  function inboxItemLine(c: DtoContext, item: MwInboxItem): string {
+    return inboxItemLineOf(item, (id) => c.project.workflows[id]?.title)
+  }
+
+  /** The person's first message, as the chat's first visible turn. */
+  function sendFirst(sessionId: string, message: string): void {
+    deps.sessionManager.sendMessage(sessionId, message).catch((e: unknown) => {
+      log.warn(`[memwise] chat ${sessionId}: first turn failed: ${errText(e)}`)
+    })
   }
 
   /**
@@ -938,13 +1056,17 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
    * asked its question, or one opened on it before), else a new one with the page in its context
    * and the page tools.
    */
-  async function openPageChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, pageId: string): Promise<string> {
+  async function openPageChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, pageId: string, message?: string): Promise<string> {
     const page = await svc.kernel.pages.get(pageId, actor)
     if (!page) throw new Error('That page was not found.')
     const { PgChatAnchorStore } = await import('@memwise/db')
     const store = new PgChatAnchorStore()
-    for (const a of await store.forAnchor(svc.kernel.pool, 'page', pageId, actor.personId).catch(() => [])) {
-      if (await deps.sessionManager.getSession(a.chatId).catch(() => null)) return a.chatId
+    // Without a first message this opens the person's chat on the page when there is one; the
+    // shell sends one (and asks for `reuse` itself when it wants the latest chat continued).
+    if (!message) {
+      for (const a of await store.forAnchor(svc.kernel.pool, 'page', pageId, actor.personId).catch(() => [])) {
+        if (await deps.sessionManager.getSession(a.chatId).catch(() => null)) return a.chatId
+      }
     }
     const sources = pluginSources(c.project, workspaceId)
     const session = await deps.sessionManager.createSession(workspaceId, {
@@ -957,10 +1079,12 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         pageDigest(page),
         '',
         'This chat is about the page above, shown beside it. Answer from the page and its sources; when the person asks for a change to the page, make it with page_update (the whole body, the rest kept as it is) and say what you changed.',
+        ...(message ? ['', SHELL_STYLE] : []),
       ].join('\n'),
       personName: (await personName(svc, actor.personId)) ?? undefined,
     })
-    kickoff(session.id, 'explain')
+    if (message) sendFirst(session.id, message)
+    else kickoff(session.id, 'explain')
     return session.id
   }
 
@@ -1008,7 +1132,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
    * Reuses the person's chat on this step, or on an earlier attempt of it in the same run (after a
    * review sent it back), re-anchoring it to the waiting attempt; otherwise makes one.
    */
-  async function openConversationChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, stepRunId: string): Promise<string> {
+  async function openConversationChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, stepRunId: string, message?: string): Promise<string> {
     const s = await conversationState(svc, stepRunId, actor)
     const wf = c.project.workflows[s.workflowId]
     const step = wf?.steps[s.stepId]
@@ -1037,6 +1161,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
             })
           }
         }
+        if (message) sendFirst(a.chatId, message)
         return a.chatId
       }
     }
@@ -1058,7 +1183,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       block: await conversationBlock(svc, s, actor, who),
       personName: who,
     })
-    kickoff(session.id, 'conversation')
+    // The person's own first message, when they typed one (the project shell), else the agent opens.
+    if (message) sendFirst(session.id, message)
+    else kickoff(session.id, 'conversation')
     return session.id
   }
 
@@ -1434,23 +1561,44 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
 
     async openChat(ctx: RequestContext, workspaceId: string, input: MwOpenChatInput): Promise<{ sessionId: string }> {
       const { svc, actor, c, d } = await begin(ctx)
+      const message = typeof input?.message === 'string' && input.message.trim() ? input.message.trim() : undefined
+      // The project shell continues the person's chat on what's open, and sends their first
+      // message visibly instead of a hidden opening turn (doc 26 §2).
+      if (input?.reuse && input.anchor) {
+        const found = await findAnchoredChat(svc, actor, input.anchor)
+        if (found) {
+          if (message) sendFirst(found, message)
+          return { sessionId: found }
+        }
+      }
+      if (input?.anchor && (input.anchor.kind === 'project' || input.anchor.kind === 'waiting' || input.anchor.kind === 'dashboard')) {
+        return { sessionId: await openProjectChat(svc, actor, c, d, workspaceId, input.anchor, message) }
+      }
       if (input?.anchor?.kind === 'step') {
         const rec = await svc.kernel.getStepRecord(input.anchor.id)
         const step = rec ? c.project.workflows[rec.workflowId]?.steps[rec.stepId] : undefined
         if (rec && isConversationStep(step)) {
           const s = await conversationState(svc, rec.stepRunId, actor)
           // A finished conversation opens as an ordinary chat about it.
-          if (s.status === 'waiting') return { sessionId: await openConversationChat(svc, actor, c, workspaceId, s.stepRunId) }
+          if (s.status === 'waiting') return { sessionId: await openConversationChat(svc, actor, c, workspaceId, s.stepRunId, message) }
         }
       }
       if (input?.anchor?.kind === 'record') {
-        return { sessionId: await openRecordChat(svc, actor, c, workspaceId, input.anchor) }
+        return { sessionId: await openRecordChat(svc, actor, c, workspaceId, input.anchor, message) }
       }
       if (input?.anchor?.kind === 'page') {
-        return { sessionId: await openPageChat(svc, actor, c, workspaceId, input.anchor.id) }
+        return { sessionId: await openPageChat(svc, actor, c, workspaceId, input.anchor.id, message) }
       }
       if (!input?.anchor || !['case', 'step', 'workflow'].includes(input.anchor.kind)) throw new Error('Choose what the chat is about.')
-      return { sessionId: await openExplainChat(svc, actor, c, d, workspaceId, input.anchor as ExplainAnchor) }
+      return { sessionId: await openExplainChat(svc, actor, c, d, workspaceId, input.anchor as ExplainAnchor, message) }
+    },
+
+    /** The person's latest chat on an anchor that still exists (the project shell's left column). */
+    async findChat(ctx: RequestContext, _workspaceId: string, input: { anchor: MwChatAnchor }): Promise<MwFindChatResult> {
+      const { svc, actor } = await begin(ctx)
+      if (!input?.anchor?.kind) throw new Error('Choose what the chat is about.')
+      const recent = await anchoredChats(svc, actor, input.anchor, 8)
+      return { sessionId: recent[0] ?? null, recent }
     },
 
     async ask(ctx: RequestContext, workspaceId: string, input: MwAskInput): Promise<MwAskResult> {
@@ -2273,6 +2421,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.ENTITIES_TYPES, (ctx) => api.listEntityTypes(ctx))
   server.handle(ch.FILES_UPLOAD, (ctx, _ws: string, input) => api.uploadFile(ctx, input))
   server.handle(ch.CHAT_OPEN, (ctx, ws: string, input) => api.openChat(ctx, ws, input))
+  server.handle(ch.CHAT_FIND, (ctx, ws: string, input) => api.findChat(ctx, ws, input))
   server.handle(ch.ASK, (ctx, ws: string, input) => api.ask(ctx, ws, input))
   // Pages (26 §4)
   server.handle(ch.PAGES_LIST, (ctx, _ws: string, input) => api.listPages(ctx, input))

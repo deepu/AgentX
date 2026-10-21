@@ -458,6 +458,7 @@ export const CHANNEL_MAP = {
   memwiseListEntityTypes: invoke(RPC_CHANNELS.memwise.ENTITIES_TYPES),
   memwiseUploadFile: invoke(RPC_CHANNELS.memwise.FILES_UPLOAD),
   memwiseOpenChat: invoke(RPC_CHANNELS.memwise.CHAT_OPEN),
+  memwiseFindChat: invoke(RPC_CHANNELS.memwise.CHAT_FIND),
   memwiseAsk: invoke(RPC_CHANNELS.memwise.ASK),
   // Phase 3: drafts, versions, building by chat (docs/memwise/20-phase-3-interfaces.md §6)
   memwiseListVersions: invoke(RPC_CHANNELS.memwise.PLAYBOOKS_VERSIONS),

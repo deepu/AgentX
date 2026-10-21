@@ -496,6 +496,7 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.memwise.ENTITIES_TYPES,
   RPC_CHANNELS.memwise.FILES_UPLOAD,
   RPC_CHANNELS.memwise.CHAT_OPEN,
+  RPC_CHANNELS.memwise.CHAT_FIND,
   RPC_CHANNELS.memwise.ASK,
   RPC_CHANNELS.memwise.CHANGED,
   // Phase 3 (docs/memwise/20-phase-3-interfaces.md §6)

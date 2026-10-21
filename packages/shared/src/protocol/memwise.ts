@@ -589,9 +589,33 @@ export interface MwExplanation {
  * `record_query` and, when its domain has an entity with `keep_from_chat`, `record_keep`.
  */
 export interface MwOpenChatInput {
-  anchor: { kind: 'case' | 'step' | 'workflow'; id: string } | { kind: 'record'; entity: string; id: string }
-    /** Pages (26 §4): a chat that reads and writes the page (`page_get`, `page_update`, `page_create`). */
-    | { kind: 'page'; id: string }
+  anchor: MwChatAnchor
+  /**
+   * The project shell (doc 26 §2): the person's first message, sent as the chat's first, visible
+   * turn (no hidden opening turn). With `reuse`, the person's latest chat on the anchor is
+   * continued (and gets the message) instead of a new one.
+   */
+  message?: string
+  reuse?: boolean
+}
+
+/**
+ * What a chat is about. The project shell adds a project's Home (`project`) and its Waiting for
+ * you page (`waiting`), both by project id, and a dashboard (`dashboard`: domain and page id).
+ */
+export type MwChatAnchor =
+  | { kind: 'case' | 'step' | 'workflow'; id: string }
+  | { kind: 'record'; entity: string; id: string }
+  | { kind: 'project' | 'waiting'; id: string }
+  | { kind: 'dashboard'; domain: string; id: string }
+  /** Pages (26 §4): a chat that reads and writes the page (`page_get`, `page_update`, `page_create`). */
+  | { kind: 'page'; id: string }
+
+/** The person's latest chat on an anchor (`memwise:chat:find`): null when there is none yet. */
+export interface MwFindChatResult {
+  sessionId: string | null
+  /** The person's chats on the anchor, latest first (at most 8). */
+  recent?: string[]
 }
 
 // ---------------------------------------------------------------- domain

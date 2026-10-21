@@ -24,8 +24,18 @@ export const MEMWISE_CONTEXT_MAX_CHARS = 24_000;
 export type MemwiseChatAnchor =
   | { kind: 'case' | 'step' | 'workflow'; id: string }
   | { kind: 'record'; entity: string; id: string }
+  /** The project shell (doc 26 §2): a project's Home or Waiting for you (id: the project), a dashboard (`<domain>:<page>`). */
+  | { kind: 'project' | 'waiting' | 'dashboard'; id: string }
   /** A page (26 §4): the chat reads and writes it with `page_get` / `page_update` / `page_create`. */
   | { kind: 'page'; id: string };
+
+/**
+ * Anchors whose chat may look records up (`record_get`, `record_query`): a record, the project
+ * shell's pages, and a page (it reads the records of the page's project).
+ */
+export function anchorReadsRecords(kind: MemwiseChatAnchor['kind'] | undefined): boolean {
+  return kind === 'record' || kind === 'project' || kind === 'waiting' || kind === 'dashboard' || kind === 'page';
+}
 
 export interface SessionMemwiseContext {
   /** What the chat is anchored to. A conversation step is a `step` anchor with `conversation`. */
@@ -93,14 +103,10 @@ export function sessionHasPlaybookTools(workspaceRootPath: string | undefined, s
   return readSessionMemwiseContext(workspaceRootPath, sessionId)?.conversation === true;
 }
 
-/**
- * Whether the session offers `record_get` and `record_query`: a chat anchored to a record, or to
- * a page (it reads the records of the page's project).
- */
+/** Whether the session offers `record_get` and `record_query` (see `anchorReadsRecords`). */
 export function sessionHasRecordTools(workspaceRootPath: string | undefined, sessionId: string | undefined): boolean {
   if (!workspaceRootPath || !sessionId) return false;
-  const kind = readSessionMemwiseContext(workspaceRootPath, sessionId)?.anchor.kind;
-  return kind === 'record' || kind === 'page';
+  return anchorReadsRecords(readSessionMemwiseContext(workspaceRootPath, sessionId)?.anchor.kind);
 }
 
 /** Whether the session is a chat anchored to a page (offers `page_get`, `page_update`, `page_create`). */
@@ -124,10 +130,9 @@ export function memwiseSessionToolOptions(workspaceRootPath: string | undefined,
 } {
   const ctx = workspaceRootPath && sessionId ? readSessionMemwiseContext(workspaceRootPath, sessionId) : null;
   const record = ctx?.anchor.kind === 'record';
-  const page = ctx?.anchor.kind === 'page';
   return {
     includePlaybookTools: ctx?.conversation === true,
-    includeRecordTools: record || page,
+    includeRecordTools: anchorReadsRecords(ctx?.anchor.kind),
     includeRecordKeep: record && !!ctx?.keep?.length,
     includeRecordUpdate: record && ctx?.draft === true,
     includePageTools: ctx?.anchor.kind === 'page',
