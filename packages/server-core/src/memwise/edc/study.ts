@@ -64,6 +64,32 @@ async function studyRecord(svc: MemwiseService, actor: Actor, project: ProjectDe
   return row ? { row, entity } : undefined
 }
 
+/**
+ * The study a project means in an app: the project's `study:` (Stage 3), else the id read as a
+ * study key ("MW-301"). When neither names one (a project whose id is the app's, "edc"), the app's
+ * only study, or with several the one with the most sites (ties: the first by key), so the home
+ * shows the main study rather than nothing.
+ */
+export async function resolveStudy(svc: MemwiseService, actor: Actor, project: ProjectDefs, domain: string, projectId: string): Promise<{ key: string; study?: { row: Row; entity: string } }> {
+  const key = projectStudy(project, projectId) ?? projectId
+  const found = await studyRecord(svc, actor, project, domain, key)
+  if (found) return { key, study: found }
+  const entity = `${domain}.Study`
+  const def = project.entities[entity]
+  if (!def) return { key }
+  const all = await rowsOf(svc, actor, entity)
+  if (all.length === 0) return { key }
+  const field = studyKeyField(def) ?? 'protocol'
+  const keyOf = (r: Row) => String(r.values[field] ?? r.values.rave_ref ?? r.title)
+  let pick = all[0]!
+  if (all.length > 1) {
+    const sites = project.entities[`${domain}.Site`] ? await rowsOf(svc, actor, `${domain}.Site`) : []
+    const count = (r: Row) => sites.filter((s) => sameKey(s.values.study, keyOf(r))).length
+    pick = [...all].sort((a, b) => count(b) - count(a) || keyOf(a).localeCompare(keyOf(b)))[0]!
+  }
+  return { key: keyOf(pick), study: { row: pick, entity } }
+}
+
 /** The plugin whose binding fills this domain's entities, and its last read. */
 async function sourceOf(svc: MemwiseService, project: ProjectDefs, domain: string): Promise<MwSourceSync | null> {
   const binding = Object.values(project.bindings ?? {}).find((b) => Object.values(b.records ?? {}).some((r) => domainOf(r.entity) === domain))
@@ -104,17 +130,7 @@ function waitingIn(project: ProjectDefs, items: InboxItem[], domain: string): Mw
 export async function edcHome(svc: MemwiseService, actor: Actor, project: ProjectDefs, input: { projectId: string; domain?: string }): Promise<MwEdcHome> {
   const domain = input.domain ?? EDC_DOMAIN
   if (!project.domains?.[domain]) throw new Error(`There is no ${domain.toUpperCase()} app in this workspace.`)
-  let key = projectStudy(project, input.projectId) ?? input.projectId
-  let study = await studyRecord(svc, actor, project, domain, key)
-  if (!study) {
-    // A workspace without projects that holds one study: that is the one.
-    const all = project.entities[`${domain}.Study`] ? await rowsOf(svc, actor, `${domain}.Study`) : []
-    if (all.length === 1) {
-      const def = project.entities[`${domain}.Study`]!
-      study = { row: all[0]!, entity: `${domain}.Study` }
-      key = String(all[0]!.values[studyKeyField(def) ?? 'protocol'] ?? key)
-    }
-  }
+  const { key, study } = await resolveStudy(svc, actor, project, domain, input.projectId)
   const siteEntity = `${domain}.Site`
   const sites = project.entities[siteEntity] ? (await rowsOf(svc, actor, siteEntity)).filter((r) => r.values.study === undefined || sameKey(r.values.study, key)) : []
   const progress: MwEdcSiteProgress[] = sites.map((r) => {
@@ -165,12 +181,7 @@ function sharedEntities(project: ProjectDefs, a: string, b: string): string[] {
 /** "Also in other apps": the same study in each other app that has it, with a few headline facts. */
 export async function studyApps(svc: MemwiseService, actor: Actor, project: ProjectDefs, input: { projectId: string; domain?: string }): Promise<MwStudyApps> {
   const here = input.domain ?? EDC_DOMAIN
-  let key = projectStudy(project, input.projectId) ?? input.projectId
-  // Read the key from this app's study when the id named none (a workspace without projects).
-  if (!(await studyRecord(svc, actor, project, here, key)) && project.entities[`${here}.Study`]) {
-    const all = await rowsOf(svc, actor, `${here}.Study`)
-    if (all.length === 1) key = String(all[0]!.values[studyKeyField(project.entities[`${here}.Study`]!) ?? 'protocol'] ?? key)
-  }
+  const { key } = await resolveStudy(svc, actor, project, here, input.projectId)
   const apps: MwStudyApp[] = []
   for (const domain of Object.keys(project.domains ?? {}).sort()) {
     if (domain === here || domain === 'domain') continue

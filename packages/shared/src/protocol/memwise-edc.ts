@@ -24,6 +24,8 @@ export interface MwSourceSync {
 export interface MwEdcHomeInput {
   /** The project (Stage 3), or until projects exist, the study key ("MW-301"). */
   projectId: string
+  /** The EDC app's domain id; default `edc`. */
+  domain?: string
 }
 
 /** One thing waiting for the viewer from an EDC playbook, grouped by case. */

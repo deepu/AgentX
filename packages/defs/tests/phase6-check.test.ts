@@ -397,8 +397,8 @@ describe('the eTMF example (examples/etmf)', () => {
       ['workspace', 'workspace.yaml'], ['domain', 'domains/etmf/domain.yaml'], ['domain', 'domains/edc/domain.yaml'], ['policy', 'domains/etmf/policy.yaml'],
       ...['sponsor', 'study', 'site', 'person', 'document', 'expected_document'].map((e): [keyof typeof formats, string] => ['entity', `domains/etmf/entities/${e}.yaml`]),
       ...['study', 'site', 'subject', 'query'].map((e): [keyof typeof formats, string] => ['entity', `domains/edc/entities/${e}.yaml`]),
-      ['policy', 'domains/edc/policy.yaml'], ['page', 'domains/etmf/pages/tmf-health.yaml'], ['page', 'domains/edc/pages/enrolment.yaml'],
-      ...['old-queries', 'open-queries', 'sites'].map((v): [keyof typeof formats, string] => ['view', `domains/edc/views/${v}.yaml`]),
+      ['policy', 'domains/edc/policy.yaml'], ['page', 'domains/etmf/pages/tmf-health.yaml'], ['page', 'domains/edc/pages/enrolment.yaml'], ['page', 'domains/edc/pages/old-queries.yaml'],
+      ...['old-queries', 'open-queries', 'sites', 'sites-with-old-queries'].map((v): [keyof typeof formats, string] => ['view', `domains/edc/views/${v}.yaml`]),
       ['workflow', 'domains/edc/workflows/chase-old-queries/workflow.yaml'], ['case', 'domains/edc/workflows/chase-old-queries/case.yaml'],
       ['workflow', 'domains/etmf/workflows/new-coordinator/workflow.yaml'], ['case', 'domains/etmf/workflows/new-coordinator/case.yaml'],
       ['binding', 'domain/bindings/memwise__medidata-rave.yaml'],
@@ -424,9 +424,9 @@ describe('the eTMF example (examples/etmf)', () => {
       'entity_type edc.Query', 'entity_type edc.Site', 'entity_type edc.Study', 'entity_type edc.Subject',
       'entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person',
       'entity_type etmf.Site', 'entity_type etmf.Sponsor', 'entity_type etmf.Study',
-      'page edc/enrolment', 'page etmf/tmf-health',
+      'page edc/enrolment', 'page edc/old-queries', 'page etmf/tmf-health',
       'policy domain:edc', 'policy domain:etmf', 'policy workspace',
-      'view edc/old-queries', 'view edc/open-queries', 'view edc/sites',
+      'view edc/old-queries', 'view edc/open-queries', 'view edc/sites', 'view edc/sites-with-old-queries',
       'view etmf/documents-in-qc', 'view etmf/missing-documents', 'view etmf/sites', 'view etmf/sites-board',
     ]);
     const from = (id: string) => [...new Set(refs.filter((r) => r.fromId === id).map((r) => `${r.toKind} ${r.toId}`))].sort();

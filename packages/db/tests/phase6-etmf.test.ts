@@ -64,7 +64,7 @@ describe.skipIf(!postgresAvailable())('the eTMF example project', () => {
         n++;
       }
     }
-    expect(n).toBe(7); // four eTMF views and three EDC ones (old and open queries, sites)
+    expect(n).toBe(8); // four eTMF views and four EDC ones (old and open queries, sites, sites with old queries)
     const e = project.entities;
     const study = (await store.list(db.pool, e['etmf.Study']!))[0]!.id;
     const params = { study };

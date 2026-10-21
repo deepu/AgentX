@@ -175,6 +175,10 @@ describe.skipIf(!postgresAvailable())('Stage 6 exit: EDC from Medidata Rave, and
     expect(home.sites.find((s) => s.number === '104')).toMatchObject({ randomised: 7, target: 12, percent: 58, oldQueries: 9 })
     // MW-207's sites are another study.
     expect(home.sites.some((s) => s.number.startsWith('2'))).toBe(false)
+    // In the project shell a project's id is its app's ("edc"): the study with the most sites.
+    const shell = await api.call<MwEdcHome>(dana, ch.EDC_HOME, { projectId: 'edc', domain: 'edc' })
+    expect(shell.study.key).toBe('MW-301')
+    expect(shell.sites).toHaveLength(12)
   })
 
   it('site 104 in two apps: each fact owned by one, read only in the other, with a jump back', async () => {
@@ -204,6 +208,7 @@ describe.skipIf(!postgresAvailable())('Stage 6 exit: EDC from Medidata Rave, and
     // "Also in other apps" on the EDC home: the same study in eTMF.
     const also = await api.call<MwStudyApps>(dana, ch.STUDY_APPS, { projectId: 'MW-301', domain: 'edc' })
     expect(also.apps).toHaveLength(1)
+    expect((await api.call<MwStudyApps>(dana, ch.STUDY_APPS, { projectId: 'edc', domain: 'edc' })).apps[0]).toMatchObject({ domain: 'etmf', record: { id: ids.study } })
     expect(also.apps[0]).toMatchObject({ domain: 'etmf', domainName: 'eTMF', record: { entity: 'etmf.Study', id: ids.study }, shares: ['Sites'] })
     expect(also.apps[0]!.facts.find((f) => f.name === 'tmf_complete')).toMatchObject({ value: 75, type: 'Percentage' })
     // Pairing a site is not a new coordinator.

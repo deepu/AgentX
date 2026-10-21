@@ -34,7 +34,7 @@ export function createEdcApi() {
   return {
     async home(ctx: RequestContext, input: MwEdcHomeInput): Promise<MwEdcHome> {
       const { svc, actor, project } = await begin(ctx)
-      return edcHome(svc, actor, project, { projectId: text(input?.projectId, 'a project') })
+      return edcHome(svc, actor, project, { projectId: text(input?.projectId, 'a project'), ...(input?.domain ? { domain: input.domain } : {}) })
     },
     async studyApps(ctx: RequestContext, input: MwStudyAppsInput): Promise<MwStudyApps> {
       const { svc, actor, project } = await begin(ctx)
