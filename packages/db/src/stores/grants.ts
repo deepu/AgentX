@@ -7,7 +7,10 @@ import type { Grant } from '@memwise/defs';
 import type { Queryable } from '../pool.ts';
 import { json } from '../rows.ts';
 
-type GrantDbRow = { person_id: string; role_id: string; domain: string; scope: Record<string, string[] | string> | null };
+type GrantDbRow = { person_id: string; role_id: string; domain: string; scope: Record<string, string[] | string> | null; project: string | null };
+
+/** Grants made from a project.yaml's people at index (Stage 3), replaced each time; others are given in the app. */
+export type GrantSource = 'app' | 'definitions';
 
 /** Scope values as lists, empty scopes dropped. */
 function normalScope(scope: Grant['scope'] | Record<string, string[] | string> | null | undefined): Grant['scope'] | undefined {
@@ -22,27 +25,30 @@ function normalScope(scope: Grant['scope'] | Record<string, string[] | string> |
 
 const toGrant = (r: GrantDbRow): Grant => {
   const scope = normalScope(r.scope);
-  return { role: r.role_id, domain: r.domain, ...(scope ? { scope } : {}) };
+  return { role: r.role_id, domain: r.domain, ...(r.project ? { project: r.project } : {}), ...(scope ? { scope } : {}) };
 };
 
 export class PgGrantStore {
   /** A person's grants, by domain then role. */
   async list(db: Queryable, personId: string): Promise<Grant[]> {
     const { rows } = await db.query<GrantDbRow>(
-      'select person_id, role_id, domain, scope from mw.grants where person_id = $1 order by domain, role_id, id', [personId]);
+      'select person_id, role_id, domain, scope, project from mw.grants where person_id = $1 order by domain, project nulls first, role_id, id', [personId]);
     return rows.map(toGrant);
   }
 
   /** Grants of everyone, by person (the people screen). */
   async all(db: Queryable): Promise<Map<string, Grant[]>> {
-    const { rows } = await db.query<GrantDbRow>('select person_id, role_id, domain, scope from mw.grants order by person_id, domain, role_id, id');
+    const { rows } = await db.query<GrantDbRow>('select person_id, role_id, domain, scope, project from mw.grants order by person_id, domain, project nulls first, role_id, id');
     const out = new Map<string, Grant[]>();
     for (const r of rows) out.set(r.person_id, [...(out.get(r.person_id) ?? []), toGrant(r)]);
     return out;
   }
 
-  /** Replaces a person's grants (duplicates folded). Returns them as stored. */
-  async set(db: Queryable, personId: string, grants: Grant[]): Promise<Grant[]> {
+  /**
+   * Replaces a person's grants of one source (duplicates folded): `app` (the default) the ones
+   * given in the app, `definitions` the ones from project.yaml files. Returns all of them as stored.
+   */
+  async set(db: Queryable, personId: string, grants: Grant[], source: GrantSource = 'app'): Promise<Grant[]> {
     const seen = new Set<string>();
     const clean: Grant[] = [];
     for (const g of grants) {
@@ -51,16 +57,22 @@ export class PgGrantStore {
       if (!role || !domain) throw new Error('A grant needs a role and a domain');
       if (role.includes(',')) throw new Error('A role id cannot contain a comma');
       const scope = normalScope(g.scope);
-      const key = JSON.stringify([role, domain, scope ?? null]);
+      const project = g.project?.trim() || undefined;
+      const key = JSON.stringify([role, domain, project ?? null, scope ?? null]);
       if (seen.has(key)) continue;
       seen.add(key);
-      clean.push({ role, domain, ...(scope ? { scope } : {}) });
+      clean.push({ role, domain, ...(project ? { project } : {}), ...(scope ? { scope } : {}) });
     }
-    await db.query('delete from mw.grants where person_id = $1', [personId]);
+    await db.query('delete from mw.grants where person_id = $1 and source = $2', [personId, source]);
     for (const g of clean) {
-      await db.query('insert into mw.grants (person_id, role_id, domain, scope) values ($1, $2, $3, $4)',
-        [personId, g.role, g.domain, g.scope ? json(g.scope) : null]);
+      await db.query('insert into mw.grants (person_id, role_id, domain, scope, project, source) values ($1, $2, $3, $4, $5, $6)',
+        [personId, g.role, g.domain, g.scope ? json(g.scope) : null, g.project ?? null, source]);
     }
     return this.list(db, personId);
+  }
+
+  /** Removes every grant made from project files (before they are made again at index). */
+  async clearDefinitions(db: Queryable): Promise<void> {
+    await db.query(`delete from mw.grants where source = 'definitions'`);
   }
 }

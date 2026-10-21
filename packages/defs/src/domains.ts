@@ -45,12 +45,28 @@ export function domainEntities(project: Pick<ProjectDefs, 'entities'>, domain: s
   return out;
 }
 
-/** Whether an actor's roles (workspace-wide) or grants hold `role` in `domain` (24 §2). */
-export function hasRole(actor: { roles: string[]; grants?: Grant[] }, role: string, domain: string = DEFAULT_DOMAIN): boolean {
-  return actor.roles.includes(role) || !!actor.grants?.some((g) => g.role === role && g.domain === domain);
+/** Whether a grant holds in `project` (Stage 3): a grant without a project holds in every project of its domain. */
+export const grantInProject = (g: Grant, project: string | undefined): boolean => !project || !g.project || g.project === project;
+
+/**
+ * Whether an actor's roles (workspace-wide) or grants hold `role` in `domain` (24 §2), and
+ * (Stage 3) in `project` of it when one is given.
+ */
+export function hasRole(actor: { roles: string[]; grants?: Grant[] }, role: string, domain: string = DEFAULT_DOMAIN, project?: string): boolean {
+  return actor.roles.includes(role) || !!actor.grants?.some((g) => g.role === role && g.domain === domain && grantInProject(g, project));
 }
 
-/** Roles the actor holds in `domain` (workspace-wide ones and that domain's grants). */
-export function rolesIn(actor: { roles: string[]; grants?: Grant[] }, domain: string = DEFAULT_DOMAIN): string[] {
-  return [...new Set([...actor.roles, ...(actor.grants ?? []).filter((g) => g.domain === domain).map((g) => g.role)])];
+/** Roles the actor holds in `domain` (workspace-wide ones and that domain's grants; Stage 3: in `project` when given). */
+export function rolesIn(actor: { roles: string[]; grants?: Grant[] }, domain: string = DEFAULT_DOMAIN, project?: string): string[] {
+  return [...new Set([...actor.roles, ...(actor.grants ?? []).filter((g) => g.domain === domain && grantInProject(g, project)).map((g) => g.role)])];
+}
+
+/**
+ * Whether a person may see a project of `domain` (D92, as `mw.domain_project_visible`): no grant
+ * in the domain (workspace-wide roles), or a grant in that project or in all of the domain's.
+ */
+export function seesProject(actor: { kind?: string; grants?: Grant[] }, domain: string, project: string): boolean {
+  if (actor.kind !== undefined && actor.kind !== 'person') return true;
+  const inDomain = (actor.grants ?? []).filter((g) => g.domain === domain);
+  return !inDomain.length || inDomain.some((g) => grantInProject(g, project));
 }

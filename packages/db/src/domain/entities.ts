@@ -13,7 +13,7 @@ import type { Queryable } from '../pool.ts';
 import { iso, json } from '../rows.ts';
 import { recordColumns, linkColumn, targetOf, type RecordColumn } from './model.ts';
 import { viewContext } from './records-sql.ts';
-import { entityColumns, entityIdPrefix, keyColumns, keyIndexName, snake, tableOf, viewOf, type EntityColumn } from './tables.ts';
+import { entityColumns, entityIdPrefix, keyColumns, keyIndexName, PROJECT_COLUMN, projectScoped, snake, tableOf, viewOf, type EntityColumn } from './tables.ts';
 
 /** Same shape as `EntityRow` in @memwise/runtime, plus the lifecycle state and the record's version. */
 export interface StoredEntityRow {
@@ -31,6 +31,8 @@ export interface StoredEntityRow {
   updatedBy?: string;
   lifecycle?: string;
   createdByStep?: string;
+  /** Stage 3: the project it belongs to; absent for records every project of the app shares (`scope: app`). */
+  project?: string;
   /** Phase 6: links (by target entity key) and the record each is paired with. */
   followed?: Record<string, { recordId?: string }>;
 }
@@ -41,6 +43,8 @@ export interface CreateEntityOptions {
   stepRunId?: string;
   /** Initial lifecycle state; default the chart's `initial`, else the first one defined. */
   lifecycle?: string;
+  /** Stage 3: the project the record belongs to (absent: `mw.current_project`). */
+  project?: string;
 }
 
 /** The context of a write (24 §3): set for the transaction, read by the row trigger. */
@@ -52,6 +56,8 @@ export interface RecordContext {
   transition?: string;
   /** Who, when not the actor itself: `source:edc`, `source:plugin-x`, a person the kernel acts for. */
   by?: string;
+  /** Stage 3 (26 §3): the project new records, notes and mentions land in (absent: the step's run's, else the domain's own). */
+  project?: string;
 }
 
 export type RecordWriteErrorCode = 'invalid' | 'missing' | 'stale' | 'reason-required' | 'unknown-state';
@@ -75,6 +81,8 @@ export interface EntityQuery {
   offset?: number;
   /** `params.<x>` values for the filter (dashboards). */
   params?: Record<string, unknown>;
+  /** Stage 3: only records of these projects (app-scoped records are always included). */
+  projects?: string[];
 }
 
 export interface EntityQueryResult {
@@ -92,9 +100,11 @@ export interface EntityAggregate {
   /** percent: the records it is a percent of (absent: all). */
   of?: string;
   params?: Record<string, unknown>;
+  /** Stage 3: only records of these projects. */
+  projects?: string[];
 }
 
-const SETTINGS: Record<keyof RecordContext, string> = { reason: 'mw.reason', via: 'mw.via', transition: 'mw.transition', by: 'mw.by' };
+const SETTINGS: Record<keyof RecordContext, string> = { reason: 'mw.reason', via: 'mw.via', transition: 'mw.transition', by: 'mw.by', project: 'mw.project' };
 
 /**
  * Sets the write context for the rest of the transaction (`set_config(…, true)`). Only the keys
@@ -123,6 +133,8 @@ export class PgEntityStore {
     const id = opts.id ?? `${entityIdPrefix(def.entity)}_${ulid()}`;
     const names = ['id', 'lifecycle', 'created_by_step', 'idempotency_key'];
     const params: unknown[] = [id, lifecycle, opts.stepRunId ?? null, opts.idempotencyKey ?? null];
+    // Stage 3: the project, when the writer names it (else the column's default: mw.current_project).
+    if (opts.project && projectScoped(def)) { names.push(PROJECT_COLUMN); params.push(opts.project); }
     for (const [field, value] of Object.entries(values)) {
       if (value === undefined) continue;
       const c = byField.get(field)!;
@@ -298,7 +310,7 @@ export class PgEntityStore {
     const cols = recordColumns(def, entities);
     const params: unknown[] = [];
     const ctx = viewContext(cols, 'v.', bindTo(params), (n) => query.params?.[n]);
-    const where = query.filter?.trim() ? `coalesce(${compileConditionSource(query.filter, ctx)}, false)` : 'true';
+    const where = andProjects(query.filter?.trim() ? `coalesce(${compileConditionSource(query.filter, ctx)}, false)` : 'true', def, query.projects, params);
     const order = (query.sort ?? []).map((s) => {
       const col = ctx.column(s.field);
       if (!col) throw new ConditionCompileError(`there is no field "${s.field}" to sort by`, 0);
@@ -332,6 +344,7 @@ export class PgEntityStore {
     const ctx = viewContext(cols, 'v.', bindTo(params), (n) => a.params?.[n]);
     const cond = (s: string | undefined) => (s?.trim() ? `coalesce(${compileConditionSource(s, ctx)}, false)` : 'true');
     const where = cond(a.where);
+    const scope = andProjects('true', def, a.projects, params);
     let select: string;
     switch (a.kind) {
       case 'count': select = `count(*) filter (where ${where})`; break;
@@ -347,7 +360,7 @@ export class PgEntityStore {
         break;
       }
     }
-    const { rows } = await db.query<{ n: string | number | null }>(`select ${select} as n from ${viewOf(def)} v`, params);
+    const { rows } = await db.query<{ n: string | number | null }>(`select ${select} as n from ${viewOf(def)} v where ${scope}`, params);
     const n = rows[0]?.n;
     return n === null || n === undefined ? null : Number(n);
   }
@@ -444,8 +457,16 @@ function decodeRow(def: EntityTypeDef, r: Record<string, unknown>, unrestricted:
   if (r.updated_by) row.updatedBy = r.updated_by as string;
   if (r.lifecycle) row.lifecycle = r.lifecycle as string;
   if (r.created_by_step) row.createdByStep = r.created_by_step as string;
+  if (typeof r[PROJECT_COLUMN] === 'string') row.project = r[PROJECT_COLUMN] as string;
   if (Object.keys(followed).length) row.followed = followed;
   return row;
+}
+
+/** `where` narrowed to rows of `projects` (Stage 3), binding them as one parameter; app-scoped tables aren't narrowed. */
+function andProjects(where: string, def: EntityTypeDef, projects: string[] | undefined, params: unknown[]): string {
+  if (!projects || !projectScoped(def)) return where;
+  params.push(projects);
+  return `(${where}) and v.${q(PROJECT_COLUMN)} = any ($${params.length}::text[])`;
 }
 
 /** Calculated and followed columns known from the definition alone (no entity map at hand). */

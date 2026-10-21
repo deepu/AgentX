@@ -13,7 +13,7 @@ export type * from './external-types.ts';
 export * from './domain-types.ts';
 export * from './project-types.ts';
 export { parseCondition, conditionNames, CONDITION_FUNCTIONS } from './condition.ts';
-export { entityKey, keyOf, splitEntityKey, domainOf, scopedEntities, resolveEntity, domainEntities, hasRole, rolesIn } from './domains.ts';
+export { entityKey, keyOf, splitEntityKey, domainOf, scopedEntities, resolveEntity, domainEntities, hasRole, rolesIn, grantInProject, seesProject } from './domains.ts';
 export { crashPoint } from './testing.ts';
 // Literature (docs/memwise/25-literature-poc.md §4): the one quote normaliser.
 export { normalizeQuoteText, quoteIn, quoteInValue, textsOf, findQuote } from './quotes.ts';

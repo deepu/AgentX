@@ -1,0 +1,81 @@
+/**
+ * Projects (26 §3, D92): one copy of an app with its own records, pages, runs, chats, people and
+ * connections. Definitions (`projects/<id>/project.yaml`) say what a project is; `mw.projects`
+ * keeps what happens to it: its status (draft until "Start study", archived), who made it, when.
+ * Indexing upserts a row per project definition and never changes a status it didn't set.
+ */
+import type { MwProjectDef, ProjectSource, ProjectStatus } from '@memwise/defs';
+import type { Queryable } from '../pool.ts';
+import { iso, json } from '../rows.ts';
+
+export interface ProjectRow {
+  id: string;
+  app: string;
+  name: string;
+  status: ProjectStatus;
+  from?: ProjectSource;
+  templateVersion: number;
+  study?: string;
+  settings: Record<string, unknown>;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+type DbRow = {
+  id: string; app: string; name: string; status: ProjectStatus; from: ProjectSource | null; template_version: number; study: string | null;
+  settings: Record<string, unknown> | null; created_by: string | null; created_at: Date; updated_at: Date;
+};
+
+const toRow = (r: DbRow): ProjectRow => ({
+  id: r.id, app: r.app, name: r.name, status: r.status, templateVersion: r.template_version, settings: r.settings ?? {},
+  createdAt: iso(r.created_at), updatedAt: iso(r.updated_at),
+  ...(r.from ? { from: r.from } : {}), ...(r.study ? { study: r.study } : {}), ...(r.created_by ? { createdBy: r.created_by } : {}),
+});
+
+export class PgProjectStore {
+  async list(db: Queryable): Promise<ProjectRow[]> {
+    const { rows } = await db.query<DbRow>('select * from mw.projects order by app, created_at, id');
+    return rows.map(toRow);
+  }
+
+  async get(db: Queryable, id: string): Promise<ProjectRow | undefined> {
+    const { rows } = await db.query<DbRow>('select * from mw.projects where id = $1', [id]);
+    return rows[0] && toRow(rows[0]);
+  }
+
+  /**
+   * Makes or updates the rows of these project definitions: what the files say (app, name, source,
+   * template version, study, settings). A new row starts in the file's status; an existing one
+   * keeps its own, which only `setStatus` changes.
+   */
+  async sync(db: Queryable, projects: MwProjectDef[], by?: string): Promise<void> {
+    if (!projects.length) return;
+    await db.query(
+      `insert into mw.projects (id, app, name, status, "from", template_version, study, settings, created_by)
+       select x.id, x.app, x.name, x.status, x."from", x.template_version, x.study, coalesce(x.settings, '{}'::jsonb), $2
+       from jsonb_to_recordset($1::jsonb) as x(id text, app text, name text, status text, "from" jsonb, template_version int, study text, settings jsonb)
+       on conflict (id) do update set
+         app = excluded.app, name = excluded.name, "from" = excluded."from", template_version = excluded.template_version,
+         study = excluded.study, settings = excluded.settings, updated_at = now()
+       where (mw.projects.app, mw.projects.name, mw.projects."from", mw.projects.template_version, mw.projects.study, mw.projects.settings)
+         is distinct from (excluded.app, excluded.name, excluded."from", excluded.template_version, excluded.study, excluded.settings)`,
+      [json(projects.map((p) => ({
+        id: p.id, app: p.app, name: p.name, status: p.status, from: p.from ?? null, template_version: p.version,
+        study: p.study ?? null, settings: p.settings ?? {},
+      }))), by ?? null]);
+  }
+
+  /** Draft → active ("Start study"), active → archived, archived → active. Returns the row, or undefined when missing. */
+  async setStatus(db: Queryable, id: string, status: ProjectStatus): Promise<ProjectRow | undefined> {
+    const { rows } = await db.query<DbRow>(
+      'update mw.projects set status = $2, updated_at = now() where id = $1 returning *', [id, status]);
+    return rows[0] && toRow(rows[0]);
+  }
+
+  /** Removes a draft project's row (Discard). Refuses anything but a draft. */
+  async discardDraft(db: Queryable, id: string): Promise<boolean> {
+    const { rowCount } = await db.query(`delete from mw.projects where id = $1 and status = 'draft'`, [id]);
+    return !!rowCount;
+  }
+}
