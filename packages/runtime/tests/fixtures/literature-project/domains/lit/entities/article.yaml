@@ -1,0 +1,17 @@
+entity: Article
+title: "{title}"
+key: [pmid]
+fields:
+  pmid:     { type: Text, required: true }
+  title:    { type: Text, required: true }
+  abstract: Text
+  year:     Number
+  n:        Number
+  sponsor:  Text
+relationships:
+  evidence: many Evidence
+page:
+  layout: split
+  header: [title, year]
+  left:  [{ viewer: abstract }]
+  right: [{ fields: [n, sponsor] }, { related: [evidence] }]

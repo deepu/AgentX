@@ -1,0 +1,8 @@
+workflow: read-paper
+version: 1
+title: Read a paper
+owner: lead
+start: extract
+steps:
+  extract: { on: { extracted: save } }
+  save:    { on: { done: end } }

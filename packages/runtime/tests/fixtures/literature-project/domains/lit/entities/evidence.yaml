@@ -1,0 +1,19 @@
+entity: Evidence
+title: "{outcome}"
+keep_from_chat: true
+fields:
+  topic:     { type: Ref<Topic>, required: true }
+  article:   { type: Ref<Article>, required: true }
+  outcome:   Text
+  timepoint: Text
+  effect:    Number
+  ci_low:    Number
+  ci_high:   Number
+  unit:      Text
+  quote:     { type: Text, quote_of: article.abstract }
+lifecycle:
+  initial: kept
+  states:
+    kept:     { on: { review: reviewed, reject: rejected } }
+    reviewed: {}
+    rejected: {}

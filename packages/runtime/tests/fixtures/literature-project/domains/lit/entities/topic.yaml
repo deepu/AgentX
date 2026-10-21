@@ -1,0 +1,20 @@
+entity: Topic
+title: "{name}"
+fields:
+  name:         { type: Text, required: true }
+  last_checked: DateTime
+  next_check:   Date
+relationships:
+  screenings: many Screening
+  evidence:   many Evidence
+calculated:
+  included:      { count: screenings, where: "decision = 'include'" }
+  evidence_kept: { count: evidence, where: "status = 'kept'" }
+page:
+  layout: sidebar
+  header: [title]
+  main:
+    - kpis: [included, evidence_kept]
+    - chart: { kind: bar, of: screenings, by: year, where: "decision = 'include'", title: Included papers by year }
+    - chart: { kind: interval, of: evidence, label: "{outcome} ({timepoint})", value: effect, low: ci_low, high: ci_high, unit: unit, where: "status != 'rejected'", title: Effect vs placebo }
+  side: [details, chat]

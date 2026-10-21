@@ -1,0 +1,7 @@
+entity: Screening
+title: "{article}"
+fields:
+  topic:    { type: Ref<Topic>, required: true }
+  article:  { type: Ref<Article>, required: true }
+  decision: { type: "Enum[include, exclude]", required: true }
+  year:     Number

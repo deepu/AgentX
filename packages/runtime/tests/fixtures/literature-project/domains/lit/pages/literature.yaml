@@ -1,0 +1,5 @@
+title: Literature
+params: { topic: Ref<Topic> }
+blocks:
+  - chart: { kind: donut, entity: Screening, by: decision, where: "topic = params.topic", title: Decisions }
+  - chart: { kind: interval, entity: Evidence, label: "{outcome}", value: effect, low: ci_low, high: ci_high, unit: unit, where: "topic = params.topic" }

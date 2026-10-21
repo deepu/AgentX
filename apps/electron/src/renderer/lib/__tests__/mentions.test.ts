@@ -307,6 +307,17 @@ describe('extractBadges - skill qualification with workspace slug', () => {
     expect(badges[0]!.rawText).toBe('[skill:my-project:commit]')
   })
 
+  // docs/memwise/25-literature-poc.md §7: a MemWise plugin skill is already named <plugin>:<skill>.
+  it('keeps a plugin skill named <plugin>:<skill>, without a workspace prefix', () => {
+    const skills = [...mockSkills, { slug: 'data:create-viz', metadata: { name: 'create-viz' }, source: 'plugin' }] as any[]
+    const badges = extractBadges('chart it [skill:data:create-viz]', skills, mockSources, 'my-project')
+    expect(badges).toHaveLength(1)
+    expect(badges[0]!.rawText).toBe('[skill:data:create-viz]')
+    expect(badges[0]!.label).toBe('create-viz')
+    expect(findMentionMatches('[skill:data:create-viz]', ['data:create-viz'], [])[0]!.id).toBe('data:create-viz')
+    expect(removeMention('a [skill:data:create-viz] b', 'skill', 'data:create-viz')).toBe('a b')
+  })
+
   it('does not modify source rawText', () => {
     const sources = [{ config: { slug: 'linear', name: 'Linear' } }] as any[]
     const badges = extractBadges('[source:linear]', [], sources, 'my-project')
