@@ -28,8 +28,16 @@ export interface SkillMetadata {
   requiredSources?: string[];
 }
 
-/** Source of a loaded skill */
-export type SkillSource = 'global' | 'workspace' | 'project';
+/**
+ * Source of a loaded skill. `plugin`: a skill of a plugin installed in the MemWise project
+ * (`<project>/plugins/<slug>/<version>/skills/<skill>/SKILL.md`), named `<plugin>:<skill>`
+ * (docs/memwise/25-literature-poc.md §7).
+ */
+export type SkillSource = 'global' | 'workspace' | 'project' | 'plugin';
+
+/** What MemWise says before a plugin skill's own instructions (doc 25 §7). */
+export const MEMWISE_PLUGIN_SKILL_NOTE =
+  "In MemWise, draw charts with a ```chart block, and tables with ```datatable; don't write Python or HTML dashboards unless asked.";
 
 /**
  * Plugin name for project-level and global skills.
@@ -56,4 +64,13 @@ export interface LoadedSkill {
   path: string;
   /** Where this skill was loaded from */
   source: SkillSource;
+  /** `plugin` skills: the MemWise plugin that ships it (the newest installed version). */
+  plugin?: {
+    /** The name in the skill's slug (`data`). */
+    name: string;
+    /** The MemWise plugin id (`claude/data`). */
+    id?: string;
+    title?: string;
+    version: string;
+  };
 }

@@ -103,7 +103,7 @@ describe('entity checks', () => {
     expect(await checkMulti(account('order_count: { count: orders }', 'order_count: { sum: orders, field: weight }'))).toEqual([`error unknown-field ${ACCOUNT} calculated.order_count.field`]);
     expect(await checkMulti({ [OPS_ACCOUNT]: MULTI[OPS_ACCOUNT]!.replace('{ number: name }', '{ number: nam }') })).toEqual([`error unknown-field ${OPS_ACCOUNT} links.sales.Account.match`]);
     expect(await checkMulti({ [OPS_ACCOUNT]: MULTI[OPS_ACCOUNT]!.replace('follow: [region]', 'follow: [colour]') })).toEqual([`error unknown-field ${OPS_ACCOUNT} links.sales.Account.follow.0`]);
-    const page = 'page:\n  layout: split\n  header: [title, status, nope]\n  left: [{ viewer: name }, { fields: [region, gone] }]\n  right: [{ related: [region] }, { chart: { kind: bar, of: orders, by: colour } }]\n';
+    const page = 'page:\n  layout: split\n  header: [title, status, nope]\n  left: [{ viewer: opened }, { fields: [region, gone] }]\n  right: [{ related: [region] }, { chart: { kind: bar, of: orders, by: colour } }]\n';
     expect(await checkMulti({ [ACCOUNT]: MULTI[ACCOUNT]! + page })).toEqual([
       `error unknown-field ${ACCOUNT} page.header.2`,
       `error unknown-field ${ACCOUNT} page.left`,

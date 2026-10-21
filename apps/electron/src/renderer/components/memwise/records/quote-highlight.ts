@@ -115,13 +115,37 @@ export function highlightItemHtml(str: string, ranges: (ItemRange & { quote: num
 
 /**
  * A Text field's quotes (25 §4): matched the way the kernel checks them, after Unicode NFKC,
- * case folding, `·` read as `.`, and whitespace collapsed to one space. Each match maps back to
- * offsets in the original text, so the viewer can wrap exactly those characters.
+ * case folding, `·` read as `.`, dashes as `-`, curly quotes as straight ones, and whitespace
+ * collapsed to one space. Each match maps back to offsets in the original text, so the viewer
+ * can wrap exactly those characters. The kernel sends each quote's offsets; this finds the ones
+ * it doesn't.
  */
 export interface TextQuoteRange { quote: number; start: number; end: number }
 
+/** A quote a Text viewer lights up. */
+export interface TextQuote {
+  quote: string
+  /** The field it was quoted for, in words ("Sample size", "Evidence · Effect"). */
+  label: string
+  /** The field's name, for `data-quote-field` and picking. */
+  field?: string
+  /** Where the kernel found it (UTF-16 offsets, `end` exclusive); absent: the viewer looks. */
+  start?: number
+  end?: number
+  /** false: the kernel did not find it in the text. */
+  found?: boolean
+  /** Shown on hover after the field ("Sample size: 1204"). */
+  valueText?: string
+}
+
+// The kernel's sets (packages/defs/src/quotes.ts), so the page and the check agree.
+const DASHES = /[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]/g
+const DOTS = /[\u00b7\u2027\u2219\u22c5\u30fb]/g
+const SINGLE_QUOTES = /[\u2018\u2019\u201a\u201b\u2032]/g
+const DOUBLE_QUOTES = /[\u201c\u201d\u201e\u201f\u2033]/g
+
 function foldChar(ch: string): string {
-  return ch.normalize('NFKC').toLowerCase().replace(/·/g, '.')
+  return ch.normalize('NFKC').replace(DOTS, '.').replace(DASHES, '-').replace(SINGLE_QUOTES, "'").replace(DOUBLE_QUOTES, '"').toLowerCase()
 }
 
 /** A quote as the matcher compares it. */

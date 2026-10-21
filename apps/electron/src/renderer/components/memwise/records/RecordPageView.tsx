@@ -3,6 +3,10 @@
  * (title, status, the header fields, the moves it can make), its flags, then the layout's
  * areas (single, split or sidebar; the columns stack when the panel is narrow) and `below`.
  *
+ * Literature (25 §4–§6): KPI tiles, charts drawn with the @memwise/ui kit, a Text field shown with
+ * the quotes its values were read from (a value with a quote can scroll to it), and "Ask about
+ * this <record>".
+ *
  * In review mode (`page.review`, 24 §11) the same page puts the document beside the review:
  * the proposed values, the checks, a comment and "Approve and sign". Presentational.
  */
@@ -10,7 +14,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, ChevronRight, Database, MessageSquare, ShieldCheck } from 'lucide-react'
-import type { MwPageBlock, MwRecordPage, MwTransitionOption } from '@memwise/shared/protocol'
+import { mwPageBlockKey, type MwPageBlock, type MwRecordPage, type MwTransitionOption } from '@memwise/shared/protocol'
 import { Info_Alert } from '@/components/info/Info_Alert'
 import { Info_Badge } from '@/components/info/Info_Badge'
 import { Info_Page } from '@/components/info/Info_Page'
@@ -18,13 +22,16 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { absoluteTime } from '../format'
 import { DocumentViewer, type ViewerQuote } from './DocumentViewer'
+import { TextViewer } from './TextViewer'
 import { ReviewPanel, type ReviewPanelProps } from './DocumentReview'
 import {
   CasesBlock,
   ChartBlock,
+  ChatBlock,
   ChecksBlock,
   FieldRows,
   HistoryBlock,
+  KpisBlock,
   LifecycleBlock,
   MentionsBlock,
   NotesBlock,
@@ -38,7 +45,7 @@ import {
   type RecordPageActions,
 } from './RecordBlocks'
 import { Info_Section } from '@/components/info/Info_Section'
-import { areaBlocks, blockFields, detailFields, formatFieldValue, headerFields, layoutColumns, splitRelated, type AreaName } from './record-model'
+import { areaBlocks, blockFields, detailFields, formatFieldValue, headerFields, layoutColumns, splitRelated, textQuotes, valueQuoteTargets, type AreaName } from './record-model'
 
 export interface ViewerFile { data?: Uint8Array | null; loading?: boolean; error?: string | null }
 
@@ -67,7 +74,12 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
   const reviewing = !!page.review && !!review
   const { columns, below } = layoutColumns(page.layout)
 
-  React.useEffect(() => { setActiveField(null) }, [page.id, page.review?.stepRunId])
+  // The quote picked in a Text viewer (25 §4): which viewer, and which of its highlights.
+  const [textActive, setTextActive] = React.useState<{ field: string; index: number } | null>(null)
+  React.useEffect(() => { setActiveField(null); setTextActive(null) }, [page.id, page.review?.stepRunId])
+  const quoteTargets = React.useMemo(() => valueQuoteTargets(page), [page])
+  const quotedFields = React.useMemo(() => new Set(quoteTargets.keys()), [quoteTargets])
+  const showQuote = React.useCallback((field: string) => setTextActive(quoteTargets.get(field) ?? null), [quoteTargets])
 
   const quotes = React.useMemo<ViewerQuote[]>(() => (page.review?.proposed ?? [])
     .filter(p => p.quote)
@@ -79,12 +91,14 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
   const transitions = page.lifecycle?.transitions ?? []
   const openFlags = page.flags.filter(f => !f.closedAt)
 
-  const renderBlock = (block: MwPageBlock, key: string): React.ReactNode => {
+  const quoteProps = quotedFields.size > 0 ? { quotedFields, onShowQuote: showQuote } : {}
+
+  const renderBlock = (block: MwPageBlock, key: string, at?: { area: AreaName; index: number }): React.ReactNode => {
     switch (block.kind) {
       case 'fields':
         return (
           <Info_Section key={key} title={t('memwise.record.fields')}>
-            <FieldRows fields={blockFields(page, block.fields)} regulated={page.regulated} actions={actions} />
+            <FieldRows fields={blockFields(page, block.fields)} regulated={page.regulated} actions={actions} {...quoteProps} />
           </Info_Section>
         )
       case 'details': {
@@ -92,11 +106,29 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
         if (rest.length === 0) return null
         return (
           <Info_Section key={key} title={t('memwise.record.details')} count={rest.length}>
-            <FieldRows fields={rest} regulated={page.regulated} actions={actions} />
+            <FieldRows fields={rest} regulated={page.regulated} actions={actions} {...quoteProps} />
           </Info_Section>
         )
       }
       case 'viewer': {
+        const text = page.texts?.[block.field]
+        if (text) {
+          const quotesHere = textQuotes(page, text, t, i18n.language)
+          return (
+            <TextViewer
+              key={key}
+              title={page.fields.find(f => f.name === block.field)?.label ?? block.field}
+              text={text.text}
+              quotes={quotesHere}
+              active={textActive?.field === block.field ? textActive.index : null}
+              onPick={i => {
+                const h = text.highlights[i]
+                if (h?.record && actions?.openRecord) actions.openRecord(h.record.entity, h.record.id)
+                else setTextActive({ field: block.field, index: i })
+              }}
+            />
+          )
+        }
         const f = files[block.field] ?? {}
         return (
           <DocumentViewer
@@ -122,7 +154,9 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
       }
       case 'cases': return <CasesBlock key={key} page={page} actions={actions} now={now} />
       case 'lifecycle': return <LifecycleBlock key={key} page={page} onTransition={onTransition} busy={move.busy} />
-      case 'chart': return <ChartBlock key={key} page={page} block={block} />
+      case 'chart': return <ChartBlock key={key} page={page} block={block} chart={at ? page.charts?.[mwPageBlockKey(at.area, at.index)] : undefined} />
+      case 'kpis': return <KpisBlock key={key} page={page} fields={block.fields} kpis={page.kpis} />
+      case 'chat': return <ChatBlock key={key} page={page} onOpenChat={actions?.openChat} />
       case 'checks': return <ChecksBlock key={key} page={page} />
       case 'notes': return <NotesBlock key={key} page={page} actions={actions} now={now} />
       case 'mentions': return <MentionsBlock key={key} page={page} actions={actions} now={now} />
@@ -131,7 +165,7 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
     }
   }
 
-  const area = (name: AreaName) => areaBlocks(page.layout, name).map((b, i) => renderBlock(b, `${name}:${i}:${b.kind}`))
+  const area = (name: AreaName) => areaBlocks(page.layout, name).map((b, i) => renderBlock(b, `${name}:${i}:${b.kind}`, { area: name, index: i }))
 
   // Review mode: the document (the layout's viewer blocks) on one side, the review on the other.
   const viewerBlocks = Object.values(page.layout.areas).flat().filter((b): b is Extract<MwPageBlock, { kind: 'viewer' }> => b?.kind === 'viewer')

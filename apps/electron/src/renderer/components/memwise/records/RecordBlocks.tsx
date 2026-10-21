@@ -26,6 +26,7 @@ import {
   Play,
   Plug,
   ShieldAlert,
+  TextQuote,
   User,
   X,
 } from 'lucide-react'
@@ -226,11 +227,14 @@ function FieldEditor({ field, onSave, onCancel, busy }: { field: MwRecordField; 
   )
 }
 
-export function FieldRows({ fields, regulated, actions, emptyText }: {
+export function FieldRows({ fields, regulated, actions, emptyText, quotedFields, onShowQuote }: {
   fields: MwRecordField[]
   regulated: boolean
   actions?: RecordPageActions
   emptyText?: string
+  /** Values read from a quote in one of the page's Text viewers (25 §4): each can scroll to it. */
+  quotedFields?: Set<string>
+  onShowQuote?: (field: string) => void
 }) {
   const { t } = useTranslation()
   const [editing, setEditing] = React.useState<string | null>(null)
@@ -263,6 +267,11 @@ export function FieldRows({ fields, regulated, actions, emptyText }: {
                 ) : (
                   <>
                     <FieldValue field={f} onOpenRecord={actions?.openRecord} />
+                    {onShowQuote && quotedFields?.has(f.name) && (
+                      <button type="button" className="mt-0.5 shrink-0 text-tertiary hover:text-foreground" onClick={() => onShowQuote(f.name)} aria-label={t('memwise.record.showQuote', { field: f.label })} title={t('memwise.record.showQuote', { field: f.label })} data-action="show-quote">
+                        <TextQuote className="size-3.5" />
+                      </button>
+                    )}
                     {canEdit && (
                       <button type="button" className="mt-0.5 shrink-0 text-tertiary hover:text-foreground" onClick={() => { setEditing(f.name); w.clear() }} aria-label={t('memwise.record.editField', { field: f.label })} data-action="edit-field">
                         <Pencil className="size-3.5" />
@@ -487,7 +496,7 @@ export function ChartBlock({ page, block, chart }: { page: MwRecordPage; block: 
   const { t } = useTranslation()
   const view = chart ?? fallbackChart(page, block)
   const of = page.related[block.of]?.label ?? humanize(block.of)
-  const title = view?.title ?? (block as { title?: string }).title ?? t('memwise.record.chartTitle', { of, by: humanize(block.by ?? 'status').toLowerCase() })
+  const title = view?.title ?? block.title ?? t('memwise.record.chartTitle', { of, by: humanize(block.by ?? 'status').toLowerCase() })
   return <ChartSection title={title} chart={view} />
 }
 

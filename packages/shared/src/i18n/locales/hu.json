@@ -1672,6 +1672,7 @@
   "memwise.record.result.reason-required": "Írja le, miért végzi ezt a változtatást.",
   "memwise.record.result.signature-required": "Ehhez a lépéshez előbb aláírás kell a rekordon.",
   "memwise.record.result.stale": "Időközben valaki módosította a rekordot; nézze meg újra.",
+  "memwise.record.showQuote": "Idézet megjelenítése: {{field}}",
   "memwise.record.showingOf": "{{shown}} / {{total}} látható",
   "memwise.record.signatureMatches": "Egyezik",
   "memwise.record.signatures": "Aláírások",

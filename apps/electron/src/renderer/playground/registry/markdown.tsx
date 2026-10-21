@@ -1,6 +1,6 @@
 import * as React from 'react'
 import type { ComponentEntry } from './types'
-import { Markdown, CollapsibleMarkdownProvider, CodeBlock, InlineCode, MarkdownDatatableBlock, MarkdownSpreadsheetBlock, MarkdownImageBlock, ImageCardStack, PlatformProvider, RunCommandProvider } from '@memwise/ui'
+import { Markdown, CollapsibleMarkdownProvider, CodeBlock, InlineCode, MarkdownChartBlock, MarkdownDatatableBlock, MarkdownSpreadsheetBlock, MarkdownImageBlock, ImageCardStack, PlatformProvider, RunCommandProvider } from '@memwise/ui'
 
 const sampleMarkdown = `# Welcome to Markdown
 
@@ -283,6 +283,50 @@ function RunnableCodeBlocks() {
   )
 }
 
+/** ```chart bodies for the playground (25 §5); illustrative numbers. */
+const CHART_SAMPLES = {
+  interval: {
+    kind: 'interval',
+    title: 'Change in systolic BP vs placebo',
+    unit: 'mmHg',
+    data: [
+      { label: 'Trial A · low dose', value: -4.2, low: -6.1, high: -2.3 },
+      { label: 'Trial A · high dose', value: -6.8, low: -9.0, high: -4.6 },
+      { label: 'Trial B', value: -1.1, low: -3.4, high: 1.2 },
+      { label: 'Trial C (open label)', value: -5.5, low: -7.2, high: -3.8 },
+    ],
+    source: '[Trial A](https://doi.org/10.1000/example-a) · [Trial B](https://pubmed.ncbi.nlm.nih.gov/00000000/) · Trial C, conference abstract',
+  },
+  bar: {
+    kind: 'bar',
+    title: 'Included papers by year',
+    data: [{ label: '2020', value: 3 }, { label: '2021', value: 5 }, { label: '2022', value: 9 }, { label: '2023', value: 14 }, { label: '2024', value: 11 }, { label: '2025', value: 17 }],
+    source: 'PubMed search, screened by the Literature watch',
+  },
+  barLong: {
+    kind: 'bar',
+    title: 'Papers by study type',
+    unit: 'papers',
+    data: [
+      { label: 'Randomised controlled trial', value: 21 },
+      { label: 'Systematic review and meta-analysis', value: 8 },
+      { label: 'Prospective cohort study', value: 12 },
+      { label: 'Case series', value: 4 },
+      { label: 'Narrative review', value: 6 },
+    ],
+  },
+  line: {
+    kind: 'line',
+    title: 'New papers per month',
+    data: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((label, i) => ({ label, value: [4, 6, 5, 9, 7, 11, 10, 14, 12, 13, 16, 15][i] })),
+  },
+  donut: {
+    kind: 'donut',
+    title: 'Screening decisions',
+    data: [{ label: 'Included', value: 34 }, { label: 'Excluded', value: 88 }, { label: 'Unsure', value: 9 }],
+  },
+}
+
 export const markdownComponents: ComponentEntry[] = [
   {
     id: 'markdown-run-command',
@@ -485,6 +529,30 @@ export const markdownComponents: ComponentEntry[] = [
         name: 'Invalid JSON (Fallback)',
         props: { code: '{ invalid json here' },
       },
+    ],
+  },
+  {
+    id: 'chart-block',
+    name: 'MarkdownChartBlock',
+    category: 'Markdown',
+    description: 'Bar, line, donut and interval (forest) charts for ```chart code blocks, drawn with the chart kit',
+    component: MarkdownChartBlock,
+    layout: 'top',
+    props: [
+      {
+        name: 'code',
+        description: 'JSON: { kind, title?, data: [{ label, value, low?, high? }], unit?, source? }',
+        control: { type: 'textarea', rows: 14 },
+        defaultValue: JSON.stringify(CHART_SAMPLES.interval, null, 2),
+      },
+    ],
+    variants: [
+      { name: 'Interval (forest plot)', props: { code: JSON.stringify(CHART_SAMPLES.interval, null, 2) } },
+      { name: 'Bar', props: { code: JSON.stringify(CHART_SAMPLES.bar, null, 2) } },
+      { name: 'Bar, long labels (horizontal)', props: { code: JSON.stringify(CHART_SAMPLES.barLong, null, 2) } },
+      { name: 'Line', props: { code: JSON.stringify(CHART_SAMPLES.line, null, 2) } },
+      { name: 'Donut', props: { code: JSON.stringify(CHART_SAMPLES.donut, null, 2) } },
+      { name: 'Invalid JSON', props: { code: '{ "kind": "bar", "data": [' } },
     ],
   },
   {

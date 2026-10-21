@@ -18,6 +18,7 @@ import type {
   MwNotifySettings, MwRelayConfigureInput, MwRelayStatus, MwResendPreview,
   MwAuditExport, MwAuditExportInput, MwAuditTrail, MwSetPasswordInput, MwSetPasswordResult, MwDashboard, MwDashboardInput, MwDomain, MwFileData, MwRecordCreateInput,
   MwRecordPage, MwRecordPageInput, MwRecordQueryInput, MwRecordQueryResult, MwRecordTransitionInput, MwRecordUpdateInput,
+  MwRecordKeepInput, MwRecordKeepResult,
   MwRecordWriteResult, MwReleaseTriggerInput, MwSaveNoteInput, MwSaveViewInput, MwTreeInput, MwTreeNode, MwTrigger, MwView,
 } from '@memwise/shared/protocol'
 import type { ApprovalDecision, DraftDiff, DraftMeta } from '@memwise/defs'
@@ -105,6 +106,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.RECORDS_PAGE,
   RPC_CHANNELS.memwise.RECORDS_CREATE,
   RPC_CHANNELS.memwise.RECORDS_UPDATE,
+  RPC_CHANNELS.memwise.RECORDS_KEEP,
   RPC_CHANNELS.memwise.RECORDS_TRANSITION,
   RPC_CHANNELS.memwise.RECORDS_QUERY,
   RPC_CHANNELS.memwise.RECORDS_TREE,
@@ -1679,6 +1681,20 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       return withRecordMessage(d.toRecordWriteResult(r))
     },
 
+    /**
+     * Literature (25 §6): rows a person keeps from a record chat, each created in the entity's
+     * initial state as them ("kept from chat <id>"), with whether its quote is in the source.
+     * Refused for an entity whose type doesn't say `keep_from_chat`.
+     */
+    async keepRecords(ctx: RequestContext, input: MwRecordKeepInput): Promise<MwRecordKeepResult> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.entity || !Array.isArray(input.rows) || !input.rows.length) throw new Error('Choose the rows to keep.')
+      if (typeof input.chatId !== 'string' || !input.chatId.trim()) throw new Error('Say which chat the rows come from.')
+      const r = await recordsOf(svc).keep({ entity: input.entity, rows: input.rows, chatId: input.chatId.trim() }, actor)
+      if (r.rows.some((x) => x.id)) emitMemwiseChange({ kind: 'records', entity: r.entity })
+      return d.toKeepResult(r)
+    },
+
     async transitionRecord(ctx: RequestContext, input: MwRecordTransitionInput): Promise<MwRecordWriteResult> {
       const { svc, actor, d } = await begin(ctx)
       if (!input?.entity || !input.id || !input.transition) return recordRefusal('invalid')
@@ -1908,6 +1924,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.RECORDS_PAGE, (ctx, _ws: string, input) => api.recordPage(ctx, input))
   server.handle(ch.RECORDS_CREATE, (ctx, _ws: string, input) => api.createRecord(ctx, input))
   server.handle(ch.RECORDS_UPDATE, (ctx, _ws: string, input) => api.updateRecord(ctx, input))
+  server.handle(ch.RECORDS_KEEP, (ctx, _ws: string, input) => api.keepRecords(ctx, input))
   server.handle(ch.RECORDS_TRANSITION, (ctx, _ws: string, input) => api.transitionRecord(ctx, input))
   server.handle(ch.RECORDS_QUERY, (ctx, _ws: string, input) => api.queryRecords(ctx, input))
   server.handle(ch.RECORDS_TREE, (ctx, _ws: string, input) => api.recordTree(ctx, input))

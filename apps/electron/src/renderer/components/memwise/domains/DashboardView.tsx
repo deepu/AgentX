@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { absoluteTime, relativeTime } from '../format'
 import { HEAT_CLASS, formatPercent, formatTypedValue, heatBucket, type HeatBucket } from '../records/record-model'
-import { StatusPill } from '../records/RecordBlocks'
+import { ChartSection, StatusPill } from '../records/RecordBlocks'
 
 export interface DashboardViewProps {
   dashboard: MwDashboard
@@ -53,6 +53,7 @@ export function DashboardView({ dashboard, onOpenRecord, onRefresh, refreshing, 
             case 'table':
             case 'list': return <ResultBlock key={i} title={b.title} result={b.result} list={b.kind === 'list'} onOpenRecord={onOpenRecord} />
             case 'text': return <div key={i} className="text-label text-secondary" data-text-block><Markdown mode="minimal">{b.markdown}</Markdown></div>
+            case 'chart': return <ChartSection key={i} title={b.chart.title ?? t('chart.defaultTitle')} chart={b.chart} />
             default: return null
           }
         })}

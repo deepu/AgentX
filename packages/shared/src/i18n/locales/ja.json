@@ -1672,6 +1672,7 @@
   "memwise.record.result.reason-required": "この変更の理由を書いてください。",
   "memwise.record.result.signature-required": "この移動には、先にレコードへの署名が必要です。",
   "memwise.record.result.stale": "その間に誰かがこのレコードを変更しました。もう一度確認してください。",
+  "memwise.record.showQuote": "{{field}} の引用を表示",
   "memwise.record.showingOf": "{{total}} 件中 {{shown}} 件を表示",
   "memwise.record.signatureMatches": "一致",
   "memwise.record.signatures": "署名",

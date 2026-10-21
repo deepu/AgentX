@@ -1,10 +1,18 @@
-// Plugin tool routes (22 §2): an MCP server over stdio (a tiny fixture server), a subprocess per
-// call, and the app's builtins; which tools a binding binds, and with what class.
-import { afterAll, describe, expect, test } from 'bun:test';
-import type { BindingDef, InstalledPlugin, PluginManifest, PluginToolDef } from '@memwise/defs';
+// Plugin tool routes (22 §2): an MCP server over stdio (a tiny fixture server) or streamable HTTP
+// (a fake of the PubMed connector, 25 §8), a subprocess per call, and the app's builtins; which
+// tools a binding binds, and with what class.
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import {
+  bindingToYaml, importClaudePlugin, installPlugin, loadProject, withDiscoveredTools,
+  type BindingDef, type EffectLedger, type InstalledPlugin, type LedgerState, type PluginManifest, type PluginToolDef,
+} from '@memwise/defs';
 import type { StepToken } from '@memwise/defs';
-import type { ToolDefinition } from '@memwise/gateway';
+import { createToolGateway, type ToolDefinition } from '@memwise/gateway';
+import { compilePolicy, PLATFORM_DEFAULTS, pluginLayers } from '@memwise/policy';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ATTAIN_2, GLP1_QUERY, startFakePubmed } from './fixtures/fake-pubmed-http.ts';
 import { discoverMcpTools, McpConnections, mcpResultValue, resolveCommand, runCommandTool } from '../src/plugins/routes.ts';
 import { boundPlugins, pluginPolicies, pluginToolEnvironment, pluginTools, toolClass, type BoundPlugin } from '../src/plugins/tools.ts';
 
@@ -70,6 +78,123 @@ describe('the MCP route (stdio)', () => {
     const r = resolveCommand('node', ['${CLAUDE_PLUGIN_ROOT}/server.mjs'], { DATA: '${CLAUDE_PLUGIN_ROOT}/data' }, '/opt/p');
     expect(r.args).toEqual(['/opt/p/server.mjs']);
     expect(r.env.DATA).toBe('/opt/p/data');
+  });
+});
+
+describe('the MCP route (HTTP)', () => {
+  // The PubMed Claude plugin as published (25 §1), its server's URL pointed at the fake.
+  const EXAMPLE = join(import.meta.dir, '..', '..', '..', 'examples', 'literature');
+  const http = new McpConnections();
+  let fake: Awaited<ReturnType<typeof startFakePubmed>>;
+  let tmp: string;
+  let project: string;
+  let source: string;
+
+  beforeAll(async () => {
+    fake = await startFakePubmed();
+    tmp = mkdtempSync(join(tmpdir(), 'mw-pubmed-'));
+    source = join(tmp, 'pubmed');
+    project = join(tmp, 'project');
+    mkdirSync(join(source, '.claude-plugin'), { recursive: true });
+    mkdirSync(project);
+    writeFileSync(join(source, '.claude-plugin', 'plugin.json'), JSON.stringify({
+      name: 'pubmed', version: '1.0.0', description: 'PubMed MCP server for searching biomedical literature and research articles',
+      author: { name: 'U.S. National Library of Medicine', url: 'https://www.nlm.nih.gov' },
+      mcpServers: { PubMed: { type: 'http', url: fake.url } },
+    }, null, 2));
+  });
+  afterAll(async () => {
+    await http.closeAll();
+    await fake.stop();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test('the server is stateless: no session id, like the real one', async () => {
+    const r = await fetch(fake.url, {
+      method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
+    });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('mcp-session-id')).toBeNull();
+  });
+
+  test('installing the Claude plugin finds its seven tools as PubMed.*, unclassified, with their schemas and hints', async () => {
+    // What PluginsService.install does for an imported plugin, without the database it records into.
+    let { manifest } = await importClaudePlugin(source);
+    expect(manifest).toMatchObject({ id: 'claude/pubmed', version: '1.0.0', trust: 'community', mcpServers: { PubMed: { url: fake.url } } });
+    const discovered = await discoverMcpTools(manifest.mcpServers.PubMed!, source, 'PubMed');
+    manifest = withDiscoveredTools(manifest, 'PubMed', discovered);
+    expect(await installPlugin(project, source, { manifest })).toMatchObject({ id: 'claude/pubmed', dir: 'plugins/claude__pubmed/1.0.0', created: true });
+
+    const { project: defs } = await loadProject(project);
+    const installed = defs.pluginVersions!['claude/pubmed']!['1.0.0']!;
+    expect(Object.keys(installed.manifest.tools)).toEqual([
+      'PubMed.convert_article_ids', 'PubMed.find_related_articles', 'PubMed.get_article_metadata', 'PubMed.get_copyright_status',
+      'PubMed.get_full_text_article', 'PubMed.lookup_article_by_citation', 'PubMed.search_articles',
+    ]);
+    const search = installed.manifest.tools['PubMed.search_articles']!;
+    expect(search).toMatchObject({ run: { mcp: 'PubMed', tool: 'search_articles' }, annotations: { readOnlyHint: true } });
+    expect(search.effect).toBeUndefined();
+    expect(toolClass(search)).toEqual({ from: 'none' });
+    expect((search.inputSchema as { required: string[] }).required).toEqual(['query']);
+    expect(Object.keys((search.inputSchema as { properties: object }).properties).sort())
+      .toEqual(['date_from', 'date_to', 'datetype', 'max_results', 'query', 'retstart', 'sort']);
+
+    // The example project ships the same tools (made this way), with the real server's URL.
+    const { project: example } = await loadProject(EXAMPLE);
+    const shipped = example.pluginVersions!['claude/pubmed']!['1.0.0']!.manifest;
+    expect(shipped.tools).toEqual(installed.manifest.tools);
+    expect(shipped.mcpServers).toEqual({ PubMed: { url: 'https://pubmed.mcp.claude.com/mcp' } });
+    expect(example.bindings?.['claude/pubmed']?.tools['PubMed.search_articles']).toEqual({ effect: 'read' });
+  });
+
+  test('PubMed.search_articles through its binding and the gateway: structured content back', async () => {
+    const { project: before } = await loadProject(project);
+    const p = before.pluginVersions!['claude/pubmed']!['1.0.0']!;
+    mkdirSync(join(project, 'domain', 'bindings'), { recursive: true });
+    writeFileSync(join(project, 'domain', 'bindings', 'claude__pubmed.yaml'), bindingToYaml(binding('claude/pubmed',
+      Object.fromEntries(Object.keys(p.manifest.tools).map((t) => [t, { effect: 'read' as const }])),
+      { pluginHash: p.hash, file: 'domain/bindings/claude__pubmed.yaml' })));
+    const { project: defs } = await loadProject(project);
+    const bound = boundPlugins(defs);
+    expect(bound.map((b) => b.dir)).toEqual(['plugins/claude__pubmed/1.0.0']);
+    const { tools, diagnostics } = pluginTools(bound, new Map(), { root: defs.root, builtins: new Map(), mcp: http });
+    expect(diagnostics).toEqual([]);
+    expect(tools.map((t) => [t.name, t.effect])).toContainEqual(['PubMed.search_articles', 'read']);
+
+    const rows = new Map<string, LedgerState>();
+    const ledger: EffectLedger = {
+      async begin(key) { const row = rows.get(key); if (row) return row; rows.set(key, { status: 'pending', startedAt: new Date().toISOString() }); return { status: 'new' }; },
+      async complete(key, result) { rows.set(key, { status: 'done', result }); },
+      async fail(key, error) { rows.set(key, { status: 'failed', error }); },
+    };
+    const gateway = createToolGateway({ tools, ledger });
+    const { effective } = compilePolicy([PLATFORM_DEFAULTS, ...pluginLayers(pluginPolicies(bound), { origin: undefined }, { tools: { allowed: ['PubMed.search_articles'], required: [] } })]);
+    const args = { query: GLP1_QUERY, datetype: 'edat', max_results: 50 };
+    const decision = await gateway.check({ tool: 'PubMed.search_articles', args, token }, effective, { tainted: false });
+    expect(decision.decision.verdict).toBe('allow');
+    const r = await gateway.execute({ tool: 'PubMed.search_articles', args, callId: 'c1', idempotencyKey: 'run_1/0/s:PubMed.search_articles', token }, decision);
+    expect(r).toMatchObject({ status: 'ok' });
+    expect(r.status === 'ok' && r.result).toEqual({
+      pmids: ['99000002', '41275875', '99000001'], total_count: 3, returned_count: 3, query: GLP1_QUERY,
+      query_translation: expect.stringContaining('[All Fields]'), has_more: false,
+    });
+    expect(fake.calls.at(-1)).toEqual({ name: 'search_articles', args });
+
+    // By entry date: nothing added since ATTAIN-2's week but Example Review B; a page of one says there is more.
+    const pubmed = tools.find((t) => t.name === 'PubMed.search_articles')!;
+    expect(await pubmed.execute({ query: GLP1_QUERY, datetype: 'edat', date_from: '2025/12/01' }, ctx('k2'))).toMatchObject({ pmids: ['99000002'], total_count: 1 });
+    expect(await pubmed.execute({ query: GLP1_QUERY, max_results: 1, retstart: 1 }, ctx('k3'))).toMatchObject({ pmids: ['41275875'], returned_count: 1, has_more: true });
+
+    const meta = await tools.find((t) => t.name === 'PubMed.get_article_metadata')!.execute({ pmids: ['41275875'] }, ctx('k4')) as { articles: unknown[]; count: number };
+    expect(meta.count).toBe(1);
+    expect(meta.articles[0]).toMatchObject({
+      identifiers: { pmid: '41275875', doi: '10.1016/S0140-6736(25)02165-8' }, title: ATTAIN_2.title,
+      journal: { iso_abbreviation: 'Lancet' }, publication_date: { year: '2025' }, citation: { volume: '406', issue: '10522', pages: '2927-2944' },
+      abstract: expect.stringContaining('1613 (757 [46·9%] female) were randomly assigned'),
+    });
+    await expect(tools.find((t) => t.name === 'PubMed.get_full_text_article')!.execute({ pmc_ids: ['PMC1'] }, ctx('k5'))).rejects.toThrow(/get_full_text_article failed/);
+    expect(http.open).toBe(1);
   });
 });
 

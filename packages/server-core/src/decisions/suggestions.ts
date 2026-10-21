@@ -16,7 +16,7 @@
 
 import { join } from 'node:path'
 import type { DecisionRequest, DecisionResult } from '@memwise/shared/decisions'
-import type { LoadedSkill } from '@memwise/shared/skills'
+import { MEMWISE_PLUGIN_SKILL_NOTE, type LoadedSkill } from '@memwise/shared/skills'
 import { extractTagline, isSourceUsable, type LoadedSource } from '@memwise/shared/sources'
 import { FOREGROUND_MAX_DEADLINE_MS, openDecisionPoint, recordDecisionFollowUp, recordDecisionOutcome, type DecisionPointDeps } from './decision-point'
 
@@ -211,7 +211,7 @@ export function suggestionFollowUp(trace: SuggestionTrace, used: ReadonlySet<str
 /** One-turn hint for the agent. Never uses mention syntax, so it cannot register a skill or source. */
 export function formatSuggestionHint(candidate: SuggestionCandidate): string {
   const suggestion = candidate.kind === 'skill'
-    ? `the skill "${candidate.name}" (slug: ${candidate.slug}). If it applies, read ${candidate.path} first and follow it.`
+    ? `the skill "${candidate.name}" (slug: ${candidate.slug}). If it applies, read ${candidate.path} first and follow it.${candidate.slug.includes(':') ? ` It comes from a MemWise plugin: ${MEMWISE_PLUGIN_SKILL_NOTE}` : ''}`
     : `the source "${candidate.name}" (slug: ${candidate.slug}), which is not active in this session. If the request needs it, read its guide.md in ${candidate.path} and activate it with source_test.`
   return `<system-reminder>A quick check by the decision model suggests this request may need ${suggestion} Ignore this if it does not fit.</system-reminder>`
 }

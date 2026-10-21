@@ -11,15 +11,9 @@ import { useTranslation } from 'react-i18next'
 import { SearchX } from 'lucide-react'
 import { Info_Section } from '@/components/info/Info_Section'
 import { cn } from '@/lib/utils'
-import { findTextQuotes, textSegments } from './quote-highlight'
+import { findTextQuotes, textSegments, type TextQuote, type TextQuoteRange } from './quote-highlight'
 
-export interface TextQuote {
-  quote: string
-  /** The field it was quoted for, in words ("Sample size", "Evidence · Effect"). */
-  label: string
-  /** The field's name, for `data-quote-field` and picking. */
-  field?: string
-}
+export type { TextQuote }
 
 export interface TextViewerProps {
   title: string
@@ -34,7 +28,7 @@ export interface TextViewerProps {
 export function TextViewer({ title, text, quotes = [], active = null, onPick }: TextViewerProps) {
   const { t } = useTranslation()
   const body = text ?? ''
-  const { ranges, missing } = React.useMemo(() => findTextQuotes(body, quotes.map(q => q.quote)), [body, quotes])
+  const { ranges, missing } = React.useMemo(() => quoteRanges(body, quotes), [body, quotes])
   const segments = React.useMemo(() => textSegments(body, ranges), [body, ranges])
   const ref = React.useRef<HTMLDivElement>(null)
 
@@ -53,7 +47,7 @@ export function TextViewer({ title, text, quotes = [], active = null, onPick }: 
           {segments.map(s => {
             const piece = body.slice(s.start, s.end)
             if (s.quotes.length === 0) return <React.Fragment key={s.start}>{piece}</React.Fragment>
-            const labels = [...new Set(s.quotes.map(q => quotes[q]!.label))]
+            const labels = [...new Set(s.quotes.map(q => (quotes[q]!.valueText ? `${quotes[q]!.label}: ${quotes[q]!.valueText}` : quotes[q]!.label)))]
             const fields = [...new Set(s.quotes.map(q => quotes[q]!.field ?? quotes[q]!.label))]
             const isActive = active !== null && s.quotes.includes(active)
             return (
@@ -91,4 +85,20 @@ export function TextViewer({ title, text, quotes = [], active = null, onPick }: 
       )}
     </Info_Section>
   )
+}
+
+/** Each quote's place in the text: the kernel's offsets when it sent them, else found here. */
+export function quoteRanges(text: string, quotes: TextQuote[]): { ranges: TextQuoteRange[]; missing: number[] } {
+  const ranges: TextQuoteRange[] = []
+  const missing: number[] = []
+  const look: number[] = []
+  quotes.forEach((q, i) => {
+    if (q.found === false) missing.push(i)
+    else if (q.start !== undefined && q.end !== undefined && q.start >= 0 && q.end > q.start && q.end <= text.length) ranges.push({ quote: i, start: q.start, end: q.end })
+    else look.push(i)
+  })
+  const found = findTextQuotes(text, look.map(i => quotes[i]!.quote))
+  for (const r of found.ranges) ranges.push({ ...r, quote: look[r.quote]! })
+  for (const m of found.missing) missing.push(look[m]!)
+  return { ranges: ranges.sort((a, b) => a.start - b.start), missing: missing.sort((a, b) => a - b) }
 }

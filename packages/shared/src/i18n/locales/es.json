@@ -1672,6 +1672,7 @@
   "memwise.record.result.reason-required": "Indique por qué hace este cambio.",
   "memwise.record.result.signature-required": "Este movimiento necesita antes una firma en el registro.",
   "memwise.record.result.stale": "Alguien cambió este registro mientras tanto; revíselo de nuevo.",
+  "memwise.record.showQuote": "Mostrar la cita de {{field}}",
   "memwise.record.showingOf": "Mostrando {{shown}} de {{total}}",
   "memwise.record.signatureMatches": "Coincide",
   "memwise.record.signatures": "Firmas",

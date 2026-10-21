@@ -14,7 +14,8 @@ import type { Diagnostic, ProjectDefs } from '@memwise/defs'
 import type { ToolDefinition } from '@memwise/gateway'
 import type { Actor, Kernel as KernelPhase1, KernelOptions, KernelPhase2, Person } from '@memwise/runtime'
 import type { DtoContext, ToolInfo } from './dto'
-import { emitMemwiseChange, getMemwiseHostStatus, setMemwiseHostStatus, setMemwiseService, type MemwiseHostStatus } from './host'
+import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange, setMemwiseHostStatus, setMemwiseService, type MemwiseHostStatus } from './host'
+import { invalidateSkillsCache, setPluginSkillsRootProvider } from '@memwise/shared/skills'
 import { defaultModelResolver, projectModelRoles, type ModelResolver } from './models'
 import { addMissingMetaPlaybooks, affectsIndex, findExampleProject, findExamplePlugins, META_PLAYBOOK_DIRS, seedProject } from './seed'
 import { createConnectorBridge, type SourcePluginFolder } from './connectors'
@@ -124,6 +125,22 @@ function ownerDefaults(mode: 'desktop' | 'server'): { name: string; email: strin
   name ||= mode === 'server' ? 'Administrator' : 'Owner'
   const slug = name.toLowerCase().replace(/[^a-z0-9._-]+/g, '.').replace(/^\.+|\.+$/g, '') || 'owner'
   return { name, email: process.env.MEMWISE_OWNER_EMAIL || `${slug}@memwise.local` }
+}
+
+let pluginSkillsOffered = false
+
+/**
+ * Skills of the plugins installed in the running project join chat's skills as a fourth tier,
+ * `<plugin>:<skill>` (doc 25 §7): the skills loader asks for the project folder at each load,
+ * and forgets what it read when plugins or definitions change.
+ */
+function offerPluginSkills(): void {
+  setPluginSkillsRootProvider(() => getMemwiseService()?.projectDir)
+  if (pluginSkillsOffered) return
+  pluginSkillsOffered = true
+  onMemwiseChange((c) => {
+    if (c.kind === 'plugins' || c.kind === 'definitions') invalidateSkillsCache()
+  })
 }
 
 function readState(file: string): { ownerId?: string } {
@@ -405,6 +422,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     }
 
     setMemwiseService(service)
+    offerPluginSkills()
     setMemwiseHostStatus({
       phase: 'ready',
       message: models.configured ? undefined : models.message,

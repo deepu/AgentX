@@ -380,7 +380,7 @@
       "type": "string"
     },
     "map": {
-      "description": "System steps: arguments for each tool, in call order. `case.<field>` reads the case; anything else is a literal (or write { value: ... }).",
+      "description": "System steps: arguments for each tool, in call order. `case.<field>` reads the case; `each: case.<List field>` calls the tool once per item, with `item.<field>`; `{ today: 7 }` is a date, `{ now: true }` the time; anything else is a literal (or write { value: ... }).",
       "type": "object",
       "propertyNames": {
         "type": "string"
@@ -555,6 +555,13 @@
           ],
           "additionalProperties": false
         }
+      ]
+    },
+    "quotes": {
+      "description": "Agent steps: `required` makes every value the agent writes carry the exact words of a tool result it was read from.",
+      "type": "string",
+      "enum": [
+        "required"
       ]
     }
   },

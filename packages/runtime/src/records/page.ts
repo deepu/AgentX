@@ -14,10 +14,12 @@ import {
 } from '@memwise/defs';
 import { recordContentHash } from '../regulated/content.ts';
 import { signedRecordField } from '../regulated/signatures.ts';
-import type {
-  Actor, DocumentValue, RecordField, RecordFieldSource, RecordPage, RecordReview, RecordTransitionOption, RecordVersionSummary,
-  SignatureView,
+import {
+  pageBlockKey, type Actor, type ChartData, type DocumentValue, type RecordField, type RecordFieldSource, type RecordKpi, type RecordPage,
+  type RecordReview, type RecordTextView, type RecordTransitionOption, type RecordVersionSummary, type SignatureView,
 } from '../types.ts';
+import { chartData } from './charts.ts';
+import { textView } from './quotes.ts';
 import { assigneeOf } from '../driver.ts';
 import { maySee } from '../views.ts';
 import { domainOfEntity, inverseOf, isControlled, isRegulated, recordTitle, refEntity, type RecordsDeps } from './context.ts';
@@ -244,9 +246,42 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
     if (byTrigger || byField) start.push({ workflowId: wf.id, title: wf.title ?? wf.id });
   }
 
-  // ---- documents for viewer blocks
+  // ---- documents for viewer blocks; a Text field's viewer shows the text with its quotes lit (25 §4)
   const documents: Record<string, DocumentValue | null> = {};
-  for (const b of blocks) if (b.kind === 'viewer') documents[b.field] = hidden.has(b.field) ? null : ((values[b.field] as DocumentValue | undefined) ?? null);
+  const texts: Record<string, RecordTextView> = {};
+  for (const b of blocks) {
+    if (b.kind !== 'viewer') continue;
+    const t = def.fields[b.field]?.type;
+    if (t?.kind === 'scalar' && t.name === 'Text') {
+      if (texts[b.field]) continue;
+      const text = hidden.has(b.field) || typeof values[b.field] !== 'string' ? null : values[b.field] as string;
+      texts[b.field] = await textView(deps, def, id, b.field, text, actor);
+    } else {
+      documents[b.field] = hidden.has(b.field) ? null : ((values[b.field] as DocumentValue | undefined) ?? null);
+    }
+  }
+
+  // ---- KPI tiles and charts (25 §5)
+  const kpis: Record<string, RecordKpi> = {};
+  for (const b of blocks) {
+    if (b.kind !== 'kpis') continue;
+    for (const name of b.fields) {
+      const f = fields.find((x) => x.name === name);
+      const v = f && !f.hidden ? f.value : null;
+      const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null;
+      kpis[name] = { field: name, value: n, type: f?.type ?? 'Number', ...(f?.description ? { description: f.description } : {}) };
+    }
+  }
+  const charts: Record<string, ChartData> = {};
+  for (const [area, list] of Object.entries(layout.areas)) {
+    for (const [i, b] of (list ?? []).entries()) {
+      if (b.kind !== 'chart') continue;
+      const inv = inverseOf(entities, def, b.of);
+      if (!inv) continue; // a chart of a calculated field draws nothing yet
+      const filter = [`${inv.via} = params.record`, ...(b.where?.trim() ? [`(${b.where})`] : [])].join(' and ');
+      charts[pageBlockKey(area, i)] = await withActor(deps.pool, actor, (db) => chartData(deps, actor, db, inv.target, b, filter, { record: id }));
+    }
+  }
 
   const labelsAll = labels;
   const history = [...versions].reverse().slice(0, 20).map((v) => versionSummary(v, labelsAll));
@@ -258,6 +293,9 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
     ...(note ? { notes: { body: note.body, version: note.version, by: labels.get(note.by) ?? (await deps.people.get(note.by))?.name ?? note.by, at: note.at } } : {}),
     mentions: mentionRows.map((m) => ({ sourceKind: m.sourceKind, sourceId: m.sourceId, label: m.label ?? m.sourceId, at: m.at, ...(m.caseId ? { caseId: m.caseId } : {}) })),
     start, documents, history,
+    ...(Object.keys(kpis).length ? { kpis } : {}),
+    ...(Object.keys(charts).length ? { charts } : {}),
+    ...(Object.keys(texts).length ? { texts } : {}),
   };
   if (opts.review) {
     const review = await buildReview(deps, def, id, actor, opts.review.stepRunId);

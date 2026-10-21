@@ -75,7 +75,7 @@ expect:
   outcome: drafted
   state: end
   writes: { found_count: 3 }
-  effects: { PubMed.search_articles: 1, literature.topic.update: 1, literature.topic.transition: 1 }
+  effects: { literature.topic.update: 1, literature.topic.transition: 1 }
   entities:
     Topic:
       - { name: Oral GLP-1s for weight in T2D, query: '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND ("type 2 diabetes" OR "diabetes mellitus, type 2"[MeSH Terms]) AND (obesity OR weight)' }

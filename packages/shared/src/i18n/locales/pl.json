@@ -1722,6 +1722,7 @@
   "memwise.record.result.reason-required": "Napisz, dlaczego wprowadzasz tę zmianę.",
   "memwise.record.result.signature-required": "To przejście wymaga najpierw podpisu na rekordzie.",
   "memwise.record.result.stale": "W międzyczasie ktoś zmienił ten rekord; zajrzyj do niego jeszcze raz.",
+  "memwise.record.showQuote": "Pokaż cytat dla pola {{field}}",
   "memwise.record.showingOf": "Pokazano {{shown}} z {{total}}",
   "memwise.record.signatureMatches": "Zgodny",
   "memwise.record.signatures": "Podpisy",

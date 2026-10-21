@@ -36,7 +36,7 @@ import {
 } from '../../config/cli-domains.ts';
 import { FEATURE_FLAGS } from '../../feature-flags.ts';
 import { AGENTS_PLUGIN_NAME } from '../../skills/types.ts';
-import { GLOBAL_AGENT_SKILLS_DIR, PROJECT_AGENT_SKILLS_DIR } from '../../skills/storage.ts';
+import { GLOBAL_AGENT_SKILLS_DIR, PROJECT_AGENT_SKILLS_DIR, findPluginSkill, getPluginSkillsRoot, loadPluginSkills } from '../../skills/storage.ts';
 import {
   shouldAllowToolInMode,
   isReadOnlyBashCommandWithConfig,
@@ -200,10 +200,11 @@ export function expandToolPaths(
  * Ensure skill names are fully-qualified with the correct plugin prefix.
  *
  * The SDK resolves skills as `pluginName:skillSlug` where the plugin name is
- * read from `.claude-plugin/plugin.json` `name` field. Skills can live in 3 tiers:
+ * read from `.claude-plugin/plugin.json` `name` field. Skills can live in 4 tiers:
  *   1. Workspace: {workspaceRoot}/skills/{slug}/ → plugin name from plugin.json
  *   2. Project:   {workingDir}/.agents/skills/{slug}/ → plugin name = ".agents"
  *   3. Global:    ~/.agents/skills/{slug}/ → plugin name = ".agents"
+ *   4. MemWise plugins: {memwise project}/plugins/<slug>/<version>/skills/{slug}/ → `<plugin>:<slug>`
  *
  * This function resolves the bare slug to the correct plugin prefix by checking
  * which directory actually contains the skill. It also handles re-qualifying
@@ -226,6 +227,9 @@ export function qualifySkillName(
 ): SkillQualificationResult {
   const skill = input.skill as string | undefined;
   if (!skill) return { modified: false, input };
+
+  // A MemWise plugin skill is already fully named `<plugin>:<skill>` (doc 25 §7).
+  if (skill.includes(':') && findPluginSkill(skill)) return { modified: false, input };
 
   // Extract the bare slug — strip any existing qualifier (e.g. "MemWiseAgentWS:commit" → "commit")
   const bareSlug = skill.includes(':') ? skill.split(':').pop()! : skill;
@@ -280,6 +284,11 @@ function resolveSkillPlugin(
   if (existsSync(join(GLOBAL_AGENT_SKILLS_DIR, bareSlug, 'SKILL.md'))) {
     return `${AGENTS_PLUGIN_NAME}:${bareSlug}`;
   }
+
+  // 4. MemWise plugins (doc 25 §7): <project>/plugins/<slug>/<version>/skills/{slug}/SKILL.md → `<plugin>:<slug>`
+  const pluginRoot = getPluginSkillsRoot();
+  const pluginSkill = pluginRoot ? loadPluginSkills(pluginRoot).find((s) => s.slug.endsWith(`:${bareSlug}`)) : undefined;
+  if (pluginSkill) return pluginSkill.slug;
 
   // Fallback: assume workspace plugin (original behavior)
   return `${workspaceSlug}:${bareSlug}`;

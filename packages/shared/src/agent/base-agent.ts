@@ -67,6 +67,7 @@ import { buildTitlePrompt, buildRegenerateTitlePrompt, validateTitle } from '../
 // Skill extraction for Codex/Copilot backends (Claude uses native SDK Skill tool)
 import { parseMentions, resolveSkillMentions, resolveSourceMentions, resolveFileMentions } from '../mentions/index.ts';
 import { loadAllSkills } from '../skills/storage.ts';
+import { MEMWISE_PLUGIN_SKILL_NOTE } from '../skills/types.ts';
 
 // ============================================================
 // Mini Agent Configuration
@@ -917,11 +918,7 @@ ${formattedMessages}
    * Called from chat() — all agents get the same directive prepended to their message.
    */
   protected formatSkillDirective(skillPaths: Map<string, string>): string {
-    if (skillPaths.size === 0) return '';
-    const pathList = [...skillPaths.entries()]
-      .map(([slug, path]) => `- ${path} (skill: ${slug})`)
-      .join('\n');
-    return `Before proceeding with the user's request, you MUST read the following skill instruction files using the Read tool or \`cat\` via Bash:\n${pathList}\n\nDo not take any other action until you have read these files.`;
+    return formatSkillReadDirective(skillPaths);
   }
 
   // ============================================================
@@ -1227,3 +1224,21 @@ ${formattedMessages}
 
 // Re-export for convenience
 export { AbortReason };
+
+/**
+ * The directive telling the model to read skill SKILL.md files before proceeding. A MemWise
+ * plugin skill (named `<plugin>:<skill>`, docs/memwise/25-literature-poc.md §7) gets the MemWise
+ * note before its instructions, so the plugin's advice on choosing and checking charts applies
+ * and its Python and HTML recipes don't.
+ */
+export function formatSkillReadDirective(skillPaths: Map<string, string>): string {
+  if (skillPaths.size === 0) return '';
+  const pathList = [...skillPaths.entries()]
+    .map(([slug, path]) => `- ${path} (skill: ${slug})`)
+    .join('\n');
+  const pluginSkills = [...skillPaths.keys()].filter((slug) => slug.includes(':'));
+  const note = pluginSkills.length
+    ? `\n\nWhen you follow ${pluginSkills.join(', ')} (from a MemWise plugin), this comes first: ${MEMWISE_PLUGIN_SKILL_NOTE}`
+    : '';
+  return `Before proceeding with the user's request, you MUST read the following skill instruction files using the Read tool or \`cat\` via Bash:\n${pathList}${note}\n\nDo not take any other action until you have read these files.`;
+}

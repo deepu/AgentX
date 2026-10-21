@@ -753,6 +753,8 @@ Skills are stored at three levels (checked in order):
 - Workspace: \`${workspacePath}/skills/{slug}/SKILL.md\`
 - Project: \`{projectRoot}/.agents/skills/{slug}/SKILL.md\`
 
+Skills of plugins installed in MemWise come after these, named \`<plugin>:<skill>\` (e.g. \`data:create-viz\`). In MemWise, draw charts with a \`\`\`chart block and tables with \`\`\`datatable; don't write Python or HTML dashboards unless asked, whatever such a skill suggests.
+
 ## Project Context
 
 When \`<project_context_files>\` appears in the system prompt, it lists discovered context files (CLAUDE.md, AGENTS.md). In git repositories, paths are relative to \`context_root\` and are filtered toward the selected working directory so monorepo package sessions still see root and path-specific guidance.

@@ -498,6 +498,7 @@ export const CHANNEL_MAP = {
   memwiseGetRecordPage: invoke(RPC_CHANNELS.memwise.RECORDS_PAGE),
   memwiseCreateRecord: invoke(RPC_CHANNELS.memwise.RECORDS_CREATE),
   memwiseUpdateRecord: invoke(RPC_CHANNELS.memwise.RECORDS_UPDATE),
+  memwiseKeepRecords: invoke(RPC_CHANNELS.memwise.RECORDS_KEEP),
   memwiseTransitionRecord: invoke(RPC_CHANNELS.memwise.RECORDS_TRANSITION),
   memwiseQueryRecords: invoke(RPC_CHANNELS.memwise.RECORDS_QUERY),
   memwiseRecordTree: invoke(RPC_CHANNELS.memwise.RECORDS_TREE),

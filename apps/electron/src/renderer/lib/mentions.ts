@@ -15,7 +15,7 @@ import { AGENTS_PLUGIN_NAME } from '@memwise/shared/skills/types'
 import { getSourceIconSync, getSkillIconSync } from './icon-cache'
 
 // Import and re-export parsing functions from shared (pure string operations, no renderer deps)
-import { parseMentions, stripAllMentions, resolveSkillMentions, resolveSourceMentions, type ParsedMentions } from '@memwise/shared/mentions'
+import { parseMentions, stripAllMentions, resolveSkillMentions, resolveSourceMentions, resolveSkillMentionSlug, SKILL_MENTION_BODY, type ParsedMentions } from '@memwise/shared/mentions'
 export { parseMentions, stripAllMentions, resolveSkillMentions, resolveSourceMentions, type ParsedMentions }
 
 // ============================================================================
@@ -76,9 +76,10 @@ export function findMentionMatches(
   // Match skill mentions: [skill:slug] or [skill:workspaceId:slug]
   // The pattern captures the full match and extracts the slug (last component)
   // Workspace IDs can contain spaces, hyphens, underscores, and dots
-  const skillPattern = new RegExp(`(\\[skill:(?:${WS_ID_CHARS}+:)?([\\w-]+)\\])`, 'g')
+  // A plugin skill is named `<plugin>:<skill>` (`[skill:data:create-viz]`).
+  const skillPattern = new RegExp(`(\\[skill:(${SKILL_MENTION_BODY})\\])`, 'g')
   while ((match = skillPattern.exec(text)) !== null) {
-    const slug = match[2]
+    const slug = resolveSkillMentionSlug(match[2], (s) => availableSkillSlugs.includes(s))
     if (availableSkillSlugs.includes(slug)) {
       matches.push({
         type: 'skill',
@@ -247,8 +248,9 @@ export function extractBadges(
     let rawText = match.fullMatch
     if (match.type === 'skill') {
       const skill = skillsBySlug.get(match.id)
-      const pluginName = skill?.source === 'workspace' ? workspaceId : AGENTS_PLUGIN_NAME
-      rawText = `[skill:${pluginName}:${match.id}]`
+      // A plugin skill's slug already names its plugin (`data:create-viz`).
+      const pluginName = skill?.source === 'plugin' ? undefined : skill?.source === 'workspace' ? workspaceId : AGENTS_PLUGIN_NAME
+      rawText = pluginName ? `[skill:${pluginName}:${match.id}]` : `[skill:${match.id}]`
     }
 
     return {

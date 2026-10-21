@@ -12,7 +12,7 @@ import type { MwInboxItem, MwRecordPage, MwSubmitResult } from '@memwise/shared/
 import { Info_Page } from '@/components/info/Info_Page'
 import { navigate, routes } from '@/lib/navigate'
 import { memwiseRolesAtom, memwiseStartCaseDialogAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
-import { getMemwiseApi } from '@/hooks/useMemwise'
+import { getMemwiseApi, useMemwiseOpenChat } from '@/hooks/useMemwise'
 import { base64ToBytes, downloadBase64, useMemwiseFile, useMemwiseRecordCalls, useMemwiseRecordPage } from '@/hooks/useMemwiseRecords'
 import { roleTitle } from '../format'
 import type { RecordPageActions } from './RecordBlocks'
@@ -30,16 +30,41 @@ function useViewerFiles(page: MwRecordPage | null): Record<string, ViewerFile> {
   return React.useMemo(() => (field ? { [field]: { data: bytes, loading: loading || (isPdf && !data && !error), error } } : {}), [field, bytes, loading, isPdf, data, error])
 }
 
-export function useRecordActions(page: MwRecordPage | null): RecordPageActions {
+/**
+ * "Ask in chat" on a record page (doc 25 §6): opens a chat anchored to the record in a new panel
+ * beside the page; the chat can read the record and its related records as this person.
+ */
+function useOpenRecordChat(entity: string | undefined, id: string | undefined): (() => void) | undefined {
+  const { t } = useTranslation()
+  const openChat = useMemwiseOpenChat()
+  const opening = React.useRef(false)
+  return React.useMemo(() => {
+    if (!entity || !id) return undefined
+    const api = getMemwiseApi()
+    if (!api || typeof api.memwiseOpenChat !== 'function') return undefined
+    return () => {
+      if (opening.current) return
+      opening.current = true
+      openChat({ kind: 'record', entity, id })
+        .then(sessionId => { if (sessionId) navigate(routes.view.allSessions(sessionId), { newPanel: true }) })
+        .catch(err => toast.error(t('memwise.step.openChatFailed'), { description: err instanceof Error ? err.message : String(err) }))
+        .finally(() => { opening.current = false })
+    }
+  }, [entity, id, openChat, t])
+}
+
+export function useRecordActions(page: MwRecordPage | null): RecordPageActions & { openChat?: () => void } {
   const calls = useMemwiseRecordCalls()
   const setStartCase = useSetAtom(memwiseStartCaseDialogAtom)
   const entity = page?.entity
   const id = page?.id
   const domain = page?.domain
-  return React.useMemo<RecordPageActions>(() => {
+  const openChat = useOpenRecordChat(entity, id)
+  return React.useMemo<RecordPageActions & { openChat?: () => void }>(() => {
     if (!entity || !id) return {}
     const api = getMemwiseApi()
     return {
+      ...(openChat ? { openChat } : {}),
       openRecord: (e, r) => navigate(routes.view.record(e, r)),
       openCase: caseId => navigate(routes.view.cases(caseId)),
       openView: e => domain && navigate(routes.view.domains({ type: 'entities', domain, entity: e })),
@@ -56,7 +81,7 @@ export function useRecordActions(page: MwRecordPage | null): RecordPageActions {
         },
       } : {}),
     }
-  }, [entity, id, domain, calls, setStartCase])
+  }, [entity, id, domain, calls, setStartCase, openChat])
 }
 
 export function RecordPage({ entity, recordId }: { entity: string; recordId: string }) {

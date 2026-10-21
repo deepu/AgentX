@@ -1672,6 +1672,7 @@
   "memwise.record.result.reason-required": "Nennen Sie den Grund für diese Änderung.",
   "memwise.record.result.signature-required": "Für diesen Schritt braucht der Datensatz zuerst eine Signatur.",
   "memwise.record.result.stale": "Jemand hat den Datensatz inzwischen geändert; sehen Sie ihn sich noch einmal an.",
+  "memwise.record.showQuote": "Zitat für {{field}} zeigen",
   "memwise.record.showingOf": "{{shown}} von {{total}} angezeigt",
   "memwise.record.signatureMatches": "Stimmt überein",
   "memwise.record.signatures": "Signaturen",

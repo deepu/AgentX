@@ -26,6 +26,27 @@ function joinPath(base: string, relative: string): string {
 // Using literal space instead of \s to avoid matching newlines which would break parsing
 export const WS_ID_CHARS = '[\\w .-]'
 
+/**
+ * The body of a skill mention: `[skill:slug]`, `[skill:workspaceId:slug]`, or a plugin skill
+ * named `<plugin>:<skill>` (`[skill:data:create-viz]`, docs/memwise/25-literature-poc.md §7).
+ * Resolve the captured body with `resolveSkillMentionSlug`.
+ */
+export const SKILL_MENTION_BODY = `(?:${WS_ID_CHARS}+:){0,2}[\\w-]+`
+
+/**
+ * The skill slug a mention body names: `data:create-viz` when that plugin skill is available,
+ * else the last component (`ws:commit` → `commit`).
+ */
+export function resolveSkillMentionSlug(body: string, isAvailable?: (slug: string) => boolean): string {
+  const parts = body.split(':')
+  const last = parts[parts.length - 1] ?? body
+  if (parts.length >= 2 && isAvailable) {
+    const pluginSkill = `${parts[parts.length - 2]}:${last}`
+    if (isAvailable(pluginSkill)) return pluginSkill
+  }
+  return last
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -85,9 +106,10 @@ export function parseMentions(
   // Match skill mentions: [skill:slug] or [skill:workspaceId:slug]
   // The pattern captures the last component (slug) after any number of colons
   // Workspace IDs can contain spaces, hyphens, underscores, and dots
-  const skillPattern = new RegExp(`\\[skill:(?:${WS_ID_CHARS}+:)?([\\w-]+)\\]`, 'g')
+  const skillPattern = new RegExp(`\\[skill:(${SKILL_MENTION_BODY})\\]`, 'g')
+  const available = new Set(availableSkillSlugs)
   while ((match = skillPattern.exec(text)) !== null) {
-    const slug = match[1]!
+    const slug = resolveSkillMentionSlug(match[1]!, (s) => available.has(s))
     if (availableSkillSlugs.includes(slug)) {
       if (!result.skills.includes(slug)) {
         result.skills.push(slug)
@@ -156,8 +178,9 @@ export function resolveSkillMentions(
   skillNames: Map<string, string>
 ): string {
   return text.replace(
-    new RegExp(`\\[skill:(?:${WS_ID_CHARS}+:)?([\\w-]+)\\]`, 'g'),
-    (_match, slug: string) => {
+    new RegExp(`\\[skill:(${SKILL_MENTION_BODY})\\]`, 'g'),
+    (_match, body: string) => {
+      const slug = resolveSkillMentionSlug(body, (s) => skillNames.has(s))
       const name = skillNames.get(slug) || slug
       return `[Mentioned skill: ${name} (slug: ${slug})]`
     }

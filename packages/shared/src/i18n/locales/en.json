@@ -1672,6 +1672,7 @@
   "memwise.record.result.reason-required": "Say why you are making this change.",
   "memwise.record.result.signature-required": "This move needs a signature on the record first.",
   "memwise.record.result.stale": "Someone changed this record meanwhile; look at it again.",
+  "memwise.record.showQuote": "Show the quote for {{field}}",
   "memwise.record.showingOf": "Showing {{shown}} of {{total}}",
   "memwise.record.signatureMatches": "Matches",
   "memwise.record.signatures": "Signatures",

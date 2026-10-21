@@ -51,7 +51,7 @@
           "type": "string"
         },
         "additionalProperties": {},
-        "description": "kpi: { label, value: { count | percent | sum | avg: <Entity>, where, field, of }, target }, table: { title, view }, list: { title, view }, heatmap: { rows, columns }, text: markdown."
+        "description": "kpi: { label, value: { count | percent | sum | avg: <Entity>, where, field, of }, target }, table: { title, view }, list: { title, view }, heatmap: { rows, columns }, chart: { kind, entity, where, by | label, value, low, high, unit, title }, text: markdown."
       }
     }
   },

@@ -1672,6 +1672,7 @@
   "memwise.record.result.reason-required": "请说明进行此修改的原因。",
   "memwise.record.result.signature-required": "此转换需要先在记录上签名。",
   "memwise.record.result.stale": "此记录在此期间已被他人修改，请重新查看。",
+  "memwise.record.showQuote": "显示 {{field}} 的引文",
   "memwise.record.showingOf": "显示 {{shown}} / {{total}}",
   "memwise.record.signatureMatches": "一致",
   "memwise.record.signatures": "签名",

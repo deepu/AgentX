@@ -6,18 +6,22 @@
 import type { TFunction } from 'i18next'
 import type {
   MwCaseValue,
+  MwChartData,
   MwDashboardBlock,
   MwInboxItem,
   MwPageBlock,
   MwPageLayout,
   MwRecordField,
   MwRecordFieldSource,
+  MwRecordKpi,
   MwRecordPage,
   MwRecordReview,
+  MwTextView,
   MwTransitionOption,
   MwTreeNode,
 } from '@memwise/shared/protocol'
 import type { KpiTile } from '@memwise/ui'
+import type { TextQuote } from './quote-highlight'
 import { absoluteTime, formatMoney, formatValueInline, humanize, isDocumentValue, isMoney, isNegativeOutcome, sortInbox } from '../format'
 
 // ---------------------------------------------------------------- values
@@ -181,12 +185,13 @@ export function blockFields(page: MwRecordPage, names: string[]): MwRecordField[
   return names.map(n => page.fields.find(f => f.name === n)).filter((f): f is MwRecordField => !!f)
 }
 
-/** `details`: every field not already shown by a `fields` block or the viewer. */
+/** `details`: every field not already shown by a `fields` block, the viewer or a KPI tile. */
 export function detailFields(page: MwRecordPage): MwRecordField[] {
   const shown = new Set<string>(['status'])
   for (const b of Object.values(page.layout.areas).flat()) {
     if (b?.kind === 'fields') b.fields.forEach(f => shown.add(f))
     if (b?.kind === 'viewer') shown.add(b.field)
+    if (b?.kind === 'kpis') b.fields.forEach(f => shown.add(f))
   }
   return page.fields.filter(f => !shown.has(f.name))
 }
@@ -284,22 +289,11 @@ export function chartData(page: MwRecordPage, block: Extract<MwPageBlock, { kind
   return []
 }
 
-/**
- * A chart's rows as the server computes them (25 §5, `MwChartData`): bar/line/donut count records
- * per value; interval has one row per record with its value and interval. A row may carry its own
- * unit when the chart's rows don't share one.
- */
-export interface ChartView {
-  kind: 'bar' | 'line' | 'donut' | 'interval'
-  title?: string
-  unit?: string
-  data: { label: string; value: number; low?: number; high?: number; unit?: string; record?: { entity: string; id: string; title: string } }[]
-  total: number
-  skipped?: number
-}
+/** A chart's rows as the kernel computed them (25 §5). */
+export type ChartView = MwChartData
 
-/** A KPI tile's value from the server (25 §5, `MwRecordKpi`). */
-export interface KpiView { field: string; value: number | null; type: string; description?: string }
+/** A KPI tile's value from the kernel (25 §5). */
+export type KpiView = MwRecordKpi
 
 /** The kit's rows for a chart: a row with its own unit (the chart has none) says it in its label. */
 export function chartRows(chart: ChartView): { label: string; value: number; low?: number; high?: number }[] {
@@ -332,6 +326,38 @@ export function kpiTiles(page: MwRecordPage, fields: string[], kpis: Record<stri
     if (raw === null || raw === undefined || raw === '') return { label, value: null, detail: kpi?.description }
     return { label, value: null, display: formatTypedValue(type, raw, t, locale), detail: kpi?.description }
   })
+}
+
+// ---------------------------------------------------------------- text viewer (25 §4)
+
+/** A Text viewer's quotes from the kernel's highlights: the field in words, and the value or record it backs. */
+export function textQuotes(page: MwRecordPage, view: MwTextView, t: TFunction, locale?: string): TextQuote[] {
+  return view.highlights.map(h => {
+    const field = page.fields.find(f => f.name === h.field)
+    const valueText = h.kind === 'related'
+      ? h.record?.title
+      : h.value !== undefined && h.value !== null ? formatTypedValue(field?.type ?? '', h.value, t, locale) : undefined
+    return {
+      quote: h.quote,
+      label: h.label || field?.label || humanize(h.field),
+      field: h.field,
+      found: h.found,
+      ...(h.start !== undefined ? { start: h.start } : {}),
+      ...(h.end !== undefined ? { end: h.end } : {}),
+      ...(valueText ? { valueText } : {}),
+    }
+  })
+}
+
+/** The record's values that have a quote in one of its Text viewers: field → which viewer and highlight. */
+export function valueQuoteTargets(page: MwRecordPage): Map<string, { field: string; index: number }> {
+  const out = new Map<string, { field: string; index: number }>()
+  for (const [viewer, view] of Object.entries(page.texts ?? {})) {
+    view.highlights.forEach((h, index) => {
+      if (h.kind === 'value' && h.found && !out.has(h.field)) out.set(h.field, { field: viewer, index })
+    })
+  }
+  return out
 }
 
 // ---------------------------------------------------------------- review

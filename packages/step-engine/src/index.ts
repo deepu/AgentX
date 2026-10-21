@@ -8,7 +8,7 @@ export { configureStepEngine } from './deps.ts';
 export { AGENT_STEP_WORKFLOW, agentStepWorkflow, registerAgentStep, runAgentStep, runBudget, stepBudget } from './loop.ts';
 export { agentWrites, assembleContext, finishToolParameters, requiredTools } from './context.ts';
 export {
-  VERDICT_TOOL, deepEqual, findInResults, parseVerdict, structuralChecks, verifierRequest,
+  VERDICT_TOOL, deepEqual, findInResults, parseVerdict, quoteProblem, quoteRule, structuralChecks, verifierRequest,
   type Evidence, type FinishArgs, type StructuralResult,
 } from './checkpoint.ts';
 export { recallTools } from './recall.ts';

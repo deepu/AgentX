@@ -32,6 +32,7 @@ import {
   samplePdf,
   withPhase6Case,
 } from '@/components/memwise/records/sample-records'
+import { sampleArticlePage, sampleLiteratureDashboard, sampleTopicPage } from '@/components/memwise/records/sample-literature'
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 const log = (...args: unknown[]) => console.log('[playground]', ...args)
@@ -71,6 +72,22 @@ function RecordPageDemo({ layout, width }: { layout: keyof typeof LAYOUTS; width
       <div className="h-[860px] overflow-auto rounded-lg bg-background shadow-elev-1">
         <Info_Page>
           <RecordPageView key={layout} page={page} actions={recordActions} files={files} now={SAMPLE_NOW} />
+        </Info_Page>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------- literature (25 §4–§5)
+
+function LiteratureDemo({ page, width }: { page: 'topic' | 'article' | 'overview'; width: 'wide' | 'narrow' }) {
+  return (
+    <div className={width === 'narrow' ? 'w-[420px]' : 'w-full'}>
+      <div className="h-[860px] overflow-auto rounded-lg bg-background shadow-elev-1">
+        <Info_Page>
+          {page === 'overview'
+            ? <DashboardView dashboard={sampleLiteratureDashboard} onOpenRecord={(e, id) => log('open record', e, id)} now={SAMPLE_NOW} />
+            : <RecordPageView key={page} page={page === 'topic' ? sampleTopicPage : sampleArticlePage} actions={recordActions} now={SAMPLE_NOW} />}
         </Info_Page>
       </div>
     </div>
@@ -282,6 +299,24 @@ export const memwiseRecordsComponents: ComponentEntry[] = [
       { name: 'Study (single)', props: { layout: 'single', width: 'wide' } },
       { name: 'Document (split)', props: { layout: 'split', width: 'wide' } },
       { name: 'Document, narrow', props: { layout: 'split', width: 'narrow' } },
+    ],
+  },
+  {
+    id: 'memwise-literature',
+    name: 'Literature pages',
+    category: 'MemWise',
+    description: 'Literature watch (25 §4–§5): a Topic with KPI tiles, a bar chart, a forest plot and "Ask about this topic"; an Article with its abstract and the quotes its values were read from (hover names the field; the quote button beside a value scrolls to it); a free page with charts.',
+    component: LiteratureDemo,
+    layout: 'top',
+    props: [
+      { name: 'page', control: { type: 'select', options: opts('topic', 'article', 'overview') }, defaultValue: 'topic' },
+      { name: 'width', control: { type: 'select', options: opts('wide', 'narrow') }, defaultValue: 'wide' },
+    ],
+    variants: [
+      { name: 'Topic', props: { page: 'topic', width: 'wide' } },
+      { name: 'Topic, narrow', props: { page: 'topic', width: 'narrow' } },
+      { name: 'Article', props: { page: 'article', width: 'wide' } },
+      { name: 'Overview (free page)', props: { page: 'overview', width: 'wide' } },
     ],
   },
   {

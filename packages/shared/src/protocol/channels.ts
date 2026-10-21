@@ -498,6 +498,8 @@ export const RPC_CHANNELS = {
     AUDIT_GET: 'memwise:audit:get',
     AUDIT_EXPORT: 'memwise:audit:export',
     FILES_READ: 'memwise:files:read',
+    // Literature (docs/memwise/25-literature-poc.md §6): rows kept from a record chat
+    RECORDS_KEEP: 'memwise:records:keep',
   },
   pages: {
     GET: 'pages:get',

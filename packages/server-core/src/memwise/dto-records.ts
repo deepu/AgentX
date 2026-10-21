@@ -8,13 +8,15 @@
  */
 import type { EntityTypeDef, LifecycleDef, PageLayoutDef, ProjectDefs, TriggerDef, ViewDef } from '@memwise/defs'
 import type {
-  AuditTrail, CaseLinkView, DashboardData, DocumentValue, DomainSummary, InboxItem, RecordField, RecordFieldSource,
-  RecordPage, RecordQueryResult, RecordReview, RecordTransitionOption, RecordWriteResult, SignatureView, TreeNode, TriggerSummary, WaitingCondition,
+  AuditTrail, CaseLinkView, ChartData, DashboardData, DocumentValue, DomainSummary, InboxItem, RecordField, RecordFieldSource, RecordKeepResult,
+  RecordKpi, RecordPage, RecordQueryResult, RecordReview, RecordTextView, RecordTransitionOption, RecordWriteResult, SignatureView, TreeNode,
+  TriggerSummary, WaitingCondition,
 } from '@memwise/runtime'
 import type {
-  MwAuditTrail, MwCaseLink, MwCheckResult, MwDashboard, MwDashboardBlock, MwDocument, MwDomain, MwEntityDefinition, MwInboxItem,
-  MwPageBlock, MwPageLayout, MwProposedValue, MwRecordField, MwRecordFieldSource, MwRecordPage, MwRecordQueryResult, MwRecordReview,
-  MwRecordWriteResult, MwSignature, MwTransitionOption, MwTreeNode, MwTrigger, MwView, MwWaitingCondition,
+  MwAuditTrail, MwCaseLink, MwChartData, MwCheckResult, MwDashboard, MwDashboardBlock, MwDocument, MwDomain, MwEntityDefinition, MwInboxItem,
+  MwPageBlock, MwPageLayout, MwProposedValue, MwRecordField, MwRecordFieldSource, MwRecordKeepResult, MwRecordKpi, MwRecordPage,
+  MwRecordQueryResult, MwRecordReview, MwRecordWriteResult, MwSignature, MwTextView, MwTransitionOption, MwTreeNode, MwTrigger, MwView,
+  MwWaitingCondition,
 } from '@memwise/shared/protocol'
 import type { DtoContext } from './dto'
 import { humanize, pluginTitle, policyDocLines, stateTitle, toProvenance } from './dto'
@@ -124,6 +126,49 @@ export function toPageLayout(l: PageLayoutDef): MwPageLayout {
   return { layout: l.layout, header: [...l.header], areas, ...(l.isDefault ? { isDefault: true } : {}) }
 }
 
+// ---------------------------------------------------------------- Literature (doc 25 §4–§6)
+
+const refOf = (r: { entity: string; id: string; title: string; status?: string }) => ({ entity: r.entity, id: r.id, title: r.title, ...(r.status ? { status: r.status } : {}) })
+
+/** A chart's rows (record page `chart` blocks and free page `chart:` blocks). */
+export function toChartData(c: ChartData): MwChartData {
+  return {
+    kind: c.kind, ...(c.title ? { title: c.title } : {}), ...(c.unit ? { unit: c.unit } : {}),
+    data: c.data.map((d) => ({
+      label: d.label, value: d.value,
+      ...(typeof d.low === 'number' ? { low: d.low } : {}), ...(typeof d.high === 'number' ? { high: d.high } : {}),
+      ...(d.unit ? { unit: d.unit } : {}), ...(d.key !== undefined ? { key: d.key } : {}), ...(d.record ? { record: refOf(d.record) } : {}),
+    })),
+    total: c.total, ...(c.skipped ? { skipped: c.skipped } : {}),
+  }
+}
+
+export function toRecordKpi(k: RecordKpi): MwRecordKpi {
+  return { field: k.field, value: k.value, type: k.type, ...(k.description ? { description: k.description } : {}) }
+}
+
+/** A Text viewer's text and quotes, each labelled with its field in words. */
+export function toTextView(t: RecordTextView): MwTextView {
+  return {
+    text: t.text,
+    highlights: t.highlights.map((h) => ({
+      quote: h.quote, field: h.field, label: humanize(h.field), kind: h.kind,
+      ...(h.value !== undefined ? { value: h.value } : {}), ...(h.record ? { record: refOf(h.record) } : {}),
+      found: !!h.found, ...(typeof h.start === 'number' && typeof h.end === 'number' ? { start: h.start, end: h.end } : {}),
+    })),
+  }
+}
+
+export function toKeepResult(r: RecordKeepResult): MwRecordKeepResult {
+  return {
+    entity: r.entity,
+    rows: r.rows.map((x) => ({
+      ...(x.id ? { id: x.id } : {}), ...(typeof x.quoteFound === 'boolean' ? { quoteFound: x.quoteFound } : {}),
+      ...(x.error ? { error: x.error } : {}), ...(x.errors ? { errors: x.errors } : {}),
+    })),
+  }
+}
+
 export function toSignature(s: SignatureView): MwSignature {
   return {
     id: s.id, stepRunId: s.stepRunId, caseId: s.caseId, personId: s.personId, name: s.name, meaning: s.meaning, at: s.at,
@@ -216,6 +261,9 @@ export function toRecordPage(ctx: Pick<DtoContext, 'project'>, p: RecordPage, na
       ...(v.via ? { via: v.via } : {}), ...(v.reason ? { reason: v.reason } : {}), changed: [...v.changed], hash: v.hash,
     })),
     ...(p.review ? { review: toReview(project, p.review) } : {}),
+    ...(p.kpis ? { kpis: Object.fromEntries(Object.entries(p.kpis).map(([k, v]) => [k, toRecordKpi(v)])) } : {}),
+    ...(p.charts ? { charts: Object.fromEntries(Object.entries(p.charts).map(([k, v]) => [k, toChartData(v)])) } : {}),
+    ...(p.texts ? { texts: Object.fromEntries(Object.entries(p.texts).map(([k, v]) => [k, toTextView(v)])) } : {}),
   }
 }
 
@@ -285,6 +333,7 @@ export function toDashboard(domain: string, d: DashboardData): MwDashboard {
           rows: b.rows.map((r) => ({ record: { entity: r.record.entity, id: r.record.id, title: r.record.title, ...(r.record.status ? { status: r.record.status } : {}) }, values: [...r.values] })),
         }
         case 'text': return { kind: 'text', markdown: b.markdown }
+        case 'chart': return { kind: 'chart', chart: toChartData(b.chart) }
       }
     }),
   }

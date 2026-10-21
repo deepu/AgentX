@@ -4,10 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   MEMWISE_CONTEXT_MAX_CHARS,
+  memwiseSessionToolOptions,
   readSessionMemwiseContext,
   sessionHasPlaybookTools,
+  sessionHasRecordTools,
   writeSessionMemwiseContext,
 } from '../memwise-context.ts';
+import { getSessionToolNames } from '@memwise/session-tools-core';
 import { createSessionHeader } from '../jsonl.ts';
 import { formatMemwiseContextForPrompt } from '../../prompts/system.ts';
 
@@ -40,6 +43,53 @@ describe('MemWise session context', () => {
     expect(conv.match(/<\/memwise_context>/g)).toHaveLength(1);
     const explain = formatMemwiseContextForPrompt({ anchor: { kind: 'case', id: 'c_1' }, block: 'Case "Asha Rao"', setAt: 1 });
     expect(explain).not.toContain('playbook_write');
+  });
+
+  // docs/memwise/25-literature-poc.md §6
+  it('a record chat keeps its entity, offers the record tools, and record_keep only with something to keep', () => {
+    const ws = workspace();
+    writeSessionMemwiseContext(ws, 'r1', {
+      anchor: { kind: 'record', entity: 'literature.topic', id: 'topic_1' },
+      keep: [{ entity: 'literature.evidence', name: 'Evidence' }],
+      block: 'Topic "Oral GLP-1s"',
+    });
+    expect(readSessionMemwiseContext(ws, 'r1')).toMatchObject({
+      anchor: { kind: 'record', entity: 'literature.topic', id: 'topic_1' }, keep: [{ entity: 'literature.evidence', name: 'Evidence' }],
+    });
+    expect(sessionHasRecordTools(ws, 'r1')).toBe(true);
+    expect(sessionHasPlaybookTools(ws, 'r1')).toBe(false);
+    expect(memwiseSessionToolOptions(ws, 'r1')).toEqual({ includePlaybookTools: false, includeRecordTools: true, includeRecordKeep: true });
+    const names = getSessionToolNames(memwiseSessionToolOptions(ws, 'r1'));
+    expect(['record_get', 'record_query', 'record_keep'].every((n) => names.has(n))).toBe(true);
+
+    writeSessionMemwiseContext(ws, 'r2', { anchor: { kind: 'record', entity: 'etmf.Site', id: 's1' }, block: 'Site' });
+    expect(memwiseSessionToolOptions(ws, 'r2')).toEqual({ includePlaybookTools: false, includeRecordTools: true, includeRecordKeep: false });
+    expect(getSessionToolNames(memwiseSessionToolOptions(ws, 'r2')).has('record_keep')).toBe(false);
+
+    // Neither elsewhere: a case chat, a conversation, an ordinary chat
+    writeSessionMemwiseContext(ws, 'c1', { anchor: { kind: 'case', id: 'c_1' }, keep: [{ entity: 'x.y', name: 'Y' }], block: 'x' } as never);
+    expect(readSessionMemwiseContext(ws, 'c1')!.keep).toBeUndefined();
+    expect(memwiseSessionToolOptions(ws, 'c1')).toEqual({ includePlaybookTools: false, includeRecordTools: false, includeRecordKeep: false });
+    expect(memwiseSessionToolOptions(ws, 'none')).toEqual({ includePlaybookTools: false, includeRecordTools: false, includeRecordKeep: false });
+    const plain = getSessionToolNames({});
+    expect(['record_get', 'record_query', 'record_keep'].some((n) => plain.has(n))).toBe(false);
+  });
+
+  it('a record chat\'s prompt names the record tools, and record_keep only when it can keep', () => {
+    const keep = formatMemwiseContextForPrompt({
+      anchor: { kind: 'record', entity: 'literature.topic', id: 'topic_1' }, keep: [{ entity: 'literature.evidence', name: 'Evidence' }],
+      block: 'Topic', personName: 'Dr. Lena Ortiz', setAt: 1,
+    });
+    expect(keep).toContain('<memwise_context anchor="record" entity="literature.topic" id="topic_1">');
+    expect(keep).toContain('These tools act as Dr. Lena Ortiz');
+    expect(keep).toContain('record_query');
+    expect(keep).toContain('record_keep { entity, rows }`: keep rows as Evidence (`literature.evidence`)');
+    expect(keep).toContain('copied exactly');
+    expect(keep).toContain('DOI');
+    const readOnly = formatMemwiseContextForPrompt({ anchor: { kind: 'record', entity: 'etmf.Site', id: 's1' }, block: 'Site', setAt: 1 });
+    expect(readOnly).toContain('record_get');
+    expect(readOnly).not.toContain('record_keep');
+    expect(formatMemwiseContextForPrompt({ anchor: { kind: 'case', id: 'c_1' }, block: 'x', setAt: 1 })).not.toContain('record_get');
   });
 
   it('session previews skip hidden messages', () => {
