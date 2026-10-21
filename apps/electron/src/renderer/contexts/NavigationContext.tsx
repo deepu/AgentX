@@ -52,6 +52,7 @@ import {
 import { routes, type Route, type ViewRoute } from '../../shared/routes'
 import { parsePermissionMode } from '@memwise/shared/agent/mode-types'
 import { NAVIGATE_EVENT, type NavigateOptions } from '../lib/navigate'
+import { rewriteShellRoute } from '../components/memwise/project/shell-routes'
 import { normalizePanelRouteForReconcile } from './navigation-reconcile'
 import { buildSemanticHistoryKey, canRunInitialRestore } from './navigation-history'
 import * as storage from '@/lib/local-storage'
@@ -77,6 +78,7 @@ import {
   isPlaybooksNavigation,
   isPluginsNavigation,
   isDomainsNavigation,
+  isProjectShellNavigation,
   DEFAULT_NAVIGATION_STATE,
 } from '../../shared/types'
 import { sessionMetaMapAtom, updateSessionMetaAtom, type SessionMeta } from '@/atoms/sessions'
@@ -100,7 +102,7 @@ export type { Route }
 
 // Re-export navigation state types for consumers
 export type { NavigationState, SessionFilter }
-export { isSessionsNavigation, isSourcesNavigation, isSettingsNavigation, isSkillsNavigation, isAutomationsNavigation, isProjectsNavigation, isPagesNavigation, isInboxNavigation, isCasesNavigation, isPlaybooksNavigation, isPluginsNavigation, isDomainsNavigation }
+export { isSessionsNavigation, isSourcesNavigation, isSettingsNavigation, isSkillsNavigation, isAutomationsNavigation, isProjectsNavigation, isPagesNavigation, isInboxNavigation, isCasesNavigation, isPlaybooksNavigation, isPluginsNavigation, isDomainsNavigation, isProjectShellNavigation }
 
 // =============================================================================
 // Context
@@ -890,6 +892,13 @@ export function NavigationProvider({
       if (parsed.type === 'action') {
         await handleActionNavigation(parsed, options)
         return
+      }
+
+      // The project shell opens MemWise routes inside a project, in its one screen.
+      const shellRoute = rewriteShellRoute(route)
+      if (shellRoute) {
+        route = shellRoute as Route
+        if (options?.newPanel) options = { ...options, newPanel: false }
       }
 
       // For view routes with newPanel: push a panel using lane-aware routing.

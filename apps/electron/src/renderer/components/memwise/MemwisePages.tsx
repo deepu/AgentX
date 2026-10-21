@@ -63,33 +63,40 @@ import { DocumentReviewPage } from './records/RecordPages'
 import { isReviewItem, queueNeighbour, sameKindItems, type ReviewItem } from './records/record-model'
 import type { ReviewQueue } from './records/DocumentReview'
 
+import { useProjectShell } from './project/shell-context'
+
 const notAvailable = (): MwSubmitResult => ({ applied: false, message: i18n.t('memwise.notAvailable') })
 
 function useOpenChatAndGo() {
   const { t } = useTranslation()
   const openChat = useMemwiseOpenChat()
+  const shell = useProjectShell()
   return React.useCallback(async (anchor: MwOpenChatInput['anchor']) => {
     try {
       const sessionId = await openChat(anchor)
-      if (sessionId) navigate(routes.view.allSessions(sessionId))
+      if (sessionId && shell) shell.showChat(sessionId)
+      else if (sessionId) navigate(routes.view.allSessions(sessionId))
     } catch (err) {
       toast.error(t('memwise.step.openChatFailed'), { description: err instanceof Error ? err.message : String(err) })
     }
-  }, [openChat, t])
+  }, [openChat, shell, t])
 }
 
 /** Opens a chat anchored to a case or step in a new panel beside the current one. */
 function useOpenChatBeside() {
   const { t } = useTranslation()
   const openChat = useMemwiseOpenChat()
+  const shell = useProjectShell()
   return React.useCallback(async (anchor: MwOpenChatInput['anchor']) => {
     try {
       const sessionId = await openChat(anchor)
-      if (sessionId) navigate(routes.view.allSessions(sessionId), { newPanel: true })
+      // In the project shell the chat column is already beside the page.
+      if (sessionId && shell) shell.showChat(sessionId)
+      else if (sessionId) navigate(routes.view.allSessions(sessionId), { newPanel: true })
     } catch (err) {
       toast.error(t('memwise.step.openChatFailed'), { description: err instanceof Error ? err.message : String(err) })
     }
-  }, [openChat, t])
+  }, [openChat, shell, t])
 }
 
 /** The draft a playbook change's case is about (its `draft` value). */

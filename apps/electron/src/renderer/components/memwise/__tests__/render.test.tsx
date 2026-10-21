@@ -83,7 +83,7 @@ describe('inbox item', () => {
     expect(attention).toContain('Mark as resolved')
     const reminder = render(<InboxItemView item={item('reminder')} actions={actions} now={NOW} />)
     expect(reminder).toContain('has not finished the intake form')
-    expect(reminder).toContain('Open case')
+    expect(reminder).toContain('Open run')
   })
 })
 

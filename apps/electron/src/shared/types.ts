@@ -770,6 +770,8 @@ export interface ElectronAPI {
   memwiseListEntityTypes(workspaceId: string): Promise<import('@memwise/shared/protocol').MwEntityType[]>
   memwiseUploadFile(workspaceId: string, input: import('@memwise/shared/protocol').MwUploadInput): Promise<import('@memwise/shared/protocol').MwDocument>
   memwiseOpenChat(workspaceId: string, input: import('@memwise/shared/protocol').MwOpenChatInput): Promise<{ sessionId: string }>
+  /** The project shell: the person's latest chat on an anchor, or null. */
+  memwiseFindChat(workspaceId: string, input: { anchor: import('@memwise/shared/protocol').MwChatAnchor }): Promise<import('@memwise/shared/protocol').MwFindChatResult>
   /** A question on a domain's home: makes its draft and opens a chat answering it. */
   memwiseAsk(workspaceId: string, input: import('@memwise/shared/protocol').MwAskInput): Promise<import('@memwise/shared/protocol').MwAskResult>
   // Phase 3: drafts, versions, building by chat (docs/memwise/20-phase-3-interfaces.md §6)
@@ -996,7 +998,9 @@ export type SessionFilter =
 export type { SettingsSubpage } from './settings-registry'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
 import { domainsRoute, unpackDomainsDetail } from './domains-route'
+import { parseProjectSegments, projectRoute } from './project-route'
 export type { DomainsDetails } from './domains-route'
+export type { ProjectDetails, ProjectView } from './project-route'
 
 /**
  * Sessions navigation state
@@ -1139,6 +1143,17 @@ export interface DomainsNavigationState {
 }
 
 /**
+ * The MemWise project shell (docs/memwise/26-projects-and-pages.md §2): one project's screen,
+ * the chat about it on the left and the page on the right. No middle list: the project sidebar
+ * is the navigator. A null `view` is a malformed route (the shell opens the first project).
+ */
+export interface ProjectShellNavigationState {
+  navigator: 'mw'
+  view: import('./project-route').ProjectView | null
+  rightSidebar?: RightSidebarPanel
+}
+
+/**
  * Unified navigation state
  */
 export type NavigationState =
@@ -1154,6 +1169,7 @@ export type NavigationState =
   | PlaybooksNavigationState
   | PluginsNavigationState
   | DomainsNavigationState
+  | ProjectShellNavigationState
 
 export const isSessionsNavigation = (
   state: NavigationState
@@ -1202,6 +1218,10 @@ export const isPluginsNavigation = (
 export const isDomainsNavigation = (
   state: NavigationState
 ): state is DomainsNavigationState => state.navigator === 'domains'
+
+export const isProjectShellNavigation = (
+  state: NavigationState
+): state is ProjectShellNavigationState => state.navigator === 'mw'
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
@@ -1255,6 +1275,7 @@ export const getNavigationStateKey = (state: NavigationState): string => {
     return state.details ? `plugins/plugin/${state.details.pluginId}` : 'plugins'
   }
   if (state.navigator === 'domains') return domainsRoute(state.details)
+  if (state.navigator === 'mw') return state.view ? projectRoute(state.view.projectId, state.view.details) : 'mw'
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
     return `settings:${state.subpage}`
@@ -1361,6 +1382,9 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
     try { id = packed ? decodeURIComponent(packed) : null } catch { id = null }
     return { navigator: 'domains', details: type && id ? unpackDomainsDetail(type, id) : null }
   }
+
+  // Handle the MemWise project shell
+  if (key === 'mw' || key.startsWith('mw/')) return { navigator: 'mw', view: parseProjectSegments(key.split('/')) }
 
   // Handle settings
   if (key === 'settings') return { navigator: 'settings', subpage: null }

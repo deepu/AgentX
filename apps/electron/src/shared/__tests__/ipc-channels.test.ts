@@ -136,6 +136,7 @@ const EXPECTED_CHANNELS: string[] = [
   'memwise:changes:validate',
   'memwise:changes:withdraw',
   'memwise:channels:available',
+  'memwise:chat:find',
   'memwise:chat:open',
   'memwise:domains:list',
   'memwise:drafts:check',

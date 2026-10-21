@@ -136,7 +136,7 @@ describe('draft screen', () => {
     expect(html).toContain('data-past-status="different"')
     expect(out).toContain('Sunrise Foods')
     expect(html).toContain('data-impact')
-    expect(out).toContain('4 cases, which stay on their version')
+    expect(out).toContain('4 runs, which stay on their version')
     // Tools and other playbooks in words, translated: no ids
     expect(out).toContain('“Screen for sanctions” must use Screen sanctions')
     expect(out).toContain('Engagement letter uses Customer and the Manager role')
@@ -287,12 +287,12 @@ describe('playbook versions and drafts', () => {
     expect(text(render(<VersionLine versions={null} version={4} />))).toContain('Version 4')
   })
 
-  test('the versions list shows the cases still running on each', () => {
+  test('the versions list shows the runs still open on each', () => {
     const out = text(render(<VersionList versions={sampleVersions} now={NOW} />))
     expect(out).toContain('In use')
-    expect(out).toContain('3 cases running')
+    expect(out).toContain('3 open runs')
     expect(out).toMatch(/changed in the files (12 Sep|Sep 12)/)
-    expect(out).toContain('1 case still running on it')
+    expect(out).toContain('1 run still open on it')
   })
 
   test('drafts in progress leave out published ones', () => {

@@ -18,6 +18,7 @@ import { roleTitle } from '../format'
 import type { RecordPageActions } from './RecordBlocks'
 import type { ReviewQueue, ReviewSubmit } from './DocumentReview'
 import { RecordPageView, type ViewerFile } from './RecordPageView'
+import { useProjectShell } from '../project/shell-context'
 
 /** The bytes of the page's first document viewer. */
 function useViewerFiles(page: MwRecordPage | null): Record<string, ViewerFile> {
@@ -38,8 +39,10 @@ function useOpenRecordChat(entity: string | undefined, id: string | undefined): 
   const { t } = useTranslation()
   const openChat = useMemwiseOpenChat()
   const opening = React.useRef(false)
+  // In the project shell the record's chat is already beside its page.
+  const shell = useProjectShell()
   return React.useMemo(() => {
-    if (!entity || !id) return undefined
+    if (!entity || !id || shell) return undefined
     const api = getMemwiseApi()
     if (!api || typeof api.memwiseOpenChat !== 'function') return undefined
     return () => {
@@ -50,7 +53,7 @@ function useOpenRecordChat(entity: string | undefined, id: string | undefined): 
         .catch(err => toast.error(t('memwise.step.openChatFailed'), { description: err instanceof Error ? err.message : String(err) }))
         .finally(() => { opening.current = false })
     }
-  }, [entity, id, openChat, t])
+  }, [entity, id, openChat, shell, t])
 }
 
 export function useRecordActions(page: MwRecordPage | null): RecordPageActions & { openChat?: () => void } {

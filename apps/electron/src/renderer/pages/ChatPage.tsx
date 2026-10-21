@@ -25,9 +25,11 @@ import { resolveEffectiveConnectionSlug, isSessionConnectionUnavailable } from '
 
 export interface ChatPageProps {
   sessionId: string
+  /** Replaces the chat header (the project shell's chat column has its own, small one). */
+  header?: React.ReactNode
 }
 
-const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
+const ChatPage = React.memo(function ChatPage({ sessionId, header }: ChatPageProps) {
   const { t } = useTranslation()
   // Diagnostic: mark when component runs
   React.useLayoutEffect(() => {
@@ -420,14 +422,16 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
 
       return (
         <div className="h-full flex flex-col">
-          <ChatHeader
-            sessionId={sessionId}
-            item={sessionMeta}
-            title={displayTitle}
-            isRegeneratingTitle={isAsyncOperationOngoing}
-            sharedUrl={sharedUrl}
-            workingDirectory={sessionMeta.workingDirectory}
-          />
+          {header ?? (
+            <ChatHeader
+              sessionId={sessionId}
+              item={sessionMeta}
+              title={displayTitle}
+              isRegeneratingTitle={isAsyncOperationOngoing}
+              sharedUrl={sharedUrl}
+              workingDirectory={sessionMeta.workingDirectory}
+            />
+          )}
           <div className="flex-1 flex flex-col min-h-0">
             <ChatDisplay
               ref={chatDisplayRef}
@@ -489,15 +493,17 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <ChatHeader
-        sessionId={sessionId}
-        item={sessionMeta}
-        title={displayTitle}
-        isRegeneratingTitle={isAsyncOperationOngoing}
-        sharedUrl={sharedUrl}
-        workingDirectory={workingDirectory}
-        sessionFolderPath={session?.sessionFolderPath}
-      />
+      {header ?? (
+        <ChatHeader
+          sessionId={sessionId}
+          item={sessionMeta}
+          title={displayTitle}
+          isRegeneratingTitle={isAsyncOperationOngoing}
+          sharedUrl={sharedUrl}
+          workingDirectory={workingDirectory}
+          sessionFolderPath={session?.sessionFolderPath}
+        />
+      )}
       <div className="flex-1 flex flex-col min-h-0">
         <ChatDisplay
           ref={chatDisplayRef}
