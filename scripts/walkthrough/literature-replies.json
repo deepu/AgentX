@@ -1,4 +1,6 @@
 [
-  {"match": "stop oral glp|side effects|discontinu", "reply": "About **6 to 10%** of people on oral GLP-1s stop because of side effects in the trials, mostly nausea and other stomach upset in the first weeks.\n\nThe topic page on the right holds the numbers per trial and the quotes they come from. Keep it and it stays up to date."},
+  {"match": "what changed", "reply": "Monday's refresh found **one new trial** that fits this page: ATTAIN-MAINTAIN. It is about keeping weight off after switching from injections, so it goes in as a new section. The headline and the chart don't move.\n\nIt also found two papers it left out: an indirect comparison (not a trial) and a 16-week trial where weight was a side outcome."},
+  {"match": "stop oral glp|side effects|discontinu", "reply": "About **5 to 10%** of people on oral GLP-1s stop because of side effects in the trials, against 3 to 4% on placebo, mostly for stomach and gut problems in the first weeks.\n\nThe page on the right has the numbers per trial, each with the sentence it comes from. Keep it and it stays up to date."},
+  {"match": "how long each trial", "reply": "Added a **Weeks** column to the trials table: 72 weeks for ATTAIN-1 and ATTAIN-2, 52 for ATTAIN-MAINTAIN. Undo puts the table back as it was."},
   {"match": ".", "reply": "I'll look that up in PubMed and our own papers, and put what I find on the page beside this chat."}
 ]

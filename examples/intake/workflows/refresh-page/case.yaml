@@ -1,5 +1,6 @@
 case: page_refresh
 fields:
+  page_title:   { type: Text, description: "The page's title when the refresh started: it names the run" }
   page:         { type: Text, required: true, description: "The page being refreshed (its id)" }
   reason:       { type: Text, description: "What started it: schedule, manual or summary (a sub-page changed)" }
   asked_by:     { type: Text, description: "The person who asked for it, when someone did" }

@@ -355,6 +355,12 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - `PageScreen` / `PageView`: the page, its history line, and Keep, Undo, Archive and Refresh.
   - `PageChangeScreen` / `PageChangeView`: "Review an answer change".
   - `PagesKeptTable`, `WhatChangedCard` and `WhatChangedThisWeek`.
+- **In the shell** (`components/memwise/project/`):
+  - `mw/{project}/page/{pageId}` shows `PageScreen`, with the chat anchored to the page.
+  - A new route, `mw/{project}/change/{changeId}`, shows `PageChangeScreen` with the chat on its page. A Waiting for you item that reviews a change opens the same screen, with the chat on its step.
+  - PAGES in the sidebar lists the written pages, with sub-pages under their parent, the Draft tag and the refresh mark. The record tree no longer repeats them.
+  - Home shows What changed this week and Pages kept up to date, and its recent list holds the pages its questions made. A question asked on a Home with no entity lands on its draft page.
+- **Walkthrough.** `scripts/walkthrough/shell-literature.mjs` runs with `MEMWISE_SEED=literature-home` and the scripted model. Its screenshots (`LHome`, `LAsk`, `LTopic`, `LBoard`, `LChange`, and the steps between) are in `projects-and-pages-walkthrough/stage-2-pages/`.
 - **Literature** (`examples/literature`; `25-literature-poc.md` §12):
   - Removed: Topic, Screening and Evidence, their views, and the `check-topic` and `set-up-watch` playbooks. Article stays, and Enquiry is added.
   - `refresh-literature-page` searches PubMed since the last refresh, reads new papers through `read-paper`, rewrites the page, then compares.
@@ -366,7 +372,8 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - waiting items: a pending ATTAIN-MAINTAIN change on Weight loss, and an enquiry reply waiting to be signed.
 - **Exit test.** `literature-pages-exit.test.ts` covers steps 1–5 with a scripted model and the fake PubMed. `startFakePubmed().add()` adds the fixture paper during the test. Not covered here: step 6 (screenshots) and the run with a real model and real PubMed.
 - **Left for later:**
-  - The monthly digest's `every: 30d` is not tied to a day of the month.
+  - The scripted walkthrough model calls no tools. A refresh it would have to write, such as GLP-1's summary after the Accept, stops at its write step.
+  - "Why" beside something left out does not ask the change's chat yet.
   - A send still waits for the platform's outbound approval after the lead signs.
   - The seed can't backdate history.
   - For a moment after Accept, the history can show the new version before the change row records `to_version`.

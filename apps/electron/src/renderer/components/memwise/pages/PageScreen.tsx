@@ -136,7 +136,7 @@ export function PageView({ page, pages, versions, busy, actions = {}, onKeep, on
             {subtitle && <span>{subtitle}</span>}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
+        <div className="flex max-w-[45%] shrink-0 flex-col items-end gap-1">
           {page.status === 'draft' && onKeep && <KeepControls page={page} pages={pages} busy={busy === 'keep'} onKeep={onKeep} />}
           {page.status === 'kept' && (
             <>
@@ -200,7 +200,8 @@ function KeepControls({ page, pages, busy, onKeep }: { page: MwPage; pages: MwPa
   const [parent, setParent] = React.useState<string>(page.parent ?? '')
   const [every, setEvery] = React.useState<string>(page.refresh?.every ?? 'mon')
   const choices = parentChoices(page.id, pages)
-  const select = 'cursor-pointer appearance-none bg-transparent pr-3 text-label-sm text-secondary hover:text-foreground focus:outline-none'
+  // Narrow, right-aligned: a long page title in the list must not widen the header.
+  const select = 'max-w-[11rem] cursor-pointer appearance-none truncate bg-transparent pr-1 text-right text-label-sm text-secondary [text-align-last:right] hover:text-foreground focus:outline-none'
   return (
     <>
       <button

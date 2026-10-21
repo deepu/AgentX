@@ -443,6 +443,14 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     log.info(`[memwise] ready: ${Object.keys(indexed.project.workflows).length} playbook(s) from ${projectDir}`)
     // The relay connects in the background; its state shows in Settings → Public address.
     void publicAddress.start()
+    // Walkthroughs and demos (scripts/walkthrough): the Literature home as mock LHome shows it,
+    // with the owner as the lead. Only when asked for, and only once (it checks for its pages).
+    if (process.env.MEMWISE_SEED === 'literature-home' && indexed.project.domains?.literature) {
+      void import('./seed-literature')
+        .then(({ seedLiteratureHome }) => seedLiteratureHome(k, { lead: ownerPerson.id }))
+        .then((r) => log.info(`[memwise] Literature home ${r.created ? 'seeded' : 'already seeded'}`))
+        .catch((e) => log.warn(`[memwise] seeding the Literature home failed: ${errorMessage(e)}`))
+    }
     return service
   } catch (e) {
     const message = errorMessage(e)

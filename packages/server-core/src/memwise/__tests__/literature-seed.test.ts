@@ -84,6 +84,10 @@ describe.skipIf(!postgresAvailable())('the Literature home seed', () => {
     const review = items.find((i) => (i as { pageChange?: { pageId: string } }).pageChange?.pageId === weight.id) as MwInboxItem & { pageChange: { changeId: string; label?: string; from?: { kind: string; every?: string } } }
     expect(review.pageChange).toMatchObject({ label: '1 new trial', from: { kind: 'schedule', every: 'mon' } })
     expect(items.some((i) => 'workflowId' in i && i.workflowId === 'answer-enquiry')).toBe(true)
+    // The refresh run is named after its page, not its id.
+    expect((review as { caseTitle?: string }).caseTitle).toBe('Weight loss')
+    const cases = await api.call<{ workflowId: string; title: string }[]>(leah, ch.CASES_LIST)
+    expect(cases.find((c) => c.workflowId === 'refresh-literature-page')?.title).toBe('Weight loss')
     expect((await api.call<MwInboxItem[]>(omar, ch.INBOX_LIST)).some((i) => !!(i as { pageChange?: unknown }).pageChange)).toBe(false)
 
     const change = await api.call<MwPageChange>(leah, ch.PAGE_CHANGES_GET, { changeId: review.pageChange.changeId })

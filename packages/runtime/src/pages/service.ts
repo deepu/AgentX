@@ -278,9 +278,11 @@ export function createPagesService(deps: PagesDeps): PagesCore {
 
   async function startRefresh(p: WrittenPage, key: string, reason: 'schedule' | 'manual' | 'summary', by?: string) {
     const workflowId = refreshPlaybook(p.project);
+    // The run is named after the page (`page_title`, when its case type has the field).
+    const named = !!deps.project()?.workflows[workflowId]?.caseType?.fields?.page_title;
     return deps.start({
       workflowId, runId: derivedRunId(key), by: by ?? `page:${p.id}`,
-      case: { page: p.id, reason, ...(by ? { asked_by: by } : {}) },
+      case: { ...(named ? { page_title: p.title } : {}), page: p.id, reason, ...(by ? { asked_by: by } : {}) },
     }, { ...(domainDef(p.domain)?.pageRules?.reviewer ? { actsFor: domainDef(p.domain)!.pageRules!.reviewer! } : domainDef(p.domain)?.owner ? { actsFor: domainDef(p.domain)!.owner! } : {}) });
   }
 

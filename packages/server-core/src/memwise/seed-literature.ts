@@ -239,7 +239,7 @@ export async function seedLiteratureHome(kernel: Kernel, opts: LiteratureSeedOpt
   const started = await kernel.startRun({
     workflowId: REFRESH, startAt: 'compare', by: `page:${pages.weight}`,
     case: {
-      page: pages.weight, reason: 'schedule', body: `${WEIGHT_BODY}\n\n${MAINTAIN_SECTION}`,
+      page_title: 'Weight loss', page: pages.weight, reason: 'schedule', body: `${WEIGHT_BODY}\n\n${MAINTAIN_SECTION}`,
       label: '1 new trial', change_title: 'ATTAIN-MAINTAIN added',
       plus: 'after switching from weekly injections, people on orforglipron kept 75 to 79% of the weight they had lost, against 38 to 49% on placebo.',
       found_count: 3, new_articles: [papers.maintain],

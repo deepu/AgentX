@@ -48,6 +48,9 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
   const ownPlaybooks = projectPlaybooks(project.id, playbooks)
   const shownPlaybooks = showAllPlaybooks ? ownPlaybooks : ownPlaybooks.slice(0, PLAYBOOKS_SHOWN)
   const records = projectRecordTypes(domain)
+  // Written pages list above as pages (26 §4); the record tree leaves them out.
+  const pageList = useMemwisePages(project.id).data
+  const written = React.useMemo(() => new Set((pageList ?? []).map(p => p.id)), [pageList])
   const me = status?.me
 
   return (
@@ -68,7 +71,7 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
         <Section title={t('memwise.shell.pages')} />
         {extraPages}
         <WrittenPages projectId={project.id} details={details} />
-        {domain && <PageTree domain={domain} projectId={project.id} details={details} />}
+        {domain && <PageTree domain={domain} projectId={project.id} details={details} written={written} />}
 
         {ownPlaybooks.length > 0 && <Section title={t('memwise.shell.playbooks')} {...(peopleOnly ? {} : { onAdd: () => openNewPlaybook(true) })} addLabel={t('memwise.shell.newPlaybook')} />}
         {shownPlaybooks.map(p => (
@@ -248,10 +251,10 @@ function WrittenPages({ projectId, details }: { projectId: string; details: Proj
 type TreeCache = Record<string, MwTreeNode[] | 'loading'>
 
 /**
- * PAGES until written pages exist (Stage 2): the project's dashboards, then its record tree
+ * PAGES after the written pages (Stage 2): the project's dashboards, then its record tree
  * (records that have pages of their own, a level at a time, from memwise:records:tree).
  */
-function PageTree({ domain, projectId, details }: { domain: MwDomain; projectId: string; details: ProjectDetails }) {
+function PageTree({ domain, projectId, details, written }: { domain: MwDomain; projectId: string; details: ProjectDetails; written: Set<string> }) {
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
   const lastChange = useAtomValue(memwiseLastChangeAtom)
   const [cache, setCache] = React.useState<TreeCache>({})
@@ -325,6 +328,7 @@ function PageTree({ domain, projectId, details }: { domain: MwDomain; projectId:
   const renderNodes = (nodes: MwTreeNode[], depth: number): React.ReactNode => nestTree(nodes).map(e => {
     const n = e.node
     if (n.kind === 'page') {
+      if (written.has(n.pageId)) return null
       return (
         <Row
           key={`page:${n.pageId}:${JSON.stringify(n.params)}`}

@@ -32,6 +32,13 @@ const article = (noun: string) => (/^[aeiou]/i.test(noun) ? `an ${noun}` : `a ${
 const entityName = (name: string) => splitEntityKey(name).entity;
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+/** 1st, 2nd, 3rd, 11th, 21st: a day of the month. */
+function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  const end = teen ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
+  return `${n}${end}`;
+}
+
 export function describeTrigger(t: TriggerDef): string {
   switch (t.kind) {
     case 'entered':
@@ -54,7 +61,7 @@ export function describeTrigger(t: TriggerDef): string {
     }
     case 'every': {
       const every = t.everyMs === DAY ? 'Every day' : t.everyMs === 7 * DAY ? 'Every week' : `Every ${durationWords(t.everyMs)}`;
-      const on = t.on && WEEKDAYS.includes(t.on.toLowerCase()) ? ` on ${words(t.on, true)}` : t.on ? ` on ${t.on}` : '';
+      const on = t.on && WEEKDAYS.includes(t.on.toLowerCase()) ? ` on ${words(t.on, true)}` : t.on && /^\d+$/.test(t.on) ? ` on the ${ordinal(Number(t.on))}` : t.on ? ` on ${t.on}` : '';
       return `${every}${on}${t.at ? ` at ${t.at}` : ''}`;
     }
     case 'message':
