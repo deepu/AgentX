@@ -1,5 +1,5 @@
 title: Old queries by site
-description: Queries open longer than 14 days, by site and oldest first. Read from Medidata Rave; sites answer them there.
+description: Queries open longer than 14 days in every study this Rave account sees, by site and oldest first. Read from Medidata Rave; sites answer them there.
 blocks:
   - kpi:
       label: Older than 14 days

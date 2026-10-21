@@ -149,6 +149,16 @@ describe('one site in two apps', () => {
     }
     const facts = factsByApp(page, [])
     expect(facts.find((f) => f.name === 'coordinator')).toMatchObject({ owner: { domain: 'edc', name: 'EDC' }, elsewhere: true, open: { entity: 'edc.Site', id: 'edcs_104' } })
+    // With the EDC site linked: what eTMF follows and the key both share are shown once, EDC's new facts after.
+    const edcLinked: MwLinkedRecord = {
+      domain: 'edc', domainName: 'EDC', entity: 'edc.Site', id: 'edcs_104', title: '104 · Kliniken am Stadtpark',
+      fields: [field('site_number', 'Site number', '104', { kind: 'plugin', plugin: RAVE }), field('coordinator', 'Coordinator', 'Lena Hoffmann', { kind: 'plugin', plugin: RAVE }),
+        field('old_queries', 'Old queries', 9, { kind: 'calculated' }, { type: 'Number', calculated: true })],
+    }
+    const withSite = { ...page, fields: [field('site_number', 'Site number', '104', { kind: 'person', personId: 'tom', name: 'Tom Ellis' }), ...page.fields] }
+    expect(factsByApp(withSite, [edcLinked]).map((f) => `${f.name}:${f.owner.name}`)).toEqual([
+      'site_number:eTMF', 'coordinator:EDC', 'start_up_pack_complete:eTMF', 'old_queries:EDC',
+    ])
     const html = render(<RecordFactsByAppView page={page} linked={[]} onOpenRecord={() => {}} />)
     expect(html).toContain('Open in EDC')
     // A record in one app only shows nothing extra.

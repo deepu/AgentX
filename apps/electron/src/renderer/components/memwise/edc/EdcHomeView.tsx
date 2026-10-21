@@ -117,7 +117,7 @@ export function EdcSiteBars({ home, onOpenRecord }: { home: MwEdcHome; onOpenRec
           <button type="button" className="grid w-full grid-cols-[7rem_minmax(0,1fr)_6rem] items-center gap-3 rounded-md py-1 text-left text-label hover:bg-fill-hover" onClick={() => onOpenRecord(s.site.entity, s.site.id)} data-site={s.number}>
             <span className="truncate font-medium text-foreground" title={s.site.title}>{t('memwise.edc.home.site', { number: s.number })}</span>
             <span className="h-2 overflow-hidden rounded-full bg-fill-hover">
-              <span className={cn('block h-full rounded-full', (s.percent ?? 0) < 60 ? 'bg-destructive' : (s.percent ?? 0) < 80 ? 'bg-warning' : 'bg-success')} style={{ width: `${barWidth(s.percent)}%` }} data-percent={s.percent} />
+              <span className={cn('block h-full rounded-full', (s.percent ?? 0) < 60 ? 'bg-destructive' : (s.percent ?? 0) < 80 ? 'bg-info' : 'bg-success')} style={{ width: `${barWidth(s.percent)}%` }} data-percent={s.percent} />
             </span>
             <span className="text-right tabular-nums text-secondary">
               {s.target !== undefined ? t('memwise.edc.home.siteOf', { value: s.randomised, target: s.target }) : s.randomised}

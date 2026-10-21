@@ -36,6 +36,7 @@ export function ownerTone(domain: string): string {
 }
 
 const empty = (v: unknown) => v === null || v === undefined || v === ''
+const sameValue = (a: unknown, b: unknown) => !empty(a) && JSON.stringify(a) === JSON.stringify(b)
 
 /** Who owns a field on this page: a field followed through a link belongs to the app it follows. */
 export function fieldOwner(page: Pick<MwRecordPage, 'domain' | 'domainName' | 'entity' | 'id'>, f: MwRecordField): OwnedFact['owner'] & { open?: OwnedFact['open'] } {
@@ -54,11 +55,14 @@ export function fieldOwner(page: Pick<MwRecordPage, 'domain' | 'domainName' | 'e
  */
 export function factsByApp(page: Pick<MwRecordPage, 'domain' | 'domainName' | 'entity' | 'id' | 'fields'>, linked: MwLinkedRecord[]): OwnedFact[] {
   const out: OwnedFact[] = []
+  // `<app>:<field>`: a fact this page follows from another app is that app's, shown once.
   const seen = new Set<string>()
+  const here = new Map<string, unknown>()
   for (const f of page.fields) {
     if (f.hidden || empty(f.value) || f.name === 'status') continue
     const { open, ...owner } = fieldOwner(page, f)
-    seen.add(f.name)
+    seen.add(`${owner.domain}:${f.name}`)
+    here.set(f.name, f.value)
     out.push({
       name: f.name, label: f.label, type: f.type, value: f.value, ...(f.ref ? { ref: f.ref } : {}),
       owner, elsewhere: owner.domain !== page.domain, ...(open ? { open } : {}),
@@ -66,7 +70,8 @@ export function factsByApp(page: Pick<MwRecordPage, 'domain' | 'domainName' | 'e
   }
   for (const r of linked) {
     for (const f of r.fields) {
-      if (f.hidden || empty(f.value) || seen.has(`${r.domain}:${f.name}`)) continue
+      // Left out: empty, already shown as that app's, or the same value this page holds (the key both share).
+      if (f.hidden || empty(f.value) || seen.has(`${r.domain}:${f.name}`) || sameValue(here.get(f.name), f.value)) continue
       seen.add(`${r.domain}:${f.name}`)
       out.push({
         name: f.name, label: f.label, type: f.type, value: f.value, ...(f.ref ? { ref: f.ref } : {}),
