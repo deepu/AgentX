@@ -161,6 +161,13 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
       editable: false, followed: true, ...(hidden.has(name) ? { hidden: true } : {}),
     });
   }
+  // A synced connector's copy says when it was read (D110): "as of <sync time>".
+  const synced = [...new Set(fields.flatMap((f) => (f.source.kind === 'plugin' ? [f.source.plugin] : [])))];
+  if (synced.length) {
+    const { rows } = await deps.pool.query(`select plugin, at from mw.source_syncs where plugin = any($1::text[]) and at is not null`, [synced]);
+    const at = new Map(rows.map((r) => [r.plugin as string, (r.at as Date).toISOString()]));
+    for (const f of fields) if (f.source.kind === 'plugin' && at.has(f.source.plugin)) f.source = { ...f.source, asOf: at.get(f.source.plugin)! };
+  }
   for (const r of refs) {
     const t = await titleOf(deps, actor, r.target, r.id);
     if (t) r.field.ref = { entity: keyOf(r.target), id: r.id, title: t.title };

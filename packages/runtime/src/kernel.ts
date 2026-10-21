@@ -104,7 +104,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   if (DBOS.isInitialized()) throw new Error('a kernel is already running in this process (DBOS is process-wide)');
   const url = options.databaseUrl;
   const pool = createPool(url, { max: 10, applicationName: 'memwise-kernel' });
-  await migrateAll(url, pool, { sandbox: options.tools.some((t) => t.source?.plugin === SAMPLE_PLUGIN) });
+  // The sample tools' sandbox, whether they are bound directly or reached through a plugin's
+  // builtin route (a project with bindings, such as the eTMF example's sample email).
+  await migrateAll(url, pool, { sandbox: [...options.tools, ...(options.builtins ?? [])].some((t) => t.source?.plugin === SAMPLE_PLUGIN) });
 
   const reader = new PgStepRecordReader(pool);
   const approvals = new PgApprovalStore(pool);

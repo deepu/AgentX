@@ -643,7 +643,8 @@ import type {
 /** Where a field's value on a record page comes from (24 §6). */
 export type RecordFieldSource =
   | { kind: 'domain' }
-  | { kind: 'plugin'; plugin: string }
+  /** `asOf`: a synced binding's copy (D110), read from the plugin at this time. */
+  | { kind: 'plugin'; plugin: string; asOf?: string }
   | { kind: 'link'; domain: string; entity: string; recordId?: string }
   | { kind: 'calculated' }
   /** The version that last changed it was written by this step run, person or source. */
