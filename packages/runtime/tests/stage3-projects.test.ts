@@ -322,7 +322,7 @@ let hash301 = '';
   }, 60_000);
 
   test('describe it in chat: the create-project conversation makes a draft study', async () => {
-    const { runId } = await kernel.projects.describe({ app: 'etmf', request: 'A phase 1 study MW-311 in healthy volunteers' }, anika);
+    const { runId, stepRunId } = await kernel.projects.describe({ app: 'etmf', request: 'A phase 1 study MW-311 in healthy volunteers' }, anika);
     const run = await kernel.waitForRun(runId, { until: (r) => r.state === 'interview', timeoutMs: 30_000 });
     // An app playbook: it runs in the app's own project, which everyone in the app sees.
     expect((await rows(`select project from mw.runs where id = $1`, [runId]))[0]!.project).toBe('etmf');
@@ -338,6 +338,7 @@ let hash301 = '';
     // Asked again (a retried call): the same draft.
     expect(await tools.find((t) => t.name === 'projects.create_draft')!.execute({ app: 'etmf', name: 'Study MW-311' }, ctx)).toEqual(made);
     if (item?.kind !== 'conversation') throw new Error('no conversation');
+    expect(item.stepRunId).toBe(stepRunId);
     const done = await kernel.submitStep({ stepRunId: item.stepRunId, outcome: 'drafted', values: { project: 'study-mw-311', name: 'Study MW-311' }, by: anika, via: { chatId: 'chat_mw311' } });
     expect(done).toMatchObject({ applied: true });
     await kernel.waitForRun(run.id, { until: (r) => r.status === 'done', timeoutMs: 30_000 });

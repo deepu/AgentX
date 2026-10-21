@@ -10,7 +10,7 @@ import {
 import { fixtureDomains, fixtureEntities, person, stepActor } from './phase6-fixtures.ts';
 
 const project = (id: string, extra: Partial<MwProjectDef> = {}): MwProjectDef => ({
-  id, app: 'etmf', name: `Study ${id.toUpperCase()}`, version: 4, status: 'active', people: [], connections: [], without: [], overrides: [],
+  id, app: 'etmf', apps: [extra.app ?? 'etmf'], name: `Study ${id.toUpperCase()}`, version: 4, status: 'active', people: [], connections: [], without: [], overrides: [],
   hash: id, workflows: {}, pages: {}, views: {}, ...extra,
 });
 
@@ -162,6 +162,40 @@ describe.skipIf(!postgresAvailable())('projects in the database (D92)', () => {
     await grants.clearDefinitions(db.pool);
     expect(await grants.list(db.pool, p.id)).toEqual([{ role: 'cra', domain: 'edc' }]);
     expect((await people.actorFor(p.id)).grants).toEqual([{ role: 'cra', domain: 'edc' }]);
+  });
+
+  test('a project may run several apps (a firm: one project, many apps on the same records, D105)', async () => {
+    // "firm" is a copy of the Main app that also runs EDC; "other" runs EDC alone.
+    await projects.sync(db.pool, [
+      project('firm', { app: 'domain', apps: ['domain', 'edc'] }),
+      project('other', { app: 'edc' }),
+    ]);
+    expect((await projects.get(db.pool, 'firm'))!.apps).toEqual(['domain', 'edc']);
+    expect(await as(priya, async (c) => (await c.query(`select mw.project_apps('firm') as a, mw.project_apps('mw301') as b`)).rows[0]))
+      .toEqual({ a: ['domain', 'edc'], b: ['etmf'] });
+    // Two cases of an EDC playbook in the firm, both about the same customer (many cases per record).
+    for (const k of ['q1', 'q2']) {
+      await db.pool.query(`insert into mw.cases (id, case_type, workflow_id, workflow_hash, project) values ($1, 'filing', 'edc-filing', 'h', 'firm')`, [`case_${k}`]);
+      await db.pool.query(
+        `insert into mw.runs (id, workflow_id, workflow_version, workflow_hash, case_id, state, status, snapshot, driver_wf_id, project)
+         values ($1, 'edc-filing', 1, 'h', $2, 'file', 'active', '{}', $1, 'firm')`, [`run_case_${k}`, `case_${k}`]);
+      await db.pool.query(
+        `insert into mw.step_runs (id, run_id, case_id, step_id, workflow_id, workflow_version, workflow_hash, step_hash, performer, status, token, started_at)
+         values ($1, $2, $3, 'file', 'edc-filing', 1, 'h', 'h', 'agent', 'waiting', '{}', now())`, [`run_case_${k}/1/file`, `run_case_${k}`, `case_${k}`]);
+    }
+    // A step of an EDC case writes a Main record: it lands in the firm, which runs both apps.
+    const customer = await as(stepActor('case_q1', 'run_case_q1/1/file'), (c) => store.create(c, e.Customer!, { name: 'Acme Traders' }, { stepRunId: 'run_case_q1/1/file' }));
+    expect((await store.get(db.pool, e.Customer!, customer))!.project).toBe('firm');
+    const again = await as(stepActor('case_q2', 'run_case_q2/1/file'), (c) => store.get(c, e.Customer!, customer));
+    expect(again?.id).toBe(customer);
+    // A grant in either app of the firm reaches its runs; a grant in another EDC project doesn't.
+    const preparer = person('person_raj', [], [{ role: 'preparer', domain: 'edc', project: 'firm' }]);
+    const elsewhere = person('person_ivy', [], [{ role: 'preparer', domain: 'edc', project: 'other' }]);
+    const partner = person('person_ana2', [], [{ role: 'partner', domain: 'domain', project: 'firm' }]);
+    expect(await col(preparer, `select id from mw.runs where project = 'firm'`)).toEqual(['run_case_q1', 'run_case_q2']);
+    expect(await col(partner, `select id from mw.runs where project = 'firm'`)).toEqual(['run_case_q1', 'run_case_q2']);
+    expect(await col(elsewhere, `select id from mw.runs where project = 'firm'`)).toEqual([]);
+    expect(await col(partner, 'select id from domain_read.domain__customer')).toContain(customer);
   });
 
   test('queries can be narrowed to projects (an app home reads across them)', async () => {

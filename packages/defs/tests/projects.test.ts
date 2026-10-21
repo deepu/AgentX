@@ -153,6 +153,33 @@ describe('the app home and app playbooks', () => {
     expect(codes((await load(dir)).all)).toEqual(['app-home-unknown-entity domains/etmf/app.yaml']);
   });
 
+  test('also: a project runs other apps too (D105); an app it runs gets no project of its own', async () => {
+    const dir = etmfCopy();
+    write(dir, {
+      'projects/ops/project.yaml': 'app: etmf\nalso: [edc, nowhere]\nname: Trial operations\n',
+      'domains/edc/workflows/edc-check/workflow.yaml': 'workflow: edc-check\nversion: 1\ntitle: Check a site\nstart: check\nsteps:\n  check: { on: { done: end } }\n',
+      'domains/edc/workflows/edc-check/case.yaml': 'case: edc_check\nfields:\n  note: Text\n',
+      'domains/edc/workflows/edc-check/steps/check.md': '---\ntitle: Check\nperformer: person\nassignee: cra\nwrites:\n  note: Text\noutcomes: [done]\n---\nCheck the site.\n',
+    });
+    const { project, all } = await load(dir);
+    expect(codes(all)).toEqual(['project-unknown-app projects/ops/project.yaml']);
+    const ops = project.projects!.ops!;
+    expect(ops.apps).toEqual(['etmf', 'edc']);
+    // EDC's playbooks are copied into it, like the template's own.
+    const edcWorkflows = Object.values(project.workflows).filter((w) => w.domain === 'edc' && !w.project).map((w) => w.id).sort();
+    expect(edcWorkflows).toEqual(['edc-check']);
+    for (const id of edcWorkflows) expect(ops.workflows[id]).toMatchObject({ project: 'ops', domain: 'edc' });
+    // EDC is run by "ops" now: it has no implicit project; the studies still have only eTMF.
+    expect(project.projects!.edc).toBeUndefined();
+    expect(project.projects!.mw301!.apps).toEqual(['etmf']);
+    // A copy keeps its source's apps.
+    const { createProjectFiles } = await import('../src/project-files.ts');
+    write(dir, { 'projects/ops/project.yaml': 'app: etmf\nalso: [edc]\nname: Trial operations\n' });
+    const again = await load(dir);
+    await createProjectFiles(again.project, { id: 'ops2', name: 'Ops 2', copyFrom: 'ops' });
+    expect((await load(dir)).project.projects!.ops2!.apps).toEqual(['etmf', 'edc']);
+  });
+
   test('create-project is the app\'s own: projects get no copy of it', async () => {
     const { project } = await load(ETMF);
     expect(project.workflows['create-project']).toBeDefined();

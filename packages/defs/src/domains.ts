@@ -70,6 +70,16 @@ export function rolesIn(actor: { roles: string[]; grants?: Grant[] }, domain: st
  * Whether a person may see a project of `domain` (D92, as `mw.domain_project_visible`): no grant
  * in the domain (workspace-wide roles), or a grant in that project or in all of the domain's.
  */
+/**
+ * Whether a person sees `project` when it runs several apps (D105), as `mw.project_visible`: no
+ * grant in any of `apps` (workspace-wide roles), or a grant in one of them that reaches it.
+ */
+export function seesProjectIn(actor: { kind?: string; grants?: Grant[] }, apps: string[], project: string): boolean {
+  if (actor.kind !== undefined && actor.kind !== 'person') return true;
+  const granted = apps.filter((a) => (actor.grants ?? []).some((g) => g.domain === a));
+  return !granted.length || granted.some((a) => seesProject(actor, a, project));
+}
+
 export function seesProject(actor: { kind?: string; grants?: Grant[] }, domain: string, project: string): boolean {
   if (actor.kind !== undefined && actor.kind !== 'person') return true;
   const inDomain = (actor.grants ?? []).filter((g) => g.domain === domain);

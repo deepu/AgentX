@@ -571,6 +571,7 @@ const projectConnection = z.strictObject({
 export const projectFormat = z.strictObject({
   project: z.string().optional().meta({ description: 'The project id, the folder name.' }),
   app: z.string().meta({ description: 'The app (domain id) this project is a copy of.' }),
+  also: names.optional().meta({ description: "Other apps this project also runs, at their current versions (a firm's GST, income tax and notices on the same clients). Their records of type scope: project live in this project too." }),
   version: z.number().int().positive().optional().meta({ description: "The app version its template was taken from. Default the app's current version." }),
   name: z.string(),
   template: z.string().optional().meta({ description: 'The template card it was made from (an id in app.yaml templates).' }),

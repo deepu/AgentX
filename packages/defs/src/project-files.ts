@@ -166,6 +166,8 @@ export interface CreateProjectInput {
   template?: string;
   /** Copy this project's way of working (version, overrides, without, connections, people): never its records. */
   copyFrom?: string;
+  /** Other apps it also runs (D105); default: the copied project's. */
+  also?: string[];
   study?: string;
   status?: ProjectStatus;
   people?: ProjectPersonDef[];
@@ -197,8 +199,11 @@ export async function createProjectFiles(defs: ProjectDefs, input: CreateProject
   const people = input.people ?? source?.people ?? [];
   const connections = source?.connections ?? [];
   const settings = input.settings ?? source?.settings ?? card?.settings;
+  const also = [...new Set(input.also ?? source?.apps.slice(1) ?? [])].filter((a) => a !== appId);
+  for (const a of also) if (!defs.apps?.[a]) throw new Error(`there is no app ${a}`);
   const body: Record<string, unknown> = {
     app: appId,
+    ...(also.length ? { also } : {}),
     version: source?.version ?? app.version,
     name: input.name,
     ...(source ? { copied_from: source.id } : input.template ? { template: input.template } : {}),

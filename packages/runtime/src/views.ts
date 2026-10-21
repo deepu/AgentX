@@ -1,7 +1,7 @@
 // What people see (19 §4, §8): the inbox, the case list, a case with its values (hidden fields
 // nulled for roles that lack access), timeline and path, and live counts for the map.
 import { PgNotificationStore } from '@memwise/db';
-import { DEFAULT_DOMAIN, domainOf, END_STATE, hasRole, seesProject, type ApprovalRequest, type CaseValue, type EntityTypeDef, type FieldDef, type WorkflowDef } from '@memwise/defs';
+import { DEFAULT_DOMAIN, domainOf, END_STATE, hasRole, seesProjectIn, type ApprovalRequest, type CaseValue, type EntityTypeDef, type FieldDef, type WorkflowDef } from '@memwise/defs';
 import { compilePolicy, layersFor, pluginLayers, type CompiledPolicy, type PluginPolicy } from '@memwise/policy';
 import type pg from 'pg';
 import { assigneeOf } from './driver.ts';
@@ -67,8 +67,8 @@ export function approverRoles(policy: CompiledPolicy, workflow: WorkflowDef, ste
   return workflow.owner ? [workflow.owner] : undefined;
 }
 
-export const mayApprove = (actor: Actor, roles: string[] | undefined, domain: string = DEFAULT_DOMAIN, project?: string) =>
-  actor.kind === 'system' || (isPerson(actor) && mayseeProject(actor, domain, project) && (!roles || roles.some((r) => hasRole(actor, r, domain, project))));
+export const mayApprove = (actor: Actor, roles: string[] | undefined, domain: string = DEFAULT_DOMAIN, project?: string, projectApps?: string[] | null) =>
+  actor.kind === 'system' || (isPerson(actor) && mayseeProject(actor, domain, project, projectApps) && (!roles || roles.some((r) => hasRole(actor, r, domain, project))));
 
 function summary(r: any, values: Record<string, CaseValue>, workflow?: WorkflowDef, actor?: Actor): CaseSummary {
   // A few leading values for a title, never a hidden one. Names and text first: jsonb sorts keys
@@ -94,21 +94,25 @@ function summary(r: any, values: Record<string, CaseValue>, workflow?: WorkflowD
 /**
  * Stage 3 (26 §3, D92): whether the actor may see a run of `project` in `domain`, as the row
  * rules decide for the app role (`mw.project_visible`). The kernel reads with the owner's rights,
- * so its views check it themselves.
+ * so its views check it themselves. `projectApps`: every app the project runs (`mw.project_apps`,
+ * D105); without it, the playbook's domain alone.
  */
-export const mayseeProject = (actor: Actor, domain: string, project: string | null | undefined): boolean =>
-  !project || !isPerson(actor) || seesProject(actor, domain, project);
+export const mayseeProject = (actor: Actor, domain: string, project: string | null | undefined, projectApps?: string[] | null): boolean =>
+  !project || !isPerson(actor) || seesProjectIn(actor, projectApps?.length ? projectApps : [domain], project);
+
+/** The select column that gives `mayseeProject` a run's project apps. */
+export const PROJECT_APPS_COLUMN = 'mw.project_apps(r.project) as project_apps';
 
 export async function listCases(pool: pg.Pool, defs: DefinitionCache, filter: { workflowId?: string; status?: RunStatus; limit?: number; project?: string }, actor: Actor): Promise<CaseSummary[]> {
   const { rows } = await pool.query(
-    `select r.*, c.values from mw.runs r join mw.cases c on c.id = r.case_id
+    `select r.*, c.values, ${PROJECT_APPS_COLUMN} from mw.runs r join mw.cases c on c.id = r.case_id
       where ($1::text is null or r.workflow_id = $1) and ($2::text is null or r.status = $2) and ($4::text is null or r.project = $4)
       order by r.updated_at desc, r.id desc limit $3`,
     [filter.workflowId ?? null, filter.status ?? null, filter.limit ?? 200, filter.project ?? null]);
   const out: CaseSummary[] = [];
   for (const r of rows) {
     const wf = await defs.workflow(r.workflow_id, r.workflow_hash).catch(() => undefined);
-    if (!mayseeProject(actor, wf ? domainOf(wf) : DEFAULT_DOMAIN, r.project)) continue;
+    if (!mayseeProject(actor, wf ? domainOf(wf) : DEFAULT_DOMAIN, r.project, r.project_apps)) continue;
     out.push(summary(r, r.values ?? {}, wf, actor));
   }
   return out;
@@ -129,12 +133,12 @@ export interface CaseFlowView {
 
 export async function getCaseView(pool: pg.Pool, defs: DefinitionCache, caseId: string, actor: Actor, flow?: CaseFlowView): Promise<CaseView | undefined> {
   const { rows } = await pool.query(
-    `select r.*, c.values, c.tainted_fields from mw.runs r join mw.cases c on c.id = r.case_id
+    `select r.*, c.values, c.tainted_fields, ${PROJECT_APPS_COLUMN} from mw.runs r join mw.cases c on c.id = r.case_id
       where r.case_id = $1 order by r.created_at desc limit 1`, [caseId]);
   const r = rows[0];
   if (!r) return undefined;
   const workflow = await defs.workflow(r.workflow_id, r.workflow_hash);
-  if (!mayseeProject(actor, domainOf(workflow), r.project)) return undefined;
+  if (!mayseeProject(actor, domainOf(workflow), r.project, r.project_apps)) return undefined;
   const fields = workflow.caseType.fields;
   const tainted = new Set<string>(r.tainted_fields ?? []);
   const values: CaseView['values'] = {};
@@ -189,7 +193,7 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor, 
   // in particular). An agent step also waits while an effect approval is pending: that is not
   // a conversation, so agent rows count only when their step runs on the open engine.
   const waiting = await pool.query(
-    `select s.id, s.run_id, s.case_id, s.workflow_id, s.workflow_hash, s.step_id, s.assignee, s.started_at, s.performer, r.project,
+    `select s.id, s.run_id, s.case_id, s.workflow_id, s.workflow_hash, s.step_id, s.assignee, s.started_at, s.performer, r.project, ${PROJECT_APPS_COLUMN},
             (select min(t.fire_at) from mw.timers t where t.run_id = s.run_id and t.status = 'pending' and t.timer_id not like 'remind.%') as due_at,
             exists (select 1 from mw.external_links l
                      where l.kind = 'step' and l.run_id = s.run_id and l.step_id = s.step_id
@@ -203,7 +207,7 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor, 
     const wf = await defs.workflow(s.workflow_id, s.workflow_hash);
     const step = wf.steps[s.step_id];
     // Stage 3: only in projects the person can see, with the role held in that project.
-    if (!mayseeProject(actor, domainOf(wf), s.project)) continue;
+    if (!mayseeProject(actor, domainOf(wf), s.project, s.project_apps)) continue;
     if (s.assignee && !hasRole(actor, s.assignee, domainOf(wf), s.project)) continue;
     if (s.performer === 'agent') {
       if (step?.engine !== 'open') continue;
@@ -230,7 +234,7 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor, 
 
   // Effect approvals a waiting step asked for, that this person may decide.
   const approvals = await pool.query(
-    `select a.*, s.run_id, s.case_id, s.workflow_id, s.workflow_hash, s.step_id, s.project
+    `select a.*, s.run_id, s.case_id, s.workflow_id, s.workflow_hash, s.step_id, s.project, mw.project_apps(s.project) as project_apps
        from mw.approvals a join mw.step_runs s on s.id = a.step_run_id
       where a.status = 'pending' and s.status = 'waiting' order by a.requested_at, a.id`);
   const policySources = approvals.rows.length ? await loadPolicySources(pool) : undefined;
@@ -238,7 +242,7 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor, 
   for (const a of approvals.rows) {
     const wf = await defs.workflow(a.workflow_id, a.workflow_hash);
     const policy = await defs.policy(wf, a.step_id, policySources, pluginPolicies);
-    if (!mayApprove(actor, approverRoles(policy, wf, a.step_id), domainOf(wf), a.project)) continue;
+    if (!mayApprove(actor, approverRoles(policy, wf, a.step_id), domainOf(wf), a.project, a.project_apps)) continue;
     const approval: ApprovalRequest = {
       id: a.id, stepRunId: a.step_run_id, tool: a.tool, effect: a.effect, treatment: a.treatment, args: a.args,
       preview: a.preview, requestedAt: iso(a.requested_at),
@@ -248,7 +252,7 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor, 
 
   // Runs that need someone: stopped, or waiting in a state with no step file (e.g. needs_person).
   const runs = await pool.query(
-    `select id, case_id, workflow_id, workflow_hash, state, status, stop_reason, updated_at, project from mw.runs
+    `select r.id, r.case_id, r.workflow_id, r.workflow_hash, r.state, r.status, r.stop_reason, r.updated_at, r.project, ${PROJECT_APPS_COLUMN} from mw.runs r
       where status = 'stopped' or status = 'active' order by updated_at, id`);
   for (const r of runs.rows) {
     const wf = await defs.workflow(r.workflow_id, r.workflow_hash).catch(() => undefined);
@@ -256,7 +260,7 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor, 
     const stopped = r.status === 'stopped';
     if (!stopped && stateKind(wf, r.state) !== 'wait') continue;
     const role = stopped ? wf.owner : assigneeOf(wf, r.state);
-    if (!mayseeProject(actor, domainOf(wf), r.project)) continue;
+    if (!mayseeProject(actor, domainOf(wf), r.project, r.project_apps)) continue;
     if (role && !hasRole(actor, role, domainOf(wf), r.project)) continue;
     items.push({
       kind: 'attention', id: `attention:${r.id}:${r.state}`, runId: r.id, caseId: r.case_id, workflowId: r.workflow_id, state: r.state,
@@ -268,14 +272,14 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor, 
   // Unread reminders for the person or their roles.
   const notes = await new PgNotificationStore().unread(pool, { personId: actor.personId, roles });
   if (notes.length) {
-    const steps = await pool.query(`select id, case_id, workflow_id, workflow_hash, state, project from mw.runs where id = any($1::text[])`, [notes.map((n) => n.runId)]);
+    const steps = await pool.query(`select r.id, r.case_id, r.workflow_id, r.workflow_hash, r.state, r.project, ${PROJECT_APPS_COLUMN} from mw.runs r where r.id = any($1::text[])`, [notes.map((n) => n.runId)]);
     const byRun = new Map(steps.rows.map((r) => [r.id as string, r]));
     for (const n of notes) {
       const r = byRun.get(n.runId);
       if (!r) continue;
       // A reminder for a role counts only where the person holds it: in the playbook's domain.
       const wf = await defs.workflow(r.workflow_id, r.workflow_hash).catch(() => undefined);
-      if (wf && !mayseeProject(actor, domainOf(wf), r.project)) continue;
+      if (wf && !mayseeProject(actor, domainOf(wf), r.project, r.project_apps)) continue;
       if (n.role && !n.personId) {
         if (wf && !hasRole(actor, n.role, domainOf(wf), r.project)) continue;
       }

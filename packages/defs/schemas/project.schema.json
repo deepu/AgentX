@@ -10,6 +10,13 @@
       "type": "string",
       "description": "The app (domain id) this project is a copy of."
     },
+    "also": {
+      "description": "Other apps this project also runs, at their current versions (a firm's GST, income tax and notices on the same clients). Their records of type scope: project live in this project too.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "version": {
       "description": "The app version its template was taken from. Default the app's current version.",
       "type": "integer",

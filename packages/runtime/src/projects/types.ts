@@ -14,7 +14,13 @@ import type { Actor, InboxItem } from '../types.ts';
 /** A project in the switcher and lists. */
 export interface MwProjectSummary {
   id: string;
+  /** The app it is a copy of (its template, its updates, its owner role). */
   app: string;
+  /**
+   * Every app it runs, `app` first (D105): a firm's one project may also run GST, income tax and
+   * notices on the same client records; a study runs its one app.
+   */
+  apps: string[];
   appTitle: string;
   name: string;
   status: ProjectStatus;
@@ -81,6 +87,8 @@ export interface MwCreateProjectInput {
   template?: string;
   /** Copy this project's way of working ("Start from MW-301"). */
   copyFrom?: string;
+  /** Other apps it also runs (D105; a copy keeps its source's). */
+  also?: string[];
   study?: string;
   people?: ProjectPersonDef[];
   without?: string[];
@@ -218,7 +226,7 @@ export interface ProjectsService {
   /** Waiting for you across every project the person can see. */
   waiting(actor: Actor): Promise<MwWaitingGroup[]>;
   /** "Describe it in chat": starts the app's `create-project` meta playbook, a conversation that makes the draft. */
-  describe(input: { app: string; request: string }, actor: Actor): Promise<{ runId: string; caseId: string }>;
+  describe(input: { app: string; request: string }, actor: Actor): Promise<{ runId: string; caseId: string; stepRunId: string }>;
   /** The walkthrough records of `projects/<id>/seed.yaml`, made once when the project has none (the kernel itself only). */
   seed(projectId: string, actor: Actor): Promise<{ created: number; skipped?: string }>;
 }

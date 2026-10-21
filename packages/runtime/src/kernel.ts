@@ -447,12 +447,12 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         if (current.status !== 'pending') return { applied: false, status: current.status };
         // Only a step still waiting can take the answer; one that timed out or stopped has moved
         // on (the driver marks its approvals expired when it commits the step's result).
-        const step = await db.query('select status, workflow_id, workflow_hash, step_id, project from mw.step_runs where id = $1 for update', [current.stepRunId]);
+        const step = await db.query('select status, workflow_id, workflow_hash, step_id, project, mw.project_apps(project) as project_apps from mw.step_runs where id = $1 for update', [current.stepRunId]);
         if (step.rows[0]?.status !== 'waiting') return { applied: false, status: 'expired' as const };
         if (by) {
           const s = step.rows[0];
           const wf = await defs.workflow(s.workflow_id, s.workflow_hash);
-          if (!mayApprove(by, approverRoles(await defs.policy(wf, s.step_id), wf, s.step_id), domainOf(wf), s.project)) {
+          if (!mayApprove(by, approverRoles(await defs.policy(wf, s.step_id), wf, s.step_id), domainOf(wf), s.project, s.project_apps)) {
             return { applied: false, status: 'forbidden' as const };
           }
         }

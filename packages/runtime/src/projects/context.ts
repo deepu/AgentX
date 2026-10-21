@@ -10,6 +10,8 @@ import type { ProjectStatus } from '@memwise/defs';
 export interface IndexedProjectBody {
   id: string;
   app: string;
+  /** Every app it runs, `app` first (D105); absent in bodies indexed before it. */
+  apps?: string[];
   name: string;
   version: number;
   status: ProjectStatus;
@@ -25,6 +27,8 @@ export interface IndexedProjectBody {
 export interface ProjectAtRunTime {
   id: string;
   app: string;
+  /** Every app it runs, `app` first. */
+  apps: string[];
   name: string;
   status: ProjectStatus;
   /** Absent for a project the definitions don't know (an app's own project from before projects). */
@@ -36,13 +40,14 @@ export async function projectAtRunTime(db: Queryable, id: string): Promise<Proje
   const [def, row] = await Promise.all([
     db.query<{ body: IndexedProjectBody }>(
       `select body from mw.definitions where kind = 'project' and id = $1 order by indexed_at desc limit 1`, [id]),
-    db.query<{ app: string; name: string; status: ProjectStatus }>(`select app, name, status from mw.projects where id = $1`, [id]),
+    db.query<{ app: string; apps: string[] | null; name: string; status: ProjectStatus }>(`select app, apps, name, status from mw.projects where id = $1`, [id]),
   ]);
   const body = def.rows[0]?.body;
   const r = row.rows[0];
   if (!body && !r) return undefined;
   return {
     id, app: r?.app ?? body!.app, name: r?.name ?? body!.name,
+    apps: r?.apps?.length ? r.apps : body?.apps?.length ? body.apps : [r?.app ?? body!.app],
     // The row says what happened to it (Start study, archive); a project not synced yet, what its file says.
     status: r?.status ?? body!.status,
     ...(body ? { def: body } : {}),

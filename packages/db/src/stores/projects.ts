@@ -11,6 +11,8 @@ import { iso, json } from '../rows.ts';
 export interface ProjectRow {
   id: string;
   app: string;
+  /** Every app it runs, `app` first (`also:`, D105). */
+  apps: string[];
   name: string;
   status: ProjectStatus;
   from?: ProjectSource;
@@ -25,12 +27,12 @@ export interface ProjectRow {
 }
 
 type DbRow = {
-  id: string; app: string; name: string; status: ProjectStatus; from: ProjectSource | null; template_version: number; study: string | null;
+  id: string; app: string; apps: string[] | null; name: string; status: ProjectStatus; from: ProjectSource | null; template_version: number; study: string | null;
   settings: Record<string, unknown> | null; skipped_version: number | null; created_by: string | null; created_at: Date; updated_at: Date;
 };
 
 const toRow = (r: DbRow): ProjectRow => ({
-  id: r.id, app: r.app, name: r.name, status: r.status, templateVersion: r.template_version, settings: r.settings ?? {},
+  id: r.id, app: r.app, apps: r.apps?.length ? r.apps : [r.app], name: r.name, status: r.status, templateVersion: r.template_version, settings: r.settings ?? {},
   createdAt: iso(r.created_at), updatedAt: iso(r.updated_at),
   ...(r.from ? { from: r.from } : {}), ...(r.study ? { study: r.study } : {}), ...(r.created_by ? { createdBy: r.created_by } : {}),
   ...(r.skipped_version ? { skippedVersion: r.skipped_version } : {}),
@@ -55,16 +57,16 @@ export class PgProjectStore {
   async sync(db: Queryable, projects: MwProjectDef[], by?: string): Promise<void> {
     if (!projects.length) return;
     await db.query(
-      `insert into mw.projects (id, app, name, status, "from", template_version, study, settings, created_by)
-       select x.id, x.app, x.name, x.status, x."from", x.template_version, x.study, coalesce(x.settings, '{}'::jsonb), $2
-       from jsonb_to_recordset($1::jsonb) as x(id text, app text, name text, status text, "from" jsonb, template_version int, study text, settings jsonb)
+      `insert into mw.projects (id, app, apps, name, status, "from", template_version, study, settings, created_by)
+       select x.id, x.app, array(select jsonb_array_elements_text(x.apps)), x.name, x.status, x."from", x.template_version, x.study, coalesce(x.settings, '{}'::jsonb), $2
+       from jsonb_to_recordset($1::jsonb) as x(id text, app text, apps jsonb, name text, status text, "from" jsonb, template_version int, study text, settings jsonb)
        on conflict (id) do update set
-         app = excluded.app, name = excluded.name, "from" = excluded."from", template_version = excluded.template_version,
+         app = excluded.app, apps = excluded.apps, name = excluded.name, "from" = excluded."from", template_version = excluded.template_version,
          study = excluded.study, settings = excluded.settings, updated_at = now()
-       where (mw.projects.app, mw.projects.name, mw.projects."from", mw.projects.template_version, mw.projects.study, mw.projects.settings)
-         is distinct from (excluded.app, excluded.name, excluded."from", excluded.template_version, excluded.study, excluded.settings)`,
+       where (mw.projects.app, mw.projects.apps, mw.projects.name, mw.projects."from", mw.projects.template_version, mw.projects.study, mw.projects.settings)
+         is distinct from (excluded.app, excluded.apps, excluded.name, excluded."from", excluded.template_version, excluded.study, excluded.settings)`,
       [json(projects.map((p) => ({
-        id: p.id, app: p.app, name: p.name, status: p.status, from: p.from ?? null, template_version: p.version,
+        id: p.id, app: p.app, apps: p.apps?.length ? p.apps : [p.app], name: p.name, status: p.status, from: p.from ?? null, template_version: p.version,
         study: p.study ?? null, settings: p.settings ?? {},
       }))), by ?? null]);
   }

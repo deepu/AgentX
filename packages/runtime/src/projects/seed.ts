@@ -53,11 +53,12 @@ export function parseSeed(text: string): SeedEntry[] {
  * Makes a project's seed records, unless it already has records of a seeded project-scoped type.
  * Returns how many were made (0: no seed file, or seeded before).
  */
-export async function seedProjectRecords(deps: SeedDeps, project: { id: string; app: string; dir?: string }): Promise<{ created: number; skipped?: string }> {
+export async function seedProjectRecords(deps: SeedDeps, project: { id: string; app: string; apps?: string[]; dir?: string }): Promise<{ created: number; skipped?: string }> {
   if (!project.dir) return { created: 0, skipped: 'no project folder' };
   const file = join(deps.root, project.dir, SEED_FILE);
   if (!existsSync(file)) return { created: 0, skipped: 'no seed.yaml' };
   const entries = parseSeed(await readFile(file, 'utf8'));
+  const apps = project.apps ?? [project.app];
   const entities = deps.entities();
   const defOf = (name: string) => {
     const def = resolveEntity(entities, project.app, name);
@@ -67,7 +68,7 @@ export async function seedProjectRecords(deps: SeedDeps, project: { id: string; 
   // Seeded once: any record of a seeded project-scoped type in this project means it was.
   for (const e of entries) {
     const def = defOf(e.entity);
-    if (!projectScoped(def) || domainOf(def) !== project.app) continue;
+    if (!projectScoped(def) || !apps.includes(domainOf(def))) continue;
     const n = await withActor(deps.pool, SYSTEM, (db) => store.aggregate(db, def, entities, { kind: 'count', projects: [project.id] }));
     if (n) return { created: 0, skipped: 'it has records' };
   }
@@ -96,8 +97,8 @@ export async function seedProjectRecords(deps: SeedDeps, project: { id: string; 
       const same = found.find((r) => e.match!.every((m) => r.values[m] === values[m]));
       if (same) { ids.set(e.key, same.id); continue; }
     }
-    // Records of another app (an EDC site) go to that app's own project.
-    const inApp = domainOf(def) === project.app;
+    // Records of an app the project runs are its own (D105); of another app (an EDC site), that app's own project.
+    const inApp = apps.includes(domainOf(def));
     const r = await deps.create({ entity: keyOf(def), values, ...(e.status ? { status: e.status } : {}), ...(inApp ? { project: project.id } : {}) }, SYSTEM);
     if (!r.applied || !r.id) throw new Error(`seed.yaml: ${e.key} (${e.entity}) was not made: ${r.message ?? r.status}${r.errors ? ` ${JSON.stringify(r.errors)}` : ''}`);
     ids.set(e.key, r.id);

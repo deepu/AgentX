@@ -121,6 +121,11 @@ export interface MwProjectDef {
   id: string;
   /** The app (domain id). */
   app: string;
+  /**
+   * Every app it runs, `app` first, then `also:` (D105): a firm's one project running GST, income
+   * tax and notices on the same client records. Project-scoped records of any of them live in it.
+   */
+  apps: string[];
   name: string;
   /** The app version its template was taken from. */
   version: number;

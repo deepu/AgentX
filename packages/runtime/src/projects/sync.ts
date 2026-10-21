@@ -32,7 +32,8 @@ export async function syncProjects(pool: pg.Pool, people: PgPeopleStore, defs: P
       const list = byPerson.get(found.id) ?? [];
       for (const role of person.roles) {
         if (roles.size && !roles.has(role)) continue; // `memwise check` reports it (unknown-role)
-        list.push({ role, domain: p.app, project: p.id });
+        // A role in the project holds in every app it runs (a firm's preparer works its GST and income-tax cases).
+        for (const app of p.apps ?? [p.app]) list.push({ role, domain: app, project: p.id });
       }
       byPerson.set(found.id, list);
     }

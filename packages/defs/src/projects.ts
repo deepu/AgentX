@@ -105,11 +105,21 @@ export async function loadMwProjects(abs: string, project: ProjectDefs, diagnost
       });
       continue;
     }
-    out[id] = await resolveProject(abs, project, pf, app, domain, diagnostics);
+    // `also:` apps it runs beside its own (at their current versions).
+    const also: string[] = [];
+    (pf.also ?? []).forEach((a, i) => {
+      if (a === pf.app) return;
+      if (!apps[a] || !project.domains?.[a]) {
+        diagnostics.push({ severity: 'error', code: 'project-unknown-app', file, line: locatorOf(pf)?.(['also', i]), message: `also: there is no app \`${a}\` (apps: ${Object.keys(apps).join(', ') || 'none'})` });
+        return;
+      }
+      also.push(a);
+    });
+    out[id] = await resolveProject(abs, project, pf, app, domain, diagnostics, also);
   }
-  // An app without projects of its own is one project, named after it (today's single-domain workspaces).
+  // An app no project runs is one project, named after it (today's single-domain workspaces).
   for (const app of Object.values(apps)) {
-    if (Object.values(out).some((p) => p.app === app.id)) continue;
+    if (Object.values(out).some((p) => p.apps.includes(app.id))) continue;
     if (out[app.id]) {
       diagnostics.push({ severity: 'error', code: 'project-id-taken', file: out[app.id]!.file, message: `the project \`${app.id}\` belongs to ${out[app.id]!.app}, but \`${app.id}\` is also the id of the app ${app.id}'s own project; rename the folder` });
       continue;
@@ -124,7 +134,7 @@ function implicitProject(project: ProjectDefs, app: AppDef): MwProjectDef {
   const domain = project.domains![app.id]!;
   const workflows = Object.fromEntries(domain.workflows.map((w) => [w, project.workflows[w]!]).filter(([, w]) => !!w)) as Record<string, WorkflowDef>;
   return {
-    id: app.id, app: app.id, name: domain.name === app.id ? app.title : domain.name, version: app.version, status: 'active',
+    id: app.id, app: app.id, apps: [app.id], name: domain.name === app.id ? app.title : domain.name, version: app.version, status: 'active',
     people: [], connections: [], without: [], overrides: [], implicit: true,
     hash: sha256(`implicit\0${app.id}\0${app.version}`),
     workflows,
@@ -133,7 +143,7 @@ function implicitProject(project: ProjectDefs, app: AppDef): MwProjectDef {
   };
 }
 
-async function resolveProject(abs: string, project: ProjectDefs, pf: ProjectFile, app: AppDef, domain: DomainDef, diagnostics: Diagnostic[]): Promise<MwProjectDef> {
+async function resolveProject(abs: string, project: ProjectDefs, pf: ProjectFile, app: AppDef, domain: DomainDef, diagnostics: Diagnostic[], also: string[] = []): Promise<MwProjectDef> {
   const dir = `${PROJECTS_DIR}/${pf.id}`;
   const at = (path: (string | number)[]) => locatorOf(pf)?.(path);
   let version = pf.version ?? app.version;
@@ -209,6 +219,20 @@ async function resolveProject(abs: string, project: ProjectDefs, pf: ProjectFile
     workflows[wf.id] = wf;
   }
 
+  // The playbooks of the apps it also runs: their live ones, copied the same way (no overrides yet).
+  for (const a of also) {
+    for (const w of Object.values(project.workflows)) {
+      if (w.domain !== a || w.project || APP_PLAYBOOKS.includes(w.id)) continue;
+      if (workflows[w.id]) {
+        diagnostics.push({ severity: 'error', code: 'project-also-collision', file: pf.file, line: at(['also']), message: `also: ${a} has a playbook \`${w.id}\`, and so does ${workflows[w.id]!.domain}; a project can't run two playbooks with one id` });
+        continue;
+      }
+      const wf: WorkflowDef = { ...w, project: pf.id, hash: projectWorkflowHash(pf.id, w.hash) };
+      if (locatorOf(w)) rememberLocator(wf, locatorOf(w)!);
+      workflows[wf.id] = wf;
+    }
+  }
+
   // The app's policy layer: the project's own policy.yaml, else the template's at `version`.
   let policy: PolicyDoc | undefined;
   const policyPath = overrides.find((p) => /^policy\.ya?ml$/.test(p));
@@ -230,7 +254,7 @@ async function resolveProject(abs: string, project: ProjectDefs, pf: ProjectFile
   const hash = sha256(projectText, '\0', domain.id, '\0', String(version), '\0',
     ...overrides.flatMap((p) => [p, '\0', bytes.get(p)!, '\0']), ...Object.values(workflows).map((w) => w.hash));
   const def: MwProjectDef = {
-    id: pf.id, app: app.id, name: pf.name, version,
+    id: pf.id, app: app.id, apps: [app.id, ...also], name: pf.name, version,
     from: projectSource(pf, version),
     ...(pf.template ? { template: pf.template } : {}),
     ...(pf.study ? { study: pf.study } : {}),

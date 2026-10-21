@@ -73,6 +73,8 @@ function homeOf(raw: Record<string, unknown> & { title: string }): AppHomeDef {
 export interface ProjectFile {
   id: string;
   app: string;
+  /** Other apps it also runs, at their current versions (`also: [gst, itr]`). */
+  also?: string[];
   /** Absent: the app's current version. */
   version?: number;
   name: string;
@@ -124,6 +126,7 @@ export function parseProjectFile(text: string, file: string, id: string): ParseR
   const value: ProjectFile = compact({
     id,
     app: asString(data.app)?.trim() ?? '',
+    also: Array.isArray(data.also) ? asStrings(data.also).map((a) => a.trim()).filter((a, i, all) => a && all.indexOf(a) === i) : undefined,
     version: typeof data.version === 'number' && Number.isInteger(data.version) && data.version > 0 ? data.version : undefined,
     name: asString(data.name) ?? id,
     template: asString(data.template),

@@ -7,7 +7,7 @@
 import { PgEntityStore, PgProjectStore, projectScoped, withActor, type ProjectRow } from '@memwise/db';
 import {
   createProjectFiles, hasRole, projectIdFor, publishAppVersion, resolveEntity, rolesIn, saveAsTemplate as saveFilesAsTemplate,
-  seesProject, takeTemplateUpdate, templateUpdate, updateProjectFile, type AppDef, type Diagnostic, type EntityTypeDef,
+  seesProjectIn, takeTemplateUpdate, templateUpdate, updateProjectFile, type AppDef, type Diagnostic, type EntityTypeDef,
   type ExampleCase, type MwProjectDef, type ProjectDefs, type TemplateChange,
 } from '@memwise/defs';
 import { rm } from 'node:fs/promises';
@@ -63,7 +63,12 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
   // ---------------------------------------------------------------- who sees and changes what
 
   /** A person sees the projects their grants reach (D92); anyone else every project. */
-  const sees = (actor: Actor, p: Pick<MwProjectDef, 'app' | 'id'>) => !isPerson(actor) || seesProject(actor, p.app, p.id);
+  /**
+   * Over every app the project runs (D105), as `mw.project_visible`: a person with no grant in any
+   * of them, or a grant in one of them that reaches the project.
+   */
+  const sees = (actor: Actor, p: Pick<MwProjectDef, 'app' | 'apps' | 'id'>) =>
+    !isPerson(actor) || seesProjectIn(actor, p.apps?.length ? p.apps : [p.app], p.id);
 
   /**
    * Who changes an app's projects: its owner role (held in that project, when one is named), or
@@ -117,7 +122,7 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
     const app = appOf(d, p.app);
     const update = updates.has(p.id) ? pendingUpdate(app, p, row) : undefined;
     return {
-      id: p.id, app: p.app, appTitle: app.title, name: row?.name ?? p.name, status: row?.status ?? p.status,
+      id: p.id, app: p.app, apps: p.apps?.length ? p.apps : [p.app], appTitle: app.title, name: row?.name ?? p.name, status: row?.status ?? p.status,
       ...(p.study ? { study: p.study } : {}), templateVersion: p.version, appVersion: app.version,
       ...(p.from ? { from: p.from } : {}), ...(p.implicit ? { implicit: true } : {}),
       ...(update ? { update } : {}),
@@ -131,7 +136,7 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
     const [r, waiting] = await Promise.all([rows(), waitingByProject(actor)]);
     const out: MwProjectSummary[] = [];
     for (const p of Object.values(d.projects ?? {})) {
-      if (filter.app && p.app !== filter.app) continue;
+      if (filter.app && !(p.apps ?? [p.app]).includes(filter.app)) continue;
       if (!sees(actor, p)) continue;
       // An update is offered to who can take it.
       const updates = new Set(mayManage(d, actor, p.app, p.id) ? [p.id] : []);
@@ -262,7 +267,7 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
     const entities = deps.entities();
     const r = await rows();
     const waiting = await waitingByProject(actor);
-    const projects = Object.values(d.projects ?? {}).filter((p) => p.app === appId && sees(actor, p));
+    const projects = Object.values(d.projects ?? {}).filter((p) => (p.apps ?? [p.app]).includes(appId) && sees(actor, p));
     const statusOf = (p: MwProjectDef) => r.get(p.id)?.status ?? p.status;
     const settingsOf = (p: MwProjectDef) => { const s = r.get(p.id)?.settings; return s && Object.keys(s).length ? s : p.settings ?? {}; };
     const columns = app.home?.columns ?? [];
@@ -370,7 +375,7 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       return Object.values(d.apps ?? {}).map((app): MwAppSummary => ({
         id: app.id, title: app.title, ...(app.description ? { description: app.description } : {}), version: app.version,
         nouns: app.nouns ?? DEFAULT_NOUNS, ...(app.home ? { home: { title: app.home.title, ...(app.home.link ? { link: app.home.link } : {}) } } : {}),
-        templates: app.templates, projects: projects.filter((p) => p.app === app.id), canCreate: mayManage(d, actor, app.id),
+        templates: app.templates, projects: projects.filter((p) => p.apps.includes(app.id)), canCreate: mayManage(d, actor, app.id),
       })).filter((a) => a.projects.length || a.canCreate);
     },
 
@@ -395,6 +400,7 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
         ...(input.template ? { template: input.template } : {}), ...(input.copyFrom ? { copyFrom: input.copyFrom } : {}),
         ...(input.study ? { study: input.study } : {}), ...(people ? { people } : {}),
         ...(input.without ? { without: input.without } : {}), ...(input.settings ? { settings: input.settings } : {}),
+        ...(input.also ? { also: input.also } : {}),
       });
       await reindex();
       if (isPerson(actor)) await deps.pool.query('update mw.projects set created_by = $2 where id = $1 and created_by is null', [id, actor.personId]);
@@ -561,10 +567,11 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       appOf(d, input.app);
       mustManage(d, actor, input.app);
       if (!d.workflows[CREATE_PROJECT_PLAYBOOK]) throw new Error(`this workspace has no ${CREATE_PROJECT_PLAYBOOK} playbook: make the project from a template or a copy`);
-      return deps.startRun({
+      const started = await deps.startRun({
         workflowId: CREATE_PROJECT_PLAYBOOK, case: { app: input.app, request: input.request },
         ...(isPerson(actor) ? { by: actor.personId } : {}),
       });
+      return { ...started, stepRunId: await waitingConversation(started.runId) };
     },
 
     async seed(id, actor) {
@@ -576,6 +583,20 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
       return r;
     },
   };
+
+  /** The conversation step a create-project run opens with (the chat "Describe it in chat" opens on). */
+  async function waitingConversation(runId: string, timeoutMs = 30_000): Promise<string> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const { rows } = await deps.pool.query<{ id: string }>(
+        `select id from mw.step_runs where run_id = $1 and status = 'waiting' and performer = 'agent' order by started_at desc, id desc limit 1`, [runId]);
+      if (rows[0]) return rows[0].id;
+      const { rows: run } = await deps.pool.query<{ status: string; state: string }>('select status, state from mw.runs where id = $1', [runId]);
+      if (run[0] && run[0].status !== 'active') throw new Error(`the ${CREATE_PROJECT_PLAYBOOK} run ${runId} ended (${run[0].status} in ${run[0].state}) before its conversation opened`);
+      if (Date.now() > deadline) throw new Error(`the ${CREATE_PROJECT_PLAYBOOK} run ${runId} did not reach its conversation in ${timeoutMs} ms`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
 
   /** The person making a project, as its owner (the app's owner role), when the workspace knows them. */
   async function creatorAsPerson(d: ProjectDefs, actor: Actor, app: string) {

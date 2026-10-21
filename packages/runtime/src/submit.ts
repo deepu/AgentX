@@ -4,7 +4,7 @@
 // the outcome is accepted by the run.
 import type { DBOSClient } from '@dbos-inc/dbos-sdk';
 import { PgCaseStore, type Queryable } from '@memwise/db';
-import { domainOf, hasRole, scopedEntities, seesProject, validateValue, type EntityTypeDef, type Provenance, type RecordTypes, type StepDef, type WorkflowDef } from '@memwise/defs';
+import { domainOf, hasRole, scopedEntities, seesProjectIn, validateValue, type EntityTypeDef, type Provenance, type RecordTypes, type StepDef, type WorkflowDef } from '@memwise/defs';
 import type pg from 'pg';
 import { isDeepStrictEqual } from 'node:util';
 import { driverIdOf } from './ids.ts';
@@ -40,6 +40,8 @@ export interface WaitingStep {
   entered_seq: number;
   /** Stage 3: the run's project. */
   project?: string | null;
+  /** Every app that project runs (D105). */
+  project_apps?: string[] | null;
 }
 
 /**
@@ -48,7 +50,7 @@ export interface WaitingStep {
  */
 export async function lockWaitingStep(db: pg.PoolClient, stepRunId: string): Promise<WaitingStep | SubmitResult> {
   const { rows } = await db.query(
-    `select s.id, s.run_id, s.case_id, s.step_id, s.status, s.workflow_id, s.workflow_hash, s.assignee, r.entered_seq, r.state, r.status as run_status, r.project
+    `select s.id, s.run_id, s.case_id, s.step_id, s.status, s.workflow_id, s.workflow_hash, s.assignee, r.entered_seq, r.state, r.status as run_status, r.project, mw.project_apps(r.project) as project_apps
        from mw.step_runs s join mw.runs r on r.id = s.run_id where s.id = $1 for update of s, r`, [stepRunId]);
   const s = rows[0];
   if (!s) return { applied: false, status: 'missing', message: `no step ${stepRunId}` };
@@ -145,7 +147,7 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput, opts:
     }
     const role = step.assignee ?? s.assignee ?? undefined;
     // Stage 3: the role held in the run's project (a grant in another study doesn't answer this one).
-    if (input.by.kind === 'person' && s.project && !seesProject(input.by, domainOf(workflow), s.project)) {
+    if (input.by.kind === 'person' && s.project && !seesProjectIn(input.by, s.project_apps?.length ? s.project_apps : [domainOf(workflow)], s.project)) {
       return { applied: false, status: 'forbidden', message: 'this step belongs to a project you are not in' };
     }
     if (role && !hasRole(input.by, role, domainOf(workflow), s.project ?? undefined)) {

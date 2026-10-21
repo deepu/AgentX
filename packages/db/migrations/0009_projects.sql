@@ -14,6 +14,10 @@
 create table mw.projects (
   id                text primary key,              -- the folder name (projects/<id>/), or the domain id
   app               text not null,                 -- the domain it is a copy of
+  -- Every app it runs, app first, then project.yaml `also:` (D105: a firm's one project running
+  -- GST, income tax and notices on the same client records). Its project-scoped records of any of
+  -- these apps live in it.
+  apps              text[] not null default '{}',
   name              text not null,
   status            text not null default 'active' check (status in ('draft', 'active', 'archived')),
   "from"            jsonb,                         -- { template, version } | { project } | { blank: true }
@@ -56,6 +60,14 @@ create index if not exists grants_project on mw.grants (project) where project i
 create or replace function mw.project_app(p_project text) returns text
   language sql stable as $$ select coalesce((select p.app from mw.projects p where p.id = p_project), p_project) $$;
 
+-- Every app a project runs (its own, then `also:`); the id itself for a project the database
+-- doesn't know (a domain's own project).
+create or replace function mw.project_apps(p_project text) returns text[]
+  language sql stable as $$
+    select coalesce((select case when cardinality(p.apps) > 0 then p.apps else array[p.app] end
+                     from mw.projects p where p.id = p_project), array[p_project])
+  $$;
+
 -- Whether a person's grants let them see project `p_project` of domain `p_domain` (D92): anyone
 -- who isn't a person; a person with no grant in the domain (workspace-wide roles, as before
 -- projects); a person with a grant in that project or in every project of the domain.
@@ -72,11 +84,14 @@ create or replace function mw.domain_project_visible(p_domain text, p_project te
           and (p_project is null or p_project = p_domain or g ->> 'project' is null or g ->> 'project' = p_project))
   $$;
 
--- The same for a row that names only its project (runs, cases, pages, chats).
+-- The same for a row that names only its project (runs, cases, pages, chats), over every app the
+-- project runs: a person with no grant in any of them, or a grant in one of them that reaches it.
 create or replace function mw.project_visible(p_project text) returns boolean
   language sql stable as $$
     select p_project is null or coalesce(mw.actor_kind(), '') <> 'person'
-      or mw.domain_project_visible(mw.project_app(p_project), p_project)
+      or (select bool_and(not exists (select 1 from jsonb_array_elements(mw.actor_grants()) g where g ->> 'domain' = a))
+                 or coalesce(bool_or(mw.domain_project_visible(a, p_project)) filter (where exists (select 1 from jsonb_array_elements(mw.actor_grants()) g where g ->> 'domain' = a)), false)
+          from unnest(mw.project_apps(p_project)) a)
   $$;
 
 -- A row of an app table: its project visible (above), and inside the project the record scope
@@ -107,12 +122,13 @@ create or replace function mw.actor_has_role_in_project(role text, p_domain text
   $$;
 
 -- The project a write lands in when the writer doesn't say: `mw.project` (withRecordContext,
--- the app), else the project of the step token's run, else the domain's own project.
+-- the app), else the project of the step token's run when that project runs the record's app (a
+-- GST case writing the firm's Client), else the domain's own project.
 create or replace function mw.current_project(p_domain text) returns text
   language sql stable as $$
     select coalesce(
       nullif(current_setting('mw.project', true), ''),
-      (select r.project from mw.runs r where r.case_id = mw.token_case() and mw.project_app(r.project) = p_domain
+      (select r.project from mw.runs r where r.case_id = mw.token_case() and p_domain = any(mw.project_apps(r.project))
         order by r.created_at limit 1),
       p_domain)
   $$;
