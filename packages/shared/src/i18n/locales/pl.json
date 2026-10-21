@@ -1163,6 +1163,7 @@
   "memwise.edc.home.noSites": "Nie odczytano jeszcze żadnych ośrodków.",
   "memwise.edc.home.noSource": "{{app}} · żaden łącznik nie odczytuje jeszcze tego badania",
   "memwise.edc.home.nothingWaiting": "Nic na Ciebie nie czeka.",
+  "memwise.edc.home.oldQueriesTitle": "Zapytania starsze niż {{days}} dni",
   "memwise.edc.home.oldQueries_few": "{{count}} starszych niż {{days}} dni",
   "memwise.edc.home.oldQueries_many": "{{count}} starszych niż {{days}} dni",
   "memwise.edc.home.oldQueries_one": "{{count}} starszych niż {{days}} dni",

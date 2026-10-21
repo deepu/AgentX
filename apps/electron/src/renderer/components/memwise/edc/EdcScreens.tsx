@@ -24,12 +24,12 @@ const openCase = (caseId: string) => navigate(routes.view.cases(caseId))
 
 // ---------------------------------------------------------------- data
 
-export function useEdcHome(projectId: string | null): MemwiseQuery<MwEdcHome> {
+export function useEdcHome(projectId: string | null, domain?: string): MemwiseQuery<MwEdcHome> {
   return useMemwiseQuery<MwEdcHome>(
-    projectId ? `edc:home:${projectId}` : null,
+    projectId ? `edc:home:${projectId}:${domain ?? ''}` : null,
     async (api, ws) => {
       if (typeof api.memwiseGetEdcHome !== 'function') throw new Error(i18n.t('memwise.notAvailable'))
-      return api.memwiseGetEdcHome(ws, { projectId: projectId! })
+      return api.memwiseGetEdcHome(ws, { projectId: projectId!, ...(domain ? { domain } : {}) })
     },
     // Rave's numbers change with a sync (records); what waits changes with the inbox and cases.
     c => c.kind === 'records' || c.kind === 'inbox' || c.kind === 'case' || c.kind === 'definitions' || c.kind === 'status',

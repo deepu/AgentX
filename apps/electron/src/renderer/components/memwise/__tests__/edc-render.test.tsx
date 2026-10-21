@@ -17,6 +17,7 @@ const { TooltipProvider } = await import('@memwise/ui')
 const { EdcHomeView, AlsoInOtherAppsView } = await import('../edc/EdcHomeView')
 const { RecordFactsByAppView, OwnerTag, OpenInAppButton } = await import('../edc/OwnerTags')
 const { factsByApp, otherApps, ownerTone, barWidth } = await import('../edc/edc-model')
+const { isEdcApp, queriesPageId } = await import('../edc/EdcProjectHome')
 
 beforeAll(() => {
   setI18n(setupI18n([initReactI18next]))
@@ -159,5 +160,25 @@ describe('one site in two apps', () => {
     expect(render(<OpenInAppButton app={{ domain: 'etmf', name: 'eTMF' }} onOpen={() => {}} />)).toContain('Open in eTMF')
     expect(ownerTone('edc')).toBe(ownerTone('edc'))
     expect([barWidth(undefined), barWidth(58), barWidth(130)]).toEqual([0, 58, 100])
+  })
+})
+
+describe('the EDC app in the project shell', () => {
+  const ent = (key: string) => ({ key, entity: key, title: key.split('.')[1]!, count: 1 })
+  const domain = (id: string, entities: string[], pages: string[] = []) => ({
+    id, name: id.toUpperCase(), regulated: false, entities: entities.map(ent), workflows: [], views: [], flags: 0,
+    pages: pages.map(p => ({ id: p, title: p })),
+  })
+
+  test('an app with a Study, Sites and Queries gets the study home; others keep the plain one', () => {
+    expect(isEdcApp(domain('edc', ['edc.Study', 'edc.Site', 'edc.Query', 'edc.Subject']))).toBe(true)
+    expect(isEdcApp(domain('etmf', ['etmf.Study', 'etmf.Site', 'etmf.Document']))).toBe(false)
+    expect(isEdcApp(null)).toBe(false)
+  })
+
+  test('the queries page (XQueries) is the one for old queries, else any queries page', () => {
+    expect(queriesPageId(domain('edc', [], ['enrolment', 'old-queries']))).toBe('old-queries')
+    expect(queriesPageId(domain('edc', [], ['enrolment', 'open-queries']))).toBe('open-queries')
+    expect(queriesPageId(domain('edc', [], ['enrolment']))).toBeUndefined()
   })
 })

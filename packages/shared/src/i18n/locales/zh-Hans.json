@@ -1131,6 +1131,7 @@
   "memwise.edc.home.noSites": "尚未读取任何中心。",
   "memwise.edc.home.noSource": "{{app}} · 尚无连接器读取此研究",
   "memwise.edc.home.nothingWaiting": "没有等待你处理的事项。",
+  "memwise.edc.home.oldQueriesTitle": "超过 {{days}} 天的质疑",
   "memwise.edc.home.oldQueries_one": "{{count}} 条超过 {{days}} 天",
   "memwise.edc.home.oldQueries_other": "{{count}} 条超过 {{days}} 天",
   "memwise.edc.home.openQueries": "未关闭质疑",

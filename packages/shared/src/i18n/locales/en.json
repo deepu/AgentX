@@ -1131,6 +1131,7 @@
   "memwise.edc.home.noSites": "No sites have been read yet.",
   "memwise.edc.home.noSource": "{{app}} · no connector reads this study yet",
   "memwise.edc.home.nothingWaiting": "Nothing is waiting for you.",
+  "memwise.edc.home.oldQueriesTitle": "Queries older than {{days}} days",
   "memwise.edc.home.oldQueries_one": "{{count}} older than {{days}} days",
   "memwise.edc.home.oldQueries_other": "{{count}} older than {{days}} days",
   "memwise.edc.home.openQueries": "Open queries",

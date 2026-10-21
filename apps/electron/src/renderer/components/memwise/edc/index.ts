@@ -3,6 +3,7 @@
  * blocks the shell mounts.
  */
 export { EdcHomeScreen, AlsoInOtherApps, RecordOwnedFacts, useEdcHome, useStudyApps, useLinkedRecords } from './EdcScreens'
-export { EdcHomeView, AlsoInOtherAppsView, type EdcHomeViewProps } from './EdcHomeView'
+export { EdcHomeView, AlsoInOtherAppsView, AlsoInOtherAppsList, EdcSiteBars, EdcSourceLine, EdcTiles, EdcWaitingList, type EdcHomeViewProps } from './EdcHomeView'
+export { EdcProjectHome, isEdcApp, queriesPageId, type EdcProjectHomeProps } from './EdcProjectHome'
 export { OwnerTag, OpenInAppButton, RecordFactsByAppView, type RecordFactsByAppViewProps } from './OwnerTags'
 export { factsByApp, fieldOwner, otherApps, ownerTone, type OwnedFact, type OwnerApp } from './edc-model'

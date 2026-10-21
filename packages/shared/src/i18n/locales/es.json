@@ -1131,6 +1131,7 @@
   "memwise.edc.home.noSites": "Aún no se ha leído ningún centro.",
   "memwise.edc.home.noSource": "{{app}} · ningún conector lee aún este estudio",
   "memwise.edc.home.nothingWaiting": "No hay nada pendiente para ti.",
+  "memwise.edc.home.oldQueriesTitle": "Consultas con más de {{days}} días",
   "memwise.edc.home.oldQueries_one": "{{count}} con más de {{days}} días",
   "memwise.edc.home.oldQueries_other": "{{count}} con más de {{days}} días",
   "memwise.edc.home.openQueries": "Queries abiertas",

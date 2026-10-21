@@ -1131,6 +1131,7 @@
   "memwise.edc.home.noSites": "Még egy vizsgálóhely sincs beolvasva.",
   "memwise.edc.home.noSource": "{{app}} · ezt a vizsgálatot még egy összekötő sem olvassa",
   "memwise.edc.home.nothingWaiting": "Semmi sem vár Önre.",
+  "memwise.edc.home.oldQueriesTitle": "{{days}} napnál régebbi lekérdezések",
   "memwise.edc.home.oldQueries_one": "{{count}} régebbi {{days}} napnál",
   "memwise.edc.home.oldQueries_other": "{{count}} régebbi {{days}} napnál",
   "memwise.edc.home.openQueries": "Nyitott kérdések",

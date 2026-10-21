@@ -1131,6 +1131,7 @@
   "memwise.edc.home.noSites": "まだ施設が読み込まれていません。",
   "memwise.edc.home.noSource": "{{app}} · この試験を読み込むコネクタはまだありません",
   "memwise.edc.home.nothingWaiting": "あなたを待っているものはありません。",
+  "memwise.edc.home.oldQueriesTitle": "{{days}}日より古いクエリ",
   "memwise.edc.home.oldQueries_one": "{{count}} 件が {{days}} 日超",
   "memwise.edc.home.oldQueries_other": "{{count}} 件が {{days}} 日超",
   "memwise.edc.home.openQueries": "未解決クエリ",
