@@ -178,10 +178,10 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
     // A row's own values: not the reference back to this record, nor other references (bare ids
     // that mean nothing on the page; the row's title names it).
     const own = (v: Record<string, unknown>) => Object.fromEntries(Object.entries(v).filter(([f]) => f !== inv.via && !refEntity(entities, inv.target, f)));
-    related[rel] = {
-      entity: keyOf(inv.target), total: r.total,
-      rows: r.rows.map((x) => ({ entity: keyOf(inv.target), id: x.id, title: recordTitle(inv.target, x.id, x.values), ...(x.lifecycle ? { status: x.lifecycle } : {}), values: own(x.values) })),
-    };
+    const rows = r.rows.map((x) => ({ entity: keyOf(inv.target), id: x.id, title: recordTitle(inv.target, x.id, x.values), ...(x.lifecycle ? { status: x.lifecycle } : {}), values: own(x.values) }));
+    const shown = new Set(rows.flatMap((x) => Object.keys(x.values)));
+    const types = Object.fromEntries(Object.entries(inv.target.fields).filter(([f]) => shown.has(f)).map(([f, d]) => [f, d.typeSource]));
+    related[rel] = { entity: keyOf(inv.target), total: r.total, rows, ...(Object.keys(types).length ? { types } : {}) };
   }
 
   // ---- cases whose values point at this record through a Ref to its entity

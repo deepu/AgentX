@@ -174,6 +174,8 @@ describe.skipIf(!postgresAvailable())('Phase 6 exit: the eTMF scenario in a regu
     const expected = page.related.expected_documents!
     expect(expected.total).toBe(10)
     expect(expected.rows.every((r) => !('site' in r.values) && !('study' in r.values) && r.values.phase === 'start_up')).toBe(true)
+    // With their types, so the page reads "Start up", not "start_up".
+    expect(expected.types?.phase).toBe('Enum[start_up, conduct, close_out]')
     // A list of records names what they point at.
     const sites = await api.call<MwRecordQueryResult>(manager, ch.RECORDS_QUERY, { entity: 'etmf.Site' })
     expect(sites.rows[0]!.refs?.study).toMatchObject({ id: ids.study, title: 'AST-301 · A study of AST-301 in solid tumours' })

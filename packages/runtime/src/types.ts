@@ -732,7 +732,8 @@ export interface RecordPage {
   fields: RecordField[];
   /** Breadcrumbs: the parent chain, root first. */
   parents: RecordRef[];
-  related: Record<string, { entity: string; total: number; rows: (RecordRef & { values: Record<string, unknown> })[] }>;
+  /** `types`: each row value's declared type ("Date", "Enum[...]"), so the page formats it. */
+  related: Record<string, { entity: string; total: number; rows: (RecordRef & { values: Record<string, unknown> })[]; types?: Record<string, string> }>;
   cases: { caseId: string; runId: string; workflowId: string; title: string; state: string; status: RunStatus; updatedAt: string; waitingOn?: string }[];
   lifecycle?: { states: string[]; current?: string; transitions: RecordTransitionOption[] };
   flags: RecordFlag[];

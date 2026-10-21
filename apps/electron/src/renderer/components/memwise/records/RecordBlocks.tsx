@@ -315,7 +315,7 @@ export function RelatedBlock({ page, names, actions }: { page: MwRecordPage; nam
                       >
                         <td className="px-3.5 py-2 font-medium text-foreground">{row.title}</td>
                         {columns.map(c => (
-                          <td key={c} className="px-3.5 py-2 text-secondary">{formatTypedValue('', row.values[c], t, i18n.language)}</td>
+                          <td key={c} className="px-3.5 py-2 text-secondary">{formatTypedValue(rel.types?.[c] ?? '', row.values[c], t, i18n.language)}</td>
                         ))}
                         <td className="px-3.5 py-2 text-right"><StatusPill status={row.status} /></td>
                       </tr>

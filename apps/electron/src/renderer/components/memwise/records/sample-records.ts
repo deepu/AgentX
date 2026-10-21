@@ -204,6 +204,7 @@ export const sampleSitePage: MwRecordPage = {
         { entity: 'etmf.expected_document', id: 'exp_4', title: 'IRB approval', status: 'missing', values: { status: 'missing', filed_on: null } },
         { entity: 'etmf.expected_document', id: 'exp_5', title: 'Lab certification (CLIA or CAP)', status: 'missing', values: { status: 'missing', filed_on: null } },
       ],
+      types: { filed_on: 'Date' },
     },
   },
   cases: [

@@ -1538,7 +1538,8 @@ export interface MwRecordPage {
   layout: MwPageLayout
   fields: MwRecordField[]
   parents: MwRecordRef[]
-  related: Record<string, { entity: string; label: string; total: number; rows: (MwRecordRef & { values: Record<string, unknown> })[] }>
+  /** `types`: each row value's declared type, so a date or an enum reads as one. */
+  related: Record<string, { entity: string; label: string; total: number; rows: (MwRecordRef & { values: Record<string, unknown> })[]; types?: Record<string, string> }>
   cases: { caseId: string; runId: string; workflowId: string; title: string; state: string; status: MwRunStatus; updatedAt: string; waitingOn?: string }[]
   lifecycle?: { states: string[]; current?: string; transitions: MwTransitionOption[] }
   flags: MwRecordFlag[]

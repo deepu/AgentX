@@ -197,6 +197,7 @@ export function toRecordPage(ctx: Pick<DtoContext, 'project'>, p: RecordPage, na
     related: Object.fromEntries(Object.entries(p.related).map(([name, r]) => [name, {
       entity: r.entity, label: humanize(name), total: r.total,
       rows: r.rows.map((x) => ({ entity: x.entity, id: x.id, title: x.title, ...(x.status ? { status: x.status } : {}), values: { ...x.values } })),
+      ...(r.types ? { types: { ...r.types } } : {}),
     }])),
     cases: p.cases.map((c) => ({
       caseId: c.caseId, runId: c.runId, workflowId: c.workflowId, title: c.title || wfTitle(c.workflowId),
