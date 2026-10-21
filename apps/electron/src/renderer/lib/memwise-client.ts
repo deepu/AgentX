@@ -61,6 +61,8 @@ export const memwise = {
   actAs: (personId: string): Promise<MwStatus> => api().memwiseActAs(activeWorkspaceId(), personId),
   createPerson: (input: { name: string; email: string; roles: string[] }): Promise<MwPerson> =>
     api().memwiseCreatePerson(activeWorkspaceId(), input),
+  setOwnPassword: (input: import('@memwise/shared/protocol').MwSetPasswordInput): Promise<import('@memwise/shared/protocol').MwSetPasswordResult> =>
+    api().memwiseSetOwnPassword(activeWorkspaceId(), input),
   listRoles: (): Promise<MwRole[]> => api().memwiseListRoles(activeWorkspaceId()),
   listPlaybooks: (): Promise<MwPlaybookSummary[]> => api().memwiseListPlaybooks(activeWorkspaceId()),
   getPlaybook: (id: string): Promise<MwPlaybook> => api().memwiseGetPlaybook(activeWorkspaceId(), id),
@@ -87,6 +89,23 @@ export const memwise = {
       mime: file.type || 'application/octet-stream',
       data: await fileToBase64(file),
     }),
+  // Phase 6: domains, records, pages, views, automations, audit (24 §13)
+  listDomains: (): Promise<import('@memwise/shared/protocol').MwDomain[]> => api().memwiseListDomains(activeWorkspaceId()),
+  getRecordPage: (input: import('@memwise/shared/protocol').MwRecordPageInput): Promise<import('@memwise/shared/protocol').MwRecordPage | null> => api().memwiseGetRecordPage(activeWorkspaceId(), input),
+  createRecord: (input: import('@memwise/shared/protocol').MwRecordCreateInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult> => api().memwiseCreateRecord(activeWorkspaceId(), input),
+  updateRecord: (input: import('@memwise/shared/protocol').MwRecordUpdateInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult> => api().memwiseUpdateRecord(activeWorkspaceId(), input),
+  transitionRecord: (input: import('@memwise/shared/protocol').MwRecordTransitionInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult> => api().memwiseTransitionRecord(activeWorkspaceId(), input),
+  queryRecords: (input: import('@memwise/shared/protocol').MwRecordQueryInput): Promise<import('@memwise/shared/protocol').MwRecordQueryResult> => api().memwiseQueryRecords(activeWorkspaceId(), input),
+  recordTree: (input: import('@memwise/shared/protocol').MwTreeInput): Promise<import('@memwise/shared/protocol').MwTreeNode[]> => api().memwiseRecordTree(activeWorkspaceId(), input),
+  saveNote: (input: import('@memwise/shared/protocol').MwSaveNoteInput): Promise<import('@memwise/shared/protocol').MwRecordWriteResult> => api().memwiseSaveNote(activeWorkspaceId(), input),
+  getDashboard: (input: import('@memwise/shared/protocol').MwDashboardInput): Promise<import('@memwise/shared/protocol').MwDashboard> => api().memwiseGetDashboard(activeWorkspaceId(), input),
+  listViews: (input: { domain: string; entity?: string }): Promise<import('@memwise/shared/protocol').MwView[]> => api().memwiseListViews(activeWorkspaceId(), input),
+  saveView: (input: import('@memwise/shared/protocol').MwSaveViewInput): Promise<import('@memwise/shared/protocol').MwView> => api().memwiseSaveView(activeWorkspaceId(), input),
+  listTriggers: (): Promise<import('@memwise/shared/protocol').MwTrigger[]> => api().memwiseListTriggers(activeWorkspaceId()),
+  releaseTrigger: (input: import('@memwise/shared/protocol').MwReleaseTriggerInput): Promise<MwSubmitResult & { started?: number }> => api().memwiseReleaseTrigger(activeWorkspaceId(), input),
+  getAuditTrail: (input: { entity: string; id: string }): Promise<import('@memwise/shared/protocol').MwAuditTrail | null> => api().memwiseGetAuditTrail(activeWorkspaceId(), input),
+  exportAuditTrail: (input: import('@memwise/shared/protocol').MwAuditExportInput): Promise<import('@memwise/shared/protocol').MwAuditExport> => api().memwiseExportAuditTrail(activeWorkspaceId(), input),
+  readFile: (fileId: string): Promise<import('@memwise/shared/protocol').MwFileData> => api().memwiseReadFile(activeWorkspaceId(), fileId),
   openChat: (input: MwOpenChatInput): Promise<{ sessionId: string }> => api().memwiseOpenChat(activeWorkspaceId(), input),
   /** Something the screens show changed; refetch what it names. */
   onChanged: (callback: (change: MwChange) => void): (() => void) => api().onMemwiseChanged(callback),

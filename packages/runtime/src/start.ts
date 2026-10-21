@@ -16,7 +16,8 @@ const isRef = (t: ValueType): boolean => t.kind === 'ref' || (t.kind === 'list' 
 /**
  * Case fields a person enters when starting a case: those a person or external step writes (so
  * bookkeeping fields no step fills stay out); without such steps, every field agent and system
- * steps don't write. Never a Ref: a link to a record is made by a step, not typed in.
+ * steps don't write. A Ref only when no step writes it (Phase 6: the record the case is about);
+ * otherwise a link to a record is made by a step, not typed in.
  */
 export function startFields(workflow: WorkflowDef): string[] {
   const machineWritten = new Set<string>();
@@ -25,8 +26,15 @@ export function startFields(workflow: WorkflowDef): string[] {
     const target = step.performer === 'agent' || step.performer === 'system' ? machineWritten : personWritten;
     for (const field of Object.keys(step.writes)) target.add(field);
   }
+  // Phase 6 (24 §6, §7): a single Ref no step writes is the record the case is about, given by
+  // whoever starts it from that record (the record page's `start`, a trigger, an example case).
+  const about = (name: string, t: ValueType) => t.kind === 'ref' && !machineWritten.has(name) && !personWritten.has(name);
+  // A field a step reads that no step writes can only come from the start (a hand-off's `with:`,
+  // a trigger, the file a router passes on), so it is a start field too.
+  const read = new Set(Object.values(workflow.steps).flatMap((s) => s.reads.map((r) => r.replace(/^case\./, '').split('.')[0]!)));
+  const input = (name: string) => read.has(name) && !machineWritten.has(name) && !personWritten.has(name);
   return Object.entries(workflow.caseType.fields)
-    .filter(([name, f]) => (personWritten.size ? personWritten.has(name) : !machineWritten.has(name)) && !isRef(f.type))
+    .filter(([name, f]) => ((personWritten.size ? personWritten.has(name) : !machineWritten.has(name)) && !isRef(f.type)) || about(name, f.type) || input(name))
     .map(([name]) => name);
 }
 

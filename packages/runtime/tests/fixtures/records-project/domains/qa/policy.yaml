@@ -1,0 +1,5 @@
+policy: qa-domain
+effects:
+  outbound: approve
+budgets:
+  modelCalls: 20

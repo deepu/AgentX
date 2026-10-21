@@ -5,6 +5,14 @@
     "entity": {
       "type": "string"
     },
+    "title": {
+      "description": "How a record is named: \"{site_number} · {name}\". Default the first Text field.",
+      "type": "string"
+    },
+    "parent": {
+      "description": "A one relationship or Ref field: the page-tree parent.",
+      "type": "string"
+    },
     "fields": {
       "type": "object",
       "propertyNames": {
@@ -35,6 +43,10 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "controlled": {
+                "description": "Phase 6: false exempts the field from the regulated reason rule (default true in a regulated domain).",
+                "type": "boolean"
               }
             },
             "required": [
@@ -51,14 +63,331 @@
         "type": "string"
       },
       "additionalProperties": {
-        "type": "string",
-        "pattern": "^\\s*(one|many)\\s+[A-Za-z_]\\w*\\s*$"
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^\\s*(one|many)\\s+[A-Za-z_]\\w*(\\.[A-Za-z_]\\w*)?\\s*$"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "one": {
+                "type": "string"
+              },
+              "many": {
+                "type": "string"
+              },
+              "via": {
+                "description": "many: the target's field pointing back (needed when it isn't unique).",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "calculated": {
+      "description": "Rollups over many relationships and row formulas, computed in SQL.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "string"
+              },
+              "where": {
+                "type": "string",
+                "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "count"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sum": {
+                "type": "string"
+              },
+              "field": {
+                "type": "string"
+              },
+              "where": {
+                "type": "string",
+                "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sum",
+              "field"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "string"
+              },
+              "field": {
+                "type": "string"
+              },
+              "where": {
+                "type": "string",
+                "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "min",
+              "field"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "max": {
+                "type": "string"
+              },
+              "field": {
+                "type": "string"
+              },
+              "where": {
+                "type": "string",
+                "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "max",
+              "field"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "percent": {
+                "type": "string"
+              },
+              "where": {
+                "type": "string",
+                "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "percent",
+              "where"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "formula": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "formula"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "links": {
+      "description": "The same thing in another domain, by its key (edc.Site).",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "match": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            ],
+            "description": "Fields compared, in this entity's names; { site_number: number } renames."
+          },
+          "follow": {
+            "description": "The other side's fields shown here, read-only.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "match"
+        ],
+        "additionalProperties": false
       }
     },
     "lifecycle": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "initial": {
+              "type": "string"
+            },
+            "states": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "on": {
+                        "description": "Transition name → target state.",
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "after": {
+                        "description": "Timers from entering the state: { 60d: { remind: <role> } } or { 30d: { transition: <name> } }.",
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "remind": {
+                              "type": "string"
+                            },
+                            "transition": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "description": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "transitions": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "by": {
+                        "description": "step, role:<id>, source:<plugin | domain:<id>>, system.",
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      },
+                      "guard": {
+                        "type": "string",
+                        "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+                      },
+                      "signed": {
+                        "description": "Regulated domains: needs a matching signature on the record.",
+                        "type": "boolean"
+                      },
+                      "description": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": [
+            "initial",
+            "states"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "invariants": {
+      "description": "Conditions that should hold; a broken one raises a flag, never blocks a write.",
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
       }
     },
     "ownership": {
@@ -70,6 +399,119 @@
       "additionalProperties": {
         "type": "string"
       }
+    },
+    "page": {
+      "description": "The record page layout.",
+      "type": "object",
+      "properties": {
+        "layout": {
+          "description": "Default single.",
+          "type": "string",
+          "enum": [
+            "single",
+            "split",
+            "sidebar"
+          ]
+        },
+        "header": {
+          "description": "Fields shown beside the title.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "main": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            ],
+            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history."
+          }
+        },
+        "left": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            ],
+            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history."
+          }
+        },
+        "right": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            ],
+            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history."
+          }
+        },
+        "side": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            ],
+            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history."
+          }
+        },
+        "below": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            ],
+            "description": "fields: [names], details, viewer: <field>, related: [relationships], cases, lifecycle, chart: { kind, of, by }, checks, notes, mentions, start, history."
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": [
@@ -78,5 +520,5 @@
   ],
   "additionalProperties": false,
   "title": "MemWise entity type",
-  "description": "domain/entities/<name>.yaml."
+  "description": "domain/entities/<name>.yaml or domains/<id>/entities/<name>.yaml."
 }

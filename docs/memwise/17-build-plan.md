@@ -136,6 +136,26 @@ Designed in [21](21-domains-and-records.md), from an eTMF (clinical operations) 
 - **Review screens** (D78): document review on the Document's page, table review, diff review and an inbox queue mode.
 - **Exit test:** the eTMF scenario ([21 §10](21-domains-and-records.md)): a CV arrives by email, is classified, reviewed and signed on its page, filed with hash-chained history; the waiting site activation case moves on by itself, and the document's audit trail exports with its signature.
 
+**Status (October 2026).** Built as five parallel pieces (definitions, storage, records, flow, app) against the interfaces in [24](24-phase-6-interfaces.md); decisions are D70–D78 in the [decision log](15-decisions.md). The sample project is `examples/etmf`: Northlight CRO, a regulated `etmf` domain and an `edc` domain, five playbooks, eight example cases. The exit test is `packages/server-core/src/memwise/__tests__/phase6-exit.test.ts`. It runs through the app API against a real Postgres with scripted models and a Bun relay:
+- the eTMF site US-012 shows its name from EDC through the link;
+- moving it to Activating starts "Activate a site", which waits for the start-up pack at 90%;
+- a CV emailed to the eTMF address through the relay webhook starts "Sort an incoming message", which starts "File a TMF document", and the agent classifies and indexes it;
+- the TMF specialist reviews it on the Document's page, where a wrong password is refused and the right one signs "Reviewed and approved for filing";
+- filing is a signed transition with a hash-chained history that verifies;
+- the pack reaches 100% and the activation case moves on by itself;
+- the TMF health page shows 100%, and the CV's expiry date lists the next firing of "Watch for expiries";
+- the audit trail exports as JSON and PDF, and tampering with a version shows in the chain.
+
+Not done yet:
+- incoming email needs a real address in front of the relay webhook (a Cloudflare Email Worker);
+- signing uses the password, with no SSO or MFA;
+- regulated files are not on WORM storage;
+- record reminders aren't in the inbox;
+- diff review compares a step's prefill rather than record versions;
+- per-domain plugin bindings and playbooks drafted inside `domains/` are not supported.
+
+The full list is in [24 §17](24-phase-6-interfaces.md).
+
 ## Phase 7 · Server, hosting and learning
 
 - **Server and worker modes** on external Postgres and S3-compatible storage; workers scaled from DBOS queues.

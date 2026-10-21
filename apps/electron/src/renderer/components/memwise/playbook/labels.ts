@@ -96,6 +96,7 @@ export function effectLabel(effect: MwEffectClass, t: TFunction): string {
 const LAYER_KEYS: Record<MwPolicyRule['layer'], string> = {
   platform: 'memwise.playbook.layer.platform',
   plugin: 'memwise.playbook.layer.plugin',
+  workspace: 'memwise.playbook.layer.workspace',
   domain: 'memwise.playbook.layer.domain',
   workflow: 'memwise.playbook.layer.workflow',
   step: 'memwise.playbook.layer.step',

@@ -1,0 +1,23 @@
+workflow: activate-site
+version: 1
+title: Activate a site
+owner: study_manager
+# Starts when a site moves to Activating. Waits on the data, not on other cases: the start-up pack is
+# complete when every expected start-up document is filed, by whatever route it arrived.
+start: collect_pack
+starts_on:
+  - entered: Site.activating
+    with: { site: record }
+steps:
+  collect_pack:
+    wait_until: { record: case.site, condition: "start_up_pack_complete = 100%" }
+    on: { met: approve_activation }
+    wait: { remind: 7d, timeout: 60d → needs_person }
+  approve_activation:
+    on: { approved: activate, not_yet: needs_person }
+    wait: { remind: 2d, timeout: 7d → needs_person }
+  activate: { on: { done: end } }
+  needs_person:
+    assignee: study_manager
+    on: { resume: collect_pack, approve: approve_activation, closed: end }
+    wait: { timeout: 14d → end }

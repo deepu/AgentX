@@ -18,7 +18,7 @@ import type {
 
 // ---------------------------------------------------------------- words
 
-const ACRONYMS = new Set(['gst', 'gstin', 'pan', 'crm', 'id', 'ifsc', 'vat', 'tds', 'kyc', 'pdf', 'url', 'api'])
+const ACRONYMS = new Set(['gst', 'gstin', 'pan', 'crm', 'id', 'ifsc', 'vat', 'tds', 'kyc', 'pdf', 'url', 'api', 'qc', 'cv', 'tmf', 'cra', 'irb', 'edc', 'brsr', 'sso', 'mfa'])
 
 /** `client_name` → "Client name", `gst.validate_gstin` → "GST validate GSTIN". */
 export function humanize(name: string): string {
@@ -324,6 +324,8 @@ export function inboxKindLabel(kind: MwInboxItem['kind'], t: TFunction): string 
     case 'reminder': return t('memwise.inbox.kind.reminder')
     case 'conversation': return t('memwise.inbox.kind.conversation')
     case 'identity': return t('memwise.inbox.kind.identity')
+    case 'flag': return t('memwise.inbox.kind.flag')
+    case 'trigger-hold': return t('memwise.inbox.kind.triggerHold')
   }
 }
 
@@ -343,6 +345,7 @@ export function waitingOnLabel(c: Pick<MwCaseSummary, 'waitingOn' | 'status'>, t
     case 'role': return t('memwise.cases.waitingOnRole', { role: roleTitle(c.waitingOn.role, roles) ?? '' })
     case 'agent': return t('memwise.cases.waitingOnAgent')
     case 'system': return t('memwise.cases.waitingOnSystem')
+    case 'condition': return t('memwise.cases.waitingOnCondition')
   }
 }
 

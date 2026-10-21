@@ -19,10 +19,11 @@ export const DEFAULT_EXTRACT_FIELDS: Record<string, string> = {
 };
 
 /**
- * One field as the reader gives it (23 §5): the value, how sure it is (0..1) and the text it read
- * it from. A plain value (older scripted readers) counts as `{ value }`.
+ * One field as the reader gives it (23 §5): the value, how sure it is (0..1), the text it read
+ * it from and (Phase 6, 24 §11) the page it is on. A plain value (older scripted readers) counts
+ * as `{ value }`.
  */
-export interface ReadField { value: unknown; confidence?: number; quote?: string }
+export interface ReadField { value: unknown; confidence?: number; quote?: string; page?: number }
 
 /** JSON Schema of one field's answer: `{ value, confidence, quote }`, or a plain value. */
 export function readFieldSchema(description: string): Record<string, unknown> {
@@ -31,11 +32,12 @@ export function readFieldSchema(description: string): Record<string, unknown> {
       { type: 'string', description },
       {
         type: 'object',
-        description: `${description}. Give the value, how sure you are that it is right (confidence, 0 to 1) and the exact text you read it from (quote).`,
+        description: `${description}. Give the value, how sure you are that it is right (confidence, 0 to 1), the exact text you read it from (quote) and the page it is on (page, from 1).`,
         properties: {
           value: { type: ['string', 'number', 'boolean'] },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           quote: { type: 'string' },
+          page: { type: 'integer', minimum: 1 },
         },
         required: ['value'],
       },
@@ -51,7 +53,11 @@ export function readField(raw: unknown): ReadField | undefined {
   if (!('value' in r)) return { value: raw };
   if (r.value === null || r.value === undefined || r.value === '') return undefined;
   const confidence = typeof r.confidence === 'number' && Number.isFinite(r.confidence) ? Math.min(1, Math.max(0, r.confidence)) : undefined;
-  return { value: r.value, ...(confidence !== undefined ? { confidence } : {}), ...(typeof r.quote === 'string' && r.quote ? { quote: r.quote } : {}) };
+  const page = typeof r.page === 'number' && Number.isInteger(r.page) && r.page >= 1 ? r.page : undefined;
+  return {
+    value: r.value, ...(confidence !== undefined ? { confidence } : {}), ...(typeof r.quote === 'string' && r.quote ? { quote: r.quote } : {}),
+    ...(page !== undefined ? { page } : {}),
+  };
 }
 
 /** Reads one document's text as data and returns only the requested fields (a quarantined read). */
@@ -141,7 +147,7 @@ export function quarantinedExtractTool(deps: ExtractToolDeps): ToolDefinition<{ 
         ? Object.fromEntries(fields.map((f) => [f, DEFAULT_EXTRACT_FIELDS[f] ?? f]))
         : DEFAULT_EXTRACT_FIELDS;
       const onCase = ((await deps.getCase(ctx.token.caseId))?.values.documents?.value ?? []) as unknown[];
-      const out: { name: string; value: unknown; document: string; confidence?: number; quote?: string }[] = [];
+      const out: { name: string; value: unknown; document: string; confidence?: number; quote?: string; page?: number }[] = [];
       const notes: string[] = [];
       for (const ref of documents) {
         const doc = onCase.find((d): d is DocumentValue => !!d && typeof d === 'object' && ((d as DocumentValue).id === ref || (d as DocumentValue).name === ref));

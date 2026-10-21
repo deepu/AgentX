@@ -4,6 +4,7 @@ import { stepFormat } from './formats.ts';
 import { toPolicyDoc } from './parse-policy.ts';
 import { typeAt } from './parse-types.ts';
 import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, sha256, type ParseResult } from './source.ts';
+import type { ReviewDef } from './domain-types.ts';
 import type { ArgSource, ExtractDef, Performer, StepDef, StepEngine, Strictness, WriteDef, WriteSource } from './types.ts';
 import { parseCount, parseDuration } from './value-types.ts';
 
@@ -69,6 +70,25 @@ function parseExtract(raw: Record<string, unknown>): ExtractDef | undefined {
   if (!tool || !documents) return undefined;
   const min = typeof raw.min_confidence === 'number' ? raw.min_confidence : DEFAULT_MIN_CONFIDENCE;
   return { tool, documents, fields: extractFields(raw.fields), minConfidence: min };
+}
+
+const REVIEW_KINDS = ['document', 'table', 'diff', 'form'] as const;
+
+/**
+ * `review:` (24 §11): `{ kind: document, record: case.document }`, `{ kind: table, items: case.x }`,
+ * or a bare kind. A bare `document` (or one without `record`) leaves `record` empty: the checks
+ * and the kernel infer it from the step's one `Ref<Document>` read.
+ */
+function parseReview(raw: unknown): ReviewDef | undefined {
+  const obj = isRecord(raw) ? raw : undefined;
+  const kind = (obj ? obj.kind : raw) as ReviewDef['kind'];
+  if (!REVIEW_KINDS.includes(kind)) return undefined;
+  const field = (v: unknown) => (typeof v === 'string' ? v.trim().replace(/^case\./, '') : '');
+  switch (kind) {
+    case 'document': return { kind, record: field(obj?.record) };
+    case 'table': return { kind, items: field(obj?.items) };
+    default: return { kind };
+  }
 }
 
 /** `file` is relative to the project root; the step id is the file name without `.md`. */
@@ -140,6 +160,8 @@ export function parseStepFile(text: string, file: string): ParseResult<StepDef> 
       ? { tool: data.outcomeFrom.tool, field: data.outcomeFrom.field }
       : undefined,
     extract: isRecord(data.extract) ? parseExtract(data.extract) : undefined,
+    sign: asString(data.sign),
+    review: parseReview(data.review),
     instructions: parts.body.trim(),
     file,
     hash: sha256(text),

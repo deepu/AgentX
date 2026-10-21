@@ -20,8 +20,8 @@ const staff: Actor = { kind: 'person', personId: 'person_staff', roles: ['staff'
 const finance: Actor = { kind: 'person', personId: 'person_fin', roles: ['finance'] };
 
 test('naming and column types', () => {
-  expect(entityTableName('Customer')).toBe('customer');
-  expect(entityTableName('ClientEngagement')).toBe('client_engagement');
+  expect(entityTableName('Customer')).toBe('domain__customer');
+  expect(entityTableName('ClientEngagement')).toBe('domain__client_engagement');
   expect(columnType({ kind: 'scalar', name: 'Money' })).toBe('jsonb');
   expect(columnType({ kind: 'scalar', name: 'Percentage' })).toBe('numeric');
   expect(columnType({ kind: 'identifier', scheme: 'GSTIN' })).toBe('text');
@@ -61,11 +61,11 @@ describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {
     const { rows } = await db.pool.query(
       `select table_name, column_name, data_type from information_schema.columns where table_schema = 'domain' order by table_name, ordinal_position`);
     const cols = (t: string) => Object.fromEntries(rows.filter((r) => r.table_name === t).map((r) => [r.column_name, r.data_type]));
-    expect(cols('customer')).toMatchObject({
+    expect(cols('domain__customer')).toMatchObject({
       id: 'text', lifecycle: 'text', created_by_step: 'text', idempotency_key: 'text',
       name: 'text', email: 'text', gstin: 'text', pan: 'text', credit_limit: 'jsonb', bank_account: 'text',
     });
-    expect(cols('engagement')).toMatchObject({ title: 'text', started: 'date', customer: 'text' });
+    expect(cols('domain__engagement')).toMatchObject({ title: 'text', started: 'date', customer: 'text' });
     expect(entityColumns(customer).find((c) => c.field === 'bank_account')?.access).toEqual(['finance']);
   });
 
@@ -77,7 +77,7 @@ describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {
     const smaller: EntityTypeDef = { ...customer, fields: { name: customer.fields.name! } };
     expect(await syncEntityTables(db.pool, { Customer: grown })).toEqual([]);
     expect(await syncEntityTables(db.pool, { Customer: smaller })).toEqual([]);
-    const { rows } = await db.pool.query(`select column_name from information_schema.columns where table_schema = 'domain' and table_name = 'customer'`);
+    const { rows } = await db.pool.query(`select column_name from information_schema.columns where table_schema = 'domain' and table_name = 'domain__customer'`);
     const names = rows.map((r) => r.column_name);
     expect(names).toContain('segment');
     expect(names).toContain('bank_account');
@@ -103,7 +103,7 @@ describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {
     const id = await withActor(db.pool, stepActor('case_a', 'run_case_a/1/onboard'), (c) => entities.create(c, customer, {
       name: 'Asha Traders', email: 'asha@example.com', gstin: '29ABCDE1234F1Z5', pan: 'ABCDE1234F',
       credit_limit: { amount: 50000, currency: 'INR' }, bank_account: 'HDFC 0001234',
-    }, { idempotencyKey: 'run_case_a/1/onboard:domain.customer.create', stepRunId: 'run_case_a/1/onboard' }));
+    }, { idempotencyKey: 'run_case_a/1/onboard:domain.domain__customer.create', stepRunId: 'run_case_a/1/onboard' }));
     expect(id).toMatch(/^cust_[0-9A-Z]{26}$/);
 
     const asStaff = await withActor(db.pool, staff, (c) => entities.get(c, customer, id));
@@ -118,11 +118,11 @@ describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {
     expect(asFinance.find((r) => r.id === id)?.hidden).toEqual([]);
 
     // The base table itself does not give the restricted column to the app role.
-    await expect(withActor(db.pool, staff, (c) => c.query('select bank_account from domain.customer')))
+    await expect(withActor(db.pool, staff, (c) => c.query('select bank_account from domain.domain__customer')))
       .rejects.toThrow(/permission denied/);
-    await expect(withActor(db.pool, finance, (c) => c.query('select bank_account from domain.customer')))
+    await expect(withActor(db.pool, finance, (c) => c.query('select bank_account from domain.domain__customer')))
       .rejects.toThrow(/permission denied/);
-    const raw = await withActor(db.pool, staff, (c) => c.query('select bank_account from domain_read.customer where id = $1', [id]));
+    const raw = await withActor(db.pool, staff, (c) => c.query('select bank_account from domain_read.domain__customer where id = $1', [id]));
     expect(raw.rows).toEqual([{ bank_account: null }]);
 
     // The kernel's own unrestricted read (identity matching) sees every field; never under an app actor.
@@ -134,12 +134,12 @@ describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {
 
   test('create is idempotent on the key', async () => {
     const actor = stepActor('case_b', 'run_case_b/1/onboard');
-    const key = 'run_case_b/1/onboard:domain.customer.create';
+    const key = 'run_case_b/1/onboard:domain.domain__customer.create';
     const opts = { idempotencyKey: key, stepRunId: 'run_case_b/1/onboard' };
     const a = await withActor(db.pool, actor, (c) => entities.create(c, customer, { name: 'B Ltd' }, opts));
     const b = await withActor(db.pool, actor, (c) => entities.create(c, customer, { name: 'B Ltd again' }, opts));
     expect(b).toBe(a);
-    const { rows } = await db.pool.query('select count(*)::int as n from domain.customer where idempotency_key = $1', [key]);
+    const { rows } = await db.pool.query('select count(*)::int as n from domain.domain__customer where idempotency_key = $1', [key]);
     expect(rows[0].n).toBe(1);
     await expect(withActor(db.pool, actor, (c) => entities.create(c, customer, { nope: 1 }, opts))).rejects.toThrow(/no field "nope"/);
   });
@@ -148,7 +148,7 @@ describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {
     // Stamped with another step run: refused.
     await expect(withActor(db.pool, stepActor('case_a', 'run_case_a/1/onboard'), (c) =>
       entities.create(c, customer, { name: 'X' }, { stepRunId: 'run_case_b/1/onboard' }))).rejects.toThrow(/row-level security/);
-    // A step whose tools don't include domain.customer.create (check): refused.
+    // A step whose tools don't include domain.domain__customer.create (check): refused.
     await expect(withActor(db.pool, stepActor('case_a', 'run_case_a/1/check', 'check'), (c) =>
       entities.create(c, customer, { name: 'X' }, { stepRunId: 'run_case_a/1/check' }))).rejects.toThrow(/row-level security/);
     // Engagement has no creating step at all.
@@ -164,7 +164,7 @@ describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {
 
   test('compileRls is plain idempotent SQL', () => {
     const sql = compileRls(project.entities);
-    expect(sql.some((s) => s.startsWith('create view domain_read."customer" with (security_barrier = true)'))).toBe(true);
+    expect(sql.some((s) => s.startsWith('create view domain_read."domain__customer" with (security_barrier = true)'))).toBe(true);
     expect(sql.filter((s) => s.startsWith('create policy')).every((s, i, all) => all.indexOf(s) === i)).toBe(true);
     for (const create of sql.filter((s) => s.startsWith('create policy'))) {
       const [, name, table] = create.match(/^create policy (\S+) on (\S+)/)!;

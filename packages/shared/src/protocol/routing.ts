@@ -475,6 +475,7 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   // memwise — the app API; a remote workspace's server hosts its own kernel (19 §9)
   RPC_CHANNELS.memwise.STATUS,
   RPC_CHANNELS.memwise.PEOPLE_LIST,
+  RPC_CHANNELS.memwise.PEOPLE_PASSWORD_SET,
   RPC_CHANNELS.memwise.PEOPLE_ACT_AS,
   RPC_CHANNELS.memwise.PEOPLE_CREATE,
   RPC_CHANNELS.memwise.ROLES_LIST,
@@ -530,6 +531,23 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.memwise.CHANNELS_AVAILABLE,
   RPC_CHANNELS.memwise.NOTIFY_GET,
   RPC_CHANNELS.memwise.NOTIFY_SET,
+  // Phase 6 (docs/memwise/24-phase-6-interfaces.md §13): records live in the server's database
+  RPC_CHANNELS.memwise.DOMAINS_LIST,
+  RPC_CHANNELS.memwise.RECORDS_PAGE,
+  RPC_CHANNELS.memwise.RECORDS_CREATE,
+  RPC_CHANNELS.memwise.RECORDS_UPDATE,
+  RPC_CHANNELS.memwise.RECORDS_TRANSITION,
+  RPC_CHANNELS.memwise.RECORDS_QUERY,
+  RPC_CHANNELS.memwise.RECORDS_TREE,
+  RPC_CHANNELS.memwise.RECORDS_NOTES_SAVE,
+  RPC_CHANNELS.memwise.PAGES_DASHBOARD,
+  RPC_CHANNELS.memwise.VIEWS_LIST,
+  RPC_CHANNELS.memwise.VIEWS_SAVE,
+  RPC_CHANNELS.memwise.TRIGGERS_LIST,
+  RPC_CHANNELS.memwise.TRIGGERS_RELEASE,
+  RPC_CHANNELS.memwise.AUDIT_GET,
+  RPC_CHANNELS.memwise.AUDIT_EXPORT,
+  RPC_CHANNELS.memwise.FILES_READ,
 
   // git — workspace filesystem
   RPC_CHANNELS.git.GET_BRANCH,

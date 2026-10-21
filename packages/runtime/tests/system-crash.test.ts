@@ -41,7 +41,7 @@ describe.skipIf(!pgAvailable)('system step crash and resume', () => {
       expect(workerResult(resumed.output)).toMatchObject({ state: 'end', status: 'done' });
 
       const stepRunId = `${runId}/0/onboard`;
-      const customers = await db.pool.query('select id, name, gstin, created_by_step from domain.customer where created_by_step = $1', [stepRunId]);
+      const customers = await db.pool.query('select id, name, gstin, created_by_step from domain.domain__customer where created_by_step = $1', [stepRunId]);
       expect(customers.rows.length).toBe(1);
       expect(customers.rows[0]).toMatchObject({ name: 'Asha Rao', gstin: '29AAACA1234A1Z5' });
       const { case_id: caseId } = await one('select case_id from mw.runs where id = $1', [runId]);

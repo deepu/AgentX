@@ -1,0 +1,41 @@
+entity: Site
+title: "{site_number} · {name}"            # the name comes from EDC, through the link below
+parent: study
+fields:
+  site_number:      { type: Text, required: true, description: "Like US-012" }
+  study:            { type: Ref<Study>, required: true }
+  sponsor_approved: Boolean
+  activated_on:     Date
+relationships:
+  documents:          many Document          # their `site`
+  expected_documents: { many: ExpectedDocument, via: site }
+  people:             many Person
+calculated:
+  start_up_pack_complete: { percent: expected_documents, where: "status = 'filed'", description: The start-up pack filed so far }
+  documents_filed:        { count: documents, where: "status = 'filed'" }
+  days_open:              { formula: "days_since(activated_on)" }
+links:
+  edc.Site:
+    match: [site_number]                     # paired with the EDC site of the same number
+    follow: [name, address, principal_investigator]
+lifecycle:
+  initial: selected
+  states:
+    selected:   { on: { picked: activating }, description: Chosen for the study }
+    activating: { on: { approved: open }, after: { 60d: { remind: study_manager } }, description: Starts "Activate a site" }
+    open:       { on: { last_visit: closing }, description: Can enrol patients }
+    closing:    { on: { archived: closed } }
+    closed:     { description: Read only }
+  transitions:
+    picked:     { by: [role:study_manager, source:domain:edc] }
+    approved:   { by: [step], guard: "start_up_pack_complete = 100%" }
+    last_visit: { by: [role:study_manager, step] }
+    archived:   { by: [step] }
+invariants:
+  - "status = 'open' implies start_up_pack_complete = 100%"
+page:
+  layout: sidebar
+  header: [title, status, principal_investigator]
+  main: [cases, { related: [expected_documents, documents] }, notes]
+  side: [details, lifecycle, start]
+  below: [mentions, history]

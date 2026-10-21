@@ -1,0 +1,8 @@
+entity: Instrument
+title: "{serial}"
+fields:
+  serial: { type: Text, required: true }
+links:
+  lab.Instrument:
+    match: [serial]
+    follow: [model, location]

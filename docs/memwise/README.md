@@ -44,6 +44,8 @@ A business process becomes a **workflow**: a statechart of steps a domain expert
 | 20 | [Phase 3 interfaces](20-phase-3-interfaces.md) | Drafts, versions, change control as playbooks, building by chat, the CLI and screens |
 | 21 | [Domains and records](21-domains-and-records.md) | Phase 6: several domains per workspace, record pages, lifecycles, handoffs, triggers, regulated mode, review screens |
 | 22 | [Phase 4 interfaces](22-phase-4-interfaces.md) | Plugin format and import, bindings, the bind-plugin playbook, mappings, identity resolution, connectors as plugins |
+| 23 | [Phase 5 interfaces](23-phase-5-interfaces.md) | The relay, external links, channel delivery, extraction in the form |
+| 24 | [Phase 6 interfaces](24-phase-6-interfaces.md) | Domains and grants, record tables and history, conditions, record pages, triggers, hand-offs, regulated mode, incoming email, review screens |
 
 ## Status labels
 

@@ -8,6 +8,7 @@ import { atom } from 'jotai'
 import type {
   MwCaseSummary,
   MwChange,
+  MwDomain,
   MwDraftSummary,
   MwEntityType,
   MwInboxItem,
@@ -42,6 +43,12 @@ export const memwiseDraftsAtom = atom<MwDraftSummary[] | null>(null)
 export const memwisePluginsAtom = atom<MwPluginSummary[] | null>(null)
 /** The domain's entity types, for the Records group under Plugins (Phase 4). */
 export const memwiseEntityTypesAtom = atom<MwEntityType[] | null>(null)
+/** Phase 6: the project's domains, for the sidebar's Domains section and the domain filters. Null while loading; empty when the host has no domains API. */
+export const memwiseDomainsAtom = atom<MwDomain[] | null>(null)
+/** Phase 6: the domain filter on the cross-domain lists (inbox, cases, playbooks); null shows every domain. */
+export const memwiseDomainFilterAtom = atom<string | null>(null)
+/** Phase 6: "Review in a row": after each decision the inbox opens the next document review of the same kind. */
+export const memwiseReviewQueueAtom = atom<{ active: boolean; workflowId?: string; stepTitle?: string } >({ active: false })
 /** The "Install a plugin" dialog. */
 export const memwiseInstallPluginDialogAtom = atom<boolean>(false)
 

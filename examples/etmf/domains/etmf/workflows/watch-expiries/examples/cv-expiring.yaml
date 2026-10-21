@@ -1,0 +1,18 @@
+name: cv-expiring
+description: Dr. Mei Chen's CV expires in three weeks; the TMF specialist asks the Boston site for a new one.
+records:
+  Sponsor:
+    - { id: spon_aster, name: Aster Bio }
+  Study:
+    - { id: stud_ast301, code: AST-301, sponsor: spon_aster }
+  Site:
+    - { id: site_us012, site_number: US-012, study: stud_ast301, status: activating }
+  Person:
+    - { id: pers_chen, name: Dr. Mei Chen, role: Sub-investigator, site: site_us012, cv_expires: "2026-11-10" }
+case:
+  person: pers_chen
+submit:
+  ask_for_new_cv: { outcome: requested }
+expect:
+  outcome: requested
+  state: end

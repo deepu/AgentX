@@ -37,6 +37,8 @@ export function projectModelRoles(project?: ProjectDefs): string[] {
     for (const step of Object.values(wf.steps)) if (step.model) roles.add(step.model)
   }
   for (const r of project?.domainPolicy?.modelRoles ?? []) roles.add(r)
+  for (const r of project?.workspace?.policy?.modelRoles ?? []) roles.add(r)
+  for (const d of Object.values(project?.domains ?? {})) for (const r of d.policy?.modelRoles ?? []) roles.add(r)
   return [...roles]
 }
 

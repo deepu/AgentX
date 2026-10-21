@@ -130,7 +130,7 @@
             },
             {
               "type": "string",
-              "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w)\\s*)+$|^\\s*\\d+\\s*$"
+              "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w|y)\\s*)+$|^\\s*\\d+\\s*$"
             }
           ],
           "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."
@@ -295,7 +295,7 @@
                 },
                 {
                   "type": "string",
-                  "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w)\\s*)+$|^\\s*\\d+\\s*$"
+                  "pattern": "^\\s*(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d|w|y)\\s*)+$|^\\s*\\d+\\s*$"
                 }
               ],
               "description": "A duration: 30s, 10m, 3d, 1h30m, or a number of milliseconds."
@@ -512,6 +512,50 @@
         "documents"
       ],
       "additionalProperties": false
+    },
+    "sign": {
+      "description": "Phase 6: person steps need an e-signature with this meaning, e.g. \"Reviewed and approved for filing\".",
+      "type": "string"
+    },
+    "review": {
+      "description": "Phase 6: how the person reviews it; default chosen from what the step reads and writes.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "document",
+            "table",
+            "diff",
+            "form"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "document",
+                "table",
+                "diff",
+                "form"
+              ]
+            },
+            "record": {
+              "type": "string",
+              "pattern": "^case\\.[A-Za-z_]\\w*$"
+            },
+            "items": {
+              "type": "string",
+              "pattern": "^case\\.[A-Za-z_]\\w*$"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "required": [

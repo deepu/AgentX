@@ -66,6 +66,8 @@ export interface FieldDef {
   description?: string;
   /** Roles allowed to see the field (field-level access, enforced from Phase 2). */
   access?: string[];
+  /** Phase 6 (24 §4): false exempts the field from the regulated reason rule. Default true in a regulated domain. */
+  controlled?: boolean;
 }
 
 export interface RecordTypeDef { name: string; fields: Record<string, FieldDef> }
@@ -87,12 +89,29 @@ export interface CaseTypeDef {
 export interface EntityTypeDef {
   entity: string;
   fields: Record<string, FieldDef>;
-  relationships: Record<string, { cardinality: 'one' | 'many'; target: string }>;
+  /** Phase 6: `via` names the inverse of a `many` relationship (24 §4). */
+  relationships: Record<string, { cardinality: 'one' | 'many'; target: string; via?: string }>;
+  /** The state names (both the list form and the statechart form). */
   lifecycle?: string[];
   /** field -> owner (a plugin id or `domain`). */
   ownership?: Record<string, string>;
   file: string;
   hash: string;
+
+  // ---- Phase 6 (docs/memwise/24-phase-6-interfaces.md §4); the loader always sets `domain`.
+  /** The domain it belongs to (`domain` for the default domain). */
+  domain?: string;
+  /** How a record is named: `{site_number} · {name}`. */
+  title?: string;
+  /** A `one` relationship (or Ref field) naming the page-tree parent. */
+  parent?: string;
+  calculated?: Record<string, import('./domain-types.ts').CalculatedFieldDef>;
+  links?: Record<string, import('./domain-types.ts').EntityLinkDef>;
+  /** The lifecycle as a statechart (the list form is converted, with `fromList`). */
+  lifecycleChart?: import('./domain-types.ts').LifecycleDef;
+  invariants?: string[];
+  /** The record page layout as written; absent: `defaultPageLayout`. */
+  page?: import('./domain-types.ts').PageLayoutDef;
 }
 
 // ---------------------------------------------------------------- policy files (08 §2)
@@ -191,6 +210,10 @@ export interface StepDef {
    * D68). Front matter: `extract: { tool, documents, fields, min_confidence }`.
    */
   extract?: ExtractDef;
+  /** Phase 6 (24 §9): person steps: the meaning of the e-signature submitting needs. */
+  sign?: string;
+  /** Phase 6 (24 §11): how the step is reviewed; absent: chosen from what it reads and writes. */
+  review?: import('./domain-types.ts').ReviewDef;
   /** The Markdown body: the instructions in the expert's own words. */
   instructions: string;
   file: string;
@@ -227,6 +250,8 @@ export interface StateDef {
   step?: string;
   /** Role whose attention a wait state (e.g. `needs_person`) needs (Phase 2). */
   assignee?: string;
+  /** Phase 6: a hand-off block (start, call, for_each, wait_until; 24 §8). A state with a block has no step file. */
+  block?: import('./domain-types.ts').BlockDef;
 }
 
 /** A loaded, parsed workflow folder. This whole object is the run's definition snapshot (D36). */
@@ -254,6 +279,10 @@ export interface WorkflowDef {
    * from one into `workflows/` (`forked_from:` in workflow.yaml).
    */
   origin?: import('./plugin-types.ts').WorkflowOrigin;
+  /** Phase 6: the domain it belongs to (`domain` for the default domain). The loader always sets it. */
+  domain?: string;
+  /** Phase 6: what starts it (`starts_on:`, 24 §7). */
+  startsOn?: import('./domain-types.ts').TriggerDef[];
 }
 
 /** The final pseudo-state every workflow may transition to. */
@@ -281,6 +310,11 @@ export interface ExampleCase {
   model?: Record<string, ScriptedTurn[]>;
   /** Answers to approval requests, by tool name. */
   approvals?: Record<string, 'approve' | 'reject'>;
+  /**
+   * Phase 6: records to create before the run, by entity key (bare in the workflow's domain), each
+   * with an optional `id` (referenced as `Ref` values) and `status`.
+   */
+  records?: Record<string, Record<string, unknown>[]>;
   /**
    * Answers to person and external steps, by state (Phase 2): one answer for every visit, or a
    * list consumed in order. A run waiting in a state without an answer left is where it stops.
@@ -333,6 +367,13 @@ export interface ProjectDefs {
    * version, which need not be the newest in `plugins`).
    */
   pluginVersions?: Record<string, Record<string, import('./plugin-types.ts').InstalledPlugin>>;
+  /** Phase 6: `workspace.yaml` (absent: a workspace named after the folder, no policy). */
+  workspace?: import('./domain-types.ts').WorkspaceDef;
+  /**
+   * Phase 6: every domain, by id. The default domain (`domain`) is present whenever the project
+   * has `domain/` or `workflows/`. `entities` is keyed by entity key (24 §2).
+   */
+  domains?: Record<string, import('./domain-types.ts').DomainDef>;
 }
 
 // ---------------------------------------------------------------- checks (05 §8)

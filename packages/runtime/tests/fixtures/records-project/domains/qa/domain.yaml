@@ -1,0 +1,6 @@
+domain: qa
+name: Quality
+description: Test reports for every batch, reviewed and signed before release.
+owner: qa_lead
+regulated: true
+retention: 10y

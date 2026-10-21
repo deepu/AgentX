@@ -16,10 +16,16 @@ import type {
   MwPluginSummary,
   MwChannelName, MwChannelsAvailable, MwDelivery, MwExternalLink, MwExtractInput, MwExtractResult, MwIssueLinkInput, MwIssuedLink,
   MwNotifySettings, MwRelayConfigureInput, MwRelayStatus, MwResendPreview,
+  MwAuditExport, MwAuditExportInput, MwAuditTrail, MwSetPasswordInput, MwSetPasswordResult, MwDashboard, MwDashboardInput, MwDomain, MwFileData, MwRecordCreateInput,
+  MwRecordPage, MwRecordPageInput, MwRecordQueryInput, MwRecordQueryResult, MwRecordTransitionInput, MwRecordUpdateInput,
+  MwRecordWriteResult, MwReleaseTriggerInput, MwSaveNoteInput, MwSaveViewInput, MwTreeInput, MwTreeNode, MwTrigger, MwView,
 } from '@memwise/shared/protocol'
 import type { ApprovalDecision, DraftDiff, DraftMeta } from '@memwise/defs'
 import type { CompiledPolicy } from '@memwise/policy'
-import type { Actor, CaseView, ChannelService, ExternalService, IdentityService, InboxItem, PluginsService } from '@memwise/runtime'
+import type {
+  Actor, AuditService, CaseView, ChannelService, DomainsService, ExternalService, IdentityService, InboxItem, PluginsService,
+  RecordsService, TriggersService,
+} from '@memwise/runtime'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { resolveConfigDir } from '@memwise/shared/config/paths'
@@ -39,6 +45,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.PEOPLE_LIST,
   RPC_CHANNELS.memwise.PEOPLE_ACT_AS,
   RPC_CHANNELS.memwise.PEOPLE_CREATE,
+  RPC_CHANNELS.memwise.PEOPLE_PASSWORD_SET,
   RPC_CHANNELS.memwise.ROLES_LIST,
   RPC_CHANNELS.memwise.PLAYBOOKS_LIST,
   RPC_CHANNELS.memwise.PLAYBOOKS_GET,
@@ -92,6 +99,23 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.CHANNELS_AVAILABLE,
   RPC_CHANNELS.memwise.NOTIFY_GET,
   RPC_CHANNELS.memwise.NOTIFY_SET,
+  // Phase 6
+  RPC_CHANNELS.memwise.DOMAINS_LIST,
+  RPC_CHANNELS.memwise.RECORDS_PAGE,
+  RPC_CHANNELS.memwise.RECORDS_CREATE,
+  RPC_CHANNELS.memwise.RECORDS_UPDATE,
+  RPC_CHANNELS.memwise.RECORDS_TRANSITION,
+  RPC_CHANNELS.memwise.RECORDS_QUERY,
+  RPC_CHANNELS.memwise.RECORDS_TREE,
+  RPC_CHANNELS.memwise.RECORDS_NOTES_SAVE,
+  RPC_CHANNELS.memwise.PAGES_DASHBOARD,
+  RPC_CHANNELS.memwise.VIEWS_LIST,
+  RPC_CHANNELS.memwise.VIEWS_SAVE,
+  RPC_CHANNELS.memwise.TRIGGERS_LIST,
+  RPC_CHANNELS.memwise.TRIGGERS_RELEASE,
+  RPC_CHANNELS.memwise.AUDIT_GET,
+  RPC_CHANNELS.memwise.AUDIT_EXPORT,
+  RPC_CHANNELS.memwise.FILES_READ,
 ] as const
 
 /** Largest upload accepted through the API (base64 travels inside one WS message). */
@@ -110,6 +134,21 @@ const SUBMIT_MESSAGES: Record<string, string> = {
   stale: 'This step was already answered or has moved on.',
   missing: 'That step was not found.',
   'unknown-outcome': 'That is not one of the choices for this step.',
+  // Phase 6: signed steps (24 §9)
+  'signature-required': 'This step needs your signature: enter your password to sign.',
+  'signature-failed': 'That password is not right, so nothing was signed.',
+  locked: 'Too many attempts. Try again later.',
+  'password-not-set': 'You have no password to sign with yet. Choose one, then sign.',
+}
+/** Phase 6 record writes (`memwise:records:*`); the screens translate `memwise.record.result.<status>`. */
+const RECORD_MESSAGES: Record<string, string> = {
+  forbidden: 'You cannot change this record.',
+  invalid: 'Some values need fixing.',
+  guard: 'This move is not possible yet.',
+  'reason-required': 'Say why you are making this change.',
+  'signature-required': 'This move needs a signature on the record first.',
+  missing: 'That record was not found.',
+  stale: 'Someone changed this record meanwhile; look at it again.',
 }
 const APPROVAL_MESSAGES: Record<string, string> = {
   forbidden: 'You are not one of the people who can decide this.',
@@ -208,6 +247,45 @@ function publicAddressOf(svc: MemwiseService): MemwiseService['publicAddress'] |
   return (svc as { publicAddress?: MemwiseService['publicAddress'] }).publicAddress
 }
 
+/** The Phase 6 services (24 §12); refused clearly by a kernel that has none yet. */
+function domainsOf(svc: MemwiseService): DomainsService {
+  const domains = (svc.kernel as { domains?: DomainsService }).domains
+  if (!domains) throw new Error('Domains are not available in this version.')
+  return domains
+}
+
+function recordsOf(svc: MemwiseService): RecordsService {
+  const records = (svc.kernel as { records?: RecordsService }).records
+  if (!records) throw new Error('Records are not available in this version.')
+  return records
+}
+
+function triggersOf(svc: MemwiseService): TriggersService {
+  const triggers = (svc.kernel as { triggers?: TriggersService }).triggers
+  if (!triggers) throw new Error('Automations are not available in this version.')
+  return triggers
+}
+
+function auditOf(svc: MemwiseService): AuditService {
+  const audit = (svc.kernel as { audit?: AuditService }).audit
+  if (!audit) throw new Error('The audit trail is not available in this version.')
+  return audit
+}
+
+/**
+ * A regulated workspace (any domain regulated, 24 §9): one person per login, so the owner's
+ * "act as" is off. A kernel without domains (or one that refuses) is not regulated.
+ */
+async function isRegulated(svc: MemwiseService): Promise<boolean> {
+  try {
+    const domains = (svc.kernel as { domains?: Partial<DomainsService> }).domains
+    if (typeof domains?.workspace !== 'function') return false
+    return !!(await domains.workspace()).regulated
+  } catch {
+    return false
+  }
+}
+
 function identityOf(svc: MemwiseService): IdentityService {
   const identity = (svc.kernel as { identity?: IdentityService }).identity
   if (!identity) throw new Error('Linking records is not available in this version.')
@@ -267,7 +345,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       ready: host.phase === 'ready',
       ...(host.message ? { message: host.message } : {}),
       ...(me ? { me: toPerson(me) } : {}),
-      canActAs: svc.canActAs(clientOf(ctx)),
+      canActAs: svc.canActAs(clientOf(ctx)) && !(await isRegulated(svc)),
       ...(ctx.personId ? { signedIn: true } : {}),
       ...base,
       modelConfigured: svc.modelConfigured,
@@ -315,16 +393,56 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     }
   }
 
+  /**
+   * The titles of the records cases point at, by record id, as the viewer may read them: one query
+   * per entity. `all`: every Ref value (a case's page), else only what each case is about
+   * (`caseSubject`; lists). A case with nothing typed of its own is named after its record
+   * ("US-012 · Harbor Oncology, Boston", not "New case 3F9K2A"). `also`: more records by entity key.
+   */
+  async function subjectTitles(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>,
+    cases: { workflowId: string; values: Record<string, unknown> }[], opts: { all?: boolean; also?: { entity: string; id: string }[] } = {}): Promise<Map<string, string>> {
+    const wanted = new Map<string, { entity: string; domain?: string; ids: Set<string> }>()
+    const want = (entity: string, domain: string | undefined, id: string) => {
+      if (!/^[\w-]+$/.test(id)) return
+      const k = `${domain ?? ''}|${entity}`
+      if (!wanted.has(k)) wanted.set(k, { entity, ...(domain ? { domain } : {}), ids: new Set() })
+      wanted.get(k)!.ids.add(id)
+    }
+    for (const r of opts.also ?? []) want(r.entity, undefined, r.id)
+    for (const s of cases) {
+      const wf = c.project.workflows[s.workflowId]
+      const refs = d.caseRefs(s.values, wf?.caseType)
+      for (const r of opts.all ? refs : refs.slice(0, 1)) want(r.entity, wf?.domain, r.id)
+    }
+    const out = new Map<string, string>()
+    const records = (svc.kernel as { records?: RecordsService }).records
+    if (!records) return out
+    for (const w of wanted.values()) {
+      const ids = [...w.ids]
+      try {
+        const r = await records.query({ entity: w.entity, ...(w.domain ? { domain: w.domain } : {}), filter: ids.map((id) => `id = '${id}'`).join(' or '), limit: ids.length }, actor)
+        for (const row of r.rows) out.set(row.id, row.title)
+      } catch { /* not a record this viewer may read: the case keeps its short reference */ }
+    }
+    return out
+  }
+
   async function enrichInbox(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, items: InboxItem[]): Promise<MwInboxItem[]> {
     const views = new Map<string, Promise<CaseView | undefined>>()
     const view = (caseId: string) => {
       if (!views.has(caseId)) views.set(caseId, svc.kernel.getCaseView(caseId, actor).catch(() => undefined))
       return views.get(caseId)!
     }
+    const shownValues = (v: CaseView) => Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value]))
+    const caseViews = (await Promise.all([...new Set(items.flatMap((i) => ('caseId' in i && typeof i.caseId === 'string' ? [i.caseId] : [])))].map(view)))
+      .filter((v): v is CaseView => !!v)
+    const subjects = await subjectTitles(svc, actor, c, d, caseViews.map((v) => ({ workflowId: v.summary.workflowId, values: shownValues(v) })), { all: true })
     const titleOf = (v: CaseView | undefined, caseId: string) => {
       if (!v) return caseId
       const wf = c.project.workflows[v.summary.workflowId]
-      return d.caseTitle(Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value])), caseId, wf?.caseType, c.project)
+      const values = shownValues(v)
+      const subject = d.caseSubject(values, wf?.caseType)
+      return d.caseTitle(values, caseId, wf?.caseType, c.project, subject && subjects.get(subject.id))
     }
     // Identity matches name a domain record, not a case: one list read per entity.
     const rows = new Map<string, Promise<Map<string, Record<string, unknown>>>>()
@@ -343,6 +461,15 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         out.push(d.toIdentityInboxItem(item, c.project, await recordValues(item.candidate.entity, item.candidate.recordId)))
         continue
       }
+      // Phase 6: a broken rule on a record, and firings the storm guard held (no case).
+      if (item.kind === 'flag') {
+        out.push(d.toFlagInboxItem(c.project, item))
+        continue
+      }
+      if (item.kind === 'trigger-hold') {
+        out.push(d.toTriggerHoldInboxItem(c.project, item))
+        continue
+      }
       const v = await view(item.caseId)
       const caseTitle = titleOf(v, item.caseId)
       const wf = c.project.workflows[item.workflowId]
@@ -351,12 +478,14 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         case 'input':
         case 'decision': {
           const step = wf?.steps[item.stepId]
-          const context = step ? d.toCaseValues(values, d.readFields(step).filter((f) => f in values)) : {}
+          const context = step ? d.withRefTitles(d.toCaseValues(values, d.readFields(step).filter((f) => f in values)), wf?.caseType, subjects) : {}
           const common = {
             id: item.id, stepRunId: item.stepRunId, caseId: item.caseId, runId: item.runId, caseTitle,
             workflowId: item.workflowId, stepTitle: d.stateTitle(wf, item.stepId),
             ...(item.assignee ? { assignee: item.assignee } : {}),
             outcomes: [...(step?.outcomes ?? [])], context, since: item.since, ...(item.dueAt ? { dueAt: item.dueAt } : {}),
+            // Phase 6: the domain, how it is reviewed (document, table, diff) and the signature it needs
+            ...d.inboxReviewFields(item),
           }
           const binding = bindingOfItem(item.workflowId, item.stepId, values)
           const stepTitleOf = (id: string) => d.stateTitle(wf, id)
@@ -735,6 +864,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
 
     async actAs(ctx: RequestContext, personId: string): Promise<MwStatus> {
       const svc = requireService()
+      // Regulated mode: one person per login (24 §9)
+      if (await isRegulated(svc)) throw new Error('In a regulated workspace everyone signs in as themselves, so acting as someone else is off.')
       await svc.actAs(clientOf(ctx), personId)
       return status(ctx)
     },
@@ -745,6 +876,28 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         throw new Error('Only the owner of this install can add people.')
       }
       return d.toPerson(await svc.kernel.people.create({ name: input.name, email: input.email, roles: input.roles ?? [] }))
+    },
+
+    /**
+     * Phase 6: the signed-in person sets their own password (to sign in a regulated domain). The
+     * first one needs nothing more; changing it needs the current one.
+     */
+    async setOwnPassword(ctx: RequestContext, input: MwSetPasswordInput): Promise<MwSetPasswordResult> {
+      const { svc, actor } = await begin(ctx)
+      if (typeof input?.password !== 'string' || !input.password) return { applied: false, message: 'Choose a password.' }
+      const people = svc.kernel.people
+      const me = await people.get(actor.personId)
+      if (!me) return { applied: false, message: 'That person was not found.' }
+      if (await people.hasPassword(me.id)) {
+        const ok = typeof input.current === 'string' ? await people.verifyPassword(me.email, input.current) : undefined
+        if (!ok || ok.id !== me.id) return { applied: false, code: 'password.current-wrong', message: 'Your current password is not right.' }
+      }
+      try {
+        await people.setPassword(me.id, input.password)
+      } catch (e) {
+        return { applied: false, code: 'password.rule', message: e instanceof Error ? e.message : String(e) }
+      }
+      return { applied: true }
     },
 
     async listRoles(ctx: RequestContext): Promise<MwRole[]> {
@@ -761,9 +914,10 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         title: wf.title ?? d.humanize(wf.id),
         stepCount: Object.keys(wf.steps).length,
         open: cases.filter((s) => s.workflowId === wf.id && s.status === 'active').length,
-        waitingOnMe: inbox.filter((i) => i.kind !== 'identity' && i.kind !== 'reminder' && i.workflowId === wf.id).length,
+        waitingOnMe: inbox.filter((i) => i.kind !== 'identity' && i.kind !== 'reminder' && i.kind !== 'flag' && i.workflowId === wf.id).length,
         done: cases.filter((s) => s.workflowId === wf.id && s.status === 'done').length,
         ...(wf.origin ? { origin: d.toWorkflowOrigin(c.project, wf.origin) } : {}),
+        ...(wf.domain ? { domain: wf.domain } : {}),
       }))
     },
 
@@ -789,7 +943,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         ...(filter?.workflowId ? { workflowId: filter.workflowId } : {}),
         ...(filter?.status ? { status: filter.status } : {}),
       }, actor)
-      return rows.map((s) => d.toCaseSummary(c.project, s))
+      const subjects = await subjectTitles(svc, actor, c, d, rows)
+      return rows.map((s) => d.toCaseSummary(c.project, s, subjects))
     },
 
     async getCase(ctx: RequestContext, caseId: string): Promise<MwCase> {
@@ -801,7 +956,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         Promise.resolve().then(() => externalOf(svc).links({ caseId })).catch(() => undefined),
         Promise.resolve().then(() => channelsOf(svc).deliveries({ caseId })).catch(() => undefined),
       ])
-      return d.toCase(c, v, { ...(links ? { links } : {}), ...(deliveries ? { deliveries } : {}) })
+      const shown = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value]))
+      const subjects = await subjectTitles(svc, actor, c, d, [{ workflowId: v.summary.workflowId, values: shown }], { all: true, ...(v.waiting ? { also: [v.waiting.record] } : {}) })
+      return d.toCase(c, v, { ...(links ? { links } : {}), ...(deliveries ? { deliveries } : {}), subjects })
     },
 
     async startCase(ctx: RequestContext, input: MwStartCaseInput): Promise<MwCaseSummary | MwStartCaseRefusal> {
@@ -852,11 +1009,19 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         stepRunId: input.stepRunId, outcome: input.outcome,
         ...(input.values ? { values: input.values } : {}), ...(input.comment ? { comment: input.comment } : {}),
         ...(input.sources && Object.keys(input.sources).length ? { sources: input.sources } : {}),
+        // Phase 6: a signed step re-authenticates with the person's password (24 §9)
+        ...(typeof input.signature?.password === 'string' ? { signature: { password: input.signature.password } } : {}),
         by: actor,
       })
       const message = r.message ?? (r.applied ? undefined : SUBMIT_MESSAGES[r.status])
       const code = r.applied || !SUBMIT_MESSAGES[r.status] ? undefined : `submit.${r.status}`
-      return { applied: r.applied, ...(r.errors ? { errors: r.errors } : {}), ...(message ? { message } : {}), ...(code ? { code } : {}) }
+      // Locked out: when they may try again (the person's lock time).
+      const retryAfter = r.status === 'locked' ? (await svc.kernel.people.get(actor.personId).catch(() => undefined))?.lockedUntil : undefined
+      if (r.applied && input.signature) emitMemwiseChange({ kind: 'records', id: input.stepRunId })
+      return {
+        applied: r.applied, ...(r.errors ? { errors: r.errors } : {}), ...(message ? { message } : {}), ...(code ? { code } : {}),
+        ...(retryAfter ? { retryAfter } : {}),
+      }
     },
 
     async decideApproval(ctx: RequestContext, input: MwDecideApprovalInput): Promise<MwSubmitResult> {
@@ -929,7 +1094,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
 
     async listEntityTypes(ctx: RequestContext): Promise<MwEntityType[]> {
       const { c, d } = await begin(ctx)
-      return Object.values(c.project.entities).map((e) => d.toEntityType(c, e))
+      return Object.entries(c.project.entities).map(([key, e]) => d.toEntityType(c, e, key))
     },
 
     async uploadFile(ctx: RequestContext, input: { name: string; mime: string; data: string }): Promise<MwDocument> {
@@ -1436,6 +1601,163 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       emitMemwiseChange({ kind: 'status' })
       return plainNotify(saved)
     },
+
+    // ---------------------------------------------------------------- Phase 6 (24 §13)
+
+    async listDomains(ctx: RequestContext): Promise<MwDomain[]> {
+      const { svc, actor, c, d } = await begin(ctx)
+      return (await domainsOf(svc).list(actor)).map((x) => d.toDomain(c, x))
+    },
+
+    /** A record page, in review mode for the open step run that reviews it (24 §11); null when it can't be seen. */
+    async recordPage(ctx: RequestContext, input: MwRecordPageInput): Promise<MwRecordPage | null> {
+      const { svc, actor, c, d } = await begin(ctx)
+      if (!input?.entity || !input.id) throw new Error(RECORD_MESSAGES.missing)
+      const review = typeof input.review?.stepRunId === 'string' && input.review.stepRunId ? { review: { stepRunId: input.review.stepRunId } } : undefined
+      const page = await recordsOf(svc).page(input.entity, input.id, actor, review)
+      return page ? d.toRecordPage(c, page, await peopleNames(svc)) : null
+    },
+
+    async createRecord(ctx: RequestContext, input: MwRecordCreateInput): Promise<MwRecordWriteResult> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.entity || typeof input.values !== 'object' || !input.values) return recordRefusal('invalid')
+      const r = await recordsOf(svc).create({
+        entity: input.entity, values: input.values,
+        ...(input.status ? { status: input.status } : {}), ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+      }, actor)
+      if (r.applied) emitMemwiseChange({ kind: 'records', entity: input.entity, ...(r.id ? { id: r.id } : {}) })
+      return withRecordMessage(d.toRecordWriteResult(r))
+    },
+
+    /** Edit fields in place; a regulated domain needs a reason (the kernel refuses with `reason-required`). */
+    async updateRecord(ctx: RequestContext, input: MwRecordUpdateInput): Promise<MwRecordWriteResult> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.entity || !input.id || typeof input.values !== 'object' || !input.values) return recordRefusal('invalid')
+      const r = await recordsOf(svc).update({
+        entity: input.entity, id: input.id, values: input.values, ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+      }, actor)
+      if (r.applied) emitMemwiseChange({ kind: 'records', entity: input.entity, id: input.id })
+      return withRecordMessage(d.toRecordWriteResult(r))
+    },
+
+    async transitionRecord(ctx: RequestContext, input: MwRecordTransitionInput): Promise<MwRecordWriteResult> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.entity || !input.id || !input.transition) return recordRefusal('invalid')
+      const r = await recordsOf(svc).transition({
+        entity: input.entity, id: input.id, transition: input.transition, ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+      }, actor)
+      if (r.applied) emitMemwiseChange({ kind: 'records', entity: input.entity, id: input.id })
+      return withRecordMessage(d.toRecordWriteResult(r))
+    },
+
+    /** A view's rows; a filter that doesn't parse is refused with its message (the screen shows it under the box). */
+    async queryRecords(ctx: RequestContext, input: MwRecordQueryInput): Promise<MwRecordQueryResult> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.entity) throw new Error('Choose what to list.')
+      const limit = Math.min(Math.max(Number(input.limit) || 100, 1), 500)
+      const sort = Array.isArray(input.sort) ? input.sort.filter((x) => x && typeof x.field === 'string').map((x) => ({ field: x.field, ...(x.desc ? { desc: true } : {}) })) : []
+      const columns = Array.isArray(input.columns) ? input.columns.filter((x) => typeof x === 'string') : []
+      const r = await recordsOf(svc).query({
+        entity: input.entity, ...(input.domain ? { domain: input.domain } : {}),
+        ...(input.filter?.trim() ? { filter: input.filter.trim() } : {}),
+        ...(sort.length ? { sort } : {}), ...(input.group ? { group: input.group } : {}), ...(columns.length ? { columns } : {}),
+        limit, ...(Number(input.offset) > 0 ? { offset: Number(input.offset) } : {}),
+      }, actor)
+      return d.toQueryResult(r)
+    },
+
+    async recordTree(ctx: RequestContext, input: MwTreeInput): Promise<MwTreeNode[]> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.domain) throw new Error('Choose a domain.')
+      const parent = input.parent?.entity && input.parent.id ? { parent: { entity: input.parent.entity, id: input.parent.id } } : undefined
+      return (await recordsOf(svc).tree(input.domain, actor, parent)).map(d.toTreeNode)
+    },
+
+    async saveNote(ctx: RequestContext, input: MwSaveNoteInput): Promise<MwRecordWriteResult> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.entity || !input.id || typeof input.body !== 'string') return recordRefusal('invalid')
+      const r = await recordsOf(svc).saveNote({
+        entity: input.entity, id: input.id, body: input.body, ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+      }, actor)
+      if (r.applied) emitMemwiseChange({ kind: 'records', entity: input.entity, id: input.id })
+      return withRecordMessage(d.toRecordWriteResult(r))
+    },
+
+    async dashboard(ctx: RequestContext, input: MwDashboardInput): Promise<MwDashboard> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.domain || !input.pageId) throw new Error('That page was not found.')
+      const params = Object.fromEntries(Object.entries(input.params ?? {}).filter(([, v]) => typeof v === 'string')) as Record<string, string>
+      return d.toDashboard(input.domain, await recordsOf(svc).dashboard(input.domain, input.pageId, params, actor))
+    },
+
+    async listViews(ctx: RequestContext, input: { domain: string; entity?: string }): Promise<MwView[]> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.domain) throw new Error('Choose a domain.')
+      return (await recordsOf(svc).views(input.domain, actor, input.entity ? { entity: input.entity } : undefined)).map(d.toView)
+    },
+
+    /** "Save as my view": a personal view (shared views are files, changed through a draft). */
+    async saveView(ctx: RequestContext, input: MwSaveViewInput): Promise<MwView> {
+      const { svc, actor, d } = await begin(ctx)
+      const v = input?.view
+      if (!input?.domain || !v?.entity || !v.title?.trim()) throw new Error('Give the view a name.')
+      const id = v.id?.trim() || `my-${v.title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'view'}`
+      const saved = await recordsOf(svc).saveView(input.domain, {
+        id, title: v.title.trim(), entity: v.entity, layout: v.layout === 'board' ? 'board' : 'table',
+        ...(v.filter?.trim() ? { filter: v.filter.trim() } : {}), ...(v.sort?.length ? { sort: v.sort } : {}),
+        ...(v.group ? { group: v.group } : {}), ...(v.columns?.length ? { columns: v.columns } : {}),
+      }, actor)
+      emitMemwiseChange({ kind: 'records', entity: v.entity })
+      return d.toView({ ...saved, personal: true, domain: input.domain })
+    },
+
+    async listTriggers(ctx: RequestContext): Promise<MwTrigger[]> {
+      const { svc, c, d } = await begin(ctx)
+      return (await triggersOf(svc).list()).map((t) => d.toTrigger(c.project, t))
+    },
+
+    /** Start or discard what the storm guard held (24 §7). */
+    async releaseTrigger(ctx: RequestContext, input: MwReleaseTriggerInput): Promise<MwSubmitResult & { started?: number }> {
+      const { svc, actor } = await begin(ctx)
+      if (!input?.trigger) return refusal('trigger.missing', 'That automation was not found.')
+      if (input.decision !== 'start' && input.decision !== 'discard') return refusal('trigger.invalid', 'Choose "Start them" or "Discard".')
+      const r = await triggersOf(svc).release(input.trigger, input.decision, actor)
+      if (!r.applied) return refusal('trigger.not_released', r.message ?? 'Those cases were already started or discarded.')
+      emitMemwiseChange({ kind: 'triggers' })
+      emitMemwiseChange({ kind: 'inbox' })
+      return { applied: true, started: r.started }
+    },
+
+    async auditTrail(ctx: RequestContext, input: { entity: string; id: string }): Promise<MwAuditTrail | null> {
+      const { svc, actor, c, d } = await begin(ctx)
+      if (!input?.entity || !input.id) throw new Error(RECORD_MESSAGES.missing)
+      const trail = await auditOf(svc).trail(input.entity, input.id, actor)
+      return trail ? d.toAuditTrail(c.project, trail, await peopleNames(svc)) : null
+    },
+
+    /** The audit trail as a file (JSON or a plain PDF), base64 over the wire. */
+    async auditExport(ctx: RequestContext, input: MwAuditExportInput): Promise<MwAuditExport> {
+      const { svc, actor, d } = await begin(ctx)
+      if (!input?.entity || !input.id) throw new Error(RECORD_MESSAGES.missing)
+      const format = input.format === 'pdf' ? 'pdf' : 'json'
+      const r = await auditOf(svc).export(input.entity, input.id, format, actor)
+      if (!r) throw new Error(RECORD_MESSAGES.missing)
+      return {
+        name: r.name || d.auditFileName(input.entity, input.id, format),
+        mime: r.mime || (format === 'pdf' ? 'application/pdf' : 'application/json'),
+        dataBase64: Buffer.from(r.data).toString('base64'),
+      }
+    },
+
+    /** A stored file's bytes for the record page's viewer, read as the person (the kernel checks they may). */
+    async readFile(ctx: RequestContext, fileId: string): Promise<MwFileData> {
+      const { svc, actor } = await begin(ctx)
+      if (typeof fileId !== 'string' || !fileId) throw new Error('That file was not found.')
+      const r = await svc.kernel.readFile(fileId, actor)
+      if (!r) throw new Error('That file was not found.')
+      if (r.data.byteLength > MAX_UPLOAD_BYTES) throw new Error('That file is too large to show here (the limit is 25 MB).')
+      return { id: r.meta.id, name: r.meta.name, mime: r.meta.mime, dataBase64: Buffer.from(r.data).toString('base64') }
+    },
   }
 
   /** The case a links filter names (by case, or by run). */
@@ -1464,6 +1786,15 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
   }
 }
 
+function recordRefusal(status: MwRecordWriteResult['status']): MwRecordWriteResult {
+  return { applied: false, status, message: RECORD_MESSAGES[status] ?? 'That record was not changed.' }
+}
+
+/** A refused record write keeps the kernel's words; without any, the plain ones above. */
+function withRecordMessage(r: MwRecordWriteResult): MwRecordWriteResult {
+  return r.applied || r.message ? r : { ...r, ...(RECORD_MESSAGES[r.status] ? { message: RECORD_MESSAGES[r.status] } : {}) }
+}
+
 function plainNotify(s: MwNotifySettings | undefined): MwNotifySettings {
   return { ...(typeof s?.email === 'boolean' ? { email: s.email } : {}), ...(typeof s?.whatsapp === 'string' && s.whatsapp ? { whatsapp: s.whatsapp } : {}) }
 }
@@ -1479,6 +1810,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.PEOPLE_LIST, (ctx) => api.listPeople(ctx))
   server.handle(ch.PEOPLE_ACT_AS, (ctx, _ws: string, personId: string) => api.actAs(ctx, personId))
   server.handle(ch.PEOPLE_CREATE, (ctx, _ws: string, input) => api.createPerson(ctx, input))
+  server.handle(ch.PEOPLE_PASSWORD_SET, (ctx, _ws: string, input) => api.setOwnPassword(ctx, input))
   server.handle(ch.ROLES_LIST, (ctx) => api.listRoles(ctx))
   server.handle(ch.PLAYBOOKS_LIST, (ctx) => api.listPlaybooks(ctx))
   server.handle(ch.PLAYBOOKS_GET, (ctx, _ws: string, id: string) => api.getPlaybook(ctx, id))
@@ -1532,6 +1864,23 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.CHANNELS_AVAILABLE, (ctx) => api.channelsAvailable(ctx))
   server.handle(ch.NOTIFY_GET, (ctx) => api.notifyGet(ctx))
   server.handle(ch.NOTIFY_SET, (ctx, _ws: string, input) => api.notifySet(ctx, input))
+  // Phase 6
+  server.handle(ch.DOMAINS_LIST, (ctx) => api.listDomains(ctx))
+  server.handle(ch.RECORDS_PAGE, (ctx, _ws: string, input) => api.recordPage(ctx, input))
+  server.handle(ch.RECORDS_CREATE, (ctx, _ws: string, input) => api.createRecord(ctx, input))
+  server.handle(ch.RECORDS_UPDATE, (ctx, _ws: string, input) => api.updateRecord(ctx, input))
+  server.handle(ch.RECORDS_TRANSITION, (ctx, _ws: string, input) => api.transitionRecord(ctx, input))
+  server.handle(ch.RECORDS_QUERY, (ctx, _ws: string, input) => api.queryRecords(ctx, input))
+  server.handle(ch.RECORDS_TREE, (ctx, _ws: string, input) => api.recordTree(ctx, input))
+  server.handle(ch.RECORDS_NOTES_SAVE, (ctx, _ws: string, input) => api.saveNote(ctx, input))
+  server.handle(ch.PAGES_DASHBOARD, (ctx, _ws: string, input) => api.dashboard(ctx, input))
+  server.handle(ch.VIEWS_LIST, (ctx, _ws: string, input) => api.listViews(ctx, input))
+  server.handle(ch.VIEWS_SAVE, (ctx, _ws: string, input) => api.saveView(ctx, input))
+  server.handle(ch.TRIGGERS_LIST, (ctx) => api.listTriggers(ctx))
+  server.handle(ch.TRIGGERS_RELEASE, (ctx, _ws: string, input) => api.releaseTrigger(ctx, input))
+  server.handle(ch.AUDIT_GET, (ctx, _ws: string, input) => api.auditTrail(ctx, input))
+  server.handle(ch.AUDIT_EXPORT, (ctx, _ws: string, input) => api.auditExport(ctx, input))
+  server.handle(ch.FILES_READ, (ctx, _ws: string, fileId: string) => api.readFile(ctx, fileId))
 
   onMemwiseChange((change) => {
     pushTyped(server, RPC_CHANNELS.memwise.CHANGED, { to: 'all' }, change)

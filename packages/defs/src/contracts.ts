@@ -18,6 +18,8 @@ export type Provenance =
       kind: 'tool'; at: string; stepRunId: string; tool: string; callId: string; tainted?: boolean;
       /** Phase 5 (D68): read from this document by a form's extraction, with this confidence, and kept by `confirmedBy`. */
       document?: string; confidence?: number; confirmedBy?: string;
+      /** Phase 6 (24 §11): where in the document it was read: the page (1-based) and the text quoted. */
+      page?: number; quote?: string;
     }
   | { kind: 'judgement'; at: string; stepRunId: string; rationale?: string; tainted?: boolean; /** A conversation step's chat wrote it, for this person (Phase 3). */ chatId?: string; by?: string }
   | { kind: 'person'; at: string; by: string; stepRunId?: string }
@@ -53,6 +55,11 @@ export interface StepToken {
   agentRole: string;
   /** The person the step acts for, when there is one. */
   onBehalfOf?: string;
+  /**
+   * Phase 6 (24 §7): the role a triggered case's steps act for (the trigger's `as`, else the
+   * workflow's owner), so `role:` rules treat them as a person in that role would be.
+   */
+  actsFor?: string;
   issuedAt: string;
   expiresAt: string;
 }
@@ -134,7 +141,8 @@ export interface StepRecord {
 
 // ---------------------------------------------------------------- store interfaces (implemented by @memwise/db)
 
-export type DefinitionKind = 'workflow' | 'step' | 'case_type' | 'entity_type' | 'policy';
+/** Phase 6 adds `domain` (a domain.yaml), `page` and `view` (`<domain>/<id>`). */
+export type DefinitionKind = 'workflow' | 'step' | 'case_type' | 'entity_type' | 'policy' | 'domain' | 'page' | 'view';
 
 export interface IndexedDefinition {
   kind: DefinitionKind;

@@ -1,0 +1,11 @@
+workflow: fix-rejected-document
+version: 1
+title: Fix a rejected document
+owner: study_manager
+# Started by "File a TMF document" when QC sends a document back. The fixed document comes back by
+# email and is filed by its own case.
+start: ask_site
+steps:
+  ask_site:
+    on: { asked: end }
+    wait: { remind: 2d, timeout: 7d → end }

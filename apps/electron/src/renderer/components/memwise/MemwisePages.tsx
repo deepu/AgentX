@@ -24,8 +24,10 @@ import {
   memwisePeopleAtom,
   memwisePeopleOnlyAtom,
   memwisePlaybooksAtom,
+  memwiseReviewQueueAtom,
   memwiseRolesAtom,
   memwiseStartCaseDialogAtom,
+  memwiseStatusAtom,
   memwiseWorkspaceIdAtom,
 } from '@/atoms/memwise'
 import {
@@ -53,10 +55,13 @@ import { MemwiseStatusBanner } from './MemwiseStatus'
 import { PlaybookView } from './playbook'
 import { PlaybookDrafts, VersionLine } from './playbook/VersionLine'
 import { WorkflowMap } from './map'
-import { peopleById, resultMessage, sortInbox } from './format'
+import { peopleById, resultMessage, roleTitle, sortInbox } from './format'
 import { DraftView, type DraftActions, type DraftTab } from './draft'
 import { isMetaPlaybook } from './draft/draft-model'
 import { SaveAsExampleDialog, openBuildChat } from './BuildDialogs'
+import { DocumentReviewPage } from './records/RecordPages'
+import { isReviewItem, queueNeighbour, sameKindItems, type ReviewItem } from './records/record-model'
+import type { ReviewQueue } from './records/DocumentReview'
 
 const notAvailable = (): MwSubmitResult => ({ applied: false, message: i18n.t('memwise.notAvailable') })
 
@@ -114,7 +119,18 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
   const external = useMemwiseExternal()
   const store = useStore()
   const openChatBeside = useOpenChatBeside()
-  const item = itemId ? inbox?.find(i => i.id === itemId) ?? null : null
+  const found = itemId ? inbox?.find(i => i.id === itemId) ?? null : null
+  // Phase 6: a document review stays on screen after it is answered (the record page in normal
+  // mode) even once the item has left the inbox.
+  const [kept, setKept] = React.useState<ReviewItem | null>(null)
+  React.useEffect(() => { if (isReviewItem(found, 'document')) setKept(found) }, [found])
+  const item = found ?? (kept && kept.id === itemId ? kept : null)
+  const [queue, setQueue] = useAtom(memwiseReviewQueueAtom)
+  const [queueDone, setQueueDone] = React.useState(0)
+  React.useEffect(() => { if (!queue.active) setQueueDone(0) }, [queue.active])
+  const status = useAtomValue(memwiseStatusAtom)
+  const me = status?.me
+  const signer = React.useMemo(() => (me ? { name: me.name, role: me.roles[0] ? roleTitle(me.roles[0], roles) : undefined } : undefined), [me, roles])
   // A playbook change's review whose card does not name its draft: read it from the case.
   const needsCase = item?.kind === 'decision' && isMetaPlaybook(item.workflowId) && typeof item.context.draft?.value !== 'string'
   const { data: reviewCase } = useMemwiseCase(needsCase ? item!.caseId : null)
@@ -145,6 +161,16 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
       openCase: caseId => navigate(routes.view.cases(caseId)),
       openDraft: draftId => navigate(routes.view.draft(draftId)),
       openPlugin: pluginId => navigate(routes.view.plugins(pluginId)),
+      openRecord: (entity, recordId) => navigate(routes.view.record(entity, recordId)),
+      openAutomations: () => navigate(routes.view.domains({ type: 'automations' })),
+      ...(api && typeof api.memwiseReleaseTrigger === 'function' ? {
+        releaseTrigger: async (trigger: string, decision: 'start' | 'discard') => {
+          if (!workspaceId) return notAvailable()
+          const r = await api.memwiseReleaseTrigger(workspaceId, { trigger, decision })
+          void refresh()
+          return r
+        },
+      } : {}),
       ...(api?.memwiseDecideIdentity ? {
         decideIdentity: input => (workspaceId ? api.memwiseDecideIdentity(workspaceId, input) : Promise.resolve(notAvailable())),
       } : {}),
@@ -174,6 +200,40 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
     }
   }, [workspaceId, upload, external, inbox, itemId, item, refresh, t, store, openChatBeside, reloadBinding])
 
+  // "Review in a row": the document reviews of one step, one after another (24 §11).
+  const docReview = isReviewItem(item, 'document') ? item : null
+  const inQueue = !!docReview && queue.active && docReview.workflowId === queue.workflowId && docReview.stepTitle === queue.stepTitle
+  const reviewQueue = React.useMemo<ReviewQueue | undefined>(() => {
+    if (!inQueue || !docReview) return undefined
+    const list = sameKindItems(inbox ?? [], docReview)
+    const at = list.findIndex(i => i.id === docReview.id)
+    const go = (dir: 1 | -1) => {
+      const n = queueNeighbour(inbox ?? [], docReview, dir)
+      if (n) navigate(routes.view.inbox(n.id))
+    }
+    return {
+      position: queueDone + (at < 0 ? list.length : at) + 1,
+      total: queueDone + Math.max(list.length, at < 0 ? list.length + 1 : list.length),
+      onNext: () => go(1),
+      onPrevious: () => go(-1),
+      onStop: () => setQueue({ active: false }),
+    }
+  }, [inQueue, docReview, inbox, queueDone, setQueue])
+  const documentDone = React.useCallback(() => {
+    void refresh()
+    if (!inQueue || !docReview) return
+    // Move on to the next of the same kind; after the last one, the queue ends on this page.
+    const next = sameKindItems(inbox ?? [], docReview).filter(i => i.id !== docReview.id)
+    const after = queueNeighbour(inbox ?? [], docReview, 1)
+    const target = after && after.id !== docReview.id ? after : next[0]
+    setQueueDone(n => n + 1)
+    if (target) navigate(routes.view.inbox(target.id))
+    else {
+      setQueue({ active: false })
+      toast.success(t('memwise.review.queueDone'))
+    }
+  }, [inQueue, docReview, inbox, refresh, setQueue, t])
+
   if (!itemId) {
     return (
       <div className="flex h-full flex-col">
@@ -185,8 +245,10 @@ export function InboxDetailPage({ itemId }: { itemId: string | null }) {
   return (
     <Info_Page loading={inbox === null} empty={inbox !== null && !item ? t('memwise.inbox.itemGone') : undefined}>
       <Info_Page.Header title={t('memwise.nav.inbox')} />
-      {item && (
+      {docReview && <DocumentReviewPage key={docReview.id} item={docReview} onDone={documentDone} queue={reviewQueue} />}
+      {item && !docReview && (
         <InboxItemView
+          signer={signer}
           key={item.id}
           item={item}
           actions={actions}
@@ -278,6 +340,8 @@ export function CasePage({ caseId }: { caseId: string | null }) {
           onOpenStep={setOpenStep}
           onOpenPlaybook={id => navigate(routes.view.playbooks(id))}
           linkActions={linkActions}
+          onOpenCase={id => navigate(routes.view.cases(id))}
+          onOpenRecord={(entity, id) => navigate(routes.view.record(entity, id))}
         />
       )}
       <StepRecordDrawer stepRunId={openStep} onClose={() => setOpenStep(null)} />

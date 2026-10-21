@@ -1,14 +1,16 @@
 // What people see (19 §4, §8): the inbox, the case list, a case with its values (hidden fields
 // nulled for roles that lack access), timeline and path, and live counts for the map.
 import { PgNotificationStore } from '@memwise/db';
-import { END_STATE, type ApprovalRequest, type CaseValue, type FieldDef, type PolicyDoc, type WorkflowDef } from '@memwise/defs';
+import { DEFAULT_DOMAIN, domainOf, END_STATE, hasRole, type ApprovalRequest, type CaseValue, type EntityTypeDef, type FieldDef, type WorkflowDef } from '@memwise/defs';
 import { compilePolicy, layersFor, pluginLayers, type CompiledPolicy, type PluginPolicy } from '@memwise/policy';
 import type pg from 'pg';
 import { assigneeOf } from './driver.ts';
 import { REMIND_EVENT, stateKind } from './machine.ts';
-import { getTransitions, latestWorkflowDef, loadDomainPolicy, loadPluginPolicies, loadWorkflowDef } from './runs.ts';
+import { heldWords } from './flow/describe.ts';
+import { inboxReview } from './records/review.ts';
+import { getTransitions, latestWorkflowDef, loadPluginPolicies, loadPolicySources, loadWorkflowDef, policyLayersFor, type PolicySources } from './runs.ts';
 import type {
-  Actor, CaseSummary, CaseView, InboxItem, LiveCounts, RunStatus, StepRunSummary, TransitionRecord,
+  Actor, CaseLinkView, CaseSummary, CaseView, InboxItem, LiveCounts, RunStatus, StepRunSummary, TransitionRecord, WaitingCondition,
 } from './types.ts';
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
@@ -29,19 +31,29 @@ export class DefinitionCache {
     return latestWorkflowDef(this.pool, id);
   }
 
-  /** The step's effective policy under the latest domain and plugin layers (what a step run now would get). */
-  async policy(workflow: WorkflowDef, stepId?: string, domainPolicy?: PolicyDoc, pluginPolicies?: PluginPolicy[]): Promise<CompiledPolicy> {
-    const domain = domainPolicy ?? (await loadDomainPolicy(this.pool));
+  /**
+   * The step's effective policy under the latest workspace, domain and plugin layers (what a step
+   * run now would get). The domain layer is the workflow's own domain's (Phase 6, 24 §2).
+   */
+  async policy(workflow: WorkflowDef, stepId?: string, sources?: PolicySources, pluginPolicies?: PluginPolicy[]): Promise<CompiledPolicy> {
+    const layers = policyLayersFor(sources ?? (await loadPolicySources(this.pool)), domainOf(workflow));
     const step = stepId ? workflow.steps[stepId] : undefined;
     const plugins = pluginLayers(pluginPolicies ?? (await loadPluginPolicies(this.pool)), workflow, step);
-    return compilePolicy(layersFor({ domainPolicy: domain, plugins, workflow, step }));
+    return compilePolicy(layersFor({ ...layers, plugins, workflow, step }));
   }
 }
 
 export const isPerson = (a: Actor): a is Extract<Actor, { kind: 'person' }> => a.kind === 'person';
-/** The system actor sees everything; a person sees a restricted field only with one of its roles. */
-export const maySee = (actor: Actor, field: FieldDef | undefined) =>
-  actor.kind === 'system' || !field?.access?.length || (isPerson(actor) && field.access.some((r) => actor.roles.includes(r)));
+/**
+ * The system actor sees everything; a person sees a restricted field only with one of its roles,
+ * held workspace-wide or granted in the field's domain (Phase 6, 24 §2).
+ */
+export const maySee = (actor: Actor, field: FieldDef | undefined, domain: string = DEFAULT_DOMAIN) =>
+  actor.kind === 'system' || !field?.access?.length || (isPerson(actor) && field.access.some((r) => hasRole(actor, r, domain)));
+
+/** Every role the person holds anywhere: workspace-wide and granted in any domain (a prefilter; check per domain). */
+export const anyRoles = (actor: Extract<Actor, { kind: 'person' }>): string[] =>
+  [...new Set([...actor.roles, ...(actor.grants ?? []).map((g) => g.role)])];
 
 /**
  * Roles that may decide an effect approval of this step: the policy's `approvals.by`, else the
@@ -55,8 +67,8 @@ export function approverRoles(policy: CompiledPolicy, workflow: WorkflowDef, ste
   return workflow.owner ? [workflow.owner] : undefined;
 }
 
-export const mayApprove = (actor: Actor, roles: string[] | undefined) =>
-  actor.kind === 'system' || (isPerson(actor) && (!roles || roles.some((r) => actor.roles.includes(r))));
+export const mayApprove = (actor: Actor, roles: string[] | undefined, domain: string = DEFAULT_DOMAIN) =>
+  actor.kind === 'system' || (isPerson(actor) && (!roles || roles.some((r) => hasRole(actor, r, domain))));
 
 function summary(r: any, values: Record<string, CaseValue>, workflow?: WorkflowDef, actor?: Actor): CaseSummary {
   // A few leading values for a title, never a hidden one. Names and text first: jsonb sorts keys
@@ -67,7 +79,7 @@ function summary(r: any, values: Record<string, CaseValue>, workflow?: WorkflowD
   const keys = Object.keys(values).sort((a, b) => Number(texty(b)) - Number(texty(a)));
   for (const k of keys) {
     if (Object.keys(shown).length >= 4) break;
-    if (!actor || maySee(actor, fields[k])) shown[k] = values[k]!.value;
+    if (!actor || maySee(actor, fields[k], workflow ? domainOf(workflow) : DEFAULT_DOMAIN)) shown[k] = values[k]!.value;
   }
   return {
     caseId: r.case_id, runId: r.id, workflowId: r.workflow_id, workflowVersion: r.workflow_version, workflowHash: r.workflow_hash,
@@ -94,7 +106,13 @@ export function pathOf(first: string, transitions: TransitionRecord[]): string[]
   return path;
 }
 
-export async function getCaseView(pool: pg.Pool, defs: DefinitionCache, caseId: string, actor: Actor): Promise<CaseView | undefined> {
+/** Phase 6: the hand-off links and the wait_until condition of a case (flow/handoffs.ts). */
+export interface CaseFlowView {
+  links(caseId: string, workflow: (id: string, hash: string) => Promise<WorkflowDef>): Promise<CaseLinkView[]>;
+  waiting(runId: string): Promise<WaitingCondition | undefined>;
+}
+
+export async function getCaseView(pool: pg.Pool, defs: DefinitionCache, caseId: string, actor: Actor, flow?: CaseFlowView): Promise<CaseView | undefined> {
   const { rows } = await pool.query(
     `select r.*, c.values, c.tainted_fields from mw.runs r join mw.cases c on c.id = r.case_id
       where r.case_id = $1 order by r.created_at desc limit 1`, [caseId]);
@@ -105,7 +123,7 @@ export async function getCaseView(pool: pg.Pool, defs: DefinitionCache, caseId: 
   const tainted = new Set<string>(r.tainted_fields ?? []);
   const values: CaseView['values'] = {};
   for (const [k, v] of Object.entries((r.values ?? {}) as Record<string, CaseValue>)) {
-    values[k] = maySee(actor, fields[k])
+    values[k] = maySee(actor, fields[k], domainOf(workflow))
       ? { ...v, ...(tainted.has(k) ? { tainted: true } : {}) }
       : { value: null, provenance: v.provenance, hidden: true, ...(tainted.has(k) ? { tainted: true } : {}) };
   }
@@ -119,10 +137,14 @@ export async function getCaseView(pool: pg.Pool, defs: DefinitionCache, caseId: 
     tainted: s.tainted, startedAt: iso(s.started_at), ...(s.finished_at ? { finishedAt: iso(s.finished_at) } : {}),
   }));
   const transitions = await getTransitions(pool, r.id);
+  const links = flow ? await flow.links(caseId, (id, hash) => defs.workflow(id, hash)) : [];
+  const waiting = flow && r.status === 'active' && workflow.states[r.state]?.block?.kind === 'wait_until' ? await flow.waiting(r.id) : undefined;
   return {
     summary: summary(r, r.values ?? {}, workflow, actor),
     values, stepRuns, transitions,
     path: pathOf(transitions[0]?.from ?? r.state, transitions),
+    ...(links.length ? { links } : {}), ...(waiting ? { waiting } : {}),
+    domain: domainOf(workflow),
   };
 }
 
@@ -141,10 +163,11 @@ export async function liveCounts(pool: pg.Pool, workflowId: string): Promise<Liv
 }
 
 /** Everything waiting on this person (19 §4). Steps and the kernel itself have no inbox. */
-export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor): Promise<InboxItem[]> {
+export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor, entities?: Record<string, EntityTypeDef>): Promise<InboxItem[]> {
   if (!isPerson(actor)) return [];
   const items: InboxItem[] = [];
-  const roles = actor.roles;
+  // Roles held anywhere narrow the queries; each item is then checked in its workflow's domain.
+  const roles = anyRoles(actor);
 
   // Person, external and conversation steps assigned to one of the person's roles (or to nobody
   // in particular). An agent step also waits while an effect approval is pending: that is not
@@ -163,6 +186,7 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
   for (const s of waiting.rows) {
     const wf = await defs.workflow(s.workflow_id, s.workflow_hash);
     const step = wf.steps[s.step_id];
+    if (s.assignee && !hasRole(actor, s.assignee, domainOf(wf))) continue;
     if (s.performer === 'agent') {
       if (step?.engine !== 'open') continue;
       items.push({
@@ -174,11 +198,14 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
     // An external step someone outside was sent a link to waits on them, not on staff (23 §3).
     if (s.performer === 'external' && s.link_open) continue;
     const ex = step?.extract;
+    const review = step && entities ? await inboxReview(pool, wf, step, s.case_id, entities) : undefined;
     items.push({
       kind: step && Object.keys(step.writes).length ? 'input' : 'decision',
       id: `step:${s.id}`, stepRunId: s.id, runId: s.run_id, caseId: s.case_id, workflowId: s.workflow_id, stepId: s.step_id,
       ...(s.assignee ? { assignee: s.assignee } : {}), since: iso(s.started_at), ...(s.due_at ? { dueAt: iso(s.due_at) } : {}),
       ...(ex ? { extract: { documentsField: ex.documents, fields: [...new Set(Object.values(ex.fields))], minConfidence: ex.minConfidence } } : {}),
+      // Phase 6 (24 §11): the domain, how the step is reviewed, and the signature it needs.
+      domain: domainOf(wf), ...(review ? { review } : {}), ...(step?.sign ? { sign: { meaning: step.sign } } : {}),
     });
   }
 
@@ -187,12 +214,12 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
     `select a.*, s.run_id, s.case_id, s.workflow_id, s.workflow_hash, s.step_id
        from mw.approvals a join mw.step_runs s on s.id = a.step_run_id
       where a.status = 'pending' and s.status = 'waiting' order by a.requested_at, a.id`);
-  const domainPolicy = approvals.rows.length ? await loadDomainPolicy(pool) : undefined;
+  const policySources = approvals.rows.length ? await loadPolicySources(pool) : undefined;
   const pluginPolicies = approvals.rows.length ? await loadPluginPolicies(pool) : undefined;
   for (const a of approvals.rows) {
     const wf = await defs.workflow(a.workflow_id, a.workflow_hash);
-    const policy = await defs.policy(wf, a.step_id, domainPolicy, pluginPolicies);
-    if (!mayApprove(actor, approverRoles(policy, wf, a.step_id))) continue;
+    const policy = await defs.policy(wf, a.step_id, policySources, pluginPolicies);
+    if (!mayApprove(actor, approverRoles(policy, wf, a.step_id), domainOf(wf))) continue;
     const approval: ApprovalRequest = {
       id: a.id, stepRunId: a.step_run_id, tool: a.tool, effect: a.effect, treatment: a.treatment, args: a.args,
       preview: a.preview, requestedAt: iso(a.requested_at),
@@ -210,7 +237,7 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
     const stopped = r.status === 'stopped';
     if (!stopped && stateKind(wf, r.state) !== 'wait') continue;
     const role = stopped ? wf.owner : assigneeOf(wf, r.state);
-    if (role && !roles.includes(role)) continue;
+    if (role && !hasRole(actor, role, domainOf(wf))) continue;
     items.push({
       kind: 'attention', id: `attention:${r.id}:${r.state}`, runId: r.id, caseId: r.case_id, workflowId: r.workflow_id, state: r.state,
       reason: stopped ? `stopped: ${r.stop_reason ?? 'no reason recorded'}` : `waiting in ${r.state}`,
@@ -221,11 +248,16 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
   // Unread reminders for the person or their roles.
   const notes = await new PgNotificationStore().unread(pool, { personId: actor.personId, roles });
   if (notes.length) {
-    const steps = await pool.query(`select id, case_id, workflow_id, state from mw.runs where id = any($1::text[])`, [notes.map((n) => n.runId)]);
+    const steps = await pool.query(`select id, case_id, workflow_id, workflow_hash, state from mw.runs where id = any($1::text[])`, [notes.map((n) => n.runId)]);
     const byRun = new Map(steps.rows.map((r) => [r.id as string, r]));
     for (const n of notes) {
       const r = byRun.get(n.runId);
       if (!r) continue;
+      // A reminder for a role counts only where the person holds it: in the playbook's domain.
+      if (n.role && !n.personId) {
+        const wf = await defs.workflow(r.workflow_id, r.workflow_hash).catch(() => undefined);
+        if (wf && !hasRole(actor, n.role, domainOf(wf))) continue;
+      }
       const stepId = n.stepRunId ? n.stepRunId.split('/').at(-1)! : r.state;
       items.push({
         kind: 'reminder', id: `reminder:${n.id}`, runId: n.runId, caseId: r.case_id, workflowId: r.workflow_id, stepId,
@@ -237,7 +269,31 @@ export async function inbox(pool: pg.Pool, defs: DefinitionCache, actor: Actor):
 }
 
 /** Case values for a reader: hidden fields removed (explain, the step digest). */
-export function visibleValues(values: Record<string, CaseValue>, fields: Record<string, FieldDef>, actor: Actor): Record<string, CaseValue> {
-  return Object.fromEntries(Object.entries(values).filter(([k]) => maySee(actor, fields[k])));
+export function visibleValues(values: Record<string, CaseValue>, fields: Record<string, FieldDef>, actor: Actor, domain: string = DEFAULT_DOMAIN): Record<string, CaseValue> {
+  return Object.fromEntries(Object.entries(values).filter(([k]) => maySee(actor, fields[k], domain)));
 }
 
+
+/**
+ * Phase 6 (24 §7): one item per trigger whose firings the storm guard held, for the workflow's
+ * owner role ("300 cases would start from Activate a site").
+ */
+export async function heldTriggerItems(pool: pg.Pool, defs: DefinitionCache, actor: Actor, domainOwner: (domain: string) => string | undefined = () => undefined): Promise<InboxItem[]> {
+  if (!isPerson(actor)) return [];
+  const { rows } = await pool.query(
+    `select trigger_id, workflow_id, count(*)::int as n, min(at) as since from mw.trigger_firings
+      where status = 'held' group by trigger_id, workflow_id order by min(at), trigger_id`);
+  const out: InboxItem[] = [];
+  for (const r of rows) {
+    const wf = await defs.latest(r.workflow_id);
+    // As `triggers.release` decides: the playbook's owner role, else its domain's owner.
+    const domain = wf?.domain ?? DEFAULT_DOMAIN;
+    const role = wf?.owner ?? domainOwner(domain);
+    if (role && !hasRole(actor, role, domain)) continue;
+    out.push({
+      kind: 'trigger-hold', id: `trigger-hold:${r.trigger_id}`, triggerId: r.trigger_id, workflowId: r.workflow_id, held: r.n,
+      description: heldWords(r.n, wf?.title ?? r.workflow_id), since: iso(r.since),
+    });
+  }
+  return out;
+}
