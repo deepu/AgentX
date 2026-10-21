@@ -35,6 +35,9 @@ import {
   boundPlugins, isReservedToolName, pluginPolicies, pluginTool, pluginToolEnvironment, toolClass, type BoundPlugin,
 } from './tools.ts';
 
+/** How soon a connector whose read failed is read again (Stage 6), when its interval is longer. */
+const RETRY_FAILED_MS = 5 * 60_000;
+
 export interface PluginServiceDeps {
   /** Absolute project folder. */
   projectDir: string;
@@ -842,7 +845,8 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
 
   /** Records a plugin's read: when, what it found or why it failed, and when it is due again. */
   async function recordSync(pluginId: string, r: { counts?: ResolveCounts; error?: string; everyMs?: number }) {
-    const next = r.everyMs ? new Date(Date.now() + r.everyMs) : null;
+    // A failed read is tried again sooner (at most five minutes on), not a whole interval later.
+    const next = r.everyMs ? new Date(Date.now() + (r.error !== undefined ? Math.min(r.everyMs, RETRY_FAILED_MS) : r.everyMs)) : null;
     if (r.error !== undefined) {
       await deps.pool.query(
         `insert into mw.source_syncs (plugin, next_due, error, error_at) values ($1, $2, $3, now())

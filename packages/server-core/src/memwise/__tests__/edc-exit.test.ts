@@ -129,6 +129,10 @@ describe.skipIf(!postgresAvailable())('Stage 6 exit: EDC from Medidata Rave, and
   }, 60_000)
 
   it('reads MW-301 from Rave: studies, sites, subjects and queries, with the site rollups', async () => {
+    // The first read happens on start, once the domain tables exist (it used to race them).
+    const first = await until('the first read of Rave on start', () => svc.kernel.identity.syncs(), (xs) => !!xs.find((x) => x.plugin === RAVE_PLUGIN && (x.at || x.error)), 60_000)
+    expect(first.find((x) => x.plugin === RAVE_PLUGIN)).toMatchObject({ at: expect.any(String) })
+    expect(first.find((x) => x.plugin === RAVE_PLUGIN)?.error).toBeUndefined()
     const counts = await svc.kernel.identity.resolve({ plugin: RAVE_PLUGIN })
     const expected = rave.data.studies.length + rave.data.sites.length + rave.data.subjects.length + rave.data.queries.length
     expect(counts.linked + counts.created).toBe(expected)

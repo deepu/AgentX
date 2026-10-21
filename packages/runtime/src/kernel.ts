@@ -311,6 +311,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
 
   // Phase 6 flow (24 §7, §8, §10): the dispatcher, triggers, hand-offs, incoming email, entity timers.
   let syncTimer: ReturnType<typeof setInterval> | undefined;
+  let sweepSyncs: (() => void) | undefined;
   const flowLog = (m: string) => { if ((options.logLevel ?? process.env.DBOS_LOG ?? 'warn') !== 'error') console.warn(`[memwise] ${m}`); };
   const flow = createFlow({
     pool, client,
@@ -372,6 +373,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       const updaters = domainUpdaters(project.entities, project.workflows);
       const domains = project.domains ?? {};
       const schemaKey = JSON.stringify([project.entities, creators, updaters, Object.fromEntries(Object.entries(domains).map(([id, d]) => [id, !!d.regulated]))]);
+      const first = !appliedSchema;
       if (appliedSchema?.key !== schemaKey) {
         appliedSchema = { key: schemaKey, notes: await applyDomainSchema(pool, project.entities, { creators, updaters, domains }) };
       }
@@ -391,6 +393,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       ];
       indexed = { project, diagnostics };
       feed.emit({ kind: 'definitions' });
+      // Connectors due a read get it as soon as their tables exist, not a minute later.
+      if (first) sweepSyncs?.();
       return diagnostics;
     },
 
@@ -642,8 +646,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     if (options.sourceSyncs !== false) {
       const services = pluginServices;
       let syncing = false;
-      const sweepSyncs = () => {
-        if (syncing) return;
+      sweepSyncs = () => {
+        // Not before the first index: the domain tables a read writes into may not exist yet.
+        if (syncing || !appliedSchema) return;
         syncing = true;
         services.identity.syncDue()
           .then((done) => { for (const d of done) if (d.error) flowLog(`reading ${d.plugin}: ${d.error}`); })
