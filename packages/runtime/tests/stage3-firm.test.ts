@@ -24,6 +24,10 @@ const FILES: Record<string, string> = {
   'domains/practice/entities/client.yaml': 'entity: Client\ntitle: "{name}"\nfields:\n  name:  { type: Text, required: true }\n  gstin: Text\nlifecycle: [active, left]\n',
   ...filing('gst', 'file-gst', 'GST'),
   ...filing('itr', 'file-itr', 'Income tax'),
+  // The GST app hands the year's last period on to income tax (another app of the same firm).
+  'domains/itr/domain.yaml': 'domain: itr\nname: Income tax\nowner: partner\naccepts_from: [gst]\n',
+  'domains/gst/workflows/year-end/workflow.yaml': 'workflow: year-end\nversion: 1\ntitle: GST year end\nowner: partner\nstart: hand_on\nsteps:\n  hand_on:\n    start: { workflow: file-itr, with: { client: case.client, period: case.period } }\n    on: { started: end }\n',
+  'domains/gst/workflows/year-end/case.yaml': 'case: year_end\nfields:\n  client: { type: Ref<practice.Client>, required: true }\n  period: { type: Text, required: true }\n',
   // One firm: its clients (Practice), and the GST and income-tax apps on them.
   'projects/firm/project.yaml': [
     'app: practice', 'also: [gst, itr]', 'name: Mehta & Rao', 'people:',
@@ -74,9 +78,9 @@ describe.skipIf(!pgAvailable)('Stage 3 (D105): one project, several apps, many c
     const { project } = await kernel.project();
     const firm = project.projects!.firm!;
     expect(firm.apps).toEqual(['practice', 'gst', 'itr']);
-    expect(Object.keys(firm.workflows).sort()).toEqual(['file-gst', 'file-itr']);
+    expect(Object.keys(firm.workflows).sort()).toEqual(['file-gst', 'file-itr', 'year-end']);
     expect(firm.workflows['file-gst']!.hash).not.toBe(project.workflows['file-gst']!.hash);
-    expect(Object.keys(project.projects!.other!.workflows)).toEqual(['file-gst']);
+    expect(Object.keys(project.projects!.other!.workflows).sort()).toEqual(['file-gst', 'year-end']);
     // Every app is run by a firm, so none has an implicit project; each app still has its own
     // project's row (D107), where its own runs and what someone with no project makes live.
     expect(Object.keys(project.projects!).sort()).toEqual(['firm', 'other']);
@@ -138,6 +142,21 @@ describe.skipIf(!pgAvailable)('Stage 3 (D105): one project, several apps, many c
     expect(await seen(ravi)).toEqual([client]);
     expect(await seen(ivy)).toEqual([]);
     expect(await seen(SYSTEM)).toEqual([client]);
+  }, 60_000);
+
+  test('work one app hands on to another app of the firm stays in the firm', async () => {
+    const client = (await kernel.records.create({ entity: 'practice.Client', values: { name: 'Bharat Mills' }, project: 'firm' }, meera)).id!;
+    const parent = await kernel.startRun({ workflowId: 'year-end', case: { client, period: 'FY 2025-26' }, project: 'firm', by: meera.personId });
+    await kernel.waitForRun(parent.runId, { until: (r) => r.status !== 'active', timeoutMs: 30_000 });
+    const child = await (async () => {
+      for (let i = 0; i < 100; i++) {
+        const { rows } = await db.pool.query(`select r.workflow_id, r.project from mw.case_links l join mw.runs r on r.id = l.child_run_id where l.parent_run_id = $1`, [parent.runId]);
+        if (rows.length) return rows;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return [];
+    })();
+    expect(child).toEqual([{ workflow_id: 'file-itr', project: 'firm' }]);
   }, 60_000);
 
   test("another firm's preparer sees none of the firm's cases, runs or project", async () => {
