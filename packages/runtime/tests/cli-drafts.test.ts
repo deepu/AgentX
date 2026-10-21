@@ -73,7 +73,7 @@ describe('memwise init, draft, diff, convert', () => {
     expect(c.code, c.output).toBe(0);
     const none = await cli(['diff', root, 'nope-123']);
     expect(none.code).toBe(1);
-  });
+  }, 30_000); // four CLI processes: over bun's 5 s default on a loaded machine
 
   test('convert makes a create draft from a task.yaml that checks clean', async () => {
     const root = await intakeProject();
