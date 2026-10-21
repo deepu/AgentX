@@ -181,6 +181,13 @@ export function checkBindings(project: ProjectDefs): Diagnostic[] {
           if (!hasSourceField(f)) at('warning', 'unknown-source-field', `the template names {${f}}, which ${name} records don't have`, path);
         }
         if (template && !templateFields(template.template).length) at('error', 'invalid-transform', `the template of ${field} names no source field: write it like "{first} {last}"`, path);
+        const link = mapping.transform?.find((t): t is { link: string } => typeof t === 'object' && 'link' in t);
+        if (link) {
+          if (!m.records[link.link]) at('error', 'unknown-record-source', `${field} links to ${link.link}, which is not one of ${m.id}'s record sources (${Object.keys(m.records).join(', ') || 'none'})`, path);
+          else if (!binding.records[link.link]) at('warning', 'link-source-unmapped', `${field} links to ${link.link} records, which this binding doesn't map, so it stays empty`, path);
+          const type = entity.fields[field]?.type;
+          if (type && type.kind !== 'ref') at('error', 'binding-type-mismatch', `${field} takes a linked ${link.link} record, so it must be a Ref field (it is ${entity.fields[field]!.typeSource})`, path);
+        }
         if (mapping.direction && mapping.direction !== 'read' && entity.fields[field] && !source?.get) {
           at('warning', 'mapping-write-without-get', `${field} is mapped \`${mapping.direction}\`, but ${name} has no get tool to check the round trip against`, path);
         }

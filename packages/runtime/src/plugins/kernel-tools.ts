@@ -27,7 +27,7 @@ export interface ProposeBindingResult {
 export interface ClassifyToolsResult { draft: string; classified: string[]; refused: { tool: string; reason: string }[]; unclassified: string[] }
 export interface DryRunResult { outcome: 'passed' | 'failed'; hash: string; errors: number; examples_failed: number; summary: string }
 export interface FreezeResult { outcome: 'frozen' | 'stale'; version?: number; message?: string }
-export interface ResolveIdentityResult { linked: number; candidates: number; unmatched: number; created: number }
+export interface ResolveIdentityResult { linked: number; candidates: number; unmatched: number; created: number; refreshed?: number }
 
 /** What the tools call; the kernel's plugin service implements it. */
 export interface BindingOps {

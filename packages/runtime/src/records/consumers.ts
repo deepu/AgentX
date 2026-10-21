@@ -79,6 +79,27 @@ export async function pairRecord(db: Queryable, entities: Record<string, EntityT
   return 'none';
 }
 
+/**
+ * A `changed` event on each record of `from` paired with the record `event` is about, naming the
+ * followed fields that changed (`{ fields, via: 'link', cause }`). The cause makes it once only, so
+ * a replayed event announces nothing twice. True when it announced anything.
+ */
+export async function announceFollowed(db: Queryable, from: EntityTypeDef, to: EntityTypeDef, event: EntityEvent, fields: string[]): Promise<boolean> {
+  const { plugin, source } = linkPairing(keyOf(to));
+  const { rows } = await db.query<{ record_id: string }>(
+    `select record_id from mw.identity_links where plugin = $1 and source = $2 and external_id = $3 and entity = $4`,
+    [plugin, source, event.recordId, keyOf(from)]);
+  let any = false;
+  for (const r of rows) {
+    const ins = await db.query(
+      `insert into mw.entity_events (id, entity, record_id, kind, data, by) values ('evt_' || mw.ulid(), $1, $2, 'changed', $3, $4) on conflict do nothing`,
+      [keyOf(from), r.record_id, JSON.stringify({ fields, via: 'link', cause: event.id }), event.by ?? `source:domain:${domainOfEntity(to)}`]);
+    any ||= (ins.rowCount ?? 0) > 0;
+  }
+  if (any) await db.query(`select pg_notify('mw_changes', '{"kind":"entity"}')`);
+  return any;
+}
+
 /** Pairs every unpaired record of every linking entity (on index). Counts by outcome. */
 export async function pairAllLinks(deps: Pick<RecordsDeps, 'pool' | 'entities'>): Promise<Record<string, number>> {
   const entities = deps.entities();
@@ -137,6 +158,11 @@ export function recordConsumers(deps: Pick<RecordsDeps, 'pool' | 'entities' | 'e
             const r = await pairRecord(db, entities, from, link, to, event.recordId);
             changed ||= r === 'linked' || r === 'candidates';
           } else if (keyOf(to) === key) {
+            // Stage 6 (26 §9): a followed field changed over there, so it changed on the records
+            // following it here too. Announce it on them (once per cause), so their `changed:`
+            // triggers fire: "when Rave records a new coordinator, eTMF asks the site for a CV".
+            const followed = event.kind === 'changed' ? (event.fields ?? []).filter((f) => link.follow.includes(f)) : [];
+            if (followed.length) changed = (await announceFollowed(db, from, to, event, followed)) || changed;
             // A record of the linked side: the unpaired records of ours with its key.
             const row = await entityStore.get(db, to, event.recordId);
             if (!row) continue;

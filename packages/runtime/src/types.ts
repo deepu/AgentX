@@ -39,6 +39,11 @@ export interface KernelOptions extends PhaseFiveKernelOptions {
   testDatabaseUrl?: string;
   /** Phase 4: implementations for plugin tools with `run: { builtin: <name> }`, by tool name. */
   builtins?: ToolDefinition[];
+  /**
+   * Stage 6 (26 §9): read connectors whose binding says `sync:` again when due, once a minute
+   * (default true). Tests that read on their own (`identity.resolve`) turn it off.
+   */
+  sourceSyncs?: boolean;
   /** Phase 4: resolves an MCP server declared `{ source: <slug> }` (a connector set up in the app), with its credentials. */
   resolveMcpSource?: (slug: string) => Promise<import('@memwise/defs').McpServerDef | undefined>;
 }
@@ -495,8 +500,36 @@ export interface PluginsService {
   binding(pluginId: string, opts?: { draftId?: string }): Promise<BindingView | undefined>;
 }
 
+/** Stage 6 (26 §9): when a plugin's record sources were last read, and what that found. */
+export interface SourceSync {
+  plugin: string;
+  /** The last read that finished. */
+  at?: string;
+  /** When the sweep reads them again (a binding's `sync:`); absent: only on demand. */
+  nextDue?: string;
+  counts: Partial<ResolveCounts>;
+  /** The last read's error, until a read succeeds. */
+  error?: string;
+  errorAt?: string;
+}
+
+/**
+ * What one read of a plugin's record sources did. `refreshed` (Stage 6, present when any were):
+ * linked records whose plugin-owned fields changed.
+ */
+export interface ResolveCounts { linked: number; candidates: number; unmatched: number; created: number; refreshed?: number }
+
 export interface IdentityService {
-  resolve(input: { plugin: string; source?: string }): Promise<{ linked: number; candidates: number; unmatched: number; created: number }>;
+  /**
+   * Reads the plugin's mapped record sources: links, proposes or creates (22 §6), and (Stage 6)
+   * refreshes the fields the plugin owns on records already linked, so a change outside is an
+   * entity event here. Recorded as the plugin's last sync.
+   */
+  resolve(input: { plugin: string; source?: string }): Promise<ResolveCounts>;
+  /** Stage 6: the last read of each bound plugin with record sources. */
+  syncs(): Promise<SourceSync[]>;
+  /** Stage 6: reads every plugin whose binding's `sync:` is due (the kernel's minute sweep calls it). */
+  syncDue(now?: Date): Promise<{ plugin: string; counts?: ResolveCounts; error?: string }[]>;
   /**
    * Identity candidates, with the outside records' values. With `actor`, only for someone who may
    * decide identity matches (the bind-plugin owner role); anyone else gets none.
