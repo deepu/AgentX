@@ -160,6 +160,10 @@ The full list is in [24 §17](24-phase-6-interfaces.md).
 
 Built beside Phase 6, not a phase: a client's PubMed + data plugin question turned into a domain (D79–D86). Spec and exit test in [25](25-literature-poc.md).
 
+## Track · Projects, pages and apps
+
+The simplified app agreed on 21 October 2026 (D87–D98): apps hold projects, one project switcher, chat left and page right, pages built from questions, and regulated projects. Six stages, each with an exit test: shell, pages, projects inside apps, everything has a page, regulated projects, EDC and studies across apps. Spec, mocks and stages in [26](26-projects-and-pages.md). It comes before Phase 7, which is unchanged.
+
 ## Phase 7 · Server, hosting and learning
 
 - **Server and worker modes** on external Postgres and S3-compatible storage; workers scaled from DBOS queues.

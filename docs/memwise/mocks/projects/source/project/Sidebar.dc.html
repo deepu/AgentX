@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project sidebar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#1C1C1E}a:hover{color:#1C1C1E}
+</style>
+</helmet>
+<nav aria-label="MemWise" style="width: 236px; flex: 0 0 236px; height: 856px; box-sizing: border-box; padding: 4px 10px 14px; display: flex; flex-direction: column; gap: 2px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif; font-size: 14.5px; color: #1C1C1E; background: #F4F4F6;">
+  <a href="{{switchHref}}" style="display: flex; align-items: center; gap: 10px; padding: 6px 10px; margin-bottom: 10px; border-radius: 10px; border: 1px solid #E0E0E5; background: #FFFFFF; text-decoration: none; color: #1C1C1E;">
+    <span style="width: 22px; height: 22px; border-radius: 6px; background: {{tint}}; display: inline-flex; align-items: center; justify-content: center;"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path></svg></span>
+    <span style="flex: 1 1 auto; display: flex; flex-direction: column; line-height: 1.25;"><span style="font-size: 11.5px; color: #6B6B72; font-weight: 500;">{{appName}}</span><span style="font-weight: 600;">{{name}}</span></span>
+    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6B72" stroke-width="2"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg>
+  </a>
+  <a href="{{homeHref}}" style="{{s.home}}"><span style="width: 20px; display: inline-flex; justify-content: center; color: #52525B;"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"></path></svg></span><span style="flex: 1 1 auto;">Home</span></a>
+  <a href="{{waitingHref}}" style="{{s.waiting}}"><span style="width: 20px; display: inline-flex; justify-content: center; color: #52525B;"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="m8.5 12 2.5 2.5 4.5-5"></path></svg></span><span style="flex: 1 1 auto;">Waiting for you</span><span style="min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px; background: #6E47D1; color: #FFFFFF; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center;">{{waiting}}</span></a>
+
+  <sc-for list="{{sections}}" as="sec" hint-placeholder-count="3">
+    <div style="display: flex; align-items: center; padding: 14px 10px 3px; font-size: 12px; font-weight: 600; color: #6B6B72; letter-spacing: 0.03em;"><span style="flex: 1 1 auto;">{{sec.title}}</span><span style="font-size: 16px; line-height: 1;">+</span></div>
+    <sc-for list="{{sec.items}}" as="item" hint-placeholder-count="3">
+      <a href="{{item.href}}" style="{{item.style}}">
+        <sc-if value="{{item.caret}}" hint-placeholder-val="{{false}}"><span style="position: absolute; left: 0px; width: 10px; font-size: 9px; color: #6B6B72;">{{item.caret}}</span></sc-if>
+        <span style="width: 20px; display: inline-flex; justify-content: center; color: #6B6B72;">
+          <sc-if value="{{sec.isBoards}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"></path><path d="M14 3v5h5"></path></svg></sc-if>
+          <sc-if value="{{sec.isPlaybooks}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2Z"></path><path d="M22 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8Z"></path></svg></sc-if>
+          <sc-if value="{{sec.isRecords}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="8" ry="2.5"></ellipse><path d="M4 5.5v13c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-13"></path></svg></sc-if>
+          <sc-if value="{{sec.isProjects}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path></svg></sc-if>
+        </span>
+        <span style="flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{item.label}}</span>
+        <sc-if value="{{item.watched}}" hint-placeholder-val="{{false}}"><svg aria-label="Kept up to date" role="img" width="13" height="13" style="flex: 0 0 auto;" viewBox="0 0 24 24" fill="none" stroke="#6E47D1" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg></sc-if>
+        <span style="{{item.tagStyle}}">{{item.tag}}</span>
+      </a>
+    </sc-for>
+  </sc-for>
+
+  <div style="flex: 1 1 auto;"></div>
+  <div style="border-top: 1px solid #E0E0E5; padding-top: 10px; display: flex; flex-direction: column; gap: 2px;">
+    <a href="{{settingsHref}}" style="{{s.settings}}">
+      <span style="width: 20px; display: inline-flex; justify-content: center; color: #52525B;"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3"></path><path d="M12 19v3"></path><path d="m4.9 4.9 2.1 2.1"></path><path d="m17 17 2.1 2.1"></path><path d="M2 12h3"></path><path d="M19 12h3"></path><path d="m4.9 19.1 2.1-2.1"></path><path d="m17 7 2.1-2.1"></path></svg></span>
+      <span style="display: flex; flex-direction: column;"><span>{{settingsLabel}}</span><span style="font-size: 12px; color: #6B6B72; font-weight: 400;">{{settingsSub}}</span></span>
+    </a>
+    <span style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; font-size: 14px; color: #52525B;">
+      <span style="width: 22px; height: 22px; border-radius: 50%; background: #E6E6EA; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #3F3F46;">{{initials}}</span>{{user}}
+    </span>
+  </div>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"project":{"editor":"enum","options":["mw301","lit","all","edc","inbox"],"default":"mw301"},"active":{"editor":"text","default":"home"},"draft":{"editor":"boolean","default":false},"insp":{"editor":"boolean","default":false},"$preview":{"width":236,"height":856}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var project = this.props.project ?? 'mw301';
+    var active = this.props.active ?? 'home';
+    var draft = this.props.draft ?? false;
+    var insp = this.props.insp ?? false;
+    var base = 'display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; text-decoration: none; color: #1C1C1E;';
+    var on = ' background: #E6E6EA; font-weight: 500;';
+    function row(key, label, href, tag, watched, depth, caret) {
+      var indent = ' position: relative;' + (depth ? ' padding-left: ' + (10 + depth * 18) + 'px;' : '');
+      return { label: label, href: href, tag: tag || '', watched: !!watched, caret: caret || '', style: base + indent + (key === active ? on : ''), tagStyle: tag === 'Draft' ? 'font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 999px; background: #E6E6EA; color: #3F3F46; white-space: nowrap;' : 'font-size: 12px; color: #6B6B72; font-variant-numeric: tabular-nums; white-space: nowrap;' };
+    }
+    var boards = [row('b-index', 'TMF index', 'EIndex.dc.html', '', true, 0, '▸')];
+    if (draft) boards.push(row('b-ready', 'Site 104 visit readiness', 'Ask.dc.html', 'Draft'));
+    if (insp) boards.push(row('b-insp', 'Inspection readiness', 'EInspection.dc.html', 'Draft'));
+    boards.push(row('b-tmf', 'TMF by site', 'TmfBoard.dc.html', ''));
+    boards.push(row('b-safety', 'Safety literature', 'Main.dc.html', '', true));
+    boards.push(row('b-visits', 'Monitoring visits', 'Main.dc.html', '', true));
+    var litPages = [row('lp-glp', 'GLP-1', 'LTopic.dc.html', '', true, 0, '▾')];
+    litPages.push(row('lb-weight', 'Weight loss', 'LBoard.dc.html', '', true, 1));
+    litPages.push(row('lb-t2d', 'Type 2 diabetes', '#', '', true, 1));
+    if (draft) litPages.push(row('lb-side', 'Side effects', 'LAsk.dc.html', 'Draft', false, 1));
+    litPages.push(row('lp-sglt2', 'Heart failure', '#', '', true, 0, '▸'));
+    litPages.push(row('lb-pipe', 'Pipeline watch', '#', '', true));
+    var edcPages = [];
+    if (draft) edcPages.push(row('dp-q', 'Old queries', 'XQueries.dc.html', 'Draft'));
+    edcPages.push(row('dp-enrol', 'Enrolment', 'XEdcHome.dc.html', '', true));
+    edcPages.push(row('dp-lock', 'Data lock check', '#', '', true));
+    var data = {
+      mw301: {
+        appName: 'eTMF', switchHref: 'XSwitch.dc.html', name: 'Study MW-301', tint: '#2F6FAE', waiting: '3', homeHref: 'Main.dc.html', user: 'Anika Rao', initials: 'AR',
+        settingsLabel: 'Project settings', settingsSub: 'People, connections, rules',
+        sections: [
+          { title: 'PAGES', isBoards: true, items: boards },
+          { title: 'PLAYBOOKS', isPlaybooks: true, items: [
+            row('p-file', 'File a document', 'Playbook.dc.html', 'upload'),
+            row('p-chase', 'Chase missing documents', 'Playbook.dc.html', 'Fri'),
+            row('p-review', 'Review a visit report', 'Playbook.dc.html', ''),
+            row('p-visit', 'Prepare a site visit', 'Playbook.dc.html', ''),
+            row('p-more', '9 more', 'Playbook.dc.html', '')
+          ] },
+          { title: 'RECORDS', isRecords: true, items: [
+            row('r-sites', 'Sites', 'Sites.dc.html', '12'),
+            row('r-docs', 'Documents', 'Documents.dc.html', '1,840'),
+            row('r-staff', 'Site staff', 'Sites.dc.html', '46'),
+            row('r-papers', 'Papers', 'Documents.dc.html', '31')
+          ] }
+        ]
+      },
+      lit: {
+        appName: 'Literature', switchHref: 'XSwitch.dc.html', name: 'Literature search', tint: '#B4532A', waiting: '2', homeHref: 'LHome.dc.html', waitingHref: 'LChange.dc.html', settingsHref: 'LSettings.dc.html', user: 'Leah Park', initials: 'LP',
+        settingsLabel: 'Project settings', settingsSub: 'People, sources, rules',
+        sections: [
+          { title: 'PAGES', isBoards: true, items: litPages },
+          { title: 'PLAYBOOKS', isPlaybooks: true, items: [
+            row('lp-enq', 'Answer an enquiry', 'LPlaybook.dc.html', 'email'),
+            row('lp-digest', 'Monthly digest', 'LPlaybook.dc.html', '1st'),
+            row('lp-pack', 'Evidence pack', 'LPlaybook.dc.html', '')
+          ] },
+          { title: 'RECORDS', isRecords: true, items: [
+            row('lr-papers', 'Papers', 'LLibrary.dc.html', '214'),
+            row('lr-enq', 'Enquiries', 'LPlaybook.dc.html', '41')
+          ] }
+        ]
+      },
+      all: {
+        appName: 'eTMF', switchHref: 'XSwitch.dc.html', name: 'All studies', tint: '#2F6FAE', waiting: '8', homeHref: 'EPortfolio.dc.html', user: 'Anika Rao', initials: 'AR',
+        settingsLabel: 'App settings', settingsSub: 'Study templates, people, billing',
+        sections: [
+          { title: 'STUDIES', isProjects: true, items: [
+            row('x-301', 'Study MW-301', 'Main.dc.html', '3'),
+            row('x-207', 'Study MW-207', '#', '5'),
+            row('x-310', 'Study MW-310', 'NewProject.dc.html', 'Draft')
+          ] }
+        ]
+      },
+      edc: {
+        appName: 'EDC · Medidata Rave', switchHref: 'XSwitch.dc.html', name: 'Study MW-301', tint: '#2C7A7B', waiting: '8', homeHref: 'XEdcHome.dc.html', waitingHref: 'XWaitingAll.dc.html', settingsHref: '#', user: 'Anika Rao', initials: 'AR',
+        settingsLabel: 'Project settings', settingsSub: 'People, connection, rules',
+        sections: [
+          { title: 'PAGES', isBoards: true, items: edcPages },
+          { title: 'PLAYBOOKS', isPlaybooks: true, items: [
+            row('d-chase', 'Chase old queries', '#', 'Mon'),
+            row('d-review', 'Data review', '#', ''),
+            row('d-lock', 'Lock the database', '#', '')
+          ] },
+          { title: 'RECORDS', isRecords: true, items: [
+            row('dr-subj', 'Subjects', '#', '186'),
+            row('dr-sites', 'Sites', 'XSite.dc.html', '12'),
+            row('dr-q', 'Queries', 'XQueries.dc.html', '142')
+          ] }
+        ]
+      },
+      inbox: {
+        appName: 'All projects', switchHref: 'XSwitch.dc.html', name: 'Waiting for you', tint: '#6E47D1', waiting: '18', homeHref: 'XWaitingAll.dc.html', waitingHref: 'XWaitingAll.dc.html', settingsHref: '#', user: 'Anika Rao', initials: 'AR',
+        settingsLabel: 'Workspace settings', settingsSub: 'Apps, people, billing',
+        sections: [
+          { title: 'BY PROJECT', isProjects: true, items: [
+            row('i-etmf301', 'eTMF · MW-301', 'Waiting.dc.html', '3'),
+            row('i-etmf207', 'eTMF · MW-207', '#', '5'),
+            row('i-edc301', 'EDC · MW-301', 'XQueries.dc.html', '8'),
+            row('i-lit', 'Literature search', 'LChange.dc.html', '2')
+          ] }
+        ]
+      }
+    };
+    var d = data[project] || data.mw301;
+    var keys = ['home', 'waiting', 'settings'];
+    var s = {};
+    keys.forEach(function (k) { s[k] = base + (k === active ? on : ''); });
+    return { appName: d.appName, switchHref: d.switchHref, waitingHref: d.waitingHref || 'Waiting.dc.html', settingsHref: d.settingsHref || 'Settings.dc.html', user: d.user, initials: d.initials, name: d.name, tint: d.tint, waiting: d.waiting, homeHref: d.homeHref, settingsLabel: d.settingsLabel, settingsSub: d.settingsSub, sections: d.sections, s: s };
+  }
+}
+</script>
+</body>
+</html>

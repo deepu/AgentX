@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inspector view</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#5B34C9}a:hover{color:#43239E}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #F4F4F6; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif; color: #1C1C1E; display: flex; flex-direction: column;">
+  <div style="height: 52px; flex: 0 0 52px; display: flex; align-items: center; gap: 14px; padding: 0 20px; background: #FFFFFF; border-bottom: 1px solid #E5E5EA; font-size: 14px;">
+    <span style="font-weight: 800; color: #6E47D1; font-size: 18px;">M</span>
+    <span style="font-weight: 600;">Study MW-301 · Trial master file</span>
+    <span style="padding: 3px 9px; border-radius: 999px; background: #FDF1DF; color: #8A4B00; font-size: 12.5px; font-weight: 500;">Read only · every view and download is logged</span>
+    <span style="flex: 1 1 auto;"></span>
+    <span style="color: #52525B;">Inspector, MHRA · access ends Wed 18 Nov, 18:00</span>
+  </div>
+  <div style="flex: 1 1 auto; display: flex; gap: 8px; padding: 8px; min-height: 0;">
+    <nav aria-label="TMF zones" style="width: 236px; flex: 0 0 236px; display: flex; flex-direction: column; gap: 1px; font-size: 13.5px; padding: 6px 4px;">
+      <span style="font-size: 12px; font-weight: 600; color: #6B6B72; padding: 4px 10px 6px;">TMF INDEX</span><span style="padding: 6px 10px; border-radius: 6px; ">01 · Trial management</span><span style="padding: 6px 10px; border-radius: 6px; ">02 · Central trial documents</span><span style="padding: 6px 10px; border-radius: 6px; ">03 · Regulatory</span><span style="padding: 6px 10px; border-radius: 6px; ">04 · Approvals</span><span style="padding: 6px 10px; border-radius: 6px; background: #E6E6EA; font-weight: 500;">05 · Site management</span><span style="padding: 6px 10px; border-radius: 6px; ">06 · IP and trial supplies</span><span style="padding: 6px 10px; border-radius: 6px; ">07 · Safety reporting</span><span style="padding: 6px 10px; border-radius: 6px; ">08 · Testing</span><span style="padding: 6px 10px; border-radius: 6px; ">09 · Third parties</span><span style="padding: 6px 10px; border-radius: 6px; ">10 · Data management</span><span style="padding: 6px 10px; border-radius: 6px; ">11 · Statistics</span>
+      <span style="flex: 1 1 auto;"></span>
+      <span style="font-size: 12px; color: #6B6B72; padding: 8px 10px; line-height: 1.45;">You see filed documents, signatures and the audit trail. Drafts, chats and AI suggestions are not shown.</span>
+    </nav>
+    <section style="width: 460px; flex: 0 0 460px; background: #FFFFFF; border: 1px solid #E5E5EA; border-radius: 12px; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;">
+      <span style="font-size: 13px; color: #52525B;">05 Site management  ›  Site 101</span>
+      <label for="isearch" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Search the TMF</label>
+      <input id="isearch" placeholder="Search filed documents" style="font: inherit; font-size: 14px; padding: 8px 11px; border: 1px solid #D4D4D8; border-radius: 8px;">
+      <div style="border: 1px solid #E5E5EA; border-radius: 10px; font-size: 13px;"><div style="display: grid; grid-template-columns: 1fr 80px; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2; background: #F5F1FF;"><span><strong>Protocol signature page</strong><br><span style="font-size: 12px; color: #52525B;">Site 101 · v2 · signed 6 Oct</span></span><span><span style="color: #1B6B3A;">Filed</span></span></div><div style="display: grid; grid-template-columns: 1fr 80px; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>Delegation log<br><span style="font-size: 12px; color: #52525B;">Site 101 · v4 · signed 2 Sep</span></span><span><span style="color: #1B6B3A;">Filed</span></span></div><div style="display: grid; grid-template-columns: 1fr 80px; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #F0F0F2;"><span>CV, PI<br><span style="font-size: 12px; color: #52525B;">Site 101 · v1 · signed 12 Jun</span></span><span><span style="color: #1B6B3A;">Filed</span></span></div><div style="display: grid; grid-template-columns: 1fr 80px; gap: 10px; padding: 9px 14px;"><span>Lab normal ranges<br><span style="font-size: 12px; color: #52525B;">Site 101 · v3 · signed 4 Aug</span></span><span><span style="color: #1B6B3A;">Filed</span></span></div></div>
+      <span style="font-size: 12.5px; color: #6B6B72;">Showing 4 of 61 at site 101</span>
+      <div style="margin-top: auto; border-top: 1px solid #F0F0F2; padding-top: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+        <span style="font-weight: 600;">Your requests</span>
+        <span>Training records for the site 104 coordinator · <span style="color: #1B6B3A;">answered by Tom Okafor, 10:20</span></span>
+        <span>Why was the site 109 ethics letter filed late? · <span style="color: #8A4B00;">with the study team</span></span>
+      </div>
+    </section>
+    <main style="flex: 1 1 auto; min-width: 0; background: #FFFFFF; border: 1px solid #E5E5EA; border-radius: 12px; padding: 16px 22px; display: flex; flex-direction: column; gap: 12px;">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 600;">Protocol signature page, site 101</h2>
+      <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13.5px;">
+  <div style="height: 300px; border: 1px solid #E5E5EA; border-radius: 8px; background: #FAFAFA; display: flex; flex-direction: column; gap: 10px; padding: 22px 26px; font-size: 12px; color: #6B6B72;">
+    <span style="font-weight: 600; color: #3F3F46; font-size: 13px;">PROTOCOL SIGNATURE PAGE</span><span>Protocol MW-301, version 3.0</span>
+    <span style="height: 8px; width: 90%; background: #EDEDF1; border-radius: 2px;"></span><span style="height: 8px; width: 80%; background: #EDEDF1; border-radius: 2px;"></span><span style="height: 8px; width: 85%; background: #EDEDF1; border-radius: 2px;"></span>
+    <span style="margin-top: auto;">Principal investigator: Dr [Name] · signed [date]</span></div>
+  <div style="border: 1px solid #E5E5EA; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px;"><span><strong>Filed by Tom Okafor</strong> · Approved for filing · 6 Oct 2026, 10:42</span><span style="font-size: 12px; color: #52525B;">Part 11 signature · version 2 locked · v1 sent back on 2 Oct (protocol 2.0)</span></div>
+  <div style="display: flex; gap: 8px;"><span style="padding: 7px 12px; border-radius: 8px; border: 1px solid #D4D4D8;">Audit trail</span><span style="padding: 7px 12px; border-radius: 8px; border: 1px solid #D4D4D8;">Download</span><span style="flex: 1 1 auto;"></span><span style="padding: 7px 12px; border-radius: 8px; background: #1C1C1E; color: #FFFFFF; font-weight: 500;">Ask the study team</span></div>
+</div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
