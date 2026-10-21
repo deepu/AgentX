@@ -1,7 +1,7 @@
 // Stage 3 (docs/memwise/26-projects-and-pages.md §3, D93): apps, projects, overrides, the checks,
 // template updates and save as template, on copies of the eTMF example.
 import { afterAll, describe, expect, test } from 'bun:test';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
@@ -242,7 +242,7 @@ describe('template updates', () => {
     expect(for301.workflowsChanged).toEqual([]);
 
     // MW-301 takes it: its override says what the template now says, so it goes.
-    expect(await takeTemplateUpdate(project, 'mw301')).toEqual({ version: 5, removed: ['workflows/chase-missing/workflow.yaml'] });
+    expect(await takeTemplateUpdate(project, 'mw301')).toEqual({ version: 5, removed: ['workflows/chase-missing/workflow.yaml'], leftOutGone: [] });
     ({ project } = await loadProject(dir));
     expect(project.projects!.mw301).toMatchObject({ version: 5, overrides: [] });
     expect(waitFor(project, 'mw301')).toMatchObject({ afterMs: 5 * 86_400_000 });
@@ -253,6 +253,45 @@ describe('template updates', () => {
     expect(waitFor(project, 'mw207')).toMatchObject({ afterMs: 5 * 86_400_000 });
     const { all } = await load(dir);
     expect(codes(all)).toEqual([]);
+  });
+
+  test('publishing refuses any path outside the template: .., ., empty segments, backslashes, absolute paths', async () => {
+    const dir = etmfCopy();
+    const { project } = await loadProject(dir);
+    const site = readFileSync(join(dir, 'domains/etmf/entities/site.yaml'), 'utf8');
+    for (const path of [
+      'workflows/x/../../..', 'workflows/../entities/site.yaml', 'workflows/chase-missing/../../entities/site.yaml', 'pages/../entities/site.yaml',
+      'workflows/x/./a.yaml', 'workflows//a.yaml', 'workflows\\x\\..\\..\\entities\\site.yaml', '/etc/passwd', `${dir}/domains/etmf/entities/site.yaml`,
+      'entities/site.yaml', '../../../outside.yaml', '',
+    ]) {
+      await expect(publishAppVersion(project, 'etmf', { [path]: 'x: 1\n' })).rejects.toThrow(/not a template file|outside the app/);
+      await expect(publishAppVersion(project, 'etmf', { [path]: null })).rejects.toThrow(/not a template file|outside the app/);
+    }
+    // One bad path refuses the whole publish before anything is written or kept.
+    await expect(publishAppVersion(project, 'etmf', { 'policy.yaml': 'x: 1\n', 'workflows/../entities/site.yaml': null })).rejects.toThrow('not a template file');
+    expect(readFileSync(join(dir, 'domains/etmf/entities/site.yaml'), 'utf8')).toBe(site);
+    expect(existsSync(join(dir, 'domains/etmf/versions/4'))).toBe(false);
+    expect(existsSync(join(dir, '..', 'outside.yaml'))).toBe(false);
+    expect((await loadProject(dir)).project.apps!.etmf!.version).toBe(4);
+  });
+
+  test("a project whose overridden file the new version drops loses that override when it takes it, and still checks", async () => {
+    const dir = etmfCopy();
+    let { project } = await loadProject(dir);
+    // MW-301 overrides chase-missing; version 5 drops the playbook, and Phase 1's left-out one too.
+    write(dir, { 'projects/mw301/overrides/workflows/watch-expiries/workflow.yaml': readFileSync(join(dir, 'domains/etmf/workflows/watch-expiries/workflow.yaml'), 'utf8').replace(/^title: .*$/m, 'title: Watch expiries (MW-301)') });
+    ({ project } = await loadProject(dir));
+    const files: Record<string, null> = {};
+    for (const f of ['workflow.yaml', ...readdirSync(join(dir, 'domains/etmf/workflows/watch-expiries')).filter((x) => x !== 'workflow.yaml')]) {
+      if (statSync(join(dir, 'domains/etmf/workflows/watch-expiries', f)).isFile()) files[`workflows/watch-expiries/${f}`] = null;
+    }
+    expect(await publishAppVersion(project, 'etmf', files)).toBe(5);
+    ({ project } = await loadProject(dir));
+    const r = await takeTemplateUpdate(project, 'mw301');
+    expect(r.removed).toContain('workflows/watch-expiries/workflow.yaml');
+    expect(existsSync(join(dir, 'projects/mw301/overrides/workflows/watch-expiries/workflow.yaml'))).toBe(false);
+    const { all } = await load(dir);
+    expect(codes(all).filter((c) => c.includes('projects/mw301'))).toEqual([]);
   });
 
   test('a copy of MW-301 takes its way of working, never its records; save as template makes a version or a new app', async () => {
@@ -267,6 +306,9 @@ describe('template updates', () => {
     expect(waitFor(project, id)).toMatchObject({ afterMs: 5 * 86_400_000 });
     expect(project.projects!.mw330).toMatchObject({ from: { template: 'phase1', version: 4 }, without: ['workflows/chase-missing'] });
     await expect(createProjectFiles(project, { id: 'mw301', name: 'Again', app: 'etmf' })).rejects.toThrow('already exists');
+    // An app's id is its own project's (D107): no project.yaml may take it.
+    await expect(createProjectFiles(project, { id: 'etmf', name: 'eTMF', app: 'etmf' })).rejects.toThrow('is the id of an app');
+    await expect(createProjectFiles(project, { id: 'edc', name: 'EDC', app: 'etmf' })).rejects.toThrow('is the id of an app');
 
     // MW-301 as the next eTMF version: only its own change differs from the template.
     expect(await saveAsTemplate(project, 'mw301')).toEqual({ app: 'etmf', version: 5 });

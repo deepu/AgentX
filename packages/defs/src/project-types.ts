@@ -27,7 +27,11 @@ export const PROJECT_ID_PATTERN = /^[a-z][a-z0-9_-]{0,62}$/;
  * playbooks' files, the app's policy, pages and views. Record types (`entities/`) are the app's
  * (D95: fixed by the template), because every project of the app shares their tables.
  */
-export const OVERRIDABLE = /^(workflows\/[^/]+\/.+|policy\.ya?ml|pages\/[^/]+\.ya?ml|views\/[^/]+\.ya?ml)$/;
+// One path segment: not empty, not `.` or `..`, no slash or backslash.
+const SEGMENT = String.raw`(?!\.{1,2}(?:/|$))[^/\\]+`;
+export const OVERRIDABLE = new RegExp(
+  String.raw`^(workflows/${SEGMENT}(?:/${SEGMENT})+|policy\.ya?ml|pages/${SEGMENT}\.ya?ml|views/${SEGMENT}\.ya?ml)$`,
+);
 
 /**
  * Playbooks of an app that act on the app itself, not inside one project: `create-project` (a

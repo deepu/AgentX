@@ -132,8 +132,12 @@ export async function loadMwProjects(abs: string, project: ProjectDefs, diagnost
   if (Object.keys(out).length) project.projects = out;
 }
 
-/** The implicit project of an app: the live template, no overrides; its playbooks are the template's own. */
-function implicitProject(project: ProjectDefs, app: AppDef): MwProjectDef {
+/**
+ * The implicit project of an app: the live template, no overrides; its playbooks are the
+ * template's own. Also the app's own project once projects run the app (D107), which the runtime
+ * lists while it still holds records or runs from before.
+ */
+export function implicitProject(project: ProjectDefs, app: AppDef): MwProjectDef {
   const domain = project.domains![app.id]!;
   const workflows = Object.fromEntries(domain.workflows.map((w) => [w, project.workflows[w]!]).filter(([, w]) => !!w)) as Record<string, WorkflowDef>;
   return {

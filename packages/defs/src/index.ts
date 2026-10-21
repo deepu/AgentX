@@ -39,7 +39,7 @@ export { jsonSchemas, formats, type FormatName } from './formats.ts';
 export { indexProject, DOMAIN_POLICY_ID, WORKSPACE_POLICY_ID, domainPolicyId, projectPolicyId } from './index-project.ts';
 // Stage 3: apps and projects (docs/memwise/26-projects-and-pages.md §3).
 export { parseAppFile, parseProjectFile, defaultApp, projectSource, type ProjectFile } from './parse-projects.ts';
-export { projectWorkflowHash, templateDir } from './projects.ts';
+export { implicitProject, projectWorkflowHash, templateDir } from './projects.ts';
 export { checkProjects } from './check-projects.ts';
 export {
   templateUpdate, publishAppVersion, takeTemplateUpdate, createProjectFiles, updateProjectFile, saveAsTemplate, sameFileContent, projectIdFor,

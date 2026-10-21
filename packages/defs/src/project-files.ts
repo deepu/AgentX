@@ -6,7 +6,7 @@
  */
 import { existsSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { parse as parseYaml, parseDocument, stringify as stringifyYaml } from 'yaml';
 import { splitFrontMatter } from './parse-step.ts';
 import {
@@ -52,6 +52,21 @@ export function sameFileContent(path: string, a: string, b: string): boolean {
     }
   } catch { /* not parseable: compare as text */ }
   return norm(a) === norm(b);
+}
+
+/**
+ * A template file's path under an app folder, checked: relative, `/`-separated, no empty, `.` or
+ * `..` segment, one of the template paths (OVERRIDABLE), and resolving inside the folder.
+ */
+export function templateTarget(dir: string, path: string): string {
+  const segments = path.split('/');
+  if (!path || isAbsolute(path) || path.includes('\\') || segments.some((s) => s === '' || s === '.' || s === '..') || !OVERRIDABLE.test(path)) {
+    throw new Error(`${JSON.stringify(path)} is not a template file (workflows/…, policy.yaml, pages/, views/)`);
+  }
+  const base = resolve(dir);
+  const target = resolve(base, path);
+  if (!target.startsWith(base + sep)) throw new Error(`${JSON.stringify(path)} is outside the app`);
+  return target;
 }
 
 function appOf(defs: ProjectDefs, appId: string) {
@@ -115,9 +130,8 @@ export async function templateUpdate(defs: ProjectDefs, projectId: string): Prom
 export async function publishAppVersion(defs: ProjectDefs, appId: string, files: Record<string, string | null>): Promise<number> {
   const { app, domain } = appOf(defs, appId);
   const dir = join(defs.root, domain.dir);
-  for (const path of Object.keys(files)) {
-    if (!OVERRIDABLE.test(path)) throw new Error(`${path} is not a template file (workflows/…, policy.yaml, pages/, views/)`);
-  }
+  // Every path is checked before anything is written.
+  const targets = new Map(Object.keys(files).map((path) => [path, templateTarget(dir, path)]));
   const keep = join(dir, APP_VERSIONS_DIR, String(app.version));
   if (existsSync(keep)) throw new Error(`${domain.dir}/${APP_VERSIONS_DIR}/${app.version} already exists`);
   for (const f of await templateFiles(dir)) {
@@ -126,7 +140,7 @@ export async function publishAppVersion(defs: ProjectDefs, appId: string, files:
   }
   if (existsSync(join(dir, 'app.yaml'))) await cp(join(dir, 'app.yaml'), join(keep, 'app.yaml'));
   for (const [path, content] of Object.entries(files)) {
-    const target = join(dir, path);
+    const target = targets.get(path)!;
     if (content === null) { await rm(target, { force: true }); continue; }
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, content);
@@ -141,18 +155,33 @@ export async function publishAppVersion(defs: ProjectDefs, appId: string, files:
  * now says what the template says is removed ("This project already does that"). Overrides that
  * still differ stay, so the project keeps its own way. Returns the overrides removed.
  */
-export async function takeTemplateUpdate(defs: ProjectDefs, projectId: string): Promise<{ version: number; removed: string[] }> {
+export async function takeTemplateUpdate(defs: ProjectDefs, projectId: string): Promise<{ version: number; removed: string[]; leftOutGone: string[] }> {
   const p = projectOf(defs, projectId);
-  const { app } = appOf(defs, p.app);
+  const { app, domain } = appOf(defs, p.app);
   const update = await templateUpdate(defs, projectId);
   const removed: string[] = [];
+  // An override goes when the template now says the same, and when the template file is gone:
+  // it would replace nothing, and the project wouldn't check.
   for (const c of update?.changes ?? []) {
-    if (c.project !== 'overridden-same') continue;
+    if (c.project !== 'overridden-same' && !(c.kind === 'removed' && p.overrides.includes(c.path))) continue;
     await rm(join(defs.root, p.dir!, OVERRIDES_DIR, c.path), { force: true });
     removed.push(c.path);
   }
-  await editYaml(join(defs.root, p.file!), (doc) => doc.set('version', app.version));
-  return { version: app.version, removed };
+  // Likewise what it leaves out that the new version no longer has.
+  const live = join(defs.root, domain.dir);
+  const leftOutGone = p.without.filter((w) => {
+    const [kind, id] = w.split('/') as [string, string];
+    return kind === 'workflows' ? !existsSync(join(live, 'workflows', id, 'workflow.yaml'))
+      : !existsSync(join(live, kind, `${id}.yaml`)) && !existsSync(join(live, kind, `${id}.yml`));
+  });
+  await editYaml(join(defs.root, p.file!), (doc) => {
+    doc.set('version', app.version);
+    if (leftOutGone.length) {
+      const kept = p.without.filter((w) => !leftOutGone.includes(w));
+      if (kept.length) doc.set('without', kept); else doc.delete('without');
+    }
+  });
+  return { version: app.version, removed, leftOutGone };
 }
 
 // ---------------------------------------------------------------- making projects
@@ -187,6 +216,8 @@ export function projectIdFor(name: string, taken: Iterable<string>): string {
 /** Writes `projects/<id>/` for a new project. Records are never copied; the runtime makes the `mw.projects` row. */
 export async function createProjectFiles(defs: ProjectDefs, input: CreateProjectInput): Promise<string> {
   if (!PROJECT_ID_PATTERN.test(input.id)) throw new Error(`\`${input.id}\` can't be a project id`);
+  // An app's id is its own project's id (D107), also once other projects run the app.
+  if (defs.apps?.[input.id] || defs.domains?.[input.id]) throw new Error(`\`${input.id}\` is the id of an app; a project needs another id`);
   const dir = join(defs.root, PROJECTS_DIR, input.id);
   if (existsSync(dir) || defs.projects?.[input.id]) throw new Error(`a project ${input.id} already exists`);
   const source = input.copyFrom ? projectOf(defs, input.copyFrom) : undefined;
