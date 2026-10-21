@@ -409,7 +409,7 @@ export function TransitionButtons({ transitions, onTransition, busy, size = 'sm'
           <span key={tr.name} className="inline-flex flex-col items-start gap-0.5">
             <Button
               size={size}
-              variant={tr.allowed ? 'secondary' : 'ghost'}
+              variant={tr.allowed ? (tr.primary ? 'default' : 'secondary') : 'ghost'}
               disabled={!tr.allowed || !onTransition || busy}
               title={why}
               onClick={() => onTransition?.(tr)}

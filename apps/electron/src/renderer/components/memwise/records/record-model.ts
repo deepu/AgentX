@@ -222,7 +222,8 @@ export function lifecycleSteps(states: string[], current?: string, passed?: stri
 }
 
 /** "Move to Open" for a transition button. */
-export function transitionLabel(tr: Pick<MwTransitionOption, 'to' | 'label'>, t: TFunction): string {
+export function transitionLabel(tr: Pick<MwTransitionOption, 'to' | 'label' | 'custom'>, t: TFunction): string {
+  if (tr.custom) return tr.label
   return t('memwise.record.moveTo', { state: statusLabel(tr.to) })
 }
 
