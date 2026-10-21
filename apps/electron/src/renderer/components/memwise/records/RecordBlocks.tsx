@@ -266,7 +266,8 @@ export function FieldRows({ fields, regulated, actions, emptyText }: {
                 )}
               </dd>
               <div className="col-start-2 flex flex-wrap gap-1 justify-self-start @2xl/fields:col-start-3">
-                <FieldSourceBadge source={f.source} />
+                {/* Nothing there: no "where it came from" badge (a calculated field still says so). */}
+                {(f.hidden || f.calculated || !(f.value === null || f.value === undefined || f.value === '')) && <FieldSourceBadge source={f.source} />}
                 {f.followed && <Pill className="bg-fill-hover text-secondary" title={t('memwise.record.followedHint')}>{t('memwise.record.followed')}</Pill>}
               </div>
             </div>

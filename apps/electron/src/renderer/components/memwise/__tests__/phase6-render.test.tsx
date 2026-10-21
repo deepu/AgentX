@@ -48,6 +48,10 @@ describe('record page', () => {
     expect(html).toContain('data-source=')
     // The columns sit side by side only when the record's container is wide: they stack when narrow.
     expect(html).toContain('@3xl/record:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]')
+    // An empty field has no "where it came from" badge.
+    expect(html).toContain('data-field="activated_on"')
+    expect(/data-field="activated_on"(?:(?!data-field=)[^])*?data-source=/.test(html)).toBe(false)
+    expect(/data-field="target_open_date"(?:(?!data-field=)[^])*?data-source=/.test(html)).toBe(true)
     // A related row's date reads as a date, by its declared type.
     expect(html).toContain('Oct 2, 2026')
     expect(html).not.toContain('2026-10-02')

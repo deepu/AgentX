@@ -186,6 +186,7 @@ export const sampleSitePage: MwRecordPage = {
     field({ name: 'principal_investigator', label: 'Principal investigator', type: 'Ref<Person>', value: 'per_chen', ref: meiChen, source: { kind: 'step', stepRunId: 'sr_pi', workflowId: 'activate-site', label: 'Activate a site' } }),
     field({ name: 'status', label: 'Status', type: 'Lifecycle', value: 'activating', source: memwiseOwned, controlled: true }),
     field({ name: 'target_open_date', label: 'Target open date', type: 'Date', value: '2026-11-14', source: priya, editable: true, controlled: true }),
+    field({ name: 'activated_on', label: 'Activated on', type: 'Date', value: null, source: memwiseOwned, editable: true }),
     field({ name: 'start_up_pack', label: 'Start-up pack', type: 'Percentage', value: 90, source: calculated, calculated: true, description: 'Percent of start-up documents filed' }),
     field({ name: 'tmf_complete', label: 'TMF complete', type: 'Percentage', value: 52, source: calculated, calculated: true }),
     field({ name: 'address', type: 'Address', value: { street: '450 Brookline Ave', city: 'Boston', country: 'US' }, source: { kind: 'link', domain: 'edc', domainName: 'EDC', entity: 'edc.site', recordId: 'edc_site_us012' }, followed: true }),
