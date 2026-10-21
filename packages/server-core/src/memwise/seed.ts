@@ -126,12 +126,13 @@ export function addMissingMetaPlaybooks(
 }
 
 /**
- * Whether a change in the project folder should re-index it: only `domain/` and `workflows/`
- * are live. Drafts (`drafts/`) are edited all the time by chats and the editor and never
- * affect the index; publishing writes to `workflows/`, which does.
+ * Whether a change in the project folder should re-index it: `domain/` and `workflows/`, and in a
+ * workspace project `domains/`, `plugins/` and `workspace.yaml`, are live. Drafts (`drafts/`) are
+ * edited all the time by chats and the editor and never affect the index; publishing writes to
+ * `workflows/`, which does.
  */
 export function affectsIndex(relativePath: string | null | undefined): boolean {
   if (!relativePath) return true // the platform didn't say which file: be safe
   const first = relativePath.replace(/\\/g, '/').replace(/^\.\//, '').split('/')[0]
-  return first === 'domain' || first === 'workflows'
+  return ['domain', 'workflows', 'domains', 'plugins', 'workspace.yaml'].includes(first)
 }

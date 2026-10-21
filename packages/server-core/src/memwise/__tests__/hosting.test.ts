@@ -241,9 +241,12 @@ describe('project folder', () => {
     expect(addMissingMetaPlaybooks(project, example)).toEqual([])
   })
 
-  it('re-indexes only for domain/ and workflows/, never for drafts/', () => {
+  it('re-indexes for definitions (domain/, workflows/, domains/, plugins/, workspace.yaml), never for drafts/', () => {
     expect(affectsIndex('workflows/client-intake/steps/check.md')).toBe(true)
     expect(affectsIndex('domain/roles.yaml')).toBe(true)
+    expect(affectsIndex('domains/literature/entities/topic.yaml')).toBe(true)
+    expect(affectsIndex('plugins/claude__pubmed/1.0.0/memwise-plugin.yaml')).toBe(true)
+    expect(affectsIndex('workspace.yaml')).toBe(true)
     expect(affectsIndex('drafts/client-intake-abc/workflows/client-intake/steps/check.md')).toBe(false)
     expect(affectsIndex('drafts')).toBe(false)
     expect(affectsIndex('README.md')).toBe(false)
