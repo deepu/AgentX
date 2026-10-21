@@ -168,7 +168,10 @@ describe.skipIf(!pgAvailable)('Phase 6 records', () => {
     const inst = await kernel.records.create({ entity: 'lab.Instrument', values: { serial: 'SN-1', model: 'Autoclave 9', location: 'Room 2' } }, tech);
     expect(inst).toMatchObject({ applied: true });
     expect(await kernel.records.transition({ entity: 'lab.Instrument', id: inst.id!, transition: 'to_retired' }, tech)).toMatchObject({ applied: true });
-    expect(await kernel.records.transition({ entity: 'lab.Instrument', id: inst.id!, transition: 'to_active' }, analyst)).toMatchObject({ applied: false });
+    const notYours = await kernel.records.transition({ entity: 'lab.Instrument', id: inst.id!, transition: 'to_active' }, analyst);
+    expect(notYours).toMatchObject({ applied: false, status: 'forbidden' });
+    // Says where the move goes, in words a person reads on the record page.
+    expect(notYours.message).toMatch(/can move an? Instrument to active/);
     expect(await kernel.records.transition({ entity: 'lab.Instrument', id: inst.id!, transition: 'to_active' }, tech)).toMatchObject({ applied: true });
   });
 
@@ -302,6 +305,8 @@ describe.skipIf(!pgAvailable)('Phase 6 records', () => {
     const mineView = await kernel.records.saveView('qa', { id: 'my-high', title: 'High scores', entity: 'Report', filter: 'score >= 95', layout: 'table' }, lead);
     const views = await kernel.records.views('qa', lead, { entity: 'Report' });
     expect(views.map((v) => [v.id, v.personal])).toEqual([['open-reports', false], [mineView.id, true]]);
+    // Named by key, as the screens match them, whatever the file wrote ("Report").
+    expect(views.map((v) => v.entity)).toEqual(['qa.Report', 'qa.Report']);
     expect(await kernel.records.views('qa', lead2)).toEqual([expect.objectContaining({ id: 'open-reports' })]);
     await expect(kernel.records.saveView('qa', { id: 'open-reports', title: 'x', entity: 'Report', layout: 'table' }, lead)).rejects.toThrow(/shared view/);
 

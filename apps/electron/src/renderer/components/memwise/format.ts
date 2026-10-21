@@ -345,6 +345,7 @@ export function waitingOnLabel(c: Pick<MwCaseSummary, 'waitingOn' | 'status'>, t
     case 'role': return t('memwise.cases.waitingOnRole', { role: roleTitle(c.waitingOn.role, roles) ?? '' })
     case 'agent': return t('memwise.cases.waitingOnAgent')
     case 'system': return t('memwise.cases.waitingOnSystem')
+    case 'condition': return t('memwise.cases.waitingOnCondition')
   }
 }
 

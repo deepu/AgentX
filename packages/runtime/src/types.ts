@@ -710,6 +710,8 @@ export interface RecordReview {
     quote?: string;
     document?: string;
     required?: boolean;
+    /** A reference's record, by its title. */
+    ref?: RecordRef;
   }[];
   /** The checks of the agent step(s) that prepared it, with evidence. */
   checks: (CheckResult & { stepRunId: string })[];
@@ -733,7 +735,8 @@ export interface RecordPage {
   fields: RecordField[];
   /** Breadcrumbs: the parent chain, root first. */
   parents: RecordRef[];
-  related: Record<string, { entity: string; total: number; rows: (RecordRef & { values: Record<string, unknown> })[] }>;
+  /** `types`: each row value's declared type ("Date", "Enum[...]"), so the page formats it. */
+  related: Record<string, { entity: string; total: number; rows: (RecordRef & { values: Record<string, unknown> })[]; types?: Record<string, string> }>;
   cases: { caseId: string; runId: string; workflowId: string; title: string; state: string; status: RunStatus; updatedAt: string; waitingOn?: string }[];
   lifecycle?: { states: string[]; current?: string; transitions: RecordTransitionOption[] };
   flags: RecordFlag[];
@@ -772,10 +775,11 @@ export interface RecordQuery {
 export interface RecordQueryResult {
   entity: string;
   columns: { name: string; type: string; calculated?: boolean; followed?: boolean }[];
-  rows: (RecordRef & { values: Record<string, unknown>; hidden: string[] })[];
+  /** `refs`: the records a row's Ref fields point at, by title (absent when none). */
+  rows: (RecordRef & { values: Record<string, unknown>; hidden: string[]; refs?: Record<string, RecordRef> })[];
   total: number;
-  /** With `group`: the groups in order, with counts. */
-  groups?: { key: string | null; count: number }[];
+  /** With `group`: the groups in order, with counts (and the title, when grouped by a Ref). */
+  groups?: { key: string | null; count: number; title?: string }[];
 }
 
 export type TreeNode =

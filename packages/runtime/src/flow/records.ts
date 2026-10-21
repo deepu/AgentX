@@ -16,8 +16,10 @@ export const columnOf = (def: EntityTypeDef, field: string) => entityColumns(def
 /** `{site_number} · {name}` filled from the values; default the first Text field, else the id. */
 export function titleOf(def: EntityTypeDef, id: string, values: Record<string, unknown>): string {
   if (def.title) {
-    const t = def.title.replace(/\{([A-Za-z0-9_]+)\}/g, (_, f: string) => (values[f] === null || values[f] === undefined ? '' : String(values[f]))).trim();
-    if (t.replace(/[\s·\-–,|]/g, '')) return t;
+    // A field still empty leaves no dangling separator ("US-012 ·").
+    const t = def.title.replace(/\{([A-Za-z0-9_]+)\}/g, (_, f: string) => (values[f] === null || values[f] === undefined ? '' : String(values[f])))
+      .replace(/^[\s·:|,–—-]+|[\s·:|,–—-]+$/g, '').trim();
+    if (t) return t;
   }
   const text = Object.entries(def.fields).find(([k, f]) => f.type.kind === 'scalar' && (f.type.name === 'Text' || f.type.name === 'PersonName') && values[k]);
   return text ? String(values[text[0]]) : id;

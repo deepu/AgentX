@@ -53,7 +53,12 @@ export const TONE_PILL: Record<StatusTone, string> = {
 
 /** The base of a type expression: `Ref<Person>` → "Ref", `List<Flag>` → "List". */
 export function baseType(type: string): string {
-  return type.replace(/[<(].*$/, '').trim()
+  return type.replace(/[<([].*$/, '').trim()
+}
+
+/** A percent type: `Percentage` as the definitions write it (`Percent` is accepted too). */
+export function isPercentType(base: string): boolean {
+  return base === 'Percentage' || base === 'Percent'
 }
 
 /** The target of a `Ref<X>`/`List<X>` type, else undefined. */
@@ -78,10 +83,10 @@ export function formatTypedValue(type: string, value: unknown, t: TFunction, loc
   if (ref) return ref.title
   if (value === null || value === undefined || value === '') return t('memwise.case.noValue')
   const base = baseType(type)
-  if (base === 'Percent' && typeof value === 'number') return formatPercent(value, locale)
+  if (isPercentType(base) && typeof value === 'number') return formatPercent(value, locale)
   if (base === 'Date' && typeof value === 'string') return formatDate(value, locale)
   if ((base === 'DateTime' || base === 'Timestamp') && typeof value === 'string') return absoluteTime(value, locale)
-  if ((base === 'Lifecycle' || base === 'Status') && typeof value === 'string') return statusLabel(value)
+  if ((base === 'Lifecycle' || base === 'Status' || base === 'Enum') && typeof value === 'string') return statusLabel(value)
   if (base === 'Money' && isMoney(value)) return formatMoney(value, locale)
   if (base === 'Address' && typeof value === 'object' && !Array.isArray(value)) {
     return Object.values(value as Record<string, unknown>).filter(v => typeof v === 'string' && v).join(', ')
@@ -151,6 +156,17 @@ export function areaBlocks(layout: MwPageLayout, area: AreaName): MwPageBlock[] 
   return blocks
 }
 
+/**
+ * A `related` block's names: `versions` and `signatures` are the record's own history (24 §6:
+ * "`related` also accepts `versions` and `signatures`"), drawn by the History block, once; the
+ * rest are relationships.
+ */
+export function splitRelated(layout: MwPageLayout, names: string[]): { relationships: string[]; history: boolean } {
+  const own = new Set(['versions', 'signatures'])
+  const historyBlock = Object.values(layout.areas).flat().some(b => b?.kind === 'history')
+  return { relationships: names.filter(n => !own.has(n)), history: !historyBlock && names.some(n => own.has(n)) }
+}
+
 /** The header's extra fields (not title or status), with their values. */
 export function headerFields(page: MwRecordPage): MwRecordField[] {
   return page.layout.header
@@ -192,9 +208,59 @@ export function transitionLabel(tr: Pick<MwTransitionOption, 'to' | 'label'>, t:
 /** Why a transition can't be made now, in words: the server's reason, else its guard. */
 export function transitionBlockedReason(tr: MwTransitionOption, t: TFunction): string | undefined {
   if (tr.allowed) return undefined
-  if (tr.reason) return tr.reason
+  // The kernel's reason is a sentence fragment ("only a playbook step can make …"): start it as a sentence.
+  if (tr.reason) return tr.reason.charAt(0).toUpperCase() + tr.reason.slice(1)
   if (tr.guard && !tr.guard.holds) return t('memwise.record.guardNotMet', { condition: tr.guard.condition })
   return t('memwise.record.notAllowed')
+}
+
+// ---------------------------------------------------------------- checks
+
+/**
+ * The engine's own checks on an agent's answer (its outcome is declared, its required tools ran,
+ * each value has its type and source: "writes.site: Ref<Site>"). Passed, they fold into one line;
+ * the domain's checks, written for people, stay as they are.
+ */
+export function isStructuralCheck(rule: string): boolean {
+  return rule === 'outcome is declared' || rule === 'required tools called' || rule.startsWith('writes.')
+}
+
+// ---------------------------------------------------------------- related
+
+/** Up to two columns for a related table: not the status (it has its pill), nor a value that only repeats the row's title. */
+export function relatedColumns(rows: { title: string; values: Record<string, unknown> }[]): string[] {
+  return [...new Set(rows.flatMap(r => Object.keys(r.values)))]
+    .filter(c => c !== 'status' && !rows.every(r => r.values[c] === undefined || r.values[c] === r.title))
+    .slice(0, 2)
+}
+
+/** A board card's lines: up to two columns, not the one it is grouped by, nor one whose value its title already shows. */
+export function cardColumns<C extends { name: string }>(columns: C[], rows: { title: string; values: Record<string, unknown> }[], group: string): C[] {
+  const inTitle = (r: { title: string; values: Record<string, unknown> }, c: string) => {
+    const v = r.values[c]
+    return v === undefined || v === null || v === '' || (typeof v === 'string' && r.title.includes(v))
+  }
+  return columns.filter(c => c.name !== group && !rows.every(r => inTitle(r, c.name))).slice(0, 2)
+}
+
+/**
+ * Rows in their groups, in the result's group order: the key (null: no value), its title (a
+ * reference's record title), its count and rows. `group` "status" falls back to the row's status.
+ */
+export function groupRows<R extends { values: Record<string, unknown>; status?: string; refs?: Record<string, { title: string }> }>(
+  result: { rows: R[]; groups?: { key: string | null; count: number; title?: string }[] }, group: string,
+): { key: string | null; title: string | null; count: number; rows: R[] }[] {
+  const keyOf = (row: R) => {
+    const v = row.values[group] ?? (group === 'status' ? row.status : undefined)
+    return v === null || v === undefined || v === '' ? null : String(v)
+  }
+  // The result's groups first (their order and counts), then any a row has that they leave out.
+  const keys = [...new Set([...(result.groups?.map(g => g.key) ?? []), ...result.rows.map(keyOf)])]
+  return keys.map(k => {
+    const rows = result.rows.filter(r => keyOf(r) === k)
+    const g = result.groups?.find(x => x.key === k)
+    return { key: k, title: k === null ? null : g?.title ?? rows.find(r => r.refs?.[group])?.refs?.[group]?.title ?? k, count: g?.count ?? rows.length, rows }
+  })
 }
 
 // ---------------------------------------------------------------- chart

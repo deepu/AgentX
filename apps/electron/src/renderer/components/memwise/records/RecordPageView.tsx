@@ -38,7 +38,7 @@ import {
   type RecordPageActions,
 } from './RecordBlocks'
 import { Info_Section } from '@/components/info/Info_Section'
-import { areaBlocks, blockFields, detailFields, formatFieldValue, headerFields, layoutColumns, type AreaName } from './record-model'
+import { areaBlocks, blockFields, detailFields, formatFieldValue, headerFields, layoutColumns, splitRelated, type AreaName } from './record-model'
 
 export interface ViewerFile { data?: Uint8Array | null; loading?: boolean; error?: string | null }
 
@@ -111,7 +111,15 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
           />
         )
       }
-      case 'related': return <RelatedBlock key={key} page={page} names={block.relationships} actions={actions} />
+      case 'related': {
+        const { relationships, history } = splitRelated(page.layout, block.relationships)
+        return (
+          <React.Fragment key={key}>
+            {relationships.length > 0 && <RelatedBlock page={page} names={relationships} actions={actions} />}
+            {history && <HistoryBlock page={page} actions={actions} now={now} />}
+          </React.Fragment>
+        )
+      }
       case 'cases': return <CasesBlock key={key} page={page} actions={actions} now={now} />
       case 'lifecycle': return <LifecycleBlock key={key} page={page} onTransition={onTransition} busy={move.busy} />
       case 'chart': return <ChartBlock key={key} page={page} block={block} />

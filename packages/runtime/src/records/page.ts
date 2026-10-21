@@ -175,10 +175,13 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
     const inv = inverseOf(entities, def, rel);
     if (!inv) continue;
     const r = await withActor(deps.pool, actor, (db) => entityStore.query(db, inv.target, entities, { filter: `${inv.via} = params.record`, params: { record: id }, limit: 10 }));
-    related[rel] = {
-      entity: keyOf(inv.target), total: r.total,
-      rows: r.rows.map((x) => ({ entity: keyOf(inv.target), id: x.id, title: recordTitle(inv.target, x.id, x.values), ...(x.lifecycle ? { status: x.lifecycle } : {}), values: x.values })),
-    };
+    // A row's own values: not the reference back to this record, nor other references (bare ids
+    // that mean nothing on the page; the row's title names it).
+    const own = (v: Record<string, unknown>) => Object.fromEntries(Object.entries(v).filter(([f]) => f !== inv.via && !refEntity(entities, inv.target, f)));
+    const rows = r.rows.map((x) => ({ entity: keyOf(inv.target), id: x.id, title: recordTitle(inv.target, x.id, x.values), ...(x.lifecycle ? { status: x.lifecycle } : {}), values: own(x.values) }));
+    const shown = new Set(rows.flatMap((x) => Object.keys(x.values)));
+    const types = Object.fromEntries(Object.entries(inv.target.fields).filter(([f]) => shown.has(f)).map(([f, d]) => [f, d.typeSource]));
+    related[rel] = { entity: keyOf(inv.target), total: r.total, rows, ...(Object.keys(types).length ? { types } : {}) };
   }
 
   // ---- cases whose values point at this record through a Ref to its entity
@@ -198,7 +201,12 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
         return v.value === id && t?.kind === 'ref' && resolveEntity(entities, domainOf(wf), t.entity) === def;
       });
       if (!points) continue;
-      const waitingOn = r.status === 'active' ? assigneeOf(wf, r.state) : undefined;
+      // Who the case waits on: a person's step or a wait state; not a block (a `wait_until` waits on
+      // the data) nor an agent or system step.
+      const st = wf.states[r.state];
+      const step = st ? wf.steps[st.step ?? r.state] : undefined;
+      const byPerson = !!st && !st.block && (!step || step.performer === 'person');
+      const waitingOn = r.status === 'active' && byPerson ? assigneeOf(wf, r.state) : undefined;
       cases.push({ caseId: r.case_id, runId: r.id, workflowId: wf.id, title: wf.title ?? wf.id, state: r.state, status: r.status, updatedAt: iso(r.updated_at), ...(waitingOn ? { waitingOn } : {}) });
       if (cases.length >= 20) break;
     }
@@ -290,6 +298,14 @@ export async function buildReview(deps: RecordsDeps, def: EntityTypeDef, recordI
       ...(p?.quote ? { quote: p.quote } : {}), ...(p?.document ? { document: p.document } : {}), ...(w.required ? { required: true } : {}),
     };
   });
+  // A proposed reference is shown by its record's title, as the viewer may read it.
+  for (const p of proposed) {
+    const w = step.writes[p.field]!;
+    if (w.type.kind !== 'ref' || typeof p.value !== 'string') continue;
+    const target = resolveEntity(entities, domain, w.type.entity);
+    const t = target ? await titleOf(deps, actor, target, p.value) : undefined;
+    if (target && t) p.ref = { entity: keyOf(target), id: p.value, title: t.title };
+  }
 
   // The checks of the agent steps of this case that ran before the review.
   const { rows: earlier } = await deps.pool.query(

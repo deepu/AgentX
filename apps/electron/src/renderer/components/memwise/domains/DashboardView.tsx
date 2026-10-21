@@ -89,7 +89,7 @@ function KpiTile({ block }: { block: Extract<MwDashboardBlock, { kind: 'kpi' }> 
 const LEGEND: HeatBucket[] = ['top', 'good', 'fair', 'low', 'none']
 
 function Heatmap({ block, onOpenRecord }: { block: Extract<MwDashboardBlock, { kind: 'heatmap' }>; onOpenRecord?: (entity: string, id: string) => void }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   return (
     <Info_Section title={block.title ?? t('memwise.dashboard.heatmap')} description={t('memwise.dashboard.heatmapHint')}>
       <div className="overflow-x-auto" data-heatmap>
@@ -110,7 +110,7 @@ function Heatmap({ block, onOpenRecord }: { block: Extract<MwDashboardBlock, { k
                 </th>
                 {row.values.map((v, i) => (
                   <td key={i} className={cn('min-w-12 rounded-sm px-2 py-1.5 text-center tabular-nums', HEAT_CLASS[heatBucket(v)])} data-heat={heatBucket(v)}>
-                    {v === null ? t('memwise.dashboard.na') : v}
+                    {v === null ? t('memwise.dashboard.na') : formatPercent(v, i18n.language)}
                   </td>
                 ))}
               </tr>
@@ -143,7 +143,7 @@ function ResultBlock({ title, result, list, onOpenRecord }: { title?: string; re
               <button type="button" className="flex w-full flex-col items-start px-3.5 py-2.5 text-left hover:bg-fill-hover disabled:hover:bg-transparent" onClick={() => onOpenRecord?.(row.entity, row.id)} disabled={!onOpenRecord}>
                 <span className="font-medium text-label text-foreground">{row.title}</span>
                 <span className="text-label-sm text-secondary">
-                  {result.columns.map(c => (row.hidden.includes(c.name) ? null : `${c.label}: ${formatTypedValue(c.type, row.values[c.name], t, i18n.language)}`)).filter(Boolean).join(' · ')}
+                  {result.columns.map(c => (row.hidden.includes(c.name) ? null : `${c.label}: ${formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}`)).filter(Boolean).join(' · ')}
                 </span>
               </button>
             </li>
@@ -166,7 +166,7 @@ function ResultBlock({ title, result, list, onOpenRecord }: { title?: string; re
                     <td key={c.name} className="px-3.5 py-2 text-secondary">
                       {row.hidden.includes(c.name) ? <span className="text-tertiary">{t('memwise.case.restrictedValue')}</span>
                         : c.name === 'status' ? <StatusPill status={String(row.values[c.name] ?? '')} />
-                        : formatTypedValue(c.type, row.values[c.name], t, i18n.language)}
+                        : formatTypedValue(c.type, row.values[c.name], t, i18n.language, row.refs?.[c.name])}
                     </td>
                   ))}
                 </tr>

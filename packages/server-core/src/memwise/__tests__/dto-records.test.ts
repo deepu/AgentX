@@ -6,8 +6,8 @@
 import { describe, expect, it } from 'bun:test'
 import type { AuditTrail, DashboardData, DomainSummary, RecordPage, TriggerSummary } from '@memwise/runtime'
 import {
-  auditFileName, entityLabel, retentionDays, toAuditTrail, toDashboard, toDomain, toEntityDefinition, toEntityType, toFlagInboxItem,
-  toRecordPage, toTrigger, toTriggerHoldInboxItem, toView, triggerDescription, versionByLabel,
+  auditFileName, caseTitle, entityLabel, retentionDays, toAuditTrail, toDashboard, toDomain, toEntityDefinition, toEntityType, toFlagInboxItem,
+  toRecordPage, toTrigger, toTriggerHoldInboxItem, toView, toWaiting, triggerDescription, versionByLabel, waitingOn, withRefTitles,
 } from '../dto'
 
 const DAY = 24 * 3600_000
@@ -197,5 +197,37 @@ describe('entity definitions', () => {
     expect(d.usedBy.map((u) => u.workflowId)).toEqual(['activate-site'])
     const type = toEntityType({ project, diagnostics: [], tools: new Map(), jsonSchema: () => ({}) } as never, site, 'etmf.Site')
     expect(type).toMatchObject({ name: 'Site', key: 'etmf.Site', domain: 'etmf' })
+  })
+})
+
+describe('cases about records', () => {
+  const siteRef = { site: { type: { kind: 'ref', entity: 'Site' }, typeSource: 'Ref<Site>' } }
+  const caseType = { fields: siteRef } as never
+
+  it('a case with nothing typed of its own is named after its record, and shows it by title', () => {
+    expect(caseTitle({ site: 'site_1' }, 'case_01ABCDEF3F9K2A', caseType)).toBe('New case 3F9K2A')
+    expect(caseTitle({ site: 'site_1' }, 'case_01ABCDEF3F9K2A', caseType, undefined, 'US-012 · Harbor Oncology, Boston')).toBe('US-012 · Harbor Oncology, Boston')
+    const values = withRefTitles({ site: { value: 'site_1', provenance: { kind: 'system', at: 't' } } as never }, caseType, new Map([['site_1', 'US-012 · Harbor Oncology, Boston']]))
+    expect(values.site).toMatchObject({ value: 'site_1', refTitle: 'US-012 · Harbor Oncology, Boston' })
+  })
+
+  it('a case is named by its first text in field order, or an email by its subject', () => {
+    const textField = { type: { kind: 'scalar', name: 'Text' }, typeSource: 'Text' }
+    const doc = { fields: { artifact: textField, version: textField } } as never
+    // Values come back in any order; the case type's order decides.
+    expect(caseTitle({ version: '2026-03', artifact: 'Investigator CV' }, 'case_1', doc)).toBe('Investigator CV')
+    const message = { fields: { subject: textField, body: textField } } as never
+    expect(caseTitle({ body: 'Please find attached…', subject: 'AST-301 US-012: PI CV' }, 'case_2', message)).toBe('AST-301 US-012: PI CV')
+  })
+
+  it('a wait_until waits on a condition, not on the owner; its values keep their types', () => {
+    const wf = { id: 'activate-site', owner: 'study_manager', steps: {}, states: { collect_pack: { name: 'collect_pack', on: { met: 'approve' }, block: { kind: 'wait_until' } } } } as never
+    expect(waitingOn(wf, 'collect_pack', 'active')).toEqual({ kind: 'condition' })
+    const entities = { 'etmf.Site': { entity: 'Site', fields: { site_number: text }, calculated: { start_up_pack_complete: { kind: 'rollup', rollup: 'percent' } } } }
+    const w = toWaiting(
+      { record: { entity: 'etmf.Site', id: 'site_1', title: 'US-012' }, condition: 'start_up_pack_complete = 100%', holds: false, values: { start_up_pack_complete: 90 } },
+      { entities } as never, new Map([['site_1', 'US-012 · Harbor Oncology, Boston']]),
+    )
+    expect(w).toMatchObject({ record: { title: 'US-012 · Harbor Oncology, Boston' }, values: { start_up_pack_complete: 90 }, types: { start_up_pack_complete: 'Percentage' } })
   })
 })

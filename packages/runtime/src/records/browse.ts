@@ -4,7 +4,7 @@
 // is computed now, in SQL, under the viewer's row rules.
 import { PgEntityStore, PgPageStore, withActor, type Queryable } from '@memwise/db';
 import { keyOf, type DashboardBlock, type DashboardValue, type EntityTypeDef, type FreePageDef, type ViewDef } from '@memwise/defs';
-import type { Actor, DashboardData, RecordQuery, RecordQueryResult, RecordsService, TreeNode } from '../types.ts';
+import type { Actor, DashboardData, RecordQuery, RecordQueryResult, RecordRef, RecordsService, TreeNode } from '../types.ts';
 import { domainDef, domainOfEntity, entityByName, recordTitle, refEntity, type RecordsDeps } from './context.ts';
 
 const entityStore = new PgEntityStore();
@@ -17,18 +17,48 @@ export const TREE_GROUP_LIMIT = 25;
 export async function queryRecords(deps: RecordsDeps, def: EntityTypeDef, q: Omit<RecordQuery, 'entity' | 'domain'>, actor: Actor,
   params: Record<string, unknown> = {}, db?: Queryable): Promise<RecordQueryResult> {
   const entities = deps.entities();
-  const run = (c: Queryable) => entityStore.query(c, def, entities, {
-    ...(q.filter ? { filter: q.filter } : {}), ...(q.sort ? { sort: q.sort } : {}), ...(q.group ? { group: q.group } : {}),
-    ...(q.columns ? { columns: q.columns } : {}), limit: Math.min(q.limit ?? 100, 1000), offset: q.offset ?? 0,
-    ...(Object.keys(params).length ? { params } : {}),
-  });
+  const run = async (c: Queryable) => {
+    const r = await entityStore.query(c, def, entities, {
+      ...(q.filter ? { filter: q.filter } : {}), ...(q.sort ? { sort: q.sort } : {}), ...(q.group ? { group: q.group } : {}),
+      ...(q.columns ? { columns: q.columns } : {}), limit: Math.min(q.limit ?? 100, 1000), offset: q.offset ?? 0,
+      ...(Object.keys(params).length ? { params } : {}),
+    });
+    // The records the rows (and the groups, when grouped by a reference) point at, by title.
+    const titles = new Map<string, RecordRef | null>();
+    const refTo = async (field: string, id: unknown): Promise<RecordRef | undefined> => {
+      const target = refEntity(entities, def, field);
+      if (!target || typeof id !== 'string' || !id) return undefined;
+      const k = `${keyOf(target)}:${id}`;
+      if (!titles.has(k)) {
+        const row = await entityStore.get(c, target, id);
+        titles.set(k, row ? { entity: keyOf(target), id, title: recordTitle(target, id, { ...row.values, ...(row.lifecycle ? { status: row.lifecycle } : {}) }) } : null);
+      }
+      return titles.get(k) ?? undefined;
+    };
+    const refs: Record<string, RecordRef>[] = [];
+    for (const row of r.rows) {
+      const out: Record<string, RecordRef> = {};
+      for (const [field, v] of Object.entries(row.values)) {
+        const ref = await refTo(field, v);
+        if (ref) out[field] = ref;
+      }
+      refs.push(out);
+    }
+    const groups = r.groups && q.group
+      ? await Promise.all(r.groups.map(async (g) => {
+        const ref = await refTo(q.group!, g.key);
+        return { ...g, ...(ref ? { title: ref.title } : {}) };
+      }))
+      : r.groups;
+    return { ...r, refs, ...(groups ? { groups } : {}) };
+  };
   const r = db ? await run(db) : await withActor(deps.pool, actor, run);
   return {
     entity: keyOf(def),
     columns: columnsOf(def, q.columns),
-    rows: r.rows.map((row) => ({
+    rows: r.rows.map((row, i) => ({
       entity: keyOf(def), id: row.id, title: recordTitle(def, row.id, row.values), ...(row.lifecycle ? { status: row.lifecycle } : {}),
-      values: row.values, hidden: row.hidden,
+      values: row.values, hidden: row.hidden, ...(Object.keys(r.refs[i]!).length ? { refs: r.refs[i]! } : {}),
     })),
     total: r.total,
     ...(r.groups ? { groups: r.groups } : {}),

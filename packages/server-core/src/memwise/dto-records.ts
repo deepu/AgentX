@@ -161,6 +161,7 @@ export function toReview(project: ProjectDefs, r: RecordReview): MwRecordReview 
       ...(p.quote ? { quote: p.quote } : {}),
       ...(p.document ? { document: p.document } : {}),
       ...(p.required ? { required: true } : {}),
+      ...(p.ref ? { ref: { entity: p.ref.entity, id: p.ref.id, title: p.ref.title } } : {}),
     })),
     checks: r.checks.map((c): MwCheckResult => ({ rule: c.rule, verdict: c.passed ? 'pass' : 'flag', ...(c.reason ? { note: c.reason } : {}), stepRunId: c.stepRunId })),
     outcomes: [...r.outcomes],
@@ -196,11 +197,12 @@ export function toRecordPage(ctx: Pick<DtoContext, 'project'>, p: RecordPage, na
     related: Object.fromEntries(Object.entries(p.related).map(([name, r]) => [name, {
       entity: r.entity, label: humanize(name), total: r.total,
       rows: r.rows.map((x) => ({ entity: x.entity, id: x.id, title: x.title, ...(x.status ? { status: x.status } : {}), values: { ...x.values } })),
+      ...(r.types ? { types: { ...r.types } } : {}),
     }])),
     cases: p.cases.map((c) => ({
       caseId: c.caseId, runId: c.runId, workflowId: c.workflowId, title: c.title || wfTitle(c.workflowId),
       state: stateTitle(project.workflows[c.workflowId], c.state), status: c.status, updatedAt: c.updatedAt,
-      ...(c.waitingOn ? { waitingOn: names.get(c.waitingOn) ?? c.waitingOn } : {}),
+      ...(c.waitingOn ? { waitingOn: names.get(c.waitingOn) ?? project.roles?.[c.waitingOn]?.title ?? humanize(c.waitingOn) } : {}),
     })),
     ...(p.lifecycle ? { lifecycle: { states: [...p.lifecycle.states], ...(p.lifecycle.current ? { current: p.lifecycle.current } : {}), transitions: p.lifecycle.transitions.map(toTransitionOption) } } : {}),
     flags: p.flags.map((f) => ({ ...f })),
@@ -234,9 +236,12 @@ export function toQueryResult(r: RecordQueryResult): MwRecordQueryResult {
       name: c.name, label: c.name === 'status' ? 'Status' : humanize(c.name), type: c.type,
       ...(c.calculated ? { calculated: true } : {}), ...(c.followed ? { followed: true } : {}),
     })),
-    rows: r.rows.map((x) => ({ entity: x.entity, id: x.id, title: x.title, ...(x.status ? { status: x.status } : {}), values: { ...x.values }, hidden: [...x.hidden] })),
+    rows: r.rows.map((x) => ({
+      entity: x.entity, id: x.id, title: x.title, ...(x.status ? { status: x.status } : {}), values: { ...x.values }, hidden: [...x.hidden],
+      ...(x.refs ? { refs: Object.fromEntries(Object.entries(x.refs).map(([f, ref]) => [f, { entity: ref.entity, id: ref.id, title: ref.title, ...(ref.status ? { status: ref.status } : {}) }])) } : {}),
+    })),
     total: r.total,
-    ...(r.groups ? { groups: r.groups.map((g) => ({ key: g.key, count: g.count })) } : {}),
+    ...(r.groups ? { groups: r.groups.map((g) => ({ key: g.key, count: g.count, ...(g.title ? { title: g.title } : {}) })) } : {}),
   }
 }
 
@@ -355,14 +360,26 @@ export function toCaseLink(project: ProjectDefs, l: CaseLinkView): MwCaseLink {
   const wf = project.workflows[l.workflowId]
   return {
     kind: l.kind, caseId: l.caseId, runId: l.runId, workflowId: l.workflowId,
-    title: l.title || (wf?.title ?? humanize(l.workflowId)), state: l.state, status: l.status,
+    // The step's title ("Finished", "QC and sign"), not the state's id ("end").
+    title: l.title || (wf?.title ?? humanize(l.workflowId)), state: stateTitle(wf, l.state), status: l.status,
   }
 }
 
-export function toWaiting(w: WaitingCondition): MwWaitingCondition {
+/**
+ * What a `wait_until` waits for. `project`: the values' types from the record's entity; `titles`:
+ * the record's title as the viewer reads it (with its followed fields), by id.
+ */
+export function toWaiting(w: WaitingCondition, project?: Pick<ProjectDefs, 'entities'>, titles?: ReadonlyMap<string, string>): MwWaitingCondition {
+  const def = project?.entities[w.record.entity]
+  const typeOf = (k: string): string | undefined => {
+    const c = def?.calculated?.[k]
+    if (c) return c.kind === 'rollup' && c.rollup === 'percent' ? 'Percentage' : 'Number'
+    return def?.fields[k]?.typeSource
+  }
+  const types = Object.fromEntries(Object.keys(w.values).flatMap((k) => { const t = typeOf(k); return t ? [[k, t]] : [] }))
   return {
-    record: { entity: w.record.entity, id: w.record.id, title: w.record.title, ...(w.record.status ? { status: w.record.status } : {}) },
-    condition: w.condition, holds: !!w.holds, values: { ...w.values },
+    record: { entity: w.record.entity, id: w.record.id, title: titles?.get(w.record.id) ?? w.record.title, ...(w.record.status ? { status: w.record.status } : {}) },
+    condition: w.condition, holds: !!w.holds, values: { ...w.values }, ...(Object.keys(types).length ? { types } : {}),
   }
 }
 

@@ -47,7 +47,10 @@ import {
   fieldSourceTone,
   formatFieldValue,
   formatTypedValue,
+  isPercentType,
+  isStructuralCheck,
   lifecycleSteps,
+  relatedColumns,
   statusLabel,
   statusTone,
   transitionBlockedReason,
@@ -184,7 +187,7 @@ export function useReasonedWrite(regulated: boolean) {
 
 function editorKind(type: string): 'number' | 'date' | 'boolean' | 'text' {
   const base = baseType(type)
-  if (base === 'Number' || base === 'Percent' || base === 'Integer') return 'number'
+  if (base === 'Number' || isPercentType(base) || base === 'Integer') return 'number'
   if (base === 'Date') return 'date'
   if (base === 'Boolean') return 'boolean'
   return 'text'
@@ -234,7 +237,7 @@ export function FieldRows({ fields, regulated, actions, emptyText }: {
         const isEditing = editing === f.name
         return (
           <div key={f.name} className="px-3.5 py-2.5 text-label" data-field={f.name}>
-            <div className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)] items-start gap-x-3 gap-y-1 @lg/fields:grid-cols-[140px_minmax(0,1fr)_auto]">
+            <div className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)] items-start gap-x-3 gap-y-1 @2xl/fields:grid-cols-[140px_minmax(0,1fr)_auto]">
               <dt className="text-secondary" title={f.description}>
                 {f.label}
                 {f.required && <span className="sr-only"> ({t('memwise.record.required')})</span>}
@@ -262,8 +265,9 @@ export function FieldRows({ fields, regulated, actions, emptyText }: {
                   </>
                 )}
               </dd>
-              <div className="col-start-2 flex flex-wrap gap-1 justify-self-start @lg/fields:col-start-3">
-                <FieldSourceBadge source={f.source} />
+              <div className="col-start-2 flex flex-wrap gap-1 justify-self-start @2xl/fields:col-start-3">
+                {/* Nothing there: no "where it came from" badge (a calculated field still says so). */}
+                {(f.hidden || f.calculated || !(f.value === null || f.value === undefined || f.value === '')) && <FieldSourceBadge source={f.source} />}
                 {f.followed && <Pill className="bg-fill-hover text-secondary" title={t('memwise.record.followedHint')}>{t('memwise.record.followed')}</Pill>}
               </div>
             </div>
@@ -285,7 +289,7 @@ export function RelatedBlock({ page, names, actions }: { page: MwRecordPage; nam
       {names.map(name => {
         const rel = page.related[name]
         if (!rel) return null
-        const columns = [...new Set(rel.rows.flatMap(r => Object.keys(r.values)))].filter(c => c !== 'status').slice(0, 2)
+        const columns = relatedColumns(rel.rows)
         return (
           <Info_Section
             key={name}
@@ -312,7 +316,7 @@ export function RelatedBlock({ page, names, actions }: { page: MwRecordPage; nam
                       >
                         <td className="px-3.5 py-2 font-medium text-foreground">{row.title}</td>
                         {columns.map(c => (
-                          <td key={c} className="px-3.5 py-2 text-secondary">{formatTypedValue('', row.values[c], t, i18n.language)}</td>
+                          <td key={c} className="px-3.5 py-2 text-secondary">{formatTypedValue(rel.types?.[c] ?? '', row.values[c], t, i18n.language)}</td>
                         ))}
                         <td className="px-3.5 py-2 text-right"><StatusPill status={row.status} /></td>
                       </tr>
@@ -531,10 +535,17 @@ export function ChecksBlock({ page }: { page: MwRecordPage }) {
   const checks = page.review?.checks ?? []
   if (checks.length === 0) return null
   const flagged = checks.filter(c => c.verdict !== 'pass').length
+  const folded = checks.filter(c => c.verdict === 'pass' && isStructuralCheck(c.rule)).length
   return (
     <Info_Section title={flagged ? t('memwise.review.checksSummaryFlags', { passed: checks.length - flagged, count: flagged }) : t('memwise.review.checksAllPassed', { count: checks.length })}>
       <ul className="divide-y divide-separator" data-checks>
-        {checks.map((c, i) => {
+        {folded > 0 && (
+          <li className="flex items-start gap-2.5 px-3.5 py-2.5 text-label" data-check="pass" data-form-checks={folded}>
+            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
+            <span className="min-w-0 text-foreground">{t('memwise.review.formChecks')}</span>
+          </li>
+        )}
+        {checks.filter(c => !(c.verdict === 'pass' && isStructuralCheck(c.rule))).map((c, i) => {
           const pass = c.verdict === 'pass'
           return (
             <li key={i} className="flex items-start gap-2.5 px-3.5 py-2.5 text-label" data-check={pass ? 'pass' : 'flag'}>
@@ -689,7 +700,8 @@ export function HistoryBlock({ page, actions, now }: { page: MwRecordPage; actio
             <li key={v.version} className="px-3.5 py-2 text-label">
               <div className="flex flex-wrap items-center gap-x-2">
                 <span className="font-medium tabular-nums text-foreground">{t('memwise.record.version', { version: v.version })}</span>
-                <span className="text-secondary">{v.byLabel ?? v.by}{v.via ? ` · ${v.via}` : ''}</span>
+                {/* Named by its step and playbook; the step run's id stays for the audit, on hover. */}
+                <span className="text-secondary" title={v.byLabel && v.via ? v.via : undefined}>{v.byLabel ?? v.by}{v.via && !v.byLabel ? ` · ${v.via}` : ''}</span>
                 <span className="text-label-sm text-tertiary" title={absoluteTime(v.at, i18n.language)}>{relativeTime(v.at, now, i18n.language)}</span>
               </div>
               <div className="mt-0.5 text-label-sm text-secondary">

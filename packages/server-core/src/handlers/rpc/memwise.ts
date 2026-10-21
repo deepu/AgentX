@@ -393,16 +393,56 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     }
   }
 
+  /**
+   * The titles of the records cases point at, by record id, as the viewer may read them: one query
+   * per entity. `all`: every Ref value (a case's page), else only what each case is about
+   * (`caseSubject`; lists). A case with nothing typed of its own is named after its record
+   * ("US-012 · Harbor Oncology, Boston", not "New case 3F9K2A"). `also`: more records by entity key.
+   */
+  async function subjectTitles(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>,
+    cases: { workflowId: string; values: Record<string, unknown> }[], opts: { all?: boolean; also?: { entity: string; id: string }[] } = {}): Promise<Map<string, string>> {
+    const wanted = new Map<string, { entity: string; domain?: string; ids: Set<string> }>()
+    const want = (entity: string, domain: string | undefined, id: string) => {
+      if (!/^[\w-]+$/.test(id)) return
+      const k = `${domain ?? ''}|${entity}`
+      if (!wanted.has(k)) wanted.set(k, { entity, ...(domain ? { domain } : {}), ids: new Set() })
+      wanted.get(k)!.ids.add(id)
+    }
+    for (const r of opts.also ?? []) want(r.entity, undefined, r.id)
+    for (const s of cases) {
+      const wf = c.project.workflows[s.workflowId]
+      const refs = d.caseRefs(s.values, wf?.caseType)
+      for (const r of opts.all ? refs : refs.slice(0, 1)) want(r.entity, wf?.domain, r.id)
+    }
+    const out = new Map<string, string>()
+    const records = (svc.kernel as { records?: RecordsService }).records
+    if (!records) return out
+    for (const w of wanted.values()) {
+      const ids = [...w.ids]
+      try {
+        const r = await records.query({ entity: w.entity, ...(w.domain ? { domain: w.domain } : {}), filter: ids.map((id) => `id = '${id}'`).join(' or '), limit: ids.length }, actor)
+        for (const row of r.rows) out.set(row.id, row.title)
+      } catch { /* not a record this viewer may read: the case keeps its short reference */ }
+    }
+    return out
+  }
+
   async function enrichInbox(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, items: InboxItem[]): Promise<MwInboxItem[]> {
     const views = new Map<string, Promise<CaseView | undefined>>()
     const view = (caseId: string) => {
       if (!views.has(caseId)) views.set(caseId, svc.kernel.getCaseView(caseId, actor).catch(() => undefined))
       return views.get(caseId)!
     }
+    const shownValues = (v: CaseView) => Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value]))
+    const caseViews = (await Promise.all([...new Set(items.flatMap((i) => ('caseId' in i && typeof i.caseId === 'string' ? [i.caseId] : [])))].map(view)))
+      .filter((v): v is CaseView => !!v)
+    const subjects = await subjectTitles(svc, actor, c, d, caseViews.map((v) => ({ workflowId: v.summary.workflowId, values: shownValues(v) })), { all: true })
     const titleOf = (v: CaseView | undefined, caseId: string) => {
       if (!v) return caseId
       const wf = c.project.workflows[v.summary.workflowId]
-      return d.caseTitle(Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value])), caseId, wf?.caseType, c.project)
+      const values = shownValues(v)
+      const subject = d.caseSubject(values, wf?.caseType)
+      return d.caseTitle(values, caseId, wf?.caseType, c.project, subject && subjects.get(subject.id))
     }
     // Identity matches name a domain record, not a case: one list read per entity.
     const rows = new Map<string, Promise<Map<string, Record<string, unknown>>>>()
@@ -438,7 +478,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         case 'input':
         case 'decision': {
           const step = wf?.steps[item.stepId]
-          const context = step ? d.toCaseValues(values, d.readFields(step).filter((f) => f in values)) : {}
+          const context = step ? d.withRefTitles(d.toCaseValues(values, d.readFields(step).filter((f) => f in values)), wf?.caseType, subjects) : {}
           const common = {
             id: item.id, stepRunId: item.stepRunId, caseId: item.caseId, runId: item.runId, caseTitle,
             workflowId: item.workflowId, stepTitle: d.stateTitle(wf, item.stepId),
@@ -903,7 +943,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         ...(filter?.workflowId ? { workflowId: filter.workflowId } : {}),
         ...(filter?.status ? { status: filter.status } : {}),
       }, actor)
-      return rows.map((s) => d.toCaseSummary(c.project, s))
+      const subjects = await subjectTitles(svc, actor, c, d, rows)
+      return rows.map((s) => d.toCaseSummary(c.project, s, subjects))
     },
 
     async getCase(ctx: RequestContext, caseId: string): Promise<MwCase> {
@@ -915,7 +956,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         Promise.resolve().then(() => externalOf(svc).links({ caseId })).catch(() => undefined),
         Promise.resolve().then(() => channelsOf(svc).deliveries({ caseId })).catch(() => undefined),
       ])
-      return d.toCase(c, v, { ...(links ? { links } : {}), ...(deliveries ? { deliveries } : {}) })
+      const shown = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value]))
+      const subjects = await subjectTitles(svc, actor, c, d, [{ workflowId: v.summary.workflowId, values: shown }], { all: true, ...(v.waiting ? { also: [v.waiting.record] } : {}) })
+      return d.toCase(c, v, { ...(links ? { links } : {}), ...(deliveries ? { deliveries } : {}), subjects })
     },
 
     async startCase(ctx: RequestContext, input: MwStartCaseInput): Promise<MwCaseSummary | MwStartCaseRefusal> {

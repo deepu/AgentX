@@ -9,10 +9,10 @@ import { initReactI18next, setI18n } from 'react-i18next'
 import { setupI18n, i18n } from '@memwise/shared/i18n'
 import type { MwDashboardBlock, MwInboxItem, MwTransitionOption } from '@memwise/shared/protocol'
 import {
-  acceptAllAbove, areaBlocks, chartData, changedReviewFields, confidenceLabel, detailFields, diffRows, fieldSourceLabel,
-  fieldSourceTone, firstDocumentReview, headerFields, heatBucket, initialReviewDraft, isReviewItem, kpiBelowTarget, kpiValue,
-  layoutColumns, lifecycleSteps, lockedMessage, missingReviewFields, nestTree, queueKeyAction, queueNeighbour, retentionLabel,
-  reviewOutcomes, sameKindItems, statusLabel, tableColumns, tableRows, tableSubmission, transitionBlockedReason, transitionLabel,
+  acceptAllAbove, areaBlocks, cardColumns, isStructuralCheck, splitRelated, chartData, changedReviewFields, confidenceLabel, detailFields, diffRows, fieldSourceLabel,
+  fieldSourceTone, firstDocumentReview, formatTypedValue, headerFields, heatBucket, initialReviewDraft, isReviewItem, groupRows, kpiBelowTarget,
+  kpiValue, layoutColumns, lifecycleSteps, lockedMessage, missingReviewFields, nestTree, queueKeyAction, queueNeighbour,
+  relatedColumns, retentionLabel, reviewOutcomes, sameKindItems, statusLabel, tableColumns, tableRows, tableSubmission, transitionBlockedReason, transitionLabel,
   treeNodeKey,
 } from '../records/record-model'
 import { findQuotes, highlightItemHtml, rangesByItem } from '../records/quote-highlight'
@@ -51,6 +51,60 @@ describe('record values and sources', () => {
     expect(fieldSourceTone({ kind: 'step' } as never)).toBe('agent')
   })
 
+  test('a percentage as the definitions type it', () => {
+    // A percent rollup is typed `Percentage` (defs); the sample pages say `Percent`.
+    expect(formatTypedValue('Percentage', 90, t, 'en')).toBe('90%')
+    expect(formatTypedValue('Percent', 52, t, 'en')).toBe('52%')
+    // An enum value reads as words, as the definitions list them.
+    expect(formatTypedValue('Enum[start_up, conduct, close_out]', 'start_up', t, 'en')).toBe('Start up')
+  })
+
+  test('related versions and signatures are the history block, drawn once', () => {
+    const layout = { layout: 'split' as const, header: [], areas: { right: [{ kind: 'related' as const, relationships: ['versions', 'signatures', 'documents'] }] } }
+    expect(splitRelated(layout, ['versions', 'signatures', 'documents'])).toEqual({ relationships: ['documents'], history: true })
+    const withHistory = { ...layout, areas: { ...layout.areas, below: [{ kind: 'history' as const }] } }
+    expect(splitRelated(withHistory, ['versions', 'signatures'])).toEqual({ relationships: [], history: false })
+  })
+
+  test("the engine's checks on an agent's answer are told from the domain's", () => {
+    expect(isStructuralCheck('outcome is declared')).toBe(true)
+    expect(isStructuralCheck('required tools called')).toBe(true)
+    expect(isStructuralCheck('writes.site: Ref<Site>')).toBe(true)
+    expect(isStructuralCheck('The Investigator CV is a missing expected document of US-012.')).toBe(false)
+  })
+
+  test('a board card skips the group and what its title already says', () => {
+    const cols = [{ name: 'site_number' }, { name: 'name' }, { name: 'status' }, { name: 'start_up_pack_complete' }]
+    const rows = [
+      { title: 'US-012 · Harbor Oncology, Boston', values: { site_number: 'US-012', name: 'Harbor Oncology, Boston', status: 'activating', start_up_pack_complete: 90 } },
+      { title: 'FR-201 · Centre Rhône Oncologie, Lyon', values: { site_number: 'FR-201', name: 'Centre Rhône Oncologie, Lyon', status: 'selected', start_up_pack_complete: 40 } },
+    ]
+    expect(cardColumns(cols, rows, 'status').map(c => c.name)).toEqual(['start_up_pack_complete'])
+  })
+
+  test('rows in their groups: in the result order, a reference by its title', () => {
+    const rows = [
+      { id: 'a', values: { site: 'site_1' }, refs: { site: { title: 'US-012' } } },
+      { id: 'b', values: { site: 'site_2' }, refs: { site: { title: 'FR-201' } } },
+      { id: 'c', values: { site: 'site_1' }, refs: { site: { title: 'US-012' } } },
+      { id: 'd', values: {} },
+    ]
+    expect(groupRows({ rows }, 'site').map(g => [g.title, g.count, g.rows.map(r => r.id)])).toEqual([
+      ['US-012', 2, ['a', 'c']], ['FR-201', 1, ['b']], [null, 1, ['d']],
+    ])
+    const grouped = groupRows({ rows, groups: [{ key: 'site_2', count: 1, title: 'FR-201 · Lyon' }, { key: 'site_1', count: 2 }] }, 'site')
+    expect(grouped.map(g => g.title)).toEqual(['FR-201 · Lyon', 'US-012', null])
+  })
+
+  test('related rows show their own values, not the status or a repeat of the title', () => {
+    const rows = [
+      { title: 'Investigator CV', values: { artifact: 'Investigator CV', phase: 'start_up', status: 'missing' } },
+      { title: 'IRB approval', values: { artifact: 'IRB approval', phase: 'start_up', status: 'filed' } },
+    ]
+    expect(relatedColumns(rows)).toEqual(['phase'])
+    expect(relatedColumns([])).toEqual([])
+  })
+
   test('retention in years when it divides, else days', () => {
     expect(retentionLabel(9125, t)).toBe('Kept 25 years')
     expect(retentionLabel(30, t)).toBe('Kept 30 days')
@@ -84,6 +138,7 @@ describe('layouts and blocks', () => {
     expect(transitionBlockedReason(tr, t)).toBe('Not yet: start_up_pack = 100')
     expect(transitionBlockedReason({ ...tr, guard: undefined }, t)).toBe('Your role cannot make this move.')
     expect(transitionBlockedReason({ ...tr, reason: 'Needs the IRB letter' }, t)).toBe('Needs the IRB letter')
+    expect(transitionBlockedReason({ ...tr, reason: 'only a playbook step can make "approved" on a Site' }, t)).toBe('Only a playbook step can make "approved" on a Site')
     expect(transitionBlockedReason({ ...tr, allowed: true }, t)).toBeUndefined()
   })
 

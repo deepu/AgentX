@@ -48,6 +48,13 @@ describe('record page', () => {
     expect(html).toContain('data-source=')
     // The columns sit side by side only when the record's container is wide: they stack when narrow.
     expect(html).toContain('@3xl/record:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]')
+    // An empty field has no "where it came from" badge.
+    expect(html).toContain('data-field="activated_on"')
+    expect(/data-field="activated_on"(?:(?!data-field=)[^])*?data-source=/.test(html)).toBe(false)
+    expect(/data-field="target_open_date"(?:(?!data-field=)[^])*?data-source=/.test(html)).toBe(true)
+    // A related row's date reads as a date, by its declared type.
+    expect(html).toContain('Oct 2, 2026')
+    expect(html).not.toContain('2026-10-02')
   })
 
   test('single and split layouts', () => {
@@ -57,6 +64,10 @@ describe('record page', () => {
     expect(split).toContain('@3xl/record:grid-cols-2')
     // An open flag shows as an alert, and history names a signature changed since signing.
     expect(split).toContain(`data-flag="${S.sampleDocumentPage.flags[0]!.id}"`)
+    // `related: [versions, signatures]` draws the record's history, once.
+    expect(count(split, 'data-signatures')).toBe(1)
+    expect(count(split, 'data-versions')).toBe(1)
+    expect(split).toContain('data-changed-since')
   })
 
   test('review mode: proposed values beside the document, checks, send back and approve and sign', () => {
@@ -75,6 +86,22 @@ describe('record page', () => {
     expect(html).toContain('Approve and sign')
     expect(html).toContain('data-checks')
     expect(html).toContain('Check this')
+    // A proposed reference reads as its record's title, not its id.
+    expect(html).toContain('DE-104 · Berlin')
+    expect(html).not.toContain('site_de104')
+    // The engine's checks on the agent's answer fold into one line; the domain's stay.
+    expect(html).toContain('data-form-checks="2"')
+    expect(html).not.toContain('writes.site')
+    expect(html).toContain('Signed and dated (page 2)')
+  })
+
+  test('the agent reasoning shared by every proposed value is shown once', () => {
+    const because = 'The email names site US-012.'
+    const proposed = S.sampleDocumentReview.proposed.map(p => ({ ...p, provenance: { kind: 'judgement' as const, at: '2026-10-20T08:09:00Z', stepRunId: 'sr', rationale: because } }))
+    const page = { ...S.sampleDocumentReviewPage, review: { ...S.sampleDocumentReview, proposed } }
+    const html = render(<RecordPageView page={page} now={S.SAMPLE_NOW} review={{ submit: ok }} />)
+    expect(html).toContain('data-agent-rationale')
+    expect(count(html, because)).toBe(1)
   })
 
   test('review in a row shows where you are and the keys', () => {
@@ -157,6 +184,7 @@ describe('dashboard, entities, automations, domains', () => {
     expect(html).toContain('data-heatmap')
     expect(html).toContain('95% or more')
     expect(html).toContain('Under 70%')
+    expect(html).toMatch(/data-heat="fair">70%</)
     expect(html).toMatch(/Computed /)
   })
 
@@ -164,6 +192,16 @@ describe('dashboard, entities, automations, domains', () => {
     const base = { domain: S.sampleDomains[0]!, type: S.sampleSiteType, onTab: () => {}, views: S.sampleViews, state: viewToState(null), onState: () => {} }
     const html = render(<EntityView {...base} tab="records" result={S.sampleSitesQuery} onSaveView={async v => ({ ...v, domain: 'etmf', personal: true })} />)
     expect(html).toContain('data-records-table')
+    // A reference reads as the record's title, not its id.
+    expect(html).toContain('AST-301')
+    expect(html).not.toContain('stud_ast301')
+    // The kernel keeps a row's status beside its values, not in them: the column still shows it.
+    const bare = { ...S.sampleSitesQuery, rows: S.sampleSitesQuery.rows.map(({ values: { status: _s, ...values }, ...r }) => ({ ...r, values })) }
+    expect(count(render(<EntityView {...base} tab="records" result={bare} />), 'lucide-circle-dot')).toBe(bare.rows.length)
+    // Grouped, the table sets its rows under each group's heading.
+    const grouped = render(<EntityView {...base} tab="records" result={{ ...S.sampleSitesQuery, groups: undefined }} state={{ ...viewToState(null), group: 'study' }} />)
+    expect(grouped).toContain('data-table-group="stud_ast301"')
+    expect(grouped).toMatch(/data-table-group="stud_ast301"[^]*?>AST-301</)
     expect(html).toContain('All records')
     expect(html).toContain('Save as my view')
     const broken = render(<EntityView {...base} tab="records" result={null} error="Unexpected '!' at position 9." state={{ ...viewToState(null), filter: 'status !! 1' }} />)
@@ -206,6 +244,20 @@ describe('case view', () => {
     expect(html).toContain('data-waiting="waits"')
     expect(html).toContain('start_up_pack = 100')
     expect(html).toContain('Now: Start up pack: 90')
+  })
+
+  test('case values read by their declared type: a date as a date, an enum as words', async () => {
+    const { CaseFieldList } = await import('../CaseValues')
+    const at = { kind: 'system' as const, at: '2026-10-21T01:06:07Z' }
+    const html = render(
+      <CaseFieldList
+        fields={[{ name: 'document_date', type: 'Date', schema: {} }, { name: 'kind', type: 'Enum[documents, question, other]', schema: {} }]}
+        values={{ document_date: { value: '2026-03-14', provenance: at }, kind: { value: 'documents', provenance: at } }}
+      />,
+    )
+    expect(html).toContain('Mar 14, 2026')
+    expect(html).not.toContain('2026-03-14')
+    expect(html).toContain('Documents')
   })
 
   test('a case without them shows neither panel', () => {

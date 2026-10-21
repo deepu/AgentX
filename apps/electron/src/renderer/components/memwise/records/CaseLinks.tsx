@@ -8,7 +8,8 @@ import { CheckCircle2, Clock, CornerDownRight, CornerLeftUp } from 'lucide-react
 import type { MwCaseLink, MwWaitingCondition } from '@memwise/shared/protocol'
 import { Info_Badge } from '@/components/info/Info_Badge'
 import { Info_Section } from '@/components/info/Info_Section'
-import { caseStatusLabel, formatValueInline, humanize } from '../format'
+import { caseStatusLabel, humanize } from '../format'
+import { formatTypedValue } from './record-model'
 
 const LINK_ORDER: MwCaseLink['kind'][] = ['started_by', 'called_by', 'called', 'started']
 const STATUS_COLOR = { active: 'default', done: 'success', stopped: 'destructive' } as const
@@ -37,7 +38,7 @@ export function CaseLinksPanel({ links, onOpenCase }: { links?: MwCaseLink[]; on
                     <span className="text-secondary">{t(`memwise.case.links.${l.kind}`)} </span>
                     <span className="font-medium">{l.title}</span>
                   </span>
-                  <span className="mt-0.5 block text-label-sm text-tertiary">{t('memwise.record.now', { step: l.state })}</span>
+                  {l.status === 'active' && <span className="mt-0.5 block text-label-sm text-tertiary">{t('memwise.record.now', { step: l.state })}</span>}
                 </span>
                 <Info_Badge color={STATUS_COLOR[l.status]} dot>{caseStatusLabel(l.status, t)}</Info_Badge>
               </button>
@@ -74,7 +75,7 @@ export function WaitingPanel({ waiting, onOpenRecord }: { waiting?: MwWaitingCon
         {values.length > 0 && (
           <p className="text-label-sm text-tertiary" data-waiting-values>
             {t('memwise.case.waiting.valuesNow', {
-              values: values.map(([k, v]) => `${humanize(k)}: ${formatValueInline(v, t, i18n.language)}`).join(' · '),
+              values: values.map(([k, v]) => `${humanize(k)}: ${formatTypedValue(waiting.types?.[k] ?? '', v, t, i18n.language)}`).join(' · '),
             })}
           </p>
         )}
