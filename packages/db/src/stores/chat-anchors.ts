@@ -2,12 +2,14 @@
  * Chat anchors (19 §6): a chat session opened from a case or a step. One anchor per chat.
  * `anchor_kind` is free text (no check constraint), so new kinds need no migration:
  * `workflow` (a chat about a playbook) and, from doc 25 §6, `record`, whose `anchor_id` is
- * `<entity key>:<record id>` (`recordAnchorId`).
+ * `<entity key>:<record id>` (`recordAnchorId`), and from doc 26 §4 `page` (a page's id: the chat
+ * that asked its question, or any chat opened on it) and `page_change` (a change's id: the chat
+ * about "Review an answer change").
  */
 import type { Queryable } from '../pool.ts';
 import { compact, iso } from '../rows.ts';
 
-export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record';
+export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record' | 'page' | 'page_change';
 
 /** The `anchor_id` of a record anchor: `literature.topic:rec_1`. Entity keys have no colon. */
 export function recordAnchorId(entity: string, id: string): string {
