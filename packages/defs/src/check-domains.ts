@@ -95,6 +95,24 @@ const templateNames = (title: string) => [...title.matchAll(/\{\s*([A-Za-z_][\w.
 
 // ---------------------------------------------------------------- the project: domains, entities, views, pages
 
+/** `home:`: its entity is in the domain and has a lifecycle (a draft is its first state); its fields are Text. */
+function checkHome(add: ReturnType<typeof collector>['add'], project: ProjectDefs, domain: DomainDef, file: string): void {
+  const home = domain.home!;
+  const def = resolveEntity(project.entities, domain.id, home.entity);
+  if (!def) {
+    add('error', 'unknown-entity', `home.entity: there is no entity \`${home.entity}\` in the ${domain.name} domain`, file, domain, ['home', 'entity']);
+    return;
+  }
+  if (!def.lifecycleChart) add('error', 'home-needs-lifecycle', `home.entity: ${def.entity} needs a lifecycle, so a question can make a draft of it`, file, domain, ['home', 'entity']);
+  for (const key of ['question', 'name'] as const) {
+    const field = home[key];
+    if (field === undefined) continue;
+    const f = def.fields[field];
+    if (!f) add('error', 'unknown-field', `home.${key}: ${def.entity} has no field \`${field}\``, file, domain, ['home', key]);
+    else if (!(f.type.kind === 'scalar' && f.type.name === 'Text')) add('error', 'home-field-not-text', `home.${key}: \`${field}\` must be a Text field`, file, domain, ['home', key]);
+  }
+}
+
 export function checkDomains(project: ProjectDefs, roles: string[] | undefined): Diagnostic[] {
   const { list, add } = collector();
   const domains = project.domains ?? {};
@@ -115,6 +133,7 @@ export function checkDomains(project: ProjectDefs, roles: string[] | undefined):
       if (seen) add('error', 'duplicate-intake-address', `the intake address \`${domain.intake.address}\` is also the ${seen} domain's`, file, domain, ['intake', 'address']);
       else intake.set(domain.intake.address, domain.id);
     }
+    if (domain.home) checkHome(add, project, domain, file);
     if (domain.id !== DEFAULT_DOMAIN && domain.policy?.approvals?.by && roleSet) {
       const policy = domain.policy;
       policy.approvals!.by!.forEach((role, i) => {

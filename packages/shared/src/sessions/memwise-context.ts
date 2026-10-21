@@ -35,6 +35,8 @@ export interface SessionMemwiseContext {
    * names. Non-empty: `record_keep` is offered (25 §6).
    */
   keep?: { entity: string; name: string }[];
+  /** Record chats: the chat was opened on a draft from a domain's question box; `record_update` fills it in. */
+  draft?: boolean;
   /** The block's text (inside `<memwise_context>`), already assembled by the host. */
   block: string;
   /** Who the chat acts for, by name (for the rules line). */
@@ -55,6 +57,7 @@ export function writeSessionMemwiseContext(workspaceRootPath: string, sessionId:
       : { kind: ctx.anchor.kind, id: ctx.anchor.id },
     ...(ctx.conversation ? { conversation: true } : {}),
     ...(ctx.anchor.kind === 'record' && ctx.keep?.length ? { keep: ctx.keep.map((k) => ({ entity: k.entity, name: k.name })) } : {}),
+    ...(ctx.anchor.kind === 'record' && ctx.draft ? { draft: true } : {}),
     block: ctx.block.length > MEMWISE_CONTEXT_MAX_CHARS ? `${ctx.block.slice(0, MEMWISE_CONTEXT_MAX_CHARS)}\n… (shortened)` : ctx.block,
     ...(ctx.personName ? { personName: ctx.personName } : {}),
     setAt: ctx.setAt ?? Date.now(),
@@ -101,6 +104,7 @@ export function memwiseSessionToolOptions(workspaceRootPath: string | undefined,
   includePlaybookTools: boolean;
   includeRecordTools: boolean;
   includeRecordKeep: boolean;
+  includeRecordUpdate: boolean;
 } {
   const ctx = workspaceRootPath && sessionId ? readSessionMemwiseContext(workspaceRootPath, sessionId) : null;
   const record = ctx?.anchor.kind === 'record';
@@ -108,5 +112,6 @@ export function memwiseSessionToolOptions(workspaceRootPath: string | undefined,
     includePlaybookTools: ctx?.conversation === true,
     includeRecordTools: record,
     includeRecordKeep: record && !!ctx?.keep?.length,
+    includeRecordUpdate: record && ctx?.draft === true,
   };
 }

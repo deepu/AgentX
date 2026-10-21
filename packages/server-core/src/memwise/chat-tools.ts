@@ -417,6 +417,25 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
       opts.log?.(`[memwise] chat ${sessionId} kept ${rows.filter((r) => r.id).length} ${entity} row(s)`)
       return { entity, rows }
     },
+
+    /**
+     * A chat opened from a domain's question box fills in its own draft (the anchored record),
+     * only while that record is still in its lifecycle's first state: once the person keeps it,
+     * it changes through its playbooks and its page.
+     */
+    async update(input) {
+      const c = await ctx()
+      const initial = c.project.entities[c.entity]?.lifecycleChart?.initial
+      const page = await c.records.page(c.entity, c.id, c.actor)
+      if (!page) throw new Error('The draft was not found, or this person may not see it.')
+      if (!initial || page.status !== initial) {
+        return { applied: false, message: `${page.title} is no longer a draft (it is ${page.status ?? 'kept'}); change it on its page now.` }
+      }
+      const r = await c.records.update({ entity: c.entity, id: c.id, values: input.values, reason: 'Filled in from chat' }, c.actor)
+      if (r.applied) emitMemwiseChange({ kind: 'records', entity: c.entity, id: c.id })
+      opts.log?.(`[memwise] chat ${sessionId} filled in ${Object.keys(input.values).join(', ')} on ${c.entity} ${c.id}: ${r.status}`)
+      return { applied: r.applied, ...(r.message ? { message: r.message } : {}), ...(r.errors ? { errors: r.errors } : {}) }
+    },
   }
 }
 

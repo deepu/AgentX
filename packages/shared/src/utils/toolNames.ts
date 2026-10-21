@@ -40,6 +40,7 @@ const PLAIN_SESSION_TOOL_LABELS: Record<string, string> = {
   record_get: 'Read a record',
   record_query: 'Look up records',
   record_keep: 'Keep in MemWise',
+  record_update: 'Fill in the draft',
 };
 
 /**

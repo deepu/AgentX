@@ -123,5 +123,5 @@ export {
   handlePlaybookCheck,
   handlePlaybookFinish,
 } from './playbooks.ts';
-export { handleRecordGet, handleRecordQuery, handleRecordKeep, untrustedRecordData } from './records.ts';
+export { handleRecordGet, handleRecordQuery, handleRecordKeep, handleRecordUpdate, untrustedRecordData } from './records.ts';
 export type { DecideArgs } from './decide.ts';

@@ -2072,6 +2072,7 @@ export function shouldAllowToolInMode(
         includePlaybookTools: true,
         includeRecordTools: true,
         includeRecordKeep: true,
+        includeRecordUpdate: true,
       });
 
       if (safeAllowedSessionTools.has(toolName)) {

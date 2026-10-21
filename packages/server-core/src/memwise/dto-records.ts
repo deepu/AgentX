@@ -13,7 +13,7 @@ import type {
   TriggerSummary, WaitingCondition,
 } from '@memwise/runtime'
 import type {
-  MwAuditTrail, MwCaseLink, MwChartData, MwCheckResult, MwDashboard, MwDashboardBlock, MwDocument, MwDomain, MwEntityDefinition, MwInboxItem,
+  MwAuditTrail, MwCaseLink, MwChartData, MwCheckResult, MwDashboard, MwDashboardBlock, MwDocument, MwDomain, MwDomainHome, MwEntityDefinition, MwInboxItem,
   MwPageBlock, MwPageLayout, MwProposedValue, MwRecordField, MwRecordFieldSource, MwRecordKeepResult, MwRecordKpi, MwRecordPage,
   MwRecordQueryResult, MwRecordReview, MwRecordWriteResult, MwSignature, MwTextView, MwTransitionOption, MwTreeNode, MwTrigger, MwView,
   MwWaitingCondition,
@@ -48,6 +48,7 @@ const plainDoc = (d: DocumentValue): MwDocument => ({ id: d.id, name: d.name, mi
 export function toDomain(ctx: Pick<DtoContext, 'project'>, s: DomainSummary): MwDomain {
   const def = ctx.project.domains?.[s.id]
   const days = retentionDays(s.retentionMs)
+  const home = toDomainHome(ctx.project, s.id)
   return {
     id: s.id,
     name: s.name || domainName(ctx.project, s.id),
@@ -69,6 +70,24 @@ export function toDomain(ctx: Pick<DtoContext, 'project'>, s: DomainSummary): Mw
       acceptsFrom: [...(def?.acceptsFrom ?? [])],
       ...(def?.intake?.address ? { intake: def.intake.address } : {}),
     },
+    ...(home ? { home } : {}),
+  }
+}
+
+/** The domain's `home:` with its entity resolved, or undefined when it has none (or it doesn't resolve). */
+export function toDomainHome(project: ProjectDefs, domainId: string): MwDomainHome | undefined {
+  const home = project.domains?.[domainId]?.home
+  const def = home ? project.entities[home.entity] ?? Object.values(project.entities).find((e) => (e.domain ?? DEFAULT_DOMAIN) === domainId && e.entity === home.entity) : undefined
+  const chart = def?.lifecycleChart
+  if (!home || !def || !chart) return undefined
+  return {
+    ...(home.ask ? { ask: home.ask } : {}),
+    ...(home.placeholder ? { placeholder: home.placeholder } : {}),
+    entity: !def.domain || def.domain === DEFAULT_DOMAIN ? def.entity : `${def.domain}.${def.entity}`,
+    entityTitle: entityLabel(def.entity),
+    draftState: chart.initial,
+    endStates: Object.values(chart.states).filter((s) => Object.keys(s.on).length === 0).map((s) => s.name),
+    suggested: [...home.suggested],
   }
 }
 
@@ -217,7 +236,9 @@ export function toReview(project: ProjectDefs, r: RecordReview): MwRecordReview 
 
 export function toTransitionOption(t: RecordTransitionOption): MwTransitionOption {
   return {
-    name: t.name, label: humanize(t.name), to: t.to, allowed: !!t.allowed,
+    name: t.name, label: t.label ?? humanize(t.name), to: t.to, allowed: !!t.allowed,
+    ...(t.label ? { custom: true } : {}),
+    ...(t.primary ? { primary: true } : {}),
     ...(t.reason ? { reason: t.reason } : {}),
     ...(t.guard ? { guard: { condition: t.guard.condition, holds: !!t.guard.holds } } : {}),
     ...(t.signed ? { signed: true } : {}),

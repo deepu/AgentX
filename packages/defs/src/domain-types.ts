@@ -41,6 +41,8 @@ export interface DomainDef {
   acceptsFrom?: string[];
   /** Incoming messages (24 §10). */
   intake?: { address: string };
+  /** The domain's home: a question box that opens a chat with a draft record beside it. */
+  home?: DomainHomeDef;
   /** The domain's policy layer (`policy.yaml`). */
   policy?: PolicyDoc;
   /** Folder relative to the project root (`domains/etmf`, or `domain` for the default domain). */
@@ -54,6 +56,21 @@ export interface DomainDef {
   /** Shared views, by id (`views/<id>.yaml`). */
   views: Record<string, ViewDef>;
   file?: string;
+}
+
+/**
+ * `home:` in domain.yaml: asking a question makes a draft of `entity` (its lifecycle's first
+ * state) with the question in `question`, and opens a chat anchored to it; the chat fills the
+ * draft in. Drafts are the "recent questions"; records past their first state are listed above them.
+ */
+export interface DomainHomeDef {
+  ask?: string;
+  placeholder?: string;
+  /** Entity name as written (bare in its own domain, or a key). */
+  entity: string;
+  question: string;
+  name?: string;
+  suggested: string[];
 }
 
 /** A role granted in one domain, optionally limited to records (24 §2). */
@@ -115,6 +132,10 @@ export interface LifecycleTransitionDef {
   guard?: string;
   /** Regulated: needs a matching signature on the record in the case making it (24 §9). */
   signed?: boolean;
+  /** The button's words, e.g. "Keep watching, every Monday" (default: the name). */
+  label?: string;
+  /** Shown as the page's main button. */
+  primary?: boolean;
 }
 
 export interface LifecycleStateDef {

@@ -242,6 +242,8 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
         transitions.push({
           name, to, allowed: check.ok, ...(!check.ok ? { reason: check.message } : {}), ...(guard ? { guard } : {}), ...(t?.signed ? { signed: true } : {}),
           ...(automatic ? { automatic: true } : {}),
+          ...(t?.label ? { label: t.label } : {}),
+          ...(t?.primary ? { primary: true } : {}),
         });
       }
     });

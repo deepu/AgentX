@@ -136,7 +136,10 @@ export function parseLifecycle(raw: unknown, report: Reporter): { states?: strin
       if (actor) by.push(actor);
       else report.error('invalid-format', `\`${src}\` is not who may make a transition: expected step, system, role:<id> or source:<plugin or domain:<id>>`, ['lifecycle', 'transitions', name, 'by', ...(typeof t.by === 'string' ? [] : [i])]);
     });
-    transitions[name] = compact({ name, by, guard: asString(t.guard), signed: typeof t.signed === 'boolean' ? t.signed : undefined });
+    transitions[name] = compact({
+      name, by, guard: asString(t.guard), signed: typeof t.signed === 'boolean' ? t.signed : undefined,
+      label: asString(t.label), primary: t.primary === true ? true : undefined,
+    });
   }
   const chart: LifecycleDef = { initial: asString(raw.initial) ?? '', states, transitions };
   return { states: Object.keys(states), chart };

@@ -1410,6 +1410,38 @@ export interface MwDomain {
   flags: number
   /** App addition: house rules and hand-off settings, for the domain page. */
   detail?: MwDomainDetail
+  /** The domain's home (`home:` in domain.yaml): a question box over its drafts and records. */
+  home?: MwDomainHome
+}
+
+/**
+ * A domain's home: asking (`memwise.ask`) makes a draft of `entity` and opens a chat on it with
+ * the draft beside it. Drafts (records still in `draftState`) are the recent questions; records
+ * past it, and not in an end state, are the ones being worked on.
+ */
+export interface MwDomainHome {
+  ask?: string
+  placeholder?: string
+  /** Entity key of the drafts (`literature.Topic`). */
+  entity: string
+  /** Its plural-free display name ("Topic"). */
+  entityTitle: string
+  draftState: string
+  /** States with no way out (closed): not listed. */
+  endStates: string[]
+  suggested: string[]
+}
+
+/** Ask a question on a domain's home: makes the draft and opens its chat. */
+export interface MwAskInput {
+  domain: string
+  question: string
+}
+
+export interface MwAskResult {
+  sessionId: string
+  entity: string
+  recordId: string
 }
 
 export type MwRecordFieldSource =
@@ -1478,6 +1510,10 @@ export interface MwTransitionOption {
   signed?: boolean
   /** No person can make it (only a playbook step, a connector or MemWise): shown as a note, never a button. */
   automatic?: boolean
+  /** `label` is the entity's own words for the button ("Keep watching, every Monday"), not the name humanized. */
+  custom?: boolean
+  /** The page's main button. */
+  primary?: boolean
 }
 
 export interface MwRecordFlag { id: string; entity: string; recordId: string; invariant: string; message: string; raisedAt: string; closedAt?: string }

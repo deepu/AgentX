@@ -9,7 +9,7 @@
  * memwise/chat-tools.ts); this package stays free of @memwise/* kernel imports.
  */
 
-import type { SessionToolContext, RecordGetInput, RecordKeepInput, RecordQueryInput } from '../context.ts';
+import type { SessionToolContext, RecordGetInput, RecordKeepInput, RecordQueryInput, RecordUpdateInput } from '../context.ts';
 import type { ToolResult } from '../types.ts';
 import { successResponse, errorResponse } from '../response.ts';
 
@@ -102,5 +102,26 @@ export async function handleRecordKeep(ctx: SessionToolContext, args: RecordKeep
     return successResponse(JSON.stringify({ ...result, summary }, null, 2));
   } catch (error) {
     return errorResponse(`Could not keep the rows: ${toError(error)}`);
+  }
+}
+
+export type RecordUpdateArgs = RecordUpdateInput;
+
+export async function handleRecordUpdate(ctx: SessionToolContext, args: RecordUpdateArgs): Promise<ToolResult> {
+  if (!ctx.memwiseRecords) return errorResponse(RECORDS_UNAVAILABLE);
+  if (!ctx.memwiseRecords.update) return errorResponse('This chat is not about a draft, so it can\'t fill one in.');
+  const values = args?.values;
+  if (!values || typeof values !== 'object' || Array.isArray(values) || Object.keys(values).length === 0) {
+    return errorResponse('values is required: at least one { field: value }.');
+  }
+  try {
+    const result = await ctx.memwiseRecords.update({ values });
+    if (!result.applied) {
+      const why = result.errors ? Object.entries(result.errors).map(([k, v]) => `${k}: ${v.join(', ')}`).join('; ') : '';
+      return errorResponse(`Not saved: ${result.message ?? 'the draft refused it'}${why ? ` (${why})` : ''}`);
+    }
+    return successResponse(JSON.stringify({ ...result, summary: `Saved ${Object.keys(values).join(', ')} on the draft.` }, null, 2));
+  } catch (error) {
+    return errorResponse(`Could not fill in the draft: ${toError(error)}`);
   }
 }

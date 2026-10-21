@@ -651,6 +651,10 @@ export interface RecordTransitionOption {
   signed?: boolean;
   /** No person can ever make it: only a playbook step, a connector or MemWise itself (`by: [step]`). */
   automatic?: boolean;
+  /** The button's words as the entity says them (`label:`). */
+  label?: string;
+  /** The page's main button (`primary: true`). */
+  primary?: boolean;
 }
 
 export interface RecordFlag {

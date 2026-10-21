@@ -943,6 +943,11 @@ export interface RecordKeepInput {
   rows: Record<string, unknown>[];
 }
 
+/** Fill in the chat's own draft record (a chat opened from a domain's question box). */
+export interface RecordUpdateInput {
+  values: Record<string, unknown>;
+}
+
 /** One kept row: the new record's id, or why it wasn't kept. */
 export interface RecordKeepRowResult {
   id?: string;
@@ -960,6 +965,8 @@ export interface MemwiseRecordToolCallbacks {
   query(input: RecordQueryInput): Promise<unknown>;
   /** Absent when the anchored record's domain has no entity with `keep_from_chat`. */
   keep?(input: RecordKeepInput): Promise<{ entity: string; rows: RecordKeepRowResult[]; [k: string]: unknown }>;
+  /** Absent unless the chat was opened on a draft (a domain's question box). */
+  update?(input: RecordUpdateInput): Promise<{ applied: boolean; message?: string; errors?: Record<string, string[]>; [k: string]: unknown }>;
 }
 
 export interface SessionInfo {

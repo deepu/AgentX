@@ -87,6 +87,8 @@ const lifecycleChart = z.strictObject({
       by: z.union([z.string(), names]).optional().meta({ description: 'step, role:<id>, source:<plugin | domain:<id>>, system.' }),
       guard: condition.optional(),
       signed: z.boolean().optional().meta({ description: 'Regulated domains: needs a matching signature on the record.' }),
+      label: z.string().optional().meta({ description: 'The button\'s words, e.g. "Keep watching, every Monday".' }),
+      primary: z.boolean().optional().meta({ description: "Shown as the page's main button." }),
       description: z.string().optional(),
     }),
   ])).optional(),
@@ -327,6 +329,14 @@ export const domainFormat = z.strictObject({
   retention: duration.optional().meta({ description: 'How long records are kept, e.g. 25y.' }),
   accepts_from: names.optional().meta({ description: "Domains whose workflows may start or call this domain's workflows." }),
   intake: z.strictObject({ address: z.string() }).optional().meta({ description: "Incoming messages to this address start the domain's message triggers." }),
+  home: z.strictObject({
+    ask: z.string().optional().meta({ description: 'The heading above the question box, e.g. "What does the literature say?".' }),
+    placeholder: z.string().optional().meta({ description: 'The hint inside the question box.' }),
+    entity: z.string().meta({ description: 'The entity a question becomes a draft of (a bare name in this domain), e.g. Topic. It needs a lifecycle.' }),
+    question: z.string().meta({ description: "The draft's Text field the question goes into." }),
+    name: z.string().optional().meta({ description: "The draft's Text field for a short name; the chat writes a better one." }),
+    suggested: z.array(z.string()).optional().meta({ description: 'Questions offered under the box.' }),
+  }).optional().meta({ description: "The domain's home: a question box. Asking opens a chat with a draft record beside it; recent drafts and the records being worked on are listed under the box." }),
 }).meta({ title: 'MemWise domain', description: 'domains/<id>/domain.yaml (or domain/domain.yaml for the default domain).' });
 
 const viewSort = z.array(z.union([
