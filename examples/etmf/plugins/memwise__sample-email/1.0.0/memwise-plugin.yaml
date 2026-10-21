@@ -1,0 +1,28 @@
+# A stand-in email connector (docs/memwise/22-phase-4-interfaces.md §7): provides the capability
+# `email_send` with the app's sandbox `email.send`, which writes to a local outbox table instead
+# of sending. A binding names it as the provider of `email_send` for plugins that need email
+# (`capabilities: { email_send: email.send }`); swapping in a real email plugin is a binding change.
+id: memwise/sample-email
+version: 1.0.0
+title: Sample email
+description: Sends email into a sandbox outbox (nothing leaves the machine). Provides email_send.
+trust: first-party
+
+provides:
+  capabilities:
+    email_send: { tool: email.send }
+
+tools:
+  email.send:
+    description: Send an email (sandbox outbox).
+    effect: outbound
+    idempotent: true                   # keyed by the idempotency key: a retried send never sends twice
+    input:
+      type: object
+      properties:
+        to:      { type: string }
+        subject: { type: string }
+        body:    { type: string }
+      required: [to, subject, body]
+      additionalProperties: false
+    run: { builtin: email.send }

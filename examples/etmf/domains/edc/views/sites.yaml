@@ -1,0 +1,4 @@
+title: Sites
+entity: Site
+sort: [site_number]
+columns: [site_number, name, coordinator, randomised, enrolment_target, open_queries, old_queries, pages_verified]

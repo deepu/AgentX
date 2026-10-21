@@ -1,0 +1,26 @@
+entity: Subject
+title: "{subject_key}"
+parent: site
+# One randomised subject, as Rave has it (read only, owned by the Rave connector).
+fields:
+  subject_key:    { type: Text, required: true, description: "Like 104-007" }
+  site:           Ref<Site>
+  study:          Text
+  subject_status: { type: Text, description: "Randomised, Completed or Withdrawn" }
+  randomised_on:  Date
+  last_visit:     { type: Text, description: "Like Visit 3" }
+  last_visit_on:  Date
+  rave_ref:       { type: Text, description: "The subject in Medidata Rave, like MW-301(Prod)/104-007" }
+relationships:
+  queries: many Query
+calculated:
+  open_queries: { count: queries, where: "query_status = 'Open'" }
+ownership:
+  subject_key: memwise/medidata-rave
+  site: memwise/medidata-rave
+  study: memwise/medidata-rave
+  subject_status: memwise/medidata-rave
+  randomised_on: memwise/medidata-rave
+  last_visit: memwise/medidata-rave
+  last_visit_on: memwise/medidata-rave
+  rave_ref: memwise/medidata-rave

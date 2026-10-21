@@ -1,0 +1,6 @@
+title: Open queries
+entity: Query
+filter: "query_status = 'Open'"
+group: site
+sort: [{ field: days_open, desc: true }]
+columns: [subject_key, visit, form, text, days_open]

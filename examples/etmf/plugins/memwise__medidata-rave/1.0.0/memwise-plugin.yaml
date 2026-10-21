@@ -1,0 +1,159 @@
+# Medidata Rave (docs/memwise/26-projects-and-pages.md §9, D96): reads a study's sites, site staff,
+# subjects, queries and form status from Rave Web Services, so the EDC app can build pages from
+# questions and chase old queries. Data entry stays in Rave: every tool only reads, and nothing here
+# can write to Rave. The tools run on builtin routes (the app's RWS client); the connection's
+# settings (RAVE_URL, RAVE_USER, RAVE_PASSWORD, optional RAVE_STUDY) are set once for the workspace.
+id: memwise/medidata-rave
+version: 1.0.0
+title: Medidata Rave
+description: Reads sites, site staff, subjects, queries and form status from Medidata Rave (read only).
+trust: first-party
+
+tools:
+  rave.list_studies:
+    description: List the studies this Rave account can see, with their enrolment target and plan.
+    effect: read
+    input: { type: object, properties: {}, additionalProperties: false }
+    run: { builtin: rave.rws.list_studies }
+  rave.list_sites:
+    description: "List a study's sites with their principal investigator, study coordinator (and since when), enrolment target and how many entered pages are source-verified."
+    effect: read
+    input:
+      type: object
+      properties:
+        study: { type: string, description: "The study: its OID (MW-301(Prod)) or protocol name (MW-301). Default: the connection's study, else every study this account sees." }
+      additionalProperties: false
+    run: { builtin: rave.rws.list_sites }
+  rave.get_site:
+    description: Read one site by its Rave reference (MW-301(Prod)/104).
+    effect: read
+    input:
+      type: object
+      properties:
+        site: { type: string, description: "The site reference, e.g. MW-301(Prod)/104" }
+      required: [site]
+      additionalProperties: false
+    run: { builtin: rave.rws.get_site }
+  rave.site_staff:
+    description: "A site's staff in Rave: investigators and coordinators, with their role, email and start date."
+    effect: read
+    input:
+      type: object
+      properties:
+        site: { type: string, description: "The site reference, e.g. MW-301(Prod)/104" }
+        all:  { type: boolean, description: Also people no longer active at the site }
+      required: [site]
+      additionalProperties: false
+    run: { builtin: rave.rws.site_staff }
+  rave.list_subjects:
+    description: List the subjects of a study (or of one site), with when they were randomised and their last visit.
+    effect: read
+    input:
+      type: object
+      properties:
+        study: { type: string, description: "The study: its OID or protocol name. Default: the connection's study, else every study." }
+        site:  { type: string, description: "Only this site: its number (104) or reference" }
+      additionalProperties: false
+    run: { builtin: rave.rws.list_subjects }
+  rave.get_subject:
+    description: Read one subject by its Rave reference (MW-301(Prod)/104-007).
+    effect: read
+    input:
+      type: object
+      properties:
+        subject: { type: string, description: The subject reference }
+      required: [subject]
+      additionalProperties: false
+    run: { builtin: rave.rws.get_subject }
+  rave.list_queries:
+    description: "List data queries: who they are about (site, subject, visit, form, field), what they ask, their status and how many days they have been open (AgeDays). Sites answer queries in Rave; this only reads them."
+    effect: read
+    input:
+      type: object
+      properties:
+        study:           { type: string, description: "The study: its OID or protocol name. Default: the connection's study, else every study." }
+        site:            { type: string, description: "Only this site: its number (104) or reference" }
+        status:          { type: string, enum: [open, answered, closed, all], description: Default all }
+        older_than_days: { type: integer, description: Only queries open longer than this many days }
+      additionalProperties: false
+    run: { builtin: rave.rws.list_queries }
+  rave.get_query:
+    description: Read one query by its Rave reference (MW-301(Prod)/Q50001).
+    effect: read
+    input:
+      type: object
+      properties:
+        query: { type: string, description: The query reference }
+      required: [query]
+      additionalProperties: false
+    run: { builtin: rave.rws.get_query }
+  rave.form_status:
+    description: "Form status per site: pages entered, source-verified and overdue, and the percent verified, with totals for the study."
+    effect: read
+    input:
+      type: object
+      properties:
+        study: { type: string, description: "The study: its OID or protocol name. Default: the connection's study, else every study." }
+        site:  { type: string, description: "Only this site: its number (104) or reference" }
+      additionalProperties: false
+    run: { builtin: rave.rws.form_status }
+
+# What a binding can map onto the EDC app's entities (22 §5). Each is listed for the sync and read
+# one at a time for the record page (read-through), by its `Ref`.
+records:
+  site:
+    title: Sites
+    list: { tool: rave.list_sites, items: sites }
+    get:  { tool: rave.get_site, arg: site, item: site }
+    key: Ref
+    fields:
+      Ref: Text
+      Study: Text
+      SiteNumber: Text
+      SiteName: Text
+      City: Text
+      Country: Text
+      Status: Text
+      EnrollmentTarget: Number
+      ActivatedDate: Date
+      Investigator: Text
+      InvestigatorEmail: Email
+      Coordinator: Text
+      CoordinatorEmail: Email
+      CoordinatorSince: Date
+      PagesVerifiedPercent: Number
+      PagesOverdue: Number
+  subject:
+    title: Subjects
+    list: { tool: rave.list_subjects, items: subjects }
+    get:  { tool: rave.get_subject, arg: subject, item: subject }
+    key: Ref
+    fields:
+      Ref: Text
+      SiteRef: Text
+      Study: Text
+      SubjectKey: Text
+      Status: Text
+      RandomisedDate: Date
+      LastVisit: Text
+      LastVisitDate: Date
+  query:
+    title: Queries
+    list: { tool: rave.list_queries, items: queries }
+    get:  { tool: rave.get_query, arg: query, item: query }
+    key: Ref
+    fields:
+      Ref: Text
+      SiteRef: Text
+      SubjectRef: Text
+      Study: Text
+      SiteNumber: Text
+      SubjectKey: Text
+      Folder: Text
+      Form: Text
+      Field: Text
+      QueryText: Text
+      MarkingGroup: Text
+      Status: Text
+      OpenedDate: Date
+      ClosedDate: Date

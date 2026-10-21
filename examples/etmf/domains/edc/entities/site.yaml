@@ -1,9 +1,50 @@
 entity: Site
 title: "{site_number} · {name}"
+# The source of truth for sites: Medidata Rave. Every field Rave gives is read from it by the Rave
+# connector's sync (domain/bindings/memwise__medidata-rave.yaml) and owned by it: read only here,
+# never edited, and eTMF's Site follows them through its link (26 §9, D71, D110).
 fields:
-  site_number:            { type: Text, required: true, description: "Like US-012" }
+  site_number:            { type: Text, required: true, description: "Like 104" }
   name:                   Text
   address:                Address
   principal_investigator: PersonName
   country:                Text
-lifecycle: [planned, active, closed]
+  study:                  { type: Text, description: "The study's protocol, like MW-301" }
+  city:                   Text
+  pi_email:               Email
+  coordinator:            { type: PersonName, description: The study coordinator Rave names for the site }
+  coordinator_email:      Email
+  coordinator_since:      { type: Date, description: When the coordinator started at the site }
+  enrolment_target:       { type: Number, description: How many subjects the site should randomise }
+  pages_verified:         { type: Percentage, description: Entered pages that are source-verified }
+  pages_overdue:          { type: Number, description: Pages not entered in time }
+  rave_ref:               { type: Text, description: "The site in Medidata Rave, like MW-301(Prod)/104" }
+relationships:
+  subjects: many Subject
+  queries:  many Query
+calculated:
+  randomised:   { count: subjects, description: Subjects randomised so far }
+  open_queries: { count: queries, where: "query_status = 'Open'", description: Queries the site has not answered }
+  old_queries:  { count: queries, where: "query_status = 'Open' and days_since(opened_on) > 14", description: Open queries older than 14 days }
+ownership:
+  site_number: memwise/medidata-rave
+  name: memwise/medidata-rave
+  principal_investigator: memwise/medidata-rave
+  country: memwise/medidata-rave
+  study: memwise/medidata-rave
+  city: memwise/medidata-rave
+  pi_email: memwise/medidata-rave
+  coordinator: memwise/medidata-rave
+  coordinator_email: memwise/medidata-rave
+  coordinator_since: memwise/medidata-rave
+  enrolment_target: memwise/medidata-rave
+  pages_verified: memwise/medidata-rave
+  pages_overdue: memwise/medidata-rave
+  rave_ref: memwise/medidata-rave
+lifecycle: [active, planned, closed]   # a site read from Rave is active; planned ones are added here by hand
+page:
+  layout: sidebar
+  header: [title, principal_investigator, coordinator]
+  main: [{ related: [queries, subjects] }, cases, notes]
+  side: [details]
+  below: [mentions, history]
