@@ -191,6 +191,14 @@ export function attachSessionSelfManagementBindings(
     enumerable: true,
   });
 
+  Object.defineProperty(context, 'memwisePages', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.memwisePages;
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
   // getSessionInfo needs wrapping to default sid → sessionId
   Object.defineProperty(context, 'getSessionInfo', {
     get() {

@@ -1,0 +1,36 @@
+name: answer-changed-accepted
+description: >
+  The Monday refresh finds a new trial: the writer rewrites the page, the compare step finds a new
+  number in the headline, the page's owner accepts the change and it becomes the current version.
+case:
+  page: page_weight_loss
+  reason: schedule
+submit:
+  review: { outcome: accepted }
+tools:
+  page.get:
+    page: page_weight_loss
+    question: How much weight do people lose on GLP-1 drugs?
+    body: "People lose 15% of their weight on average across 9 trials."
+  page.compare: { outcome: material, change: pch_01 }
+  page.accept_change: { page: page_weight_loss, version: 4 }
+model:
+  writer:
+    - toolCalls:
+        - { name: page.get, args: { page: page_weight_loss } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: written
+            writes:
+              body: "People lose 15% of their weight on average across 10 trials, and most keep it off for a year."
+              label: 1 new trial
+              change_title: ATTAIN-MAINTAIN added
+              plus: ATTAIN-MAINTAIN shows most people keep the weight off for a year.
+              left_out: [ { title: A conference abstract, why: No full results yet } ]
+            rationale: One new trial reports a year of follow-up.
+expect:
+  outcome: written
+  state: end
+  writes: { change: pch_01, label: 1 new trial }
+  effects: { page.compare: 1, page.accept_change: 1, page.send_back_change: 0 }

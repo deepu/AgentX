@@ -1,0 +1,27 @@
+entity: Enquiry
+title: "{subject}"
+list: [from_name, received, status]
+fields:
+  from:       { type: Email, required: true, description: Who asked }
+  from_name:  { type: Text, description: "Their name, like Dr Ruth Adeyemi" }
+  subject:    { type: Text, required: true }
+  question:   { type: Text, required: true, description: The enquiry as it came in }
+  received:   DateTime
+  reply:      { type: Text, description: "The reply as signed: plain words, every claim with its reference" }
+  references: { type: List<Text>, description: "What the reply cites: DOI links, PubMed links or the pages it drew on" }
+  pages:      { type: List<Text>, description: The ids of the kept pages the answer came from }
+lifecycle:
+  initial: received
+  states:
+    received: { on: { draft: drafted }, description: "In from email, not answered yet" }
+    drafted:  { on: { send: sent, redraft: received }, description: A reply is drafted and waits for the medical lead to sign it }
+    sent:     { description: "Signed by the medical lead and sent to the person who asked" }
+  transitions:
+    draft:   { by: [step] }
+    redraft: { by: [step] }
+    send:    { by: [step] }
+page:
+  layout: single
+  header: [subject, from_name, received, status]
+  main: [{ fields: [from, question] }, { fields: [reply, references] }, details]
+  below: [mentions, notes]

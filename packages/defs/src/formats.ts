@@ -332,12 +332,17 @@ export const domainFormat = z.strictObject({
   home: z.strictObject({
     ask: z.string().optional().meta({ description: 'The heading above the question box, e.g. "What does the literature say?".' }),
     placeholder: z.string().optional().meta({ description: 'The hint inside the question box.' }),
-    entity: z.string().meta({ description: 'The entity a question becomes a draft of (a bare name in this domain), e.g. Topic. It needs a lifecycle.' }),
-    question: z.string().meta({ description: "The draft's Text field the question goes into." }),
+    entity: z.string().optional().meta({ description: 'The entity a question becomes a draft of (a bare name in this domain), e.g. Topic. It needs a lifecycle. Without one, a question makes a draft page.' }),
+    question: z.string().optional().meta({ description: "The draft's Text field the question goes into (needed with entity)." }),
     name: z.string().optional().meta({ description: "The draft's Text field for a short name; the chat writes a better one." }),
     page: z.string().optional().meta({ description: "The draft's Text field the chat writes its page into (markdown, laid out for the question, with chart blocks)." }),
     suggested: z.array(z.string()).optional().meta({ description: 'Questions offered under the box.' }),
   }).optional().meta({ description: "The domain's home: a question box. Asking opens a chat with a draft record beside it; recent drafts and the records being worked on are listed under the box." }),
+  pages: z.strictObject({
+    refresh: z.string().optional().meta({ description: 'The playbook that refreshes a kept page in this app (started with { page, reason }); default the built-in refresh-page.' }),
+    reviewer: z.string().optional().meta({ description: "The role that reviews answer changes, besides the page's owner." }),
+    every: z.string().optional().meta({ description: 'The default schedule when a page is kept: mon … sun, daily or month.' }),
+  }).optional().meta({ description: 'Pages built from questions: how kept pages are refreshed and who reviews answer changes.' }),
 }).meta({ title: 'MemWise domain', description: 'domains/<id>/domain.yaml (or domain/domain.yaml for the default domain).' });
 
 const viewSort = z.array(z.union([

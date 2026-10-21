@@ -124,4 +124,5 @@ export {
   handlePlaybookFinish,
 } from './playbooks.ts';
 export { handleRecordGet, handleRecordQuery, handleRecordKeep, handleRecordUpdate, untrustedRecordData } from './records.ts';
+export { handlePageGet, handlePageUpdate, handlePageCreate } from './memwise-pages.ts';
 export type { DecideArgs } from './decide.ts';
