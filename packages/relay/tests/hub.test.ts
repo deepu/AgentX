@@ -27,6 +27,10 @@ describe('routes', () => {
     expect(route('POST', `http://h/x/${ID}/f/mwl_1/api/submit?a=b`, host, pathMode)).toEqual({ kind: 'forward', installId: ID, path: '/f/mwl_1/api/submit', query: 'a=b' });
     expect(route('PUT', `http://h/x/${ID}/f/mwl_1/api/draft`, host, pathMode).kind).toBe('forward');
     expect(route('GET', `http://h/x/${ID}/i/mwl_2`, host, pathMode).kind).toBe('forward');
+    // Stage 5: an inspector's read-only view; it never takes a PUT.
+    expect(route('GET', `http://h/x/${ID}/v/mwi_3`, host, pathMode).kind).toBe('forward');
+    expect(route('POST', `http://h/x/${ID}/v/mwi_3/api/ask`, host, pathMode).kind).toBe('forward');
+    expect(route('PUT', `http://h/x/${ID}/v/mwi_3/api/ask`, host, pathMode).kind).toBe('method-not-allowed');
     expect(route('POST', `http://h/x/${ID}/h/hook_1`, host, pathMode).kind).toBe('forward');
     expect(route('GET', `http://h/x/${ID}/assets/form/app.js`, host, pathMode).kind).toBe('forward');
     expect(route('POST', `http://h/x/${ID}/assets/form/app.js`, host, pathMode)).toEqual({ kind: 'method-not-allowed', allow: 'GET, HEAD' });

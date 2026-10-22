@@ -63,7 +63,7 @@ import { DocumentReviewPage } from './records/RecordPages'
 import { isReviewItem, queueNeighbour, sameKindItems, type ReviewItem } from './records/record-model'
 import type { ReviewQueue } from './records/DocumentReview'
 
-import { useProjectShell } from './project/shell-context'
+import { shellStartProject, useProjectShell } from './project/shell-context'
 
 const notAvailable = (): MwSubmitResult => ({ applied: false, message: i18n.t('memwise.notAvailable') })
 
@@ -146,6 +146,10 @@ export function useInboxActions(item: MwInboxItem | null, opts: { onDone?: (resu
       openPlugin: pluginId => navigate(routes.view.plugins(pluginId)),
       openRecord: (entity, recordId) => navigate(routes.view.record(entity, recordId)),
       openAutomations: () => navigate(routes.view.domains({ type: 'automations' })),
+      openChangeRequest: (domain, crId) => navigate(routes.view.domains({ type: 'regulated', domain, screen: 'change', id: crId })),
+      ...(api && typeof api.memwiseAnswerInspectorQuestion === 'function' ? {
+        answerInspectorQuestion: (questionId: string, answer: string) => (workspaceId ? api.memwiseAnswerInspectorQuestion(workspaceId, { questionId, answer }) : Promise.reject(new Error(i18n.t('memwise.notAvailable')))),
+      } : {}),
       ...(api && typeof api.memwiseReleaseTrigger === 'function' ? {
         releaseTrigger: async (trigger: string, decision: 'start' | 'discard') => {
           if (!workspaceId) return notAvailable()
@@ -387,6 +391,8 @@ export function PlaybookPage({ playbookId }: { playbookId: string | null }) {
   const roles = useAtomValue(memwiseRolesAtom)
   const summaries = useAtomValue(memwisePlaybooksAtom)
   const setStartCase = useSetAtom(memwiseStartCaseDialogAtom)
+  // Inside the project shell a case starts in the project open there (Stage 3).
+  const startIn = shellStartProject(useProjectShell())
   const setDraftTab = useSetAtom(memwiseDraftOpenTabAtom)
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
   const peopleOnly = useAtomValue(memwisePeopleOnlyAtom)
@@ -462,7 +468,7 @@ export function PlaybookPage({ playbookId }: { playbookId: string | null }) {
               </Button>
             )}
             {!meta && (
-              <Button variant="primary" size="sm" onClick={() => setStartCase({ open: true, workflowId: playbookId })}>
+              <Button variant="primary" size="sm" onClick={() => setStartCase({ open: true, workflowId: playbookId, ...(startIn ? { project: startIn } : {}) })}>
                 <Play />
                 {t('memwise.cases.startCase')}
               </Button>
@@ -575,6 +581,10 @@ export function DraftPage({ draftId }: { draftId: string }) {
           if (r.applied) {
             toast.success(t('memwise.draft.submitted'), { description: t('memwise.draft.submittedDescription') })
             void refresh()
+          } else if (r.changeRequest) {
+            // Stage 5: a regulated playbook's draft is a change request: its page sends it to QA.
+            const cr = r.changeRequest
+            navigate(routes.view.domains({ type: 'regulated', domain: cr.project, screen: 'change', id: cr.label }))
           } else fail(t('memwise.draft.submitFailed'), r)
         } catch (err) {
           fail(t('memwise.draft.submitFailed'), { message: err instanceof Error ? err.message : String(err) })

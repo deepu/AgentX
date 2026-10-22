@@ -334,6 +334,13 @@ export function inboxItemStepTitle(item: MwInboxItem, t?: TFunction): string {
   if (item.kind === 'attention') return stateLabel(item.state, t)
   if (item.kind === 'conversation' && t) return conversationTitle(item, t)
   if (item.kind === 'identity' && t) return t('memwise.inbox.identity.stepTitle', { entity: humanize(item.entity).toLowerCase() })
+  // Stage 5: a sign-off reads as what to do; a question as where it came from.
+  if (item.kind === 'change-request' && t) {
+    return item.signoff === 'qa'
+      ? t('memwise.regulated.inbox.title.qa', { label: item.changeRequest.label })
+      : t('memwise.regulated.inbox.title.raiser', { label: item.changeRequest.label })
+  }
+  if (item.kind === 'inspector-question' && t) return t('memwise.regulated.inbox.title.question', { name: item.stepTitle })
   return item.stepTitle
 }
 
@@ -355,6 +362,8 @@ export function inboxKindLabel(kind: MwInboxItem['kind'], t: TFunction): string 
     case 'identity': return t('memwise.inbox.kind.identity')
     case 'flag': return t('memwise.inbox.kind.flag')
     case 'trigger-hold': return t('memwise.inbox.kind.triggerHold')
+    case 'change-request': return t('memwise.inbox.kind.changeRequest')
+    case 'inspector-question': return t('memwise.inbox.kind.inspectorQuestion')
   }
 }
 

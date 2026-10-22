@@ -92,7 +92,7 @@ export function StartCaseDialog() {
     setMessage(null)
     setServerErrors(undefined)
     try {
-      const created = await api.memwiseStartCase(workspaceId, { workflowId, values: Object.keys(s.values).length ? s.values : undefined })
+      const created = await api.memwiseStartCase(workspaceId, { workflowId, values: Object.keys(s.values).length ? s.values : undefined, ...(state.project ? { project: state.project } : {}) })
       if ('errors' in created) {
         // Refused values: shown on their fields; any the form doesn't show are listed below it
         setServerErrors(created.errors)

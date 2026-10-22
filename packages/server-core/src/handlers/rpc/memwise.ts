@@ -44,7 +44,7 @@ import { EDC_CHANNELS, registerEdcHandlers } from './memwise-edc'
 import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange } from '../../memwise/host'
 import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../memwise/service'
 import type { DraftFacts, DtoContext } from '../../memwise/dto'
-import { keepableEntities, mayChangeDraft, mayChangePlaybooks, recordDigest } from '../../memwise/chat-tools'
+import { changeRequestOf, keepableEntities, mayChangeDraft, mayChangePlaybooks, recordDigest } from '../../memwise/chat-tools'
 import { untrustedRecordData } from '@memwise/session-tools-core'
 import { clearRecordsChatFilter, getRecordsChatFilter } from '../../memwise/records-filter'
 import {
@@ -238,6 +238,7 @@ const DRAFT_MESSAGES: Record<string, string> = {
   write_failed: 'The draft could not be changed.',
   in_review: 'This draft is already waiting for approval.',
   in_chat: 'This draft is being built in a chat; finish it there.',
+  change_request: 'This draft is a change request: send it to QA from the change request\'s page.',
   errors: 'Fix the errors in the draft before sending it for review.',
   submit_failed: 'The draft could not be sent for review.',
   create_failed: 'The draft could not be made.',
@@ -274,11 +275,11 @@ function inChatState(c: DtoContext, state: string): boolean {
   return PLAYBOOK_BUILDERS.some((id) => isConversationStep(c.project.workflows[id]?.steps[state]))
 }
 
-function clientOf(ctx: RequestContext): ClientIdentity {
+export function clientOf(ctx: RequestContext): ClientIdentity {
   return { clientId: ctx.clientId, personId: ctx.personId ?? null }
 }
 
-function requireService(): MemwiseService {
+export function requireService(): MemwiseService {
   const svc = getMemwiseService()
   if (!svc) throw new Error(getMemwiseHostStatus().message ?? 'Playbooks are not running.')
   return svc
@@ -642,6 +643,12 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         out.push(d.toTriggerHoldInboxItem(c.project, item))
         continue
       }
+      // Stage 5: a change request's sign-off and an inspector's question (no case).
+      if (item.kind === 'change-request' || item.kind === 'inspector-question') {
+        const { toRegulatedInboxItem } = await import('../../memwise/regulated')
+        out.push(toRegulatedInboxItem(item))
+        continue
+      }
       const v = await view(item.caseId)
       const caseTitle = titleOf(v, item.caseId)
       const wf = c.project.workflows[item.workflowId]
@@ -851,7 +858,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     const { PgChatAnchorStore } = await import('@memwise/db')
     // The anchors table names cases and steps; a playbook anchor is stored the same way. A
     // playbook's chat in a study (Stage 3) belongs to that study and changes its own copy.
-    const scope = anchor.kind === 'workflow' ? ownCopyScope(c, anchor.project) : undefined
+    const scope = anchor.kind === 'workflow' ? ownCopyScope(c, anchor.project, anchor.id) : undefined
+    const regulated = anchor.kind === 'workflow' ? regulatedApp(c, anchor.id) : undefined
     await new PgChatAnchorStore().set(svc.kernel.pool, {
       chatId: session.id, anchorKind: anchor.kind as 'case' | 'step', anchorId: anchor.id, personId: actor.personId,
       ...(scope ? { scope } : {}),
@@ -862,6 +870,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       block: [
         digest,
         ...(scope ? ['', `This chat is in ${c.project.projects?.[scope]?.name ?? scope}: a change made here changes that project's own copy of the playbook, not the app's template or other projects.`] : []),
+        ...(regulated ? ['', `${c.project.domains?.[regulated]?.name ?? regulated} is regulated: a change made here is a change request for the whole app (every study of it). It goes live only when the person who raised it validates it on past cases and signs it to QA on the request's page, and QA signs it.`] : []),
         '',
         `This chat is about the ${kind} above. Answer only from this record; say "not recorded" when it does not say.`,
         ...(message ? ['', SHELL_STYLE] : []),
@@ -943,9 +952,17 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
   }
 
   /** A study whose own copy of a playbook its chat changes: a project with its own folder (Stage 3). */
-  function ownCopyScope(c: DtoContext, project: string | undefined): string | undefined {
+  function ownCopyScope(c: DtoContext, project: string | undefined, workflowId?: string): string | undefined {
     const p = project ? c.project.projects?.[project] : undefined
+    // A regulated app's playbook has no study copy to change: it changes by change request (D115).
+    if (workflowId && regulatedApp(c, workflowId)) return undefined
     return p && p.dir && !p.implicit ? p.id : undefined
+  }
+
+  /** The regulated app a playbook belongs to (Stage 5), if it is regulated. */
+  function regulatedApp(c: DtoContext, workflowId: string): string | undefined {
+    const app = c.project.workflows[workflowId]?.domain
+    return app && c.project.domains?.[app]?.regulated ? app : undefined
   }
 
   /** The anchors table's kind and id for an anchor. */
@@ -1350,6 +1367,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           names: await (names ??= peopleNames(svc)),
           ...await authoring.lastTestRun(got.meta.id, actor).then((testRun) => (testRun ? { testRun } : {}), () => ({})),
           mayChange: got.meta.status === 'open' && !(await mayChangeDraft(svc, actor, got.meta)),
+          ...await changeRequestOf(svc, got.meta.id).then((changeRequest) => (changeRequest ? { changeRequest } : {})),
         }
       },
     }
@@ -1462,7 +1480,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         title: wf.title ?? d.humanize(wf.id),
         stepCount: Object.keys(wf.steps).length,
         open: cases.filter((s) => s.workflowId === wf.id && s.status === 'active').length,
-        waitingOnMe: inbox.filter((i) => i.kind !== 'identity' && i.kind !== 'reminder' && i.kind !== 'flag' && i.workflowId === wf.id).length,
+        waitingOnMe: inbox.filter((i) => i.kind !== 'identity' && i.kind !== 'reminder' && i.kind !== 'flag' && i.kind !== 'inspector-question'
+          && (i.kind === 'change-request' ? i.changeRequest.workflowId : i.workflowId) === wf.id).length,
         done: cases.filter((s) => s.workflowId === wf.id && s.status === 'done').length,
         ...(wf.origin ? { origin: d.toWorkflowOrigin(c.project, wf.origin) } : {}),
         ...(wf.domain ? { domain: wf.domain } : {}),
@@ -1527,12 +1546,14 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     async startCase(ctx: RequestContext, input: MwStartCaseInput): Promise<MwCaseSummary | MwStartCaseRefusal> {
       const { svc, actor, c, d } = await begin(ctx)
       if (!c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
+      // Stage 3: started inside a project (a study), it runs there; the person must see that project.
+      const project = typeof input.project === 'string' && input.project ? input.project : undefined
+      if (project && !c.project.domains?.[project] && !(await svc.kernel.projects.get(project, actor).catch(() => undefined))) {
+        throw new Error('That project was not found.')
+      }
       let caseId: string
       try {
-        ({ caseId } = await svc.kernel.startRun({
-          workflowId: input.workflowId, case: input.values ?? {}, by: actor.personId,
-          ...(typeof input.project === 'string' && input.project ? { project: input.project } : {}),
-        }))
+        ({ caseId } = await svc.kernel.startRun({ workflowId: input.workflowId, case: input.values ?? {}, by: actor.personId, ...(project ? { project } : {}) }))
       } catch (e) {
         // StartRunError: values that need fixing, reported per field like submitStep's
         const errors = (e as { status?: string; errors?: Record<string, string[]> })
@@ -1673,6 +1694,11 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     },
 
     async openChat(ctx: RequestContext, workspaceId: string, input: MwOpenChatInput): Promise<{ sessionId: string }> {
+      // Stage 5: a change request, the audit trail, the TMF index (doc 26 §8).
+      const { isStageFiveAnchor, createRegulatedApi } = await import('./memwise-regulated')
+      if (isStageFiveAnchor(input?.anchor)) {
+        return createRegulatedApi(deps).openChat(ctx, workspaceId, { anchor: input.anchor, ...(input.message ? { message: input.message } : {}), ...(input.reuse ? { reuse: true } : {}) })
+      }
       const { svc, actor, c, d } = await begin(ctx)
       const message = typeof input?.message === 'string' && input.message.trim() ? input.message.trim() : undefined
       // The project shell continues the person's chat on what's open, and sends their first
@@ -1713,6 +1739,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     async findChat(ctx: RequestContext, _workspaceId: string, input: { anchor: MwChatAnchor }): Promise<MwFindChatResult> {
       const { svc, actor } = await begin(ctx)
       if (!input?.anchor?.kind) throw new Error('Choose what the chat is about.')
+      const { isStageFiveAnchor, createRegulatedApi } = await import('./memwise-regulated')
+      if (isStageFiveAnchor(input.anchor)) return createRegulatedApi(deps).findChat(ctx, input.anchor)
       const recent = await anchoredChats(svc, actor, input.anchor, 8)
       return { sessionId: recent[0] ?? null, recent }
     },
@@ -1886,7 +1914,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (kind === 'change' && !c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
       if (kind === 'create' && c.project.workflows[input.workflowId]) throw new Error('A playbook with that id already exists.')
       // A study's own copy (Stage 3): only a change, by someone who may change it there.
-      const scope = kind === 'change' ? ownCopyScope(c, input.project) : undefined
+      const scope = kind === 'change' ? ownCopyScope(c, input.project, input.workflowId) : undefined
       await mayChangePlaybooks(svc, actor, input.workflowId, kind === 'create' ? 'create-playbook' : 'change-playbook', scope)
       const meta = await authoringOf(svc).createDraft({
         workflowId: input.workflowId.trim(), title: input.title?.trim() || c.project.workflows[input.workflowId]?.title || d.humanize(input.workflowId), kind,
@@ -1984,6 +2012,16 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const got = await authoring.getDraft(draftId)
       if (!got) return { applied: false, code: 'draft.missing', message: DRAFT_MESSAGES.missing }
       if (got.meta.status !== 'open') return { applied: false, code: 'draft.not_open', message: DRAFT_MESSAGES.not_open }
+      // Stage 5: a regulated playbook's draft is a change request; it goes to QA from there (26 §8).
+      const cr = await (svc.kernel as { changes?: { forDraft(id: string): Promise<{ id: string; label: string; project: string } | undefined> } }).changes?.forDraft(draftId).catch(() => undefined)
+      if (cr) {
+        return {
+          applied: false,
+          code: 'draft.change_request',
+          message: `${DRAFT_MESSAGES.change_request} (${cr.label})`,
+          changeRequest: { id: cr.id, label: cr.label, project: cr.project },
+        }
+      }
       const refused = await mayChangeDraft(svc, actor, got.meta)
       if (refused) return { applied: false, code: 'draft.not_allowed', message: refused }
       const facts = await draftLookup(svc, actor, c).facts(got.meta, { got })

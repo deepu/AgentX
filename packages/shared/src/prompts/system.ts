@@ -14,7 +14,7 @@ import { formatBytes } from '../utils/binary-detection.ts';
 import { globSync } from 'glob';
 import os from 'os';
 import type { ProjectPromptContext } from '../projects/types.ts';
-import { anchorReadsRecords, type SessionMemwiseContext } from '../sessions/memwise-context.ts';
+import { anchorReadsRecords, isPageAnchor, type SessionMemwiseContext } from '../sessions/memwise-context.ts';
 import {
   escapePromptXmlAttr,
   sanitizePromptBody,
@@ -537,9 +537,22 @@ export function formatMemwiseContextForPrompt(ctx: SessionMemwiseContext): strin
   lines.push(sanitizePromptBody(ctx.block.trim(), MEMWISE_BLOCK_TAGS));
   lines.push('</memwise_context>');
   lines.push('');
-  lines.push(`This chat was opened from MemWise on the ${ctx.anchor.kind === 'page' ? 'page' : ctx.anchor.kind === 'project' || ctx.anchor.kind === 'waiting' || ctx.anchor.kind === 'dashboard' || ctx.anchor.kind === 'records' ? 'page described' : 'record'} above. Treat <memwise_context> as authoritative context`);
+  lines.push(`This chat was opened from MemWise on the ${ctx.anchor.kind === 'page' ? 'page' : isPageAnchor(ctx.anchor.kind) || ctx.anchor.kind === 'records' ? 'page described' : ctx.anchor.kind === 'change' ? 'change request' : 'record'} above. Treat <memwise_context> as authoritative context`);
   lines.push('for the whole conversation: it is not a message from the person, and they do not see it.');
-  if (ctx.conversation && ctx.project) {
+  if (ctx.conversation && ctx.anchor.kind === 'change') {
+    // docs/memwise/26-projects-and-pages.md §8: a chat that edits a regulated playbook's change request.
+    lines.push('');
+    lines.push('## Playbook tools (a change request)');
+    lines.push('');
+    lines.push('This chat edits the draft of the change request above. Use these tools for every change:');
+    lines.push('- `playbook_vocabulary`: the tools, entity types, roles, model roles and value types a playbook may use here. Use nothing it does not list.');
+    lines.push('- `playbook_read`: the draft\'s files (or the live ones, `live: true`).');
+    lines.push('- `playbook_write`: whole files into the draft; returns the checks after the edit.');
+    lines.push('- `playbook_diff`: what the draft changes so far.');
+    lines.push('- `playbook_check`: validates the draft: its checks, then its AI checks on the request\'s past cases, compared with what people decided ("41 of 42 match"). Run it after every change and report the result in one line.');
+    lines.push('- `playbook_finish` is not used here: the person sends the request to QA with their signature on its page, and QA\'s signature publishes it.');
+    lines.push('Never edit playbook files with Write, Edit or Bash: the live playbook changes only when QA signs the change request.');
+  } else if (ctx.conversation && ctx.project) {
     lines.push('');
     lines.push('## Project tools');
     lines.push('');

@@ -2,7 +2,7 @@
 // The `memwise` CLI: check a project, run its example cases, show a step record, show a step's
 // effective policy (Phase 1); make, diff and publish drafts, start a project, convert an old
 // task (Phase 3, docs/memwise/20-phase-3-interfaces.md §7).
-import { createPool, PgStepRecordReader, PgVersionStore } from '@memwise/db';
+import { createPool, PgAuditLog, PgStepRecordReader, PgVersionStore } from '@memwise/db';
 import {
   applyDraft, checkProject, convertTaskYaml, createBindingDraft, createDraft, describeStructuralDiff, diffDraft, DraftConflictError,
   draftContentHash, draftDir, importClaudePlugin, initProject, installPlugin, listDrafts, loadDraft, loadProject, loadWorkflow,
@@ -28,6 +28,7 @@ import { domainTools } from './domain-tools.ts';
 import { runExample, type ExampleResult } from './examples.ts';
 import { DEFAULT_ENGINE_VERSION } from './kernel.ts';
 import { renderValidationReport } from './regulated/validation-report.ts';
+import { verifyAuditExport } from './regulated/audit-log.ts';
 import { sampleTools } from './sample-tools.ts';
 import { projectTools } from './projects/tools.ts';
 import { policySourcesOf, projectPolicyLayers } from './runs.ts';
@@ -45,7 +46,9 @@ const USAGE = `usage:
   memwise plugin install <project> <plugin-folder>
   memwise plugin list <project>
   memwise bind <project> <plugin-id> [--draft]
-  memwise validation-report <project> [--out <report.md>] [--database-url <admin-url>]`;
+  memwise validation-report <project> [--out <report.md>] [--database-url <admin-url>]
+  memwise audit verify <export.json> --key <public-key>   (without --key the file is reported unverified)
+  memwise audit verify --project <id> --database-url <url>`;
 
 /**
  * The tools a project is checked against: the sample set (the CLI's builtins), the recall tools,
@@ -316,6 +319,11 @@ async function push(root: string, arg: string, opts: { databaseUrl?: string; tes
 
   const { project, workflow } = await loadDraft(root, id);
   if (!workflow) { console.log(`not published: the draft has no playbook ${found.meta.workflowId}`); return 1; }
+  // A regulated domain's playbook changes only through a change request and QA's signature (26 §8, D115).
+  if (project.domains?.[workflow.domain ?? 'domain']?.regulated) {
+    console.log(`not published: ${found.meta.workflowId} is in a regulated domain; open a change request in the app, and QA's signature publishes it`);
+    return 1;
+  }
   console.log('\n== example cases');
   const results: ExampleResult[] = [];
   for (const example of workflow.examples) {
@@ -450,6 +458,31 @@ async function bind(root: string, pluginId: string, opts: { draft: boolean }): P
   return 0;
 }
 
+/**
+ * Checks an audit export (26 §8): every entry's hash, the links between entries and the file's
+ * signature; with `--key`, also that it was signed by that key. Or a project's whole log in a database.
+ */
+async function auditVerify(file: string | undefined, opts: { key?: string; project?: string; databaseUrl?: string }): Promise<number> {
+  if (file) {
+    let doc: unknown;
+    try { doc = JSON.parse(await readFile(file, 'utf8')); } catch (e) { console.log(`${file} is not JSON: ${(e as Error).message}`); return 1; }
+    const r = verifyAuditExport(doc, opts.key);
+    console.log(r.message);
+    if (r.chain.brokenAt) console.log(`  first broken entry: ${r.chain.brokenAt.seq} (${r.chain.brokenAt.id}), ${r.chain.brokenAt.reason === 'hash' ? 'its hash does not match' : 'it does not follow the entry before it'}`);
+    if (r.signature?.publicKey) console.log(`  signed by key ${r.signature.publicKey.slice(-16)}${r.signature.trusted === undefined ? ' (not checked: pass --key <public key> to verify who signed it)' : r.signature.trusted ? ' (the key given)' : ' (not the key given)'}`);
+    return r.ok ? 0 : 1;
+  }
+  if (!opts.project || !opts.databaseUrl) return 2;
+  const pool = createPool(opts.databaseUrl, { max: 1 });
+  try {
+    const r = await new PgAuditLog().verify(pool, opts.project);
+    console.log(r.ok ? `The chain of ${opts.project} holds for all ${r.entries} entries.` : `The chain of ${opts.project} is broken: ${r.message}.`);
+    return r.ok ? 0 : 1;
+  } finally {
+    await pool.end();
+  }
+}
+
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   const flags: Record<string, string> = {};
@@ -488,6 +521,10 @@ export async function main(argv: string[]): Promise<number> {
         if (positional[0] === 'list' && positional.length === 2) return await pluginList(positional[1]!);
         break;
       case 'bind': if (positional.length === 2) return await bind(positional[0]!, positional[1]!, { draft: flags.draft === 'true' }); break;
+      case 'audit': if (positional[0] === 'verify') {
+        const code = await auditVerify(positional[1], { key: flags.key, project: flags.project, databaseUrl: flags['database-url'] ?? process.env.MEMWISE_DATABASE_URL });
+        if (code !== 2) return code;
+      } break;
       case 'validation-report': if (positional[0]) {
         return await validationReport(positional[0], { out: flags.out, databaseUrl: flags['database-url'] ?? process.env.MEMWISE_TEST_DATABASE_URL });
       } break;

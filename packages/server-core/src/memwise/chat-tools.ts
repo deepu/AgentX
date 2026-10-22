@@ -12,6 +12,7 @@ import type { Diagnostic, DraftDiff, DraftMeta, DraftReport, DraftTestRun } from
 import { emitMemwiseChange, getMemwiseService } from './host'
 import { setRecordsChatFilter } from './records-filter'
 import { authoringOf, conversationState, isConversationStep, isProjectConversation, type ConversationState } from './conversation'
+import { buildChangeToolCallbacks } from './regulated'
 import type { MemwiseService, PersonActor } from './service'
 import type { ProjectDefs } from '@memwise/defs'
 import type { PageView, PageWriteResult, RecordField, RecordFieldSource, RecordPage, RecordQueryResult, RecordsService } from '@memwise/runtime'
@@ -153,6 +154,12 @@ export async function mayChangeDraft(svc: MemwiseService, actor: PersonActor, me
   return undefined
 }
 
+/** The change request a draft is (Stage 5), if the kernel has change requests and the draft has one. */
+export async function changeRequestOf(svc: MemwiseService, draftId: string): Promise<{ id: string; label: string; project: string } | undefined> {
+  const changes = (svc.kernel as { changes?: { forDraft(id: string): Promise<{ id: string; label: string; project: string } | undefined> } }).changes
+  return changes?.forDraft(draftId).catch(() => undefined)
+}
+
 /** A draft whose change run is going (checking, in review, or back at its chat) is not changed from a playbook's chat. */
 async function changeRunActive(svc: MemwiseService, draft: DraftMeta): Promise<boolean> {
   if (!draft.runId) return false
@@ -160,7 +167,34 @@ async function changeRunActive(svc: MemwiseService, draft: DraftMeta): Promise<b
   return run?.status === 'active'
 }
 
+/**
+ * The `playbook_*` tools of a chat: a conversation step's (below), or, for a chat anchored to a
+ * change request of a regulated playbook (Stage 5, 26 §8), the request's (`buildChangeToolCallbacks`).
+ * The anchor is read on every call, so a chat's tools follow it.
+ */
 export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): MemwiseToolCallbacks {
+  const step = buildStepToolCallbacks(opts)
+  const change = buildChangeToolCallbacks(opts)
+  async function pick(): Promise<MemwiseToolCallbacks> {
+    const svc = getMemwiseService()
+    if (!svc) return step
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    const anchor = await new PgChatAnchorStore().get(svc.kernel.pool, opts.sessionId).catch(() => null)
+    return anchor?.anchorKind === 'change' ? change : step
+  }
+  return {
+    // The step's other tools (Stage 3's project tools) belong to step chats only.
+    ...step,
+    vocabulary: async () => (await pick()).vocabulary(),
+    read: async (input) => (await pick()).read(input),
+    write: async (input) => (await pick()).write(input),
+    diff: async () => (await pick()).diff(),
+    check: async (input) => (await pick()).check(input),
+    finish: async (input) => (await pick()).finish(input),
+  }
+}
+
+function buildStepToolCallbacks(opts: MemwiseChatToolsOptions): MemwiseToolCallbacks {
   const { sessionId } = opts
   /** Step runs this chat finished: the step's record catches up a moment later. */
   const finished = new Set<string>()
@@ -170,7 +204,7 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
    * (`chatId`): each edit is kept at once (the page shows it, with Discard), and the page's
    * "Send for review" button, not the chat, sends it on.
    */
-  async function playbookChat(): Promise<{ svc: MemwiseService; actor: PersonActor; workflowId: string; scope?: string; draft?: DraftMeta } | undefined> {
+  async function playbookChat(): Promise<{ svc: MemwiseService; actor: PersonActor; workflowId: string; scope?: string; regulated?: string; draft?: DraftMeta } | undefined> {
     const svc = getMemwiseService()
     if (!svc) throw new Error('Playbooks are not running in this app right now.')
     const { PgChatAnchorStore } = await import('@memwise/db')
@@ -181,10 +215,14 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
     // Stage 3: a playbook's chat in a study changes that study's own copy of it.
     // (Only a project with its own folder has a copy; the app's own project runs the template.)
     const defs = (await svc.kernel.project()).project
-    const scope = anchor.scope && defs.projects?.[anchor.scope]?.dir && !defs.projects[anchor.scope]!.implicit ? anchor.scope : undefined
+    // Stage 5 (D115): a regulated app's playbook changes for the whole app, through a change
+    // request, never as one study's copy; `regulated` is its app.
+    const app = defs.workflows[anchor.anchorId]?.domain
+    const regulated = app && defs.domains?.[app]?.regulated ? app : undefined
+    const scope = !regulated && anchor.scope && defs.projects?.[anchor.scope]?.dir && !defs.projects[anchor.scope]!.implicit ? anchor.scope : undefined
     const drafts = await authoringOf(svc).listDrafts({ workflowId: anchor.anchorId }).catch(() => [] as DraftMeta[])
     const draft = drafts.filter((d) => d.chatId === sessionId && d.status === 'open' && d.project?.id === scope).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
-    return { svc, actor, workflowId: anchor.anchorId, ...(scope ? { scope } : {}), ...(draft ? { draft } : {}) }
+    return { svc, actor, workflowId: anchor.anchorId, ...(scope ? { scope } : {}), ...(regulated ? { regulated } : {}), ...(draft ? { draft } : {}) }
   }
 
   async function ctx(): Promise<{ svc: MemwiseService; actor: PersonActor; s: ConversationState }> {
@@ -325,19 +363,28 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
       const pc = await playbookChat()
       if (pc) {
         const { svc, actor } = pc
-        await mayChangePlaybooks(svc, actor, pc.workflowId, 'change-playbook', pc.scope)
+        const { project } = await svc.kernel.project()
+        await mayChangePlaybooks(svc, actor, pc.workflowId, 'change-playbook', pc.scope).catch((e: unknown) => {
+          // A regulated playbook's change is the whole app's: a role in one study can't raise it.
+          if (pc.regulated && (actor.grants ?? []).some((g) => g.domain === pc.regulated && g.project)) {
+            const title = project.workflows[pc.workflowId]?.title ?? pc.workflowId
+            throw new Error(`A change to ${title} is a change request for the whole app (it is regulated), and that needs a role across ${project.domains?.[pc.regulated]?.name ?? pc.regulated}, not in one study. Tell the person who can raise it.`)
+          }
+          throw e
+        })
         if (pc.draft && await changeRunActive(svc, pc.draft)) {
           throw new Error('This change was sent for review, so it can\'t be changed from here now. Tell the person: the reviewer can send it back, or they can wait for it to be approved and then change it again.')
         }
         const authoring = authoringOf(svc)
-        const { project } = await svc.kernel.project()
         const live = pc.scope ? project.projects?.[pc.scope]?.workflows[pc.workflowId] : project.workflows[pc.workflowId]
         if (!live) throw new Error('That playbook was not found.')
+        // In a regulated app, making the draft opens its change request (Stage 5's hook on a person's new draft).
         const draft = pc.draft ?? await authoring.createDraft({
           workflowId: pc.workflowId, title: input.title ?? input.summary, kind: 'change', chatId: sessionId,
           ...(pc.scope ? { project: pc.scope } : {}),
         }, actor)
         if (!pc.draft) opts.log?.(`[memwise] chat ${sessionId} started draft ${draft.id} (change ${pc.workflowId})`)
+        const cr = pc.regulated ? await changeRequestOf(svc, draft.id) : undefined
         const { edit, diagnostics } = await authoring.write({
           draftId: draft.id, files: input.files, summary: input.summary, via: 'chat', chatId: sessionId,
         }, actor)
@@ -345,8 +392,10 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
         if (edit.status === 'pending') await authoring.keepEdit(draft.id, edit.id, actor)
         emitMemwiseChange({ kind: 'drafts', id: draft.id })
         const errors = diagnostics.filter((d) => d.severity === 'error').length
+        if (cr) emitMemwiseChange({ kind: 'regulated', project: cr.project })
         return {
           draftId: draft.id,
+          ...(cr ? { changeRequest: cr.label } : {}),
           editId: edit.id,
           status: 'kept',
           paths: edit.files.map((f) => f.path),
@@ -355,7 +404,9 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
           diagnostics: diagnostics.map(diag),
           next: errors
             ? 'Fix the errors.'
-            : 'The live playbook is unchanged until this is approved. Offer a test run on one record (playbook_test_run); the person sends it for review with the button on the playbook page.',
+            : cr
+              ? `This is change request ${cr.label}: it changes the playbook for the whole app, every study of it, and goes live only when QA signs it. Offer a test run on one record (playbook_test_run); the person validates it on past cases and sends it to QA from the request's page (the button on the playbook page opens it).`
+              : 'The live playbook is unchanged until this is approved. Offer a test run on one record (playbook_test_run); the person sends it for review with the button on the playbook page.',
         }
       }
       const { svc, actor, s } = await ctx()

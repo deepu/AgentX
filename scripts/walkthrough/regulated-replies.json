@@ -1,0 +1,6 @@
+[
+  { "match": "why did validation fail", "reply": "Validation replayed the 3 CVs QC decided before this change. **2 of 3** came out the same.\n\nThe one that differs is **Investigator CV - site 109 unsigned.pdf**: QC sent it back because it isn't signed, but with QC skipped it would have been filed, since nothing in the AI check looks at the signature.\n\nI can add a rule to the AI check in *Classify and index it*: \"A CV is signed and dated by the person it is about, within the last two years.\" An unsigned CV then fails the check and still goes to QC. Shall I make that change and validate again?" },
+  { "match": "make (that|the) change|yes", "reply": "Done: the AI check in *Classify and index it* now has the signature rule, and validation passes **3 of 3**. The request is ready for you to sign and send to QA." },
+  { "match": "which zones", "reply": "**05 Site Management** is behind: site 109 still owes its investigator CV (sent back unsigned). Every other zone has what it expects so far." },
+  { "match": "trail|audit", "reply": "The trail is intact: every entry's hash chains to the one before. The AI's entries name the model and quote what it read, like *Investigator CV* on each CV it classified." }
+]

@@ -77,6 +77,14 @@ export function shellRouteFor(state: NavigationState, data: ShellRouteData): str
         case 'dashboard': return inApp(d.domain, { type: 'dashboard', domain: d.domain, pageId: d.pageId, ...(d.params ? { params: d.params } : {}) })
         case 'automations': return inApp(d.domain, { type: 'settings', tab: 'automations' })
         case 'domain': return inApp(d.domain, d.tab ? { type: 'settings', tab: d.tab } : undefined)
+        // Stage 5: a change request, the audit trail, inspector access, the TMF index.
+        case 'regulated': {
+          if (d.screen === 'change') return inApp(d.domain, { type: 'cr', crId: d.id! })
+          if (d.screen === 'inspectors') return inApp(d.domain, { type: 'settings', tab: 'inspectors' })
+          if (d.screen === 'tmf') return inApp(d.domain, d.id ? { type: 'tmf', zone: d.id } : { type: 'tmf' })
+          const i = d.id ? d.id.indexOf(':') : -1
+          return inApp(d.domain, i > 0 ? { type: 'audit', entity: d.id!.slice(0, i), recordId: d.id!.slice(i + 1) } : { type: 'audit' })
+        }
       }
       return null
     }

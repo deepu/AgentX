@@ -63,20 +63,23 @@ export function PageScreen({ projectId, pageId, onOpenPage, onOpenRecord, onOpen
       </div>
     )
   }
+  // The page column clips its card, so a long page scrolls here.
   return (
-    <PageView
-      page={page.data}
-      pages={pages.data ?? []}
-      versions={showAll ? versions.data ?? [] : undefined}
-      busy={busy}
-      actions={{ onOpenPage, onOpenRecord, onUrlClick }}
-      onKeep={(input) => run('keep', () => calls.keep({ pageId, ...input }))}
-      onUndo={() => run('undo', () => calls.undo(pageId, page.data!.version))}
-      onArchive={() => run('archive', () => calls.archive(pageId))}
-      onRefresh={() => run('refresh', () => calls.refresh(pageId))}
-      onOpenChange={onOpenChange}
-      onShowAll={() => setShowAll(v => !v)}
-    />
+    <div className="h-full min-h-0 overflow-y-auto" data-page-scroll>
+      <PageView
+        page={page.data}
+        pages={pages.data ?? []}
+        versions={showAll ? versions.data ?? [] : undefined}
+        busy={busy}
+        actions={{ onOpenPage, onOpenRecord, onUrlClick }}
+        onKeep={(input) => run('keep', () => calls.keep({ pageId, ...input }))}
+        onUndo={() => run('undo', () => calls.undo(pageId, page.data!.version))}
+        onArchive={() => run('archive', () => calls.archive(pageId))}
+        onRefresh={() => run('refresh', () => calls.refresh(pageId))}
+        onOpenChange={onOpenChange}
+        onShowAll={() => setShowAll(v => !v)}
+      />
+    </div>
   )
 }
 

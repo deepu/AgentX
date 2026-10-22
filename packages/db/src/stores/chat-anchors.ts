@@ -13,8 +13,10 @@ import { compact, iso } from '../rows.ts';
  * The project shell (doc 26 §2) adds chats about a whole project (its Home), its Waiting for you
  * page and a dashboard: `project` and `waiting` anchor ids are the project id, `dashboard` ids
  * are `<domain>:<page id>`. Stage 4 adds `records`, a record type's list (id: the entity key).
+ * Stage 5 adds `change` (a change request, `cr_…`), and `audit` and `tmf` (a project's audit trail
+ * and TMF index; ids are the project id).
  */
-export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record' | 'page' | 'page_change' | 'project' | 'waiting' | 'dashboard' | 'records';
+export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record' | 'page' | 'page_change' | 'project' | 'waiting' | 'dashboard' | 'records' | 'change' | 'audit' | 'tmf';
 
 /** The `anchor_id` of a record anchor: `literature.topic:rec_1`. Entity keys have no colon. */
 export function recordAnchorId(entity: string, id: string): string {

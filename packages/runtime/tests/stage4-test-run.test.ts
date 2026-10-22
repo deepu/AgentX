@@ -1,6 +1,8 @@
 // Stage 4 (docs/memwise/26-projects-and-pages.md §5): a change to Study MW-301's own copy of a
 // playbook in a domain's folder (eTMF's Send document reminders) drafted, run on one of MW-301's
-// sites in a throwaway database, and sent for review. A real kernel on the eTMF example with the meta playbooks; the live case runs on the
+// sites in a throwaway database, and sent for review. A study's own copy is for an app that isn't
+// regulated, so this copy of the eTMF is made unregulated; in a regulated app a change is a change
+// request for the whole app (Stage 5, D115: the last test below, and stage4-regulated in server-core). A real kernel on the eTMF example with the meta playbooks; the live case runs on the
 // example's scripted model turns, and the test run goes through the real `memwise test` CLI.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { TestDatabase } from '@memwise/db';
@@ -41,6 +43,8 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     root = mkdtempSync(join(tmpdir(), 'mw-s4-'));
     cpSync(join(REPO, 'examples/etmf'), root, { recursive: true });
     for (const id of ['create-playbook', 'change-playbook']) cpSync(join(REPO, 'examples/intake/workflows', id), join(root, 'workflows', id), { recursive: true });
+    const domainFile = join(root, 'domains/etmf/domain.yaml');
+    writeFileSync(domainFile, readFileSync(domainFile, 'utf8').replace(/^regulated: true/m, 'regulated: false'));
     // The email's body is for the study manager's eyes: a CRA doesn't see the whole chase case.
     const caseFile = join(root, CHASE, 'case.yaml');
     writeFileSync(caseFile, readFileSync(caseFile, 'utf8').replace('  email_body:        Text\n', '  email_body:        { type: Text, access: [study_manager] }\n'));

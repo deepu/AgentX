@@ -3,5 +3,6 @@ name: eTMF
 description: "The trial master file of every study Northlight runs: each document filed, checked and signed."
 owner: study_manager           # flags, held automations and triggered cases go to the study manager
 regulated: true                # GxP: signatures, reasons for every change, audit export
+qa: qa                         # a change request goes live when QA signs it
 retention: 25y
 intake: { address: etmf }      # documents emailed to the eTMF address start "Sort an incoming message"

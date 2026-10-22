@@ -91,9 +91,14 @@ export function draftChangeCount(draft: Pick<MwDraft, 'structure' | 'changedFile
  * The draft the playbook page shows: the open draft its chat started (newest), else the newest
  * open change draft of the playbook. Drafts sent for review show too, until they are published.
  */
-/** `project` (Stage 3): drafts of that project's own copy; without, drafts of the app's template. */
+/**
+ * `project` (Stage 3): drafts of that project's own copy; without, drafts of the app's template.
+ * A regulated app's playbook has no study copies (Stage 5, D115): its drafts are change requests
+ * for the whole app, and every study's page shows them.
+ */
 export function pageDraft(drafts: MwDraftSummary[] | null | undefined, workflowId: string, project?: string): MwDraftSummary | undefined {
-  const open = (drafts ?? []).filter(d => d.workflowId === workflowId && (d.project ?? undefined) === project && d.kind === 'change' && d.stage !== 'published' && d.stage !== 'discarded')
+  const ours = (d: MwDraftSummary) => (d.project ?? undefined) === project || (!d.project && !!d.changeRequest)
+  const open = (drafts ?? []).filter(d => d.workflowId === workflowId && ours(d) && d.kind === 'change' && d.stage !== 'published' && d.stage !== 'discarded')
   const byNewest = [...open].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   return byNewest.find(d => d.chatId) ?? byNewest[0]
 }

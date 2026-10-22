@@ -789,6 +789,8 @@ export interface DraftFacts {
   testRun?: DraftTestRunSummary | DraftTestRun
   /** Stage 4: the viewer may change the draft. */
   mayChange?: boolean
+  /** Stage 5: the change request the draft is (a regulated playbook's change). */
+  changeRequest?: { id: string; label: string; project: string }
 }
 
 /** Where a draft is: published/discarded from its meta; in review while its change run waits at `review`; checked or failed when the last report covers the current content. */
@@ -826,6 +828,7 @@ export function toDraftSummary(f: DraftFacts): MwDraftSummary {
     ...(m.project ? { project: m.project.id } : {}),
     ...(f.testRun && f.testRun.hash === f.contentHash ? { testRun: f.testRun.status } : {}),
     ...(f.mayChange !== undefined ? { mayChange: f.mayChange } : {}),
+    ...(f.changeRequest ? { changeRequest: { ...f.changeRequest } } : {}),
   }
 }
 

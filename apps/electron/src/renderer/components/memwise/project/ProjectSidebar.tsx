@@ -8,7 +8,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { BookOpen, ChevronDown, ChevronRight, Database, FileText, LayoutDashboard, MessageCircle, Plus, RefreshCw, Settings, SquareCheckBig } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronRight, Database, FileText, FolderTree, LayoutDashboard, MessageCircle, Plus, RefreshCw, Settings, SquareCheckBig } from 'lucide-react'
 import type { MwDomain, MwPageSummary, MwTreeNode } from '@memwise/shared/protocol'
 import { cn } from '@/lib/utils'
 import { navigate, routes } from '@/lib/navigate'
@@ -22,6 +22,9 @@ import { nestTree, treeNodeKey } from '../records/record-model'
 import { useProjectRecordCounts } from '@/hooks/useMemwiseProjects'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { initials, playbookStartTag, projectPlaybooks, projectRecordTypes, sidebarRecordCounts, writtenPagePlace, type ShellApp, type ShellProject } from './project-model'
+import { useMemwiseChangeRequest } from '@/hooks/useMemwiseRegulated'
+import { keepsTmf } from '../regulated/RegulatedDomainLinks'
+import { TMF_ZONES, zoneName } from '../regulated/regulated-model'
 
 /** How many playbooks show before "N more". */
 const PLAYBOOKS_SHOWN = 4
@@ -62,6 +65,10 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
   const newProjectApp = apps.find(a => a.id === project.appId && a.canCreate) ?? apps.find(a => a.canCreate)
   const openAddApp = useSetAtom(memwiseInstallPluginDialogAtom)
   const canAddApp = !peopleOnly && typeof getMemwiseApi()?.memwiseListInstallChoices === 'function'
+  // Stage 5: a change request is under its playbook; the TMF index is a live page with a sub-page per zone.
+  const { data: openChange } = useMemwiseChangeRequest(details.type === 'cr' ? project.id : null, details.type === 'cr' ? details.crId : null)
+  const [tmfOpen, setTmfOpen] = React.useState(details.type === 'tmf' && !!details.zone)
+  const tmf = !!domain && keepsTmf(domain)
 
   return (
     <div className="flex h-full flex-col select-none font-sans" data-testid="project-sidebar">
@@ -87,6 +94,31 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
 
         <Section title={t('memwise.shell.pages')} />
         {extraPages}
+        {tmf && (
+          <>
+            <Row
+              icon={FolderTree}
+              label={t('memwise.regulated.tmf.title')}
+              refresh
+              inTree
+              caret={tmfOpen ? 'open' : 'closed'}
+              onCaret={() => setTmfOpen(o => !o)}
+              active={details.type === 'tmf' && !details.zone}
+              onClick={() => go({ type: 'tmf' })}
+            />
+            {tmfOpen && TMF_ZONES.map(z => (
+              <Row
+                key={z.id}
+                icon={FileText}
+                label={`${z.number} · ${zoneName(z, t)}`}
+                depth={1}
+                inTree
+                active={details.type === 'tmf' && details.zone === z.id}
+                onClick={() => go({ type: 'tmf', zone: z.id })}
+              />
+            ))}
+          </>
+        )}
         <WrittenPages projectId={project.id} details={details} />
         {domain && <PageTree domain={domain} projectId={project.id} {...(project.stored ? { scope: project.id } : {})} details={details} written={written} />}
 
@@ -97,7 +129,7 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
             icon={BookOpen}
             label={p.title}
             tag={playbookStartTag(p.id, triggers)}
-            active={details.type === 'playbook' && details.workflowId === p.id}
+            active={(details.type === 'playbook' && details.workflowId === p.id) || (details.type === 'cr' && openChange?.workflowId === p.id)}
             onClick={() => go({ type: 'playbook', workflowId: p.id })}
           />
         ))}
@@ -121,7 +153,7 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
         <button
           type="button"
           onClick={() => go({ type: 'settings' })}
-          className={cn('flex w-full items-start gap-2.5 rounded-sm px-2 py-1.5 text-left hover:bg-fill-hover', details.type === 'settings' && 'bg-fill-selected')}
+          className={cn('flex w-full items-start gap-2.5 rounded-sm px-2 py-1.5 text-left hover:bg-fill-hover', (details.type === 'settings' || details.type === 'audit') && 'bg-fill-selected')}
         >
           <Settings className="mt-0.5 size-4 shrink-0 text-secondary" />
           <span className="min-w-0">

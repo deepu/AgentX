@@ -24,6 +24,7 @@ import { DomainHome } from './DomainHome'
 import { DomainView, PagesOverview } from './DomainView'
 import { EntitiesHome, EntityView, stateToQuery, viewToState, type RecordsViewState } from './EntitiesView'
 import { NewRecordDialog } from './NewRecordDialog'
+import { AuditTrailScreen, ChangeRequestScreen, InspectorSetup, RegulatedDomainLinks, TmfIndexScreen } from '../regulated'
 
 const openRecord = (entity: string, id: string) => navigate(routes.view.record(entity, id))
 const openPlaybook = (workflowId: string) => navigate(routes.view.playbooks(workflowId))
@@ -36,6 +37,22 @@ export function DomainsPage({ details }: { details: DomainsDetails | null }) {
     case 'dashboard': return <DashboardPage domainId={details.domain} pageId={details.pageId} params={details.params} />
     case 'automations': return <AutomationsPage domainId={details.domain} />
     case 'domain': return <DomainPage key={details.domain} domainId={details.domain} tab={details.tab} />
+    case 'regulated': return <RegulatedPage key={`${details.domain}:${details.screen}:${details.id ?? ''}`} details={details} />
+  }
+}
+
+// ---------------------------------------------------------------- Stage 5 (interim: the shell mounts these under mw/{projectId})
+
+function RegulatedPage({ details }: { details: Extract<DomainsDetails, { type: 'regulated' }> }) {
+  const { domain, screen, id } = details
+  switch (screen) {
+    case 'change': return <ChangeRequestScreen projectId={domain} crId={id!} />
+    case 'audit': {
+      const i = id ? id.indexOf(':') : -1
+      return i > 0 ? <AuditTrailScreen projectId={domain} entity={id!.slice(0, i)} recordId={id!.slice(i + 1)} /> : <AuditTrailScreen projectId={domain} />
+    }
+    case 'inspectors': return <InspectorSetup projectId={domain} />
+    case 'tmf': return <TmfIndexScreen projectId={domain} zoneId={id ?? null} />
   }
 }
 
@@ -142,6 +159,7 @@ export function DomainPage({ domainId, tab }: { domainId: string; tab?: 'rules' 
           onOpenPlaybook={openPlaybook}
           onOpenPage={pageId => navigate(routes.view.domains({ type: 'dashboard', domain: domain.id, pageId }))}
           onOpenAutomations={() => navigate(routes.view.domains({ type: 'automations', domain: domain.id }))}
+          regulated={<RegulatedDomainLinks domain={domain} />}
         />
       )}
     </Info_Page>

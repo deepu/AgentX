@@ -68,11 +68,19 @@ export function projectLookups({ playbooks, domains }: Lookups) {
 }
 
 /** The items waiting in one project ('*': all of them). */
-export function waitingIn(projectId: string, inbox: MwInboxItem[] | null | undefined, lookups: Lookups): MwInboxItem[] {
+export function waitingIn(projectId: string, inbox: MwInboxItem[] | null | undefined, lookups: Lookups, apps?: readonly string[]): MwInboxItem[] {
   if (!inbox) return []
   if (projectId === '*') return inbox
   const l = projectLookups(lookups)
-  return inbox.filter(i => inboxItemProject(i, l) === projectId)
+  return inbox.filter(i => inboxItemProject(i, l) === projectId || (!!apps && isAppItem(i) && apps.includes(i.domain!)))
+}
+
+/**
+ * Stage 5 on Stage 3: a change request or an inspector's question is its app's (`domain`), not one
+ * project's, so it waits in every project that runs the app (`apps`, a study's `[etmf]`).
+ */
+function isAppItem(i: MwInboxItem): i is Extract<MwInboxItem, { kind: 'change-request' | 'inspector-question' }> {
+  return (i.kind === 'change-request' || i.kind === 'inspector-question') && !i.project && !!i.domain
 }
 
 /** Projects from the domains (Stage 1), with their waiting counts. */
@@ -261,12 +269,6 @@ export function anchorKeyOf(anchor: MwChatAnchor): string {
 }
 
 /**
- * What the chat beside a page is about (doc 26 §2): Home and the project's lists talk about the
- * project; Waiting for you about what waits; an item about its step; a dashboard, playbook, run
- * or record about itself; a written page about the page (it can change the page, with Undo), and
- * an answer change opened outside Waiting for you about its page (`changePageId`, once known).
- */
-/**
  * Where a written page shows in the sidebar (26 §4): at the top of PAGES, or, when it was written
  * under a record (`under`), in the record tree under that record.
  */
@@ -275,6 +277,11 @@ export function writtenPagePlace(p: Pick<MwPageSummary, 'under'>): 'top' | 'reco
 }
 
 /**
+ * What the chat beside a page is about (doc 26 §2): Home and the project's lists talk about the
+ * project; Waiting for you about what waits; an item about its step; a dashboard, playbook, run
+ * or record about itself; a written page about the page (it can change the page, with Undo), and
+ * an answer change opened outside Waiting for you about its page (`changePageId`, once known);
+ * a change request, the audit trail and the TMF index about themselves.
  * `scope` (Stage 4 with Stage 3): a stored project's id. A playbook's chat there changes that
  * project's own copy, and a list's chat filters that project's records.
  */
@@ -293,6 +300,13 @@ export function chatAnchorFor(projectId: string, details: ProjectDetails, item?:
     case 'records': return { kind: 'records', id: details.entity, ...(scope ? { project: scope } : {}) }
     case 'page': return { kind: 'page', id: details.pageId }
     case 'change': return changePageId ? { kind: 'page', id: changePageId } : { kind: 'project', id: projectId }
+    // Stage 5 (doc 26 §8): a change request's chat edits it; the trail and the index have their own.
+    // A label (`CR-014`) is per project, so the anchor carries the project.
+    case 'cr': return { kind: 'change', id: details.crId, project: projectId }
+    case 'audit': return { kind: 'audit', id: projectId }
+    // Project settings' Audit trail tab is the same page, with the same chat.
+    case 'settings': return details.tab === 'audit' ? { kind: 'audit', id: projectId } : { kind: 'project', id: projectId }
+    case 'tmf': return { kind: 'tmf', id: projectId }
     default: return { kind: 'project', id: projectId }
   }
 }

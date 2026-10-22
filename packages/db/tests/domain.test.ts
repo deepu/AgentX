@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import path from 'node:path';
 import { loadProject, type EntityTypeDef, type ProjectDefs, type StepToken } from '@memwise/defs';
 import {
-  applyDomainSchema, columnType, compileRls, createTestDatabase, domainCreators, entityColumns, entityTableName, keyIndexName, PgEntityStore,
+  applyDomainSchema, columnType, compileRls, createTestDatabase, domainCreators, KERNEL_RLS_STAMP, KERNEL_RLS_VERSION, entityColumns, entityTableName, keyIndexName, PgEntityStore,
   postgresAvailable, syncEntityTables, withActor, type Actor, type TestDatabase,
 } from '../src/index.ts';
 
@@ -96,6 +96,42 @@ describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {
     // Re-applying the full schema (as at every index) works and keeps everything.
     await applyDomainSchema(db.pool, project.entities, { creators: domainCreators(project.entities, project.workflows) });
     await applyDomainSchema(db.pool, project.entities, { creators: domainCreators(project.entities, project.workflows) });
+  });
+
+  test('re-applying the schema leaves the kernel tables alone while runs hold them (no deadlock with a run starting)', async () => {
+    const other = await db.pool.connect();
+    try {
+      // A run mid-transaction: it holds mw.runs and mw.cases (a re-index used to wait for both,
+      // holding one of them, and deadlock).
+      await other.query('begin');
+      await other.query('lock table mw.runs, mw.cases, mw.step_runs in row exclusive mode');
+      const applied = applyDomainSchema(db.pool, project.entities, { creators: domainCreators(project.entities, project.workflows) }).then(() => 'applied');
+      const waited = new Promise((r) => setTimeout(() => r('waited'), 5000));
+      expect(await Promise.race([applied, waited])).toBe('applied');
+    } finally {
+      await other.query('rollback').catch(() => undefined);
+      other.release();
+    }
+    // The rules are still in place.
+    const { rows } = await db.pool.query(`select count(*)::int as n from pg_policies where schemaname = 'mw' and tablename in ('cases', 'runs', 'step_runs')`);
+    expect(rows[0].n).toBe(6);
+  });
+
+  test('the kernel rules carry a version stamp; a database with another one gets them again at its next index', async () => {
+    const stamps = async () => (await db.pool.query<{ t: string; p: string; c: string | null }>(
+      `select c.relname as t, pol.polname as p, obj_description(pol.oid, 'pg_policy') as c from pg_policy pol
+         join pg_class c on c.oid = pol.polrelid join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'mw' and c.relname in ('cases', 'runs', 'step_runs') order by 1, 2`)).rows;
+    expect(KERNEL_RLS_STAMP).toBe(`memwise-kernel-rls v${KERNEL_RLS_VERSION}`);
+    expect((await stamps()).map((r) => r.c)).toEqual(Array(6).fill(KERNEL_RLS_STAMP));
+    // A database from an earlier build: an older rule on mw.cases (its predicate since changed), with an older stamp.
+    await db.pool.query(`drop policy mw_person_all on mw.cases`);
+    await db.pool.query(`create policy mw_person_all on mw.cases for all to memwise_app using (mw.actor_kind() = 'person') with check (mw.actor_kind() = 'person')`);
+    await db.pool.query(`comment on policy mw_person_all on mw.cases is 'memwise-kernel-rls v0'`);
+    await applyDomainSchema(db.pool, project.entities, { creators: domainCreators(project.entities, project.workflows) });
+    expect((await stamps()).map((r) => r.c)).toEqual(Array(6).fill(KERNEL_RLS_STAMP));
+    const { rows } = await db.pool.query(`select qual from pg_policies where schemaname = 'mw' and tablename = 'cases' and policyname = 'mw_person_all'`);
+    expect(rows[0].qual).toContain('project_visible');
   });
 
   test('a step token sees only its own case in mw.cases, mw.runs and mw.step_runs', async () => {

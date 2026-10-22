@@ -12,6 +12,11 @@ import type {
   InboxLinkAnswer,
   InboxLinkDecision,
   InboxLinkResult,
+  InspectorPageDocument,
+  InspectorPageIndex,
+  InspectorPageQuestion,
+  InspectorRefusal,
+  InspectorTrailEntry,
   LinkRefusal,
 } from '@memwise/defs/external'
 
@@ -82,6 +87,40 @@ export function inboxApi(base: string): InboxApi {
   return {
     item: () => call(`${base}/item`),
     decide: decision => call(`${base}/decide`, { method: 'POST', ...json(decision) }),
+  }
+}
+
+/** An inspector's read-only view (`<base>/v/<token>/api/…`, Stage 5): every call is logged by the business. */
+export interface InspectorApi {
+  index(): Promise<InspectorPageIndex | InspectorRefusal>
+  documents(filter: { zone?: string; site?: string; q?: string }): Promise<{ documents: InspectorPageDocument[]; total: number } | InspectorRefusal>
+  document(entity: string, id: string): Promise<InspectorPageDocument | InspectorRefusal>
+  trail(entity: string, id: string): Promise<{ entries: InspectorTrailEntry[]; chain: { ok: boolean } } | InspectorRefusal>
+  /** The download's address: the browser fetches it itself (a plain link, so the file saves). */
+  downloadUrl(entity: string, id: string): string
+  ask(input: { question: string; entity?: string; recordId?: string }): Promise<InspectorPageQuestion | InspectorRefusal | { status: 'invalid'; message: string }>
+  requests(): Promise<InspectorPageQuestion[] | InspectorRefusal>
+}
+
+export function isInspectorRefusal(v: unknown): v is InspectorRefusal {
+  return typeof v === 'object' && v !== null && typeof (v as { refused?: unknown }).refused === 'string'
+}
+
+export function inspectorApi(base: string): InspectorApi {
+  const q = (params: Record<string, string | undefined>) => {
+    const s = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v) s.set(k, v)
+    const text = s.toString()
+    return text ? `?${text}` : ''
+  }
+  return {
+    index: () => call(`${base}/index`),
+    documents: filter => call(`${base}/documents${q(filter)}`),
+    document: (entity, id) => call(`${base}/document${q({ entity, id })}`),
+    trail: (entity, id) => call(`${base}/trail${q({ entity, id })}`),
+    downloadUrl: (entity, id) => `${base}/download${q({ entity, id })}`,
+    ask: input => call(`${base}/ask`, { method: 'POST', ...json(input) }),
+    requests: () => call(`${base}/requests`),
   }
 }
 

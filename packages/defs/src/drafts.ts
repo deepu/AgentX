@@ -86,18 +86,21 @@ export async function findPlaybookFolder(root: string, workflowId: string): Prom
   return undefined;
 }
 
+/** Stage 5's name for `findPlaybookFolder`. */
+export const livePlaybookFolder = findPlaybookFolder;
+
 /**
  * The project-relative files a draft is about, in a project folder (live or the draft's own):
  * `domain/` and the playbook's folder; for a binding draft, `domain/` only. A playbook in a
- * domain's folder (Stage 4) also takes what it loads with: `workspace.yaml` and every domain's
- * definitions except their playbooks, so the draft still loads as a project.
+ * domain's folder also takes what it loads with: `workspace.yaml` and all of `domains/`, so the
+ * draft loads and checks as the whole project.
  */
 async function contentFiles(root: string, workflowId: string, kind?: DraftKind, folder?: string): Promise<string[]> {
   const out = (await listFiles(join(root, 'domain'))).map((f) => `domain/${f}`);
   if (kind === 'binding') return out;
   if (domainFolderOf(folder)) {
     if (await isFile(join(root, 'workspace.yaml'))) out.push('workspace.yaml');
-    out.push(...(await listFiles(join(root, 'domains'))).map((f) => `domains/${f}`).filter((f) => !/^domains\/[^/]+\/workflows\//.test(f)));
+    out.push(...(await listFiles(join(root, 'domains'))).map((f) => `domains/${f}`).filter((f) => !f.startsWith(`${folder}/`)));
   }
   const pb = folder ?? `workflows/${workflowId}`;
   out.push(...(await listFiles(join(root, pb))).map((f) => `${pb}/${f}`));
@@ -243,7 +246,7 @@ export async function createDraft(root: string, input: CreateDraftInput): Promis
     project = { id: p.id, dir: p.dir };
   } else if (kind === 'change') {
     live = (await loadWorkflow(liveDir, abs)).workflow;
-    if (!live) throw new Error(`the playbook ${workflowId} doesn't load; fix workflows/${workflowId}/workflow.yaml first`);
+    if (!live) throw new Error(`the playbook ${workflowId} doesn't load; fix ${folder}/workflow.yaml first`);
   }
 
   const now = new Date();
@@ -429,8 +432,8 @@ export interface WriteDraftOptions {
 
 /**
  * Why a path can't be written in a draft of `workflowId` (a binding draft: `domain/` only), or
- * undefined when it can. A playbook in a domain's folder (`folder`) may also change its domain's
- * definitions, not the domain's other playbooks.
+ * undefined when it can. A draft of a named domain's playbook (`folder`) may write the playbook's
+ * folder and its domain's `policy.yaml` and `entities/` (the playbook, its rules and record types).
  */
 export function badDraftPath(path: string, workflowId: string, kind?: DraftKind, folder?: string): string | undefined {
   if (!path || path.includes('\\') || path.includes('\0')) return 'use a project-relative path with / between folders';
@@ -438,15 +441,16 @@ export function badDraftPath(path: string, workflowId: string, kind?: DraftKind,
   const parts = path.split('/');
   if (parts.some((p) => p === '' || p === '.' || p === '..')) return 'a path has no empty, `.` or `..` parts';
   if (parts.some((p) => p.startsWith('.'))) return 'files and folders starting with a dot are not part of a playbook';
+  const domain = domainFolderOf(folder)?.slice('domains/'.length);
+  if (domain && folder) {
+    const inPlaybook = path.startsWith(`${folder}/`);
+    const inRules = path === `domains/${domain}/policy.yaml`;
+    const inTypes = parts[0] === 'domains' && parts[1] === domain && parts[2] === 'entities' && parts.length > 3;
+    if (!inPlaybook && !inRules && !inTypes) return `a draft of ${workflowId} only holds ${folder}/..., domains/${domain}/policy.yaml and domains/${domain}/entities/...`;
+    return undefined;
+  }
   const inDomain = parts[0] === 'domain' && parts.length > 1;
   if (kind === 'binding') return inDomain ? undefined : 'a binding draft only holds domain/...';
-  const domainFolder = domainFolderOf(folder);
-  if (domainFolder) {
-    if (path.startsWith(`${folder}/`)) return undefined;
-    if (path.startsWith(`${domainFolder}/`) && !path.startsWith(`${domainFolder}/workflows/`)) return undefined;
-    if (inDomain) return undefined;
-    return `a draft of ${workflowId} only holds ${folder}/... and its domain's definitions (${domainFolder}/..., not its other playbooks)`;
-  }
   const inPlaybook = parts[0] === 'workflows' && parts[1] === workflowId && parts.length > 2;
   if (!inDomain && !inPlaybook) return `a draft of ${workflowId} only holds domain/... and workflows/${workflowId}/...`;
   return undefined;

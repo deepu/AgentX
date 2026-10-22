@@ -27,7 +27,7 @@ export { PgFileStore, type StoredFile } from './stores/files.ts';
 export { PgChatAnchorStore, recordAnchorId, parseRecordAnchorId, type ChatAnchor, type ChatAnchorKind } from './stores/chat-anchors.ts';
 export { PgRateCounter } from './stores/rates.ts';
 export {
-  applyDomainSchema, columnType, compileRls, domainCreators, domainToolNames, entityColumns, entityIdPrefix,
+  applyDomainSchema, columnType, compileRls, domainCreators, KERNEL_RLS_STAMP, KERNEL_RLS_VERSION, domainToolNames, entityColumns, entityIdPrefix,
   entityTableName, snake, syncEntityTables, SYSTEM_COLUMNS, type ColumnType, type EntityColumn, type RlsOptions,
 } from './domain/tables.ts';
 export { PgEntityStore, type CreateEntityOptions, type StoredEntityRow } from './domain/entities.ts';
@@ -76,3 +76,10 @@ export {
   PgViewStore, PgPageStore, PgPageChangeStore, type WrittenPage, type WrittenPageVersion, type PageStatus, type PageRefresh, type NewPage,
   type VersionNote, type PageChange, type PageChangeStatus, type PageChangeSummary,
 } from './stores/pages.ts';
+
+// ---------------------------------------------------------------- Stage 5: regulated projects (docs/memwise/26-projects-and-pages.md §8)
+export {
+  PgChangeRequestStore, PgAuditLog, PgInspectorStore, auditEntryHash, checkAuditChain, changeRequestLabel,
+  type ChangeRequestRow, type ChangeRequestStatus, type ChangeValidationRow, type NewAuditEntry, type AuditEntryRow, type AuditFilter,
+  type AuditActorKind, type AuditChainCheck, type InspectorLinkRow, type InspectorQuestionRow, type InspectorPerson,
+} from './stores/regulated.ts';

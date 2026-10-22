@@ -16,6 +16,7 @@ import { AppShellProvider, useAppShellContext } from '@/context/AppShellContext'
 import { memwiseCasesAtom, memwiseDomainsAtom, memwiseInboxAtom, memwisePlaybooksAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { getMemwiseApi, waitForSession } from '@/hooks/useMemwise'
 import { useMemwiseRecordPage } from '@/hooks/useMemwiseRecords'
+import { useMemwiseChangeRequest } from '@/hooks/useMemwiseRegulated'
 import { useMemwisePage, useMemwisePageChange } from '@/hooks/useMemwisePages'
 import type { MwInboxItem } from '@memwise/shared/protocol'
 import { ALL_PROJECTS, projectRoute, type ProjectView } from '../../../../shared/project-route'
@@ -35,6 +36,9 @@ import { readLastProject, useProjectShellEnabled, useShellProjects, writeLastPro
 import { WaitingPage } from './WaitingPage'
 import { AppHomeScreen, NewProjectScreen, TemplateUpdateScreen, WaitingAllScreen } from '../projects/ProjectScreens'
 import { MwProjectsNavProvider, type MwProjectsNav } from '../projects/nav'
+import { AuditTrailScreen, ChangeRequestScreen, TmfIndexScreen, type RegulatedNavigation } from '../regulated'
+import { zoneName } from '../regulated/regulated-model'
+import { useProjectShell } from './shell-context'
 import { PANEL_GAP, RADIUS_INNER } from '../../app-shell/panel-constants'
 
 export const CHAT_COLUMN_WIDTH = 488
@@ -61,6 +65,8 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
   // A record's chat is titled with the record (its page loads the same data).
   const recordPage = useMemwiseRecordPage(details.type === 'record' ? details.entity : null, details.type === 'record' ? details.recordId : null)
   const recordTitle = recordPage.data?.title
+  // A change request's chat is titled with its label (the route may name it by id).
+  const { data: openCr } = useMemwiseChangeRequest(details.type === 'cr' && project ? project.id : null, details.type === 'cr' ? details.crId : null)
   // A written page's chat is titled with the page; an answer change's with its page too.
   const writtenPage = useMemwisePage(details.type === 'page' ? details.pageId : null)
   const openChange = useMemwisePageChange(details.type === 'change' ? details.changeId : null)
@@ -149,6 +155,10 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
       case 'settings': return t('memwise.shell.projectSettings')
       case 'page': return writtenPage.data?.title ?? t('memwise.shell.page')
       case 'change': return openChange.data ? t('memwise.pages.change.chatTitle', { page: openChange.data.pageTitle }) : t('memwise.pages.change.title')
+      case 'cr': return openCr?.label ? t('memwise.regulated.change.title', { label: openCr.label })
+        : /^cr_/.test(details.crId) ? t('memwise.inbox.kind.changeRequest') : t('memwise.regulated.change.title', { label: details.crId })
+      case 'audit': return t('memwise.regulated.audit.title')
+      case 'tmf': return details.zone ? zoneName({ id: details.zone, name: details.zone }, t) : t('memwise.regulated.tmf.title')
       default: return project!.name
     }
   }
@@ -200,6 +210,9 @@ function placeholderFor(type: string, all: boolean, t: (k: string) => string): s
   if (type === 'playbook') return t('memwise.shell.askPlaybook')
   if (type === 'run') return t('memwise.shell.askRun')
   if (type === 'records') return t('memwise.shell.askRecords')
+  if (type === 'cr') return t('memwise.regulated.shell.askChange')
+  if (type === 'audit') return t('memwise.regulated.shell.askAudit')
+  if (type === 'tmf') return t('memwise.regulated.shell.askTmf')
   return t('memwise.shell.askPage')
 }
 
@@ -235,6 +248,7 @@ function PageColumn({ view, project, projects, stored }: { view: ProjectView; pr
   const inbox = useAtomValue(memwiseInboxAtom)
   const domain = domains?.find(d => d.id === project.domain) ?? null
   const d = view.details
+  const regulated = useRegulatedNavigation()
   const go = (details: Parameters<typeof routes.view.project>[1]) => navigate(routes.view.project(project.id, details))
   const pageActions = {
     onOpenPage: (pageId: string) => go({ type: 'page', pageId }),
@@ -282,7 +296,19 @@ function PageColumn({ view, project, projects, stored }: { view: ProjectView; pr
     case 'settings': return <ProjectSettingsPage project={project} {...(d.tab ? { tab: d.tab } : {})} />
     case 'page': return <PageScreen key={d.pageId} projectId={project.id} pageId={d.pageId} {...pageActions} onOpenChange={openChange} />
     case 'change': return <PageChangeScreen key={d.changeId} projectId={project.id} changeId={d.changeId} {...pageActions} onDone={() => go({ type: 'waiting' })} />
+    case 'cr': return <ChangeRequestScreen key={d.crId} projectId={project.id} crId={d.crId} navigation={regulated} />
+    case 'audit': return <AuditTrailScreen key={`${d.entity ?? ''}:${d.recordId ?? ''}`} projectId={project.id} {...(d.entity && d.recordId ? { entity: d.entity, recordId: d.recordId } : {})} navigation={regulated} />
+    case 'tmf': return <TmfIndexScreen projectId={project.id} zoneId={d.zone ?? null} navigation={regulated} />
   }
+}
+
+/**
+ * The Stage 5 screens' way around inside the shell: the routes they would open are rewritten to the
+ * project's (shell-routes), and a change request's chat shows in the chat column.
+ */
+function useRegulatedNavigation(): RegulatedNavigation | undefined {
+  const shell = useProjectShell()
+  return React.useMemo(() => (shell ? { openSession: shell.showChat } : undefined), [shell])
 }
 
 /** The answer change an inbox item reviews (26 §4), if it is one. */

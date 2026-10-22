@@ -20,9 +20,13 @@ export const MEMWISE_CONTEXT_FILE = 'memwise-context.json';
 /** Largest block kept; longer ones are shortened (the system prompt has to stay reasonable). */
 export const MEMWISE_CONTEXT_MAX_CHARS = 24_000;
 
-/** What a chat is anchored to. A record anchor names its entity key (`literature.topic`). */
+/**
+ * What a chat is anchored to. A record anchor names its entity key (`literature.topic`). A
+ * `change` anchor (Stage 5, docs/memwise/26-projects-and-pages.md §8) is a change request of a
+ * regulated playbook (`id`: its `cr_…` id): the chat edits the request's draft and validates it.
+ */
 export type MemwiseChatAnchor =
-  | { kind: 'case' | 'step'; id: string }
+  | { kind: 'case' | 'step' | 'change'; id: string }
   /** A playbook; `project` (Stage 4 with Stage 3): that study's own copy of it. */
   | { kind: 'workflow'; id: string; project?: string }
   | { kind: 'record'; entity: string; id: string }
@@ -30,6 +34,8 @@ export type MemwiseChatAnchor =
   | { kind: 'project' | 'waiting' | 'dashboard'; id: string }
   /** Stage 4 (26 §2): a record type's list (id: the entity key); its chat filters the list (`records_filter`). */
   | { kind: 'records'; id: string; project?: string }
+  /** Stage 5: a project's audit trail and TMF index (id: the project). */
+  | { kind: 'audit' | 'tmf'; id: string }
   /** A page (26 §4): the chat reads and writes it with `page_get` / `page_update` / `page_create`. */
   | { kind: 'page'; id: string };
 
@@ -38,7 +44,12 @@ export type MemwiseChatAnchor =
  * shell's pages, and a page (it reads the records of the page's project).
  */
 export function anchorReadsRecords(kind: MemwiseChatAnchor['kind'] | undefined): boolean {
-  return kind === 'record' || kind === 'project' || kind === 'waiting' || kind === 'dashboard' || kind === 'records' || kind === 'page';
+  return kind === 'record' || kind === 'page' || kind === 'records' || isPageAnchor(kind);
+}
+
+/** Anchors that are a page of the project shell (described in the context block), not a record or a step. */
+export function isPageAnchor(kind: MemwiseChatAnchor['kind'] | undefined): boolean {
+  return kind === 'project' || kind === 'waiting' || kind === 'dashboard' || kind === 'audit' || kind === 'tmf';
 }
 
 /**
@@ -52,7 +63,7 @@ export function chatChangesPlaybook(ctx: Pick<SessionMemwiseContext, 'anchor' | 
 export interface SessionMemwiseContext {
   /** What the chat is anchored to. A conversation step is a `step` anchor with `conversation`. */
   anchor: MemwiseChatAnchor;
-  /** The chat answers a conversation step: the `playbook_*` tools are offered. */
+  /** The chat answers a conversation step, or edits a change request: the `playbook_*` tools are offered. */
   conversation?: boolean;
   /**
    * Stage 3 (26 §3): the conversation step is an app's create-project step ("Describe it in

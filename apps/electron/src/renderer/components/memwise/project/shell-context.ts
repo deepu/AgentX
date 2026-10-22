@@ -15,6 +15,11 @@ export interface ProjectShellContextValue {
 
 export const ProjectShellContext = React.createContext<ProjectShellContextValue | null>(null)
 
+/** The project a case started here runs in: the shell's, unless it shows every project (`*`). */
+export function shellStartProject(shell: ProjectShellContextValue | null): string | undefined {
+  return shell && shell.projectId !== '*' ? shell.projectId : undefined
+}
+
 /** The shell around this screen, or null when it isn't inside one (the classic layout). */
 export function useProjectShell(): ProjectShellContextValue | null {
   return React.useContext(ProjectShellContext)

@@ -169,6 +169,16 @@ describe('in a project (Stage 3)', () => {
     expect(pageDraft([d('d207', 'mw207')], 'client-intake', 'mw301')).toBeUndefined()
   })
 
+  test("a regulated app's change request shows on every study's playbook page", () => {
+    const cr = {
+      id: 'cr_draft', kind: 'change', workflowId: 'client-intake', stage: 'draft', updatedAt: '2026-10-01T00:00:00Z',
+      changeRequest: { id: 'cr_1', label: 'CR-001', project: 'etmf' },
+    } as unknown as MwDraftSummary
+    expect(pageDraft([cr], 'client-intake', 'mw301')?.id).toBe('cr_draft')
+    expect(pageDraft([cr], 'client-intake', 'mw207')?.id).toBe('cr_draft')
+    expect(pageDraft([cr], 'client-intake')?.id).toBe('cr_draft')
+  })
+
   test("a study's playbook and list chats are that study's", () => {
     expect(chatAnchorFor('mw301', { type: 'playbook', workflowId: 'chase-missing' }, null, undefined, 'mw301')).toEqual({ kind: 'workflow', id: 'chase-missing', project: 'mw301' })
     expect(chatAnchorFor('mw301', { type: 'records', entity: 'etmf.Site' }, null, undefined, 'mw301')).toEqual({ kind: 'records', id: 'etmf.Site', project: 'mw301' })

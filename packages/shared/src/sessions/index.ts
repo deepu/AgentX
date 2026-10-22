@@ -106,6 +106,7 @@ export {
   memwiseSessionToolOptions,
   anchorReadsRecords,
   chatChangesPlaybook,
+  isPageAnchor,
   type SessionMemwiseContext,
   type MemwiseChatAnchor,
 } from './memwise-context.ts';

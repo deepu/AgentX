@@ -49,6 +49,17 @@ export interface AuthoringDeps {
   toolEffect?(name: string): EffectClass | undefined;
   /** Whether a bound tool comes from a plugin: a test run stubs it whatever its class (D121). */
   toolFromPlugin?(name: string): boolean;
+  /**
+   * Stage 5 (26 §8): change requests. A person's new change draft of a regulated domain's playbook
+   * opens one; a draft with one is published only by it (QA's signature).
+   */
+  changes?: {
+    onDraftCreated(meta: { id: string; workflowId: string; title: string; kind: string }, by: Actor): Promise<void>;
+    publishRefusal(draft: { id: string; workflowId: string; kind: string }, changeRequest: string | undefined): Promise<string | undefined>;
+    /** Why the draft's files can't change now (its request was sent to QA or closed), if they can't. */
+    writeRefusal(draftId: string): Promise<string | undefined>;
+    regulated(workflowId: string): boolean;
+  };
 }
 
 /** Past cases replayed by a check, by default. */
@@ -163,6 +174,10 @@ function entitiesOf(workflow: WorkflowDef, entities: Record<string, unknown>): S
   }
   return out;
 }
+
+/** A regulated domain's playbook changes only through a change request (26 §8, D115). */
+const regulatedRefusal = (name: string) =>
+  new Error(`${name} is in a regulated domain: a change to it is a change request (open one, then QA's signature makes it live)`);
 
 export function createAuthoring(deps: AuthoringDeps): Authoring {
   const root = resolve(deps.projectDir);
@@ -455,11 +470,14 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async createDraft(input, by) {
+      // Stage 5 (D115): a regulated playbook changes for the whole app by change request, never as one study's copy.
+      if (input.project && deps.changes?.regulated(input.workflowId)) throw regulatedRefusal(input.workflowId);
       const meta = await createDraft(root, {
         workflowId: input.workflowId, title: input.title, kind: input.kind, createdBy: byLabel(by),
         ...(input.runId ? { runId: input.runId } : {}), ...(input.chatId ? { chatId: input.chatId } : {}), ...(input.domain ? { domain: input.domain } : {}),
         ...(input.project ? { project: input.project } : {}),
       });
+      await deps.changes?.onDraftCreated(meta, by);
       emit(meta.id);
       return meta;
     },
@@ -504,6 +522,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async write(input, by) {
+      const refused = await deps.changes?.writeRefusal(input.draftId);
+      if (refused) throw new Error(refused);
       const edit = await writeDraftFiles(root, input.draftId, input.files, {
         by: byLabel(by), via: input.via, summary: input.summary, ...(input.chatId ? { chatId: input.chatId } : {}),
       });
@@ -512,6 +532,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async keepEdit(draftId, editId) {
+      const refused = await deps.changes?.writeRefusal(draftId);
+      if (refused) return { applied: false, message: refused };
       try {
         await setDraftEditStatus(root, draftId, editId, 'kept');
         emit(draftId);
@@ -522,6 +544,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async discardEdit(draftId, editId) {
+      const refused = await deps.changes?.writeRefusal(draftId);
+      if (refused) return { applied: false, message: refused };
       const r = await discardDraftEdit(root, draftId, editId);
       if (r.applied) emit(draftId);
       return { applied: r.applied, ...(r.message ? { message: r.message } : {}), ...(r.conflicts ? { conflicts: r.conflicts } : {}) };
@@ -613,6 +637,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         return { status: 'failed', message: `draft ${draftId} was already published` };
       }
       if (d.meta.status !== 'open') return { status: 'failed', message: `draft ${draftId} is ${d.meta.status}` };
+      const refusal = await deps.changes?.publishRefusal({ id: draftId, workflowId: d.meta.workflowId, kind: d.meta.kind }, opts.changeRequest);
+      if (refusal) return { status: 'failed', message: refusal };
       if ((await draftContentHash(root, draftId)) !== opts.hash) return { status: 'stale', message: 'the draft changed after it was checked; check it again' };
       try {
         await applyDraft(root, draftId, { hash: opts.hash });
@@ -649,6 +675,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       }
       const live = await liveWorkflow(input.workflowId, input.project);
       if (!live) throw new Error(`there is no playbook ${input.workflowId} to change`);
+      if (deps.changes?.regulated(input.workflowId)) throw regulatedRefusal(live.title ?? live.id);
       const runId = newRunId();
       const title = input.title ?? `Change ${live.title ?? live.id}`;
       const meta = await createDraft(root, { workflowId: input.workflowId, title, kind: 'change', createdBy: by.personId, runId, ...(input.project ? { project: input.project } : {}) });
@@ -670,6 +697,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     async submitDraft(draftId, by) {
       const { meta, edits } = await requireDraft(draftId);
       if (meta.status !== 'open') throw new Error(`draft ${draftId} is ${meta.status}`);
+      if (meta.kind === 'change' && deps.changes?.regulated(meta.workflowId)) throw regulatedRefusal(meta.workflowId);
       const diff = await diffDraft(root, draftId).catch(() => undefined);
       const said = edits.filter((e) => e.status !== 'discarded').map((e) => e.summary).filter(Boolean);
       // The reviewer reads this on the review card: steps by their titles, no ids.

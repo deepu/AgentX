@@ -2,7 +2,8 @@
  * Projects and pages, Stage 4 (docs/memwise/26-projects-and-pages.md §11): in Study MW-301, the
  * playbook page's chat changes MW-301's own copy of "Send document reminders" in a draft, the
  * draft runs on MW-301's site 101 in a throwaway database, and it goes for review; a list's
- * chat filters MW-301's list.
+ * chat filters MW-301's list. A study's own copy is for an app that isn't regulated, so this copy
+ * of the eTMF is made unregulated; the regulated eTMF's change requests are in stage4-regulated.
  *
  * Against a real Postgres with the eTMF example and scripted models. The chat is not run on a
  * model here: its tool calls are made through the session tools' handlers with the callbacks
@@ -10,7 +11,7 @@
  * The test run goes through the real TestRunner (the `memwise` CLI from source).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { cpSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTestDatabase, postgresAvailable, type TestDatabase } from '@memwise/db'
@@ -64,6 +65,8 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     dir = mkdtempSync(join(tmpdir(), 'mw-stage4-'))
     const projectDir = join(dir, 'project')
     cpSync(join(REPO, 'examples', 'etmf'), projectDir, { recursive: true })
+    const domainFile = join(projectDir, 'domains', 'etmf', 'domain.yaml')
+    writeFileSync(domainFile, readFileSync(domainFile, 'utf8').replace(/^regulated: true/m, 'regulated: false'))
     svc = (await startMemwiseService({
       configDir: dir,
       projectDir,

@@ -130,6 +130,9 @@ export function checkDomains(project: ProjectDefs, roles: string[] | undefined):
     if (roleSet && domain.owner !== undefined && !roleSet.has(domain.owner)) {
       add('error', 'unknown-role', `the owner \`${domain.owner}\` is not a role (roles: ${roleList()})`, file, domain, ['owner']);
     }
+    if (roleSet && domain.qa !== undefined && !roleSet.has(domain.qa)) {
+      add('error', 'unknown-role', `qa: \`${domain.qa}\` is not a role (roles: ${roleList()})`, file, domain, ['qa']);
+    }
     domain.acceptsFrom?.forEach((other, i) => {
       if (!domains[other]) add('error', 'unknown-domain', `accepts_from: there is no domain \`${other}\``, file, domain, ['accepts_from', i]);
     });

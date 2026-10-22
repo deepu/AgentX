@@ -1,7 +1,8 @@
 /**
  * A playbook's page in the project shell (doc 26 §5, mock `Playbook`): what starts it, its steps
  * and who does each, this week's runs, and the change its chat drafted: what changed (highlighted
- * in the steps), a test run on one record, Discard and Send for review (the Phase 3 review path).
+ * in the steps), a test run on one record, Discard and Send for review (the Phase 3 review path);
+ * in a regulated app, the change request it opened instead (Stage 5).
  * Where the playbook came from closes the page.
  */
 
@@ -163,6 +164,10 @@ export function DraftPanel({ draft, playbook, onChanged }: { draft: MwDraft; pla
   const { data: changeRun } = useMemwiseCase(draft.caseId ?? null)
   const checking = draft.stage !== 'in_review' && !draft.inChat && changeRun?.status === 'active' && changeRun.state !== 'review'
   const inReview = draft.stage === 'in_review' || checking
+  // Stage 5 (D115): in a regulated app the draft is a change request for the whole app; it goes
+  // to QA from the request's page, so Discard and Send for review are the request's, not ours.
+  const cr = draft.changeRequest
+  const shell = useProjectShell()
   const test = draft.lastTestRun && !draft.testRunStale ? draft.lastTestRun : undefined
   // Discard, Send for review and Run test are for someone who may change it (D122).
   const mayChange = draft.mayChange !== false
@@ -193,15 +198,23 @@ export function DraftPanel({ draft, playbook, onChanged }: { draft: MwDraft; pla
               {test ? ` · ${test.status === 'pass' ? t('memwise.everyPage.testRunPassed') : t('memwise.everyPage.testRunFailed')}` : ''}
               {checking ? ` · ${t('memwise.everyPage.checking')}` : inReview ? ` · ${t('memwise.everyPage.inReview')}` : ''}
             </span>
+            {cr && (
+              <span className="block text-label-sm text-secondary" data-testid="draft-change-request">{t('memwise.everyPage.changeRequestLine', { label: cr.label })}</span>
+            )}
           </span>
         </button>
-        {!inReview && mayChange && (
+        {cr && (
+          <ShellButton kind="solid" onClick={() => navigate(routes.view.project(shell?.projectId ?? cr.project, { type: 'cr', crId: cr.id }))} data-action="open-change-request">
+            {t('memwise.everyPage.openChangeRequest', { label: cr.label })}
+          </ShellButton>
+        )}
+        {!cr && !inReview && mayChange && (
           <>
             <ShellButton onClick={() => void act('discard')} busy={busy === 'discard'} disabled={!!busy} data-action="discard-draft">{t('memwise.everyPage.discard')}</ShellButton>
             <ShellButton kind="solid" onClick={() => void act('send')} busy={busy === 'send'} disabled={!!busy} data-action="send-for-review">{t('memwise.everyPage.sendForReview')}</ShellButton>
           </>
         )}
-        {inReview && draft.caseId && (
+        {!cr && inReview && draft.caseId && (
           <ShellButton onClick={() => navigate(routes.view.cases(draft.caseId!))}>{t('memwise.everyPage.openReview')}</ShellButton>
         )}
       </div>

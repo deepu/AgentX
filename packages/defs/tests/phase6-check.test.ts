@@ -359,10 +359,10 @@ describe('the eTMF example (examples/etmf)', () => {
   test('two domains, a regulated one, its entities and playbooks', async () => {
     const { project } = await loadProject(ETMF);
     expect(project.workspace).toMatchObject({ name: 'Northlight CRO', policy: { effects: { outbound: 'approve', irreversible: 'deny' } } });
-    expect(Object.keys(project.roles).sort()).toEqual(['cra', 'data_manager', 'study_manager', 'tmf_specialist']);
+    expect(Object.keys(project.roles).sort()).toEqual(['cra', 'data_manager', 'qa', 'study_manager', 'tmf_specialist']);
     // `domain/` holds only the connector bindings (workspace-wide, Phase 4), so the default domain is empty.
     expect(Object.keys(project.domains!).sort()).toEqual(['domain', 'edc', 'etmf']);
-    expect(project.domains!.etmf).toMatchObject({ name: 'eTMF', regulated: true, retentionMs: 25 * 365 * 86_400_000, owner: 'study_manager', intake: { address: 'etmf' } });
+    expect(project.domains!.etmf).toMatchObject({ name: 'eTMF', regulated: true, retentionMs: 25 * 365 * 86_400_000, owner: 'study_manager', qa: 'qa', intake: { address: 'etmf' } });
     expect(project.domains!.etmf!.policy!.modelRoles).toEqual(expect.arrayContaining(['router', 'classifier', 'verifier']));
     expect(Object.keys(project.entities).sort()).toEqual(['edc.Query', 'edc.Site', 'edc.Study', 'edc.Subject', 'etmf.Document', 'etmf.ExpectedDocument', 'etmf.Person', 'etmf.Reminder', 'etmf.Site', 'etmf.Sponsor', 'etmf.Study']);
     expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'chase-old-queries', 'create-project', 'file-document', 'fix-rejected-document', 'new-coordinator', 'remind-site', 'route-message', 'watch-expiries']);

@@ -71,7 +71,7 @@ export function RecordShellPage({ entity, recordId }: { entity: string; recordId
     />
   )
   return (
-    <div className="h-full overflow-y-auto" data-testid="shell-page">
+    <div className="h-full min-h-0 overflow-y-auto" data-testid="shell-page">
       <RecordPageView key={`${page.entity}:${page.id}`} page={page} actions={actions} files={files} shell={{ crumb }} extra={<RecordOwnedFacts page={page} />} />
     </div>
   )
@@ -121,7 +121,7 @@ function SignShellPage({ item }: { item: ReviewItem }) {
     </span>
   ) : undefined
   return (
-    <div className="h-full overflow-y-auto" data-testid="shell-page" data-sign-page>
+    <div className="h-full min-h-0 overflow-y-auto" data-testid="shell-page" data-sign-page>
       <DocumentReviewPage item={item} inlineSignature shell={{ crumb, ...(subtitle ? { subtitle } : {}) }} onDone={() => void refresh()} />
     </div>
   )

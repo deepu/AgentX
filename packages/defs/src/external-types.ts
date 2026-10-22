@@ -223,3 +223,76 @@ export interface InboundEvent {
   headers: Record<string, string>;
   body: unknown;
 }
+
+// ================================================================ Stage 5: the inspector's view
+// docs/memwise/26-projects-and-pages.md §8. The read-only pages an inspector's link opens
+// (`<base>/v/<token>`), and their API next to them (`<base>/v/<token>/api/…`): index, documents,
+// document, trail, download, ask, requests. Filed documents, their signatures and audit trail
+// only: no drafts, chats or AI suggestions. The kernel's own types (runtime regulated/types.ts)
+// are these shapes; they are repeated here so the page needs nothing of the kernel.
+
+/** Why an inspector's link opens nothing. */
+export interface InspectorRefusal { refused: 'unknown' | 'expired' | 'revoked' }
+
+export interface InspectorPageSession {
+  linkId: string;
+  project: string;
+  projectName: string;
+  /** The inspection (`MHRA inspection`). */
+  name: string;
+  /** Who it is for, as the header shows it (`Inspector, MHRA`). */
+  inspector: string;
+  expiresAt: string;
+}
+
+export interface InspectorPageIndex {
+  session: InspectorPageSession;
+  /** The TMF Reference Model's zones, with how many filed documents each holds. */
+  zones: { id: string; number: string; name: string; filed: number }[];
+  sites: { id: string; label: string }[];
+}
+
+export interface InspectorPageDocument {
+  entity: string;
+  id: string;
+  title: string;
+  zone?: string;
+  site?: { id: string; label: string };
+  artifact?: string;
+  status: string;
+  version: number;
+  filedAt?: string;
+  signatures: { name: string; meaning: string; at: string; changedSince: boolean }[];
+  file?: { id: string; name: string; mime: string; size: number; sha256: string };
+  values: { field: string; label: string; value: string }[];
+}
+
+/** One entry of a document's audit trail, as an inspector sees it. */
+export interface InspectorTrailEntry {
+  seq: number;
+  id: string;
+  at: string;
+  actorKind: 'person' | 'ai' | 'system' | 'external' | 'inspector' | 'source';
+  actor: string;
+  actorLabel: string | null;
+  action: string;
+  entity: string | null;
+  recordId: string | null;
+  caseId: string | null;
+  data: Record<string, unknown>;
+  prevHash: string;
+  hash: string;
+  recordTitle?: string;
+  stepTitle?: string;
+  playbookTitle?: string;
+}
+
+export interface InspectorPageQuestion {
+  id: string;
+  question: string;
+  askedAt: string;
+  record?: { entity: string; id: string; title: string };
+  answer?: string;
+  answeredBy?: { id: string; name: string };
+  answeredAt?: string;
+}
