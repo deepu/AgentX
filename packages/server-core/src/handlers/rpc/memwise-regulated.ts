@@ -240,6 +240,15 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     return { kind: anchor.kind, id: requireId(anchor.id, 'project') }
   }
 
+  /** The person's own chat that made a change request's draft (a playbook page's chat), while it is there. */
+  async function raisingChat(svc: MemwiseService, actor: PersonActor, crId: string): Promise<string | undefined> {
+    const v = await requireView(svc, actor, crId)
+    const got = await authoringOf(svc).getDraft(v.draftId).catch(() => undefined)
+    const chatId = got?.meta.chatId
+    if (!chatId || got.meta.createdBy !== actor.personId) return undefined
+    return (await deps.sessionManager.getSession(chatId).catch(() => null)) ? chatId : undefined
+  }
+
   async function chatsOn(svc: MemwiseService, actor: PersonActor, key: { kind: 'change' | 'audit' | 'tmf'; id: string }, limit: number): Promise<string[]> {
     const { PgChatAnchorStore } = await import('@memwise/db')
     const found: string[] = []
@@ -257,7 +266,14 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     /** `memwise:chat:find` for a change request, audit trail or TMF index anchor. */
     async findChat(ctx: RequestContext, anchor: StageFiveAnchor): Promise<MwFindChatResult> {
       const { svc, actor } = await begin(ctx)
-      const recent = await chatsOn(svc, actor, await anchorKeyOf(svc, actor, anchor), 8)
+      const key = await anchorKeyOf(svc, actor, anchor)
+      const recent = await chatsOn(svc, actor, key, 8)
+      // Stage 4: a request raised from a playbook page's chat has no chat of its own until the
+      // person opens one; its page shows the chat the change was made in, so the talk goes on there.
+      if (!recent.length && key.kind === 'change') {
+        const raisedIn = await raisingChat(svc, actor, key.id)
+        if (raisedIn) recent.push(raisedIn)
+      }
       return { sessionId: recent[0] ?? null, recent }
     },
 

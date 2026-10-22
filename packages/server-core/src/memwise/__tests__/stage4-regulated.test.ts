@@ -113,6 +113,18 @@ describe.skipIf(!postgresAvailable())('Stage 4 in a regulated app: a playbook ch
     const run = parse(await handlePlaybookTestRun(tools, { record: 'site 101' }))
     expect(run).toMatchObject({ status: 'pass' })
     expect(run.calls.find((c: any) => c.tool === 'etmf.reminder.create').args).toMatchObject({ copied: 'priya.shah@northlight.example' })
+
+    // "Open CR-001" on the playbook page: the request's page shows the chat the change was made in
+    // (the request has no chat of its own yet), for the person who made it only.
+    const cr = summary.changeRequest!
+    const found = await api.call<{ sessionId: string | null }>(manager, ch.CHAT_FIND, { anchor: { kind: 'change', id: cr.id, project: 'mw301' } })
+    expect(found.sessionId).toBe(sessionId)
+    const owner = ctxFor('owner-client', svc.owner.id)
+    expect((await api.call<{ sessionId: string | null }>(owner, ch.CHAT_FIND, { anchor: { kind: 'change', id: cr.id, project: 'mw301' } })).sessionId).toBeNull()
+    // Once the person opens the request's own chat ("Chat about the change"), that one is shown.
+    const crChat = await api.call<{ sessionId: string }>(manager, ch.CHAT_OPEN, { anchor: { kind: 'change', id: cr.id, project: 'mw301' }, reuse: true })
+    expect(crChat.sessionId).not.toBe(sessionId)
+    expect((await api.call<{ sessionId: string | null }>(manager, ch.CHAT_FIND, { anchor: { kind: 'change', id: cr.id, project: 'mw301' } })).sessionId).toBe(crChat.sessionId)
   }, 240_000)
 
   it('a grant in one study can\'t raise a change to the whole app\'s playbook', async () => {
