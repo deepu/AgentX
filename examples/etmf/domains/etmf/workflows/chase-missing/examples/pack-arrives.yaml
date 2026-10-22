@@ -1,0 +1,20 @@
+name: pack-arrives
+description: >
+  DE-104 is reminded, and its start-up pack is already complete when the wait begins, so the case ends
+  without anyone calling the site.
+records:
+  Sponsor:
+    - { id: spon_aster, name: Aster Bio }
+  Study:
+    - { id: stud_ast301, code: AST-301, sponsor: spon_aster }
+  Site:
+    - { id: site_de104, site_number: DE-104, study: stud_ast301, status: activating }
+  ExpectedDocument:
+    - { id: expe_de104_protocol, site: site_de104, study: stud_ast301, artifact: Protocol signature page, phase: start_up, status: filed }
+    - { id: expe_de104_pi_cv, site: site_de104, study: stud_ast301, artifact: Investigator CV, phase: start_up, status: filed }
+case:
+  site: site_de104
+submit:
+  send_reminder: { outcome: sent }
+expect:
+  state: end

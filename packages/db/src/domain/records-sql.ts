@@ -13,7 +13,9 @@ import { compileConditionSource, literal, type ConditionContext, type ConditionT
 import {
   domainOfEntity, inverseOf, linkColumn, linkPairing, namesIn, recordColumns, targetOf, type RecordColumn,
 } from './model.ts';
-import { entityColumns, entityTableName, snake, tableOf, viewOf, type DomainSchemaOptions, type EntityColumn } from './tables.ts';
+import {
+  entityColumns, entityTableName, PROJECT_COLUMN, projectScoped, snake, tableOf, viewOf, type DomainSchemaOptions, type EntityColumn,
+} from './tables.ts';
 
 const lit = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
@@ -40,7 +42,9 @@ export function scopePredicate(def: EntityTypeDef, entities: Record<string, Enti
   const own = snake(def.entity);
   if (!seen.has(own)) pairs.push(`${lit(own)}, ${alias}id`);
   void entities;
-  return `mw.in_scope(${lit(domainOfEntity(def))}, jsonb_build_object(${pairs.join(', ')}))`;
+  // Stage 3 (D92): the row's project first, then the record scope of the grants in that project.
+  const project = projectScoped(def) ? `${alias}${q(PROJECT_COLUMN)}` : 'null';
+  return `mw.row_visible(${lit(domainOfEntity(def))}, ${project}, jsonb_build_object(${pairs.join(', ')}))`;
 }
 
 // ---------------------------------------------------------------- read views
@@ -172,6 +176,8 @@ function viewSelect(plan: ViewPlan, entities: Record<string, EntityTypeDef>): st
   const select: string[] = ['t.id'];
   for (const c of fieldCols) select.push(`${exprOf(c.field)} as ${q(c.column)}`);
   select.push('t.lifecycle', 't.created_at', 't.updated_at', 't.created_by_step', 't.version', 't.updated_by');
+  // Stage 3: every view has `project` (null for records the app's projects share).
+  select.push(projectScoped(def) ? `t.${q(PROJECT_COLUMN)}` : `null::text as ${q(PROJECT_COLUMN)}`);
   const hidden = [
     ...fieldCols.filter((c) => c.access).map((c) => `case when not (${guard(domain, c.access!)}) then ${lit(c.field)} end`),
     ...columns.filter((c) => c.kind === 'followed' && linkAlias.has(c.link!.target))
@@ -227,6 +233,11 @@ function calculatedExpr(def: EntityTypeDef, entities: Record<string, EntityTypeD
 }
 
 // ---------------------------------------------------------------- row triggers
+
+/** The project of a parent record whose rollups changed (read from its table), or null for an app-scoped one. */
+function projectOf(parent: EntityTypeDef, recordExpr: string): string {
+  return projectScoped(parent) ? `(select p.${q(PROJECT_COLUMN)} from ${tableOf(parent)} p where p.id = ${recordExpr})` : 'null::text';
+}
 
 /** Values as JSON by field name (status = lifecycle), in chunks (jsonb_build_object takes 100 arguments). */
 function valuesJson(def: EntityTypeDef, row: string): string {
@@ -322,13 +333,15 @@ function triggerBody(def: EntityTypeDef, entities: Record<string, EntityTypeDef>
   const regulated = !!opts.domains?.[domainOfEntity(def)]?.regulated;
   const controlled = cols.filter((c) => def.fields[c.field]?.controlled !== false);
   const withStatus = [...cols, { field: 'status', column: 'lifecycle' }];
+  // Stage 3: versions and events carry the record's project (null for app-scoped records).
+  const own = projectScoped(def) ? `new.${q(PROJECT_COLUMN)}` : 'null::text';
   let counter = 0;
   const vars: string[] = [];
 
   // `changed` for a parent record, then up through rollups of rollups.
   const emit = (parent: EntityTypeDef, recordExpr: string, rollups: string[], depth: number): string => {
     const fields = affected(parent, rollups);
-    let code = `perform mw.write_entity_event(${lit(keyOf(parent))}, ${recordExpr}, 'changed', jsonb_build_object('fields', ${lit(JSON.stringify(fields))}::jsonb), v_by);\n`;
+    let code = `perform mw.write_entity_event(${lit(keyOf(parent))}, ${recordExpr}, 'changed', jsonb_build_object('fields', ${lit(JSON.stringify(fields))}::jsonb), v_by, ${projectOf(parent, recordExpr)});\n`;
     if (depth >= ROLLUP_EVENT_DEPTH) return code;
     for (const up of links.get(keyOf(parent)) ?? []) {
       const hit = up.rollups.filter((r) => r.deps.some((d) => fields.includes(d))).map((r) => r.name);
@@ -400,18 +413,18 @@ function triggerBody(def: EntityTypeDef, entities: Record<string, EntityTypeDef>
   else
     v_changed := ${changedArray(withStatus, (c) => `old.${q(c)} is distinct from new.${q(c)}`)};
   end if;
-  perform mw.write_record_version(${lit(key)}, new.id, new.version, v_by, mw.record_via(), mw.record_reason(), ${valuesJson(def, 'new')}, v_changed);
+  perform mw.write_record_version(${lit(key)}, new.id, new.version, v_by, mw.record_via(), mw.record_reason(), ${valuesJson(def, 'new')}, v_changed, ${own});
   if tg_op = 'INSERT' then
-    perform mw.write_entity_event(${lit(key)}, new.id, 'created', '{}'::jsonb, v_by);
+    perform mw.write_entity_event(${lit(key)}, new.id, 'created', '{}'::jsonb, v_by, ${own});
     if new.lifecycle is not null then
       perform mw.write_entity_event(${lit(key)}, new.id, 'entered',
-        jsonb_build_object('state', new.lifecycle, 'from', null, 'transition', nullif(current_setting('mw.transition', true), '')), v_by);
+        jsonb_build_object('state', new.lifecycle, 'from', null, 'transition', nullif(current_setting('mw.transition', true), '')), v_by, ${own});
     end if;
   else
-    perform mw.write_entity_event(${lit(key)}, new.id, 'changed', jsonb_build_object('fields', to_jsonb(v_changed)), v_by);
+    perform mw.write_entity_event(${lit(key)}, new.id, 'changed', jsonb_build_object('fields', to_jsonb(v_changed)), v_by, ${own});
     if old.lifecycle is distinct from new.lifecycle then
       perform mw.write_entity_event(${lit(key)}, new.id, 'entered',
-        jsonb_build_object('state', new.lifecycle, 'from', old.lifecycle, 'transition', nullif(current_setting('mw.transition', true), '')), v_by);
+        jsonb_build_object('state', new.lifecycle, 'from', old.lifecycle, 'transition', nullif(current_setting('mw.transition', true), '')), v_by, ${own});
     end if;
   end if;
 ${rollupCode}
@@ -425,7 +438,7 @@ export function backfillVersionsSql(entities: Record<string, EntityTypeDef>): st
   return Object.values(entities).map((def) => {
     const key = lit(keyOf(def));
     return `select mw.write_record_version(${key}, t.id, t.version, coalesce('step:' || t.created_by_step, 'system'), null,
-      'recorded before version history', ${valuesJson(def, 't')}, '{}'::text[])
+      'recorded before version history', ${valuesJson(def, 't')}, '{}'::text[], ${projectScoped(def) ? `t.${q(PROJECT_COLUMN)}` : 'null::text'})
       from ${tableOf(def)} t
       where not exists (select 1 from mw.record_versions v where v.entity = ${key} and v.record_id = t.id)
       order by t.created_at, t.id`;

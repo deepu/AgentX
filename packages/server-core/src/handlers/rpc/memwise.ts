@@ -22,6 +22,9 @@ import type {
   MwPage, MwPageChange, MwPageChangeDecideInput, MwPageCreateInput, MwPageKeepInput, MwPageRefreshResult, MwPageSummary, MwPageVersion, MwPageWriteResult,
   MwProjectAskInput, MwProjectAskResult,
   MwRecordWriteResult, MwReleaseTriggerInput, MwSaveNoteInput, MwSaveViewInput, MwTreeInput, MwTreeNode, MwTrigger, MwView,
+  MwApp, MwAppHome, MwCreateProjectInput, MwDescribeProjectInput, MwDescribeProjectResult, MwProjectDetail, MwProjectSummary,
+  MwPublishTemplateInput, MwPublishTemplateResult, MwSaveAsTemplateInput, MwSaveAsTemplateResult, MwTakeTemplateUpdateResult,
+  MwTemplateUpdateInput, MwTemplateUpdateReview, MwUpdateProjectInput, MwWaitingGroup,
 } from '@memwise/shared/protocol'
 import { META_PLAYBOOKS, type ApprovalDecision, type DraftDiff, type DraftMeta } from '@memwise/defs'
 import type { CompiledPolicy } from '@memwise/policy'
@@ -43,7 +46,7 @@ import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../
 import type { DraftFacts, DtoContext } from '../../memwise/dto'
 import { keepableEntities, recordDigest } from '../../memwise/chat-tools'
 import {
-  authoringOf, conversationBlock, conversationState, draftForRun, isConversationStep, kickoffMessage, personName, plainValues,
+  authoringOf, conversationBlock, conversationState, draftForRun, isConversationStep, isProjectConversation, kickoffMessage, personName, plainValues,
   sendBackNote, sentBackMessage,
   type KernelWithAuthoring,
 } from '../../memwise/conversation'
@@ -127,6 +130,23 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.AUDIT_GET,
   RPC_CHANNELS.memwise.AUDIT_EXPORT,
   RPC_CHANNELS.memwise.FILES_READ,
+  // Stage 3: projects inside apps (doc 26 §3)
+  RPC_CHANNELS.memwise.APPS_LIST,
+  RPC_CHANNELS.memwise.APPS_HOME,
+  RPC_CHANNELS.memwise.APPS_PUBLISH_TEMPLATE,
+  RPC_CHANNELS.memwise.PROJECTS_LIST,
+  RPC_CHANNELS.memwise.PROJECTS_GET,
+  RPC_CHANNELS.memwise.PROJECTS_CREATE,
+  RPC_CHANNELS.memwise.PROJECTS_UPDATE,
+  RPC_CHANNELS.memwise.PROJECTS_START,
+  RPC_CHANNELS.memwise.PROJECTS_ARCHIVE,
+  RPC_CHANNELS.memwise.PROJECTS_DISCARD,
+  RPC_CHANNELS.memwise.PROJECTS_DESCRIBE,
+  RPC_CHANNELS.memwise.PROJECTS_SAVE_AS_TEMPLATE,
+  RPC_CHANNELS.memwise.TEMPLATE_UPDATE_REVIEW,
+  RPC_CHANNELS.memwise.TEMPLATE_UPDATE_TAKE,
+  RPC_CHANNELS.memwise.TEMPLATE_UPDATE_SKIP,
+  RPC_CHANNELS.memwise.WAITING_ALL,
   // Pages (26 §4)
   RPC_CHANNELS.memwise.PAGES_LIST,
   RPC_CHANNELS.memwise.PAGES_GET,
@@ -341,6 +361,12 @@ export function askInstructions(
     '',
     `Finish the chat answer with one line saying the page beside it has the details, and that "Keep watching" there checks for new papers every week.`,
   ].join('\n')
+}
+
+/** A project or app id from the screens: a plain id, never a path. */
+function requireId(id: unknown, what: 'project' | 'app'): string {
+  if (typeof id !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(id)) throw new Error(what === 'app' ? 'Choose an app.' : 'Choose a project.')
+  return id
 }
 
 /** Longest page body put into a page chat's context; `page_get` gives the whole body. */
@@ -701,7 +727,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           break
       }
     }
-    return out
+    // Stage 3: each item says its project (Waiting for you across projects groups by it).
+    const projectOf = new Map(items.flatMap((i) => (i.project ? [[i.id, i.project] as const] : [])))
+    return out.map((o) => (projectOf.has(o.id) ? { ...o, project: projectOf.get(o.id)! } : o))
   }
 
   /** A bind-plugin person step (`fix`, `review`): the plugin and draft its review screen shows. */
@@ -985,15 +1013,18 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     const homeDef = input?.domain ? c.project.domains?.[input.domain]?.home : undefined
     const home = homeDef ? d.toDomainHome(c.project, input.domain) : undefined
     if (!homeDef || !home) throw new Error('This domain has no question box.')
+    // Stage 3: asked in a study of the app, the question (its page or record) belongs to the study.
+    const stored = typeof input.project === 'string' ? c.project.projects?.[input.project] : undefined
+    const askedIn = stored && (stored.apps ?? [stored.app]).includes(input.domain) ? stored.id : input.domain
     // Pages (26 §4): a home without an entity asks into a draft page.
     if (!homeDef.entity || !homeDef.question || !home.entity || !home.entityTitle) {
-      const asked = await askInProject(svc, actor, c, workspaceId, { projectId: input.domain, question })
+      const asked = await askInProject(svc, actor, c, workspaceId, { projectId: askedIn, question })
       return { sessionId: asked.sessionId, entity: '', recordId: '', pageId: asked.pageId }
     }
     const records = recordsOf(svc)
     const values: Record<string, unknown> = { [homeDef.question]: question }
     if (homeDef.name) values[homeDef.name] = shortQuestion(question)
-    const created = await records.create({ entity: home.entity, values, reason: 'Asked on the home' }, actor)
+    const created = await records.create({ entity: home.entity, values, reason: 'Asked on the home', ...(askedIn !== input.domain ? { project: askedIn } : {}) }, actor)
     if (!created.applied || !created.id) throw new Error(created.message ?? 'The question could not be saved.')
     const page = await records.page(home.entity, created.id, actor)
     if (!page) throw new Error('The question was saved, but its page could not be read.')
@@ -1028,7 +1059,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     const question = typeof input?.question === 'string' ? input.question.trim() : ''
     if (!question) throw new Error('Type a question first.')
     const projectId = typeof input?.projectId === 'string' ? input.projectId : ''
-    if (!projectId || (c.project.domains && !c.project.domains[projectId])) throw new Error('Choose the project to ask in.')
+    // A project: a stored one (Stage 3, study `mw301`), or an app's own (id = the app id).
+    if (!projectId || (c.project.domains && !c.project.domains[projectId] && !c.project.projects?.[projectId])) throw new Error('Choose the project to ask in.')
     const sources = pluginSources(c.project, workspaceId)
     const session = await deps.sessionManager.createSession(workspaceId, {
       name: shortQuestion(question),
@@ -1139,7 +1171,10 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     const s = await conversationState(svc, stepRunId, actor)
     const wf = c.project.workflows[s.workflowId]
     const step = wf?.steps[s.stepId]
-    if (step?.assignee && !actor.roles.includes(step.assignee)) {
+    // The role held workspace-wide or by a grant in the playbook's domain (Stage 3: a study
+    // manager of any study holds it in the app's own project, where create-project runs).
+    const domain = wf?.domain ?? 'domain'
+    if (step?.assignee && !actor.roles.includes(step.assignee) && !actor.grants?.some((g) => g.role === step.assignee && g.domain === domain)) {
       throw new Error(`This step is for someone with the ${step.assignee} role.`)
     }
     const { PgChatAnchorStore } = await import('@memwise/db')
@@ -1154,7 +1189,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
           await store.set(svc.kernel.pool, { chatId: a.chatId, anchorKind: 'step', anchorId: s.stepRunId, personId: actor.personId })
           const who = (await personName(svc, actor.personId)) ?? 'the person in this chat'
           deps.sessionManager.setMemwiseContext(a.chatId, {
-            anchor: { kind: 'step', id: s.stepRunId }, conversation: true, block: await conversationBlock(svc, s, actor, who), personName: who,
+            anchor: { kind: 'step', id: s.stepRunId }, conversation: true, ...(isProjectConversation(s) ? { project: true } : {}),
+            block: await conversationBlock(svc, s, actor, who), personName: who,
           })
           const note = sendBackNote(s.view, s.stepRunId, s.stepId)
           if (note) {
@@ -1171,7 +1207,12 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     const v = s.values
     const changing = s.workflowId === 'change-playbook' || (!!s.draft && s.draft.kind === 'change')
     const playbookId = typeof v.playbook === 'string' && v.playbook ? v.playbook : s.draft?.workflowId
-    const name = changing
+    // Stage 3: "Describe it in chat" makes a project, not a playbook.
+    const making = isProjectConversation(s)
+    const appTitle = typeof v.app === 'string' ? (c.project.apps?.[v.app]?.title ?? v.app) : undefined
+    const name = making
+      ? `New in ${appTitle ?? 'the app'}: ${(typeof v.request === 'string' && v.request.trim().slice(0, 60)) || 'a new project'}`
+      : changing
       ? `Changing: ${(playbookId && c.project.workflows[playbookId]?.title) || (typeof v.title === 'string' && v.title) || playbookId || 'a playbook'}`
       : `Building: ${(typeof v.title === 'string' && v.title.trim()) || (typeof v.request === 'string' && v.request.trim().slice(0, 60)) || 'a new playbook'}`
     // Ask mode whatever the workspace default: drafting runs without prompts (draft writes are
@@ -1183,6 +1224,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     deps.sessionManager.setMemwiseContext(session.id, {
       anchor: { kind: 'step', id: s.stepRunId },
       conversation: true,
+      ...(making ? { project: true } : {}),
       block: await conversationBlock(svc, s, actor, who),
       personName: who,
     })
@@ -2197,6 +2239,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const r = await recordsOf(svc).create({
         entity: input.entity, values: input.values,
         ...(input.status ? { status: input.status } : {}), ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+        ...(typeof input.project === 'string' && input.project ? { project: input.project } : {}),
       }, actor)
       if (r.applied) emitMemwiseChange({ kind: 'records', entity: input.entity, ...(r.id ? { id: r.id } : {}) })
       return withRecordMessage(d.toRecordWriteResult(r))
@@ -2255,6 +2298,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const r = await recordsOf(svc).query({
         entity: input.entity, ...(input.domain ? { domain: input.domain } : {}),
         ...(input.filter?.trim() ? { filter: input.filter.trim() } : {}),
+        ...(typeof input.project === 'string' && input.project ? { project: input.project } : {}),
         ...(sort.length ? { sort } : {}), ...(input.group ? { group: input.group } : {}), ...(columns.length ? { columns } : {}),
         limit, ...(Number(input.offset) > 0 ? { offset: Number(input.offset) } : {}),
       }, actor)
@@ -2352,6 +2396,161 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (!r) throw new Error('That file was not found.')
       if (r.data.byteLength > MAX_UPLOAD_BYTES) throw new Error('That file is too large to show here (the limit is 25 MB).')
       return { id: r.meta.id, name: r.meta.name, mime: r.meta.mime, dataBase64: Buffer.from(r.data).toString('base64') }
+    },
+
+    // ---------------------------------------------------------------- Stage 3: projects inside apps (26 §3)
+    // The kernel's projects service decides who may see and change what (D92); these map its
+    // shapes onto the protocol's and tell the screens what changed.
+
+    /** Apps with the projects this person sees (the switcher, app first: eTMF › MW-301). */
+    async listApps(ctx: RequestContext): Promise<MwApp[]> {
+      const { svc, actor } = await begin(ctx)
+      return svc.kernel.projects.apps(actor)
+    },
+
+    /** The app home ("TMF across studies"). */
+    async appHome(ctx: RequestContext, appId: string): Promise<MwAppHome> {
+      const { svc, actor } = await begin(ctx)
+      return svc.kernel.projects.home(requireId(appId, 'app'), actor)
+    },
+
+    /** Publish the app's next template version; every project behind it gets "Review template update". */
+    async publishTemplate(ctx: RequestContext, input: MwPublishTemplateInput): Promise<MwPublishTemplateResult> {
+      const { svc, actor } = await begin(ctx)
+      if (!input || typeof input.files !== 'object' || !input.files) throw new Error('Name the files the new version changes.')
+      const r = await svc.kernel.projects.publishTemplate(requireId(input.appId, 'app'), input.files, actor)
+      emitMemwiseChange({ kind: 'projects' })
+      emitMemwiseChange({ kind: 'inbox' })
+      return r
+    },
+
+    async listProjects(ctx: RequestContext, filter: { app?: string } = {}): Promise<MwProjectSummary[]> {
+      const { svc, actor } = await begin(ctx)
+      return svc.kernel.projects.list(actor, typeof filter?.app === 'string' && filter.app ? { app: filter.app } : undefined)
+    },
+
+    async getProject(ctx: RequestContext, projectId: string): Promise<MwProjectDetail | null> {
+      const { svc, actor } = await begin(ctx)
+      return (await svc.kernel.projects.get(requireId(projectId, 'project'), actor)) ?? null
+    },
+
+    /** New project: a template card, a copy (never its records) or blank; it starts as a draft. */
+    async createProject(ctx: RequestContext, input: MwCreateProjectInput): Promise<MwProjectDetail> {
+      const { svc, actor } = await begin(ctx)
+      if (!input?.name?.trim()) throw new Error('Give it a name.')
+      const p = await svc.kernel.projects.create({
+        name: input.name.trim(),
+        ...(input.app ? { app: input.app } : {}), ...(input.template ? { template: input.template } : {}),
+        ...(input.copyFrom ? { copyFrom: input.copyFrom } : {}), ...(input.also ? { also: input.also } : {}),
+        ...(input.study ? { study: input.study } : {}), ...(input.people ? { people: input.people } : {}),
+        ...(input.without ? { without: input.without } : {}), ...(input.settings ? { settings: input.settings } : {}),
+        // An id of its own is a project id, never an app's (the kernel refuses those: D107).
+        ...(input.id !== undefined ? { id: requireId(input.id, 'project') } : {}),
+      }, actor)
+      emitMemwiseChange({ kind: 'projects', id: p.id })
+      return p
+    },
+
+    /** Project settings: name, study, people, connections, settings (project.yaml). */
+    async updateProject(ctx: RequestContext, input: MwUpdateProjectInput): Promise<MwProjectDetail> {
+      const { svc, actor } = await begin(ctx)
+      const { projectId, ...patch } = input ?? ({} as MwUpdateProjectInput)
+      const p = await svc.kernel.projects.update(requireId(projectId, 'project'), patch, actor)
+      emitMemwiseChange({ kind: 'projects', id: p.id })
+      return p
+    },
+
+    /** "Start study": a draft starts running (an archived project comes back). */
+    async startProject(ctx: RequestContext, projectId: string): Promise<MwProjectDetail> {
+      const { svc, actor } = await begin(ctx)
+      const p = await svc.kernel.projects.start(requireId(projectId, 'project'), actor)
+      emitMemwiseChange({ kind: 'projects', id: p.id })
+      return p
+    },
+
+    async archiveProject(ctx: RequestContext, projectId: string): Promise<MwProjectDetail> {
+      const { svc, actor } = await begin(ctx)
+      const p = await svc.kernel.projects.archive(requireId(projectId, 'project'), actor)
+      emitMemwiseChange({ kind: 'projects', id: p.id })
+      return p
+    },
+
+    /** Discard a draft (refused for anything that ran). */
+    async discardProject(ctx: RequestContext, projectId: string): Promise<void> {
+      const { svc, actor } = await begin(ctx)
+      await svc.kernel.projects.discard(requireId(projectId, 'project'), actor)
+      emitMemwiseChange({ kind: 'projects', id: projectId })
+    },
+
+    /**
+     * "Describe it in chat": starts the app's create-project conversation and opens its chat, which
+     * drafts the project with project_options / project_draft beside the draft's page.
+     */
+    async describeProject(ctx: RequestContext, workspaceId: string, input: MwDescribeProjectInput): Promise<MwDescribeProjectResult> {
+      const { svc, actor, c } = await begin(ctx)
+      if (!input?.request?.trim()) throw new Error('Say what the new project is.')
+      const started = await svc.kernel.projects.describe({ app: requireId(input.app, 'app'), request: input.request.trim() }, actor)
+      emitMemwiseChange({ kind: 'inbox' })
+      let sessionId: string | undefined
+      try {
+        sessionId = await openConversationChat(svc, actor, c, workspaceId, started.stepRunId)
+      } catch (e) {
+        // The conversation waits in Waiting for you; "Continue" opens it there.
+        log.warn(`[memwise] describe project: opening the chat failed: ${errText(e)}`)
+      }
+      return { runId: started.runId, caseId: started.caseId, stepRunId: started.stepRunId, ...(sessionId ? { sessionId } : {}) }
+    },
+
+    /** "Save as template": the project's way of working becomes its app's next version, or a new app. */
+    async saveAsTemplate(ctx: RequestContext, input: MwSaveAsTemplateInput): Promise<MwSaveAsTemplateResult> {
+      const { svc, actor } = await begin(ctx)
+      const r = await svc.kernel.projects.saveAsTemplate(requireId(input?.projectId, 'project'), input.newApp ? { newApp: input.newApp } : {}, actor)
+      emitMemwiseChange({ kind: 'projects' })
+      emitMemwiseChange({ kind: 'inbox' })
+      return r
+    },
+
+    /** Review template update: what changes here, what the project already does, and (`test`) one past case replayed. */
+    async reviewTemplateUpdate(ctx: RequestContext, input: MwTemplateUpdateInput): Promise<MwTemplateUpdateReview | null> {
+      const { svc, actor, c, d } = await begin(ctx)
+      const review = (await svc.kernel.projects.reviewUpdate(requireId(input?.projectId, 'project'), actor, input.test ? { test: true } : {})) ?? null
+      // The test run names its case as every list does ("MW-207 · Site 01 binder"), not by a raw value.
+      const caseId = review?.test?.caseId
+      if (review?.test && caseId) {
+        const v = await svc.kernel.getCaseView(caseId, actor).catch(() => undefined)
+        if (v) {
+          const shown = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, x.hidden ? undefined : x.value]))
+          const caseType = c.project.workflows[v.summary.workflowId]?.caseType
+          const subject = d.caseSubject(shown, caseType)
+          const subjects = await subjectTitles(svc, actor, c, d, [{ workflowId: v.summary.workflowId, values: shown }])
+          review.test = { ...review.test, title: d.caseTitle(shown, caseId, caseType, c.project, subject && subjects.get(subject.id)) }
+        }
+      }
+      return review
+    },
+
+    async takeTemplateUpdate(ctx: RequestContext, input: MwTemplateUpdateInput): Promise<MwTakeTemplateUpdateResult> {
+      const { svc, actor } = await begin(ctx)
+      const projectId = requireId(input?.projectId, 'project')
+      const r = await svc.kernel.projects.takeUpdate(projectId, actor)
+      emitMemwiseChange({ kind: 'projects', id: projectId })
+      emitMemwiseChange({ kind: 'inbox' })
+      return r
+    },
+
+    async skipTemplateUpdate(ctx: RequestContext, input: MwTemplateUpdateInput): Promise<void> {
+      const { svc, actor } = await begin(ctx)
+      const projectId = requireId(input?.projectId, 'project')
+      await svc.kernel.projects.skipUpdate(projectId, actor)
+      emitMemwiseChange({ kind: 'projects', id: projectId })
+      emitMemwiseChange({ kind: 'inbox' })
+    },
+
+    /** Waiting for you across every project, grouped by project (the items as Waiting for you shows them). */
+    async waitingAll(ctx: RequestContext): Promise<MwWaitingGroup[]> {
+      const { svc, actor, c, d } = await begin(ctx)
+      const groups = await svc.kernel.projects.waiting(actor)
+      return Promise.all(groups.map(async (g) => ({ ...g, items: await enrichInbox(svc, actor, c, d, g.items) })))
     },
   }
 
@@ -2491,6 +2690,23 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.AUDIT_GET, (ctx, _ws: string, input) => api.auditTrail(ctx, input))
   server.handle(ch.AUDIT_EXPORT, (ctx, _ws: string, input) => api.auditExport(ctx, input))
   server.handle(ch.FILES_READ, (ctx, _ws: string, fileId: string) => api.readFile(ctx, fileId))
+  // Stage 3
+  server.handle(ch.APPS_LIST, (ctx) => api.listApps(ctx))
+  server.handle(ch.APPS_HOME, (ctx, _ws: string, appId: string) => api.appHome(ctx, appId))
+  server.handle(ch.APPS_PUBLISH_TEMPLATE, (ctx, _ws: string, input) => api.publishTemplate(ctx, input))
+  server.handle(ch.PROJECTS_LIST, (ctx, _ws: string, filter) => api.listProjects(ctx, filter ?? {}))
+  server.handle(ch.PROJECTS_GET, (ctx, _ws: string, projectId: string) => api.getProject(ctx, projectId))
+  server.handle(ch.PROJECTS_CREATE, (ctx, _ws: string, input) => api.createProject(ctx, input))
+  server.handle(ch.PROJECTS_UPDATE, (ctx, _ws: string, input) => api.updateProject(ctx, input))
+  server.handle(ch.PROJECTS_START, (ctx, _ws: string, projectId: string) => api.startProject(ctx, projectId))
+  server.handle(ch.PROJECTS_ARCHIVE, (ctx, _ws: string, projectId: string) => api.archiveProject(ctx, projectId))
+  server.handle(ch.PROJECTS_DISCARD, (ctx, _ws: string, projectId: string) => api.discardProject(ctx, projectId))
+  server.handle(ch.PROJECTS_DESCRIBE, (ctx, ws: string, input) => api.describeProject(ctx, ws, input))
+  server.handle(ch.PROJECTS_SAVE_AS_TEMPLATE, (ctx, _ws: string, input) => api.saveAsTemplate(ctx, input))
+  server.handle(ch.TEMPLATE_UPDATE_REVIEW, (ctx, _ws: string, input) => api.reviewTemplateUpdate(ctx, input))
+  server.handle(ch.TEMPLATE_UPDATE_TAKE, (ctx, _ws: string, input) => api.takeTemplateUpdate(ctx, input))
+  server.handle(ch.TEMPLATE_UPDATE_SKIP, (ctx, _ws: string, input) => api.skipTemplateUpdate(ctx, input))
+  server.handle(ch.WAITING_ALL, (ctx) => api.waitingAll(ctx))
   // Stage 6: EDC and a study across apps
   registerEdcHandlers(server)
 

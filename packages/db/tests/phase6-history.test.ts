@@ -185,7 +185,7 @@ describe.skipIf(!postgresAvailable())('record versions, chain, events (24 ยง3, ย
       await withActor(db.pool, manager, (c) => store.update(c, e['etmf.Site']!, site, { budget: 77 }, { reason: 'r' }));
       for (let i = 0; i < 50 && got.length < 2; i++) await Bun.sleep(20);
       expect(got).toContain('{"kind":"entity"}');
-      expect(got.map((p) => JSON.parse(p))).toContainEqual({ kind: 'records', entity: 'etmf.Site', recordId: site });
+      expect(got.map((p) => JSON.parse(p))).toContainEqual({ kind: 'records', entity: 'etmf.Site', recordId: site, project: 'etmf' });
     } finally {
       await listener.query('unlisten mw_changes');
       listener.release();

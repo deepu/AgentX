@@ -40,6 +40,10 @@ import { bindingTools } from './plugins/kernel-tools.ts';
 import { loadProjectAt } from './plugins/load.ts';
 import { McpConnections } from './plugins/routes.ts';
 import { createPluginServices, type PluginServices } from './plugins/service.ts';
+import { projectAtRunTime, projectStartRefusal } from './projects/context.ts';
+import { createProjectsService } from './projects/service.ts';
+import { syncProjects } from './projects/sync.ts';
+import { projectTools } from './projects/tools.ts';
 import { boundPlugins, pluginPolicies, pluginTools, type BoundPlugin } from './plugins/tools.ts';
 import { DOMAIN_POLICIES_KIND, getRunRecord, getTransitions, latestWorkflowDef, loadWorkflowDef, PLUGIN_POLICIES_KIND, policySourcesOf } from './runs.ts';
 import { ensureSandbox, SAMPLE_PLUGIN } from './sample-tools.ts';
@@ -156,6 +160,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     execute: (args, ctx) => external!.inviteTool.execute(args as never, ctx),
   };
   const pluginKernelTools = options.projectDir ? bindingTools(() => pluginServices?.ops) : [];
+  // Stage 3: `projects.*`, for the create-project conversation.
+  const projectKernelTools = options.projectDir ? projectTools(() => projectsService, (id) => people.actorFor(id)) : [];
   // Pages (26 §4): the `page.*` tools "Refresh a page" calls, made with the pages service below.
   let pagesCore: PagesCore | undefined;
   const pageKernelTools = pageTools(() => pagesCore);
@@ -179,7 +185,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   // so a plugin tool routed to that builtin runs the same code whether or not a plugin binds it.
   const boundExtractor = builtins.get(extractor.name) ?? extractor;
   const buildTools = () => {
-    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => entityToolRuntime), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools, ...pageKernelTools]);
+    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => entityToolRuntime), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools, ...projectKernelTools, ...pageKernelTools]);
     const taken = new Map(base.map((t) => [t.name, t]));
     const fromPlugins = options.projectDir
       ? pluginTools(bound, taken, { root: options.projectDir, builtins, mcp })
@@ -268,9 +274,20 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
    * `actsFor` (Phase 6): the role a triggered case's steps act for.
    */
   async function start(input: StartRunInput, internal = false, opts: { actsFor?: string } = {}): Promise<{ runId: string; caseId: string }> {
-    const workflow = input.workflowHash
+    let workflow = input.workflowHash
       ? await loadWorkflowDef(pool, input.workflowId, input.workflowHash)
       : await latestWorkflowDef(pool, input.workflowId);
+    // Stage 3 (26 §3): a run in a project runs that project's own copy of the playbook (the
+    // template at the version it took, with its overrides) and pins it, like any version.
+    const project = input.project ?? workflow?.project;
+    if (input.project) {
+      const p = await projectAtRunTime(pool, input.project);
+      if (!p) throw new Error(`there is no project ${input.project}`);
+      const refused = projectStartRefusal(p, input.workflowId);
+      if (refused) throw new Error(refused);
+      const copy = p.def && !p.def.implicit ? p.def.workflows[input.workflowId] : undefined;
+      if (copy && workflow?.project !== input.project) workflow = await loadWorkflowDef(pool, input.workflowId, copy);
+    }
     if (!workflow) throw new Error(`workflow ${input.workflowId} is not indexed`);
     const errors = startValueErrors(workflow, input.case, recordTypesFor(entities, workflow), input.startAt, { anyField: internal });
     if (Object.keys(errors).length) throw new StartRunError(errors);
@@ -285,15 +302,15 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         if (v === null || v === undefined) continue;
         values[k] = { value: v, provenance: { kind: 'input', at, ...(input.by ? { by: input.by } : {}) } };
       }
-      await cases.create(db, { id, caseType: workflow.caseType.id, workflowId: workflow.id, workflowHash: workflow.hash, values });
+      await cases.create(db, { id, caseType: workflow.caseType.id, workflowId: workflow.id, workflowHash: workflow.hash, values, ...(project ? { project } : {}) });
       // Entering the first state can arm timers, exactly like any later entry.
       const machine = compileMachine(workflow, input.startAt ?? workflow.start);
       const [snap, actions] = initialTransition(machine);
       await db.query(
-        `insert into mw.runs (id, workflow_id, workflow_version, workflow_hash, case_id, state, status, snapshot, driver_wf_id, acts_for)
-         values ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $9)`,
+        `insert into mw.runs (id, workflow_id, workflow_version, workflow_hash, case_id, state, status, snapshot, driver_wf_id, acts_for, project)
+         values ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $9, $10)`,
         [runId, workflow.id, workflow.version, workflow.hash, id, String(snap.value),
-          JSON.stringify(machine.getPersistedSnapshot(snap)), driverIdOf(runId), opts.actsFor ?? null]);
+          JSON.stringify(machine.getPersistedSnapshot(snap)), driverIdOf(runId), opts.actsFor ?? null, project ?? null]);
       await applyTimerActions(db, runId, 0, actions);
       // A case that starts in a block state hands off like one that enters it (24 §8).
       await queueHandoffs(db, workflow, { runId, moved: true, to: String(snap.value), status: 'active', enteredSeq: 0, event: { type: 'start' } });
@@ -336,6 +353,10 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     },
     transition: (input) => kernel.records.transition(input, { kind: 'system' }),
     emit: (change) => feed.emit(change),
+    async projectRuns(project, workflowId) {
+      const p = await projectAtRunTime(pool, project);
+      return !p || !projectStartRefusal(p, workflowId);
+    },
     log: (m) => { if ((options.logLevel ?? process.env.DBOS_LOG ?? 'warn') !== 'error') console.warn(`[memwise] ${m}`); },
     extraSweep: (now) => pagesCore?.sweep(now) ?? Promise.resolve(),
   }, () => phase6Consumers());
@@ -382,6 +403,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     people: withPasswordRule(people, () => indexed?.project),
     ...phase6,
     triggers: flow.triggers,
+    get projects() { return projectsService; },
     pages: pagesCore,
 
     async index() {
@@ -398,6 +420,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       const sourcesRow = { kind: DOMAIN_POLICIES_KIND, id: 'workspace', hash: sha256(JSON.stringify(sources)), path: 'workspace.yaml', body: sources };
       await new PgDefinitionStore(pool).upsert([policiesRow, sourcesRow] as unknown as IndexedDefinition[], []);
       await people.syncRoles(project.roles);
+      // Stage 3 (26 §3): a row per project, and the people project.yaml files name, with their grants.
+      await syncProjects(pool, people, project);
       const creators = domainCreators(project.entities, project.workflows);
       // Phase 6 (24 §3): only steps whose tools update or move an entity may update its table, and
       // a regulated domain's reason rule is compiled into the row trigger.
@@ -462,12 +486,12 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         if (current.status !== 'pending') return { applied: false, status: current.status };
         // Only a step still waiting can take the answer; one that timed out or stopped has moved
         // on (the driver marks its approvals expired when it commits the step's result).
-        const step = await db.query('select status, workflow_id, workflow_hash, step_id from mw.step_runs where id = $1 for update', [current.stepRunId]);
+        const step = await db.query('select status, workflow_id, workflow_hash, step_id, project, mw.project_apps(project) as project_apps from mw.step_runs where id = $1 for update', [current.stepRunId]);
         if (step.rows[0]?.status !== 'waiting') return { applied: false, status: 'expired' as const };
         if (by) {
           const s = step.rows[0];
           const wf = await defs.workflow(s.workflow_id, s.workflow_hash);
-          if (!mayApprove(by, approverRoles(await defs.policy(wf, s.step_id), wf, s.step_id), domainOf(wf))) {
+          if (!mayApprove(by, approverRoles(await defs.policy(wf, s.step_id), wf, s.step_id), domainOf(wf), s.project, s.project_apps)) {
             return { applied: false, status: 'forbidden' as const };
           }
         }
@@ -616,6 +640,22 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       await pool.end();
     },
   };
+  const projectsService = createProjectsService({
+    pool,
+    ...(options.projectDir ? { root: options.projectDir } : {}),
+    project: async () => (options.projectDir ? (await kernel.project()).project : indexed?.project),
+    index: () => kernel.index(),
+    inbox: (actor) => kernel.inbox(actor),
+    startRun: (input) => start(input),
+    personByEmail: (email) => people.byEmail(email),
+    actorFor: (personId) => people.actorFor(personId),
+    testRunner: options.testRunner ?? defaultTestRunner({ adminUrl: options.testDatabaseUrl }),
+    caseToExample: (caseId, opts) => kernel.caseToExample(caseId, opts),
+    entities: () => entities,
+    emit: (change) => feed.emit(change),
+    createRecord: (input, actor) => kernel.records.create(input, actor),
+    saveFile: (input, actor) => kernel.saveFile(input, actor),
+  });
   external = createExternalService({
     pool, defs, client, tools: () => gateway, files, people, rates: new PgRateCounter(pool), entities: () => entities,
     publicUrl: () => options.publicUrl?.() ?? process.env.MEMWISE_PUBLIC_URL ?? undefined,

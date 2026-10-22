@@ -52,8 +52,33 @@ export const memwiseReviewQueueAtom = atom<{ active: boolean; workflowId?: strin
 /** The "Install a plugin" dialog. */
 export const memwiseInstallPluginDialogAtom = atom<boolean>(false)
 
-/** The last `memwise:changed` push, with a sequence number so equal payloads still notify. */
-export const memwiseLastChangeAtom = atom<{ seq: number; change: MwChange } | null>(null)
+/**
+ * The last `memwise:changed` push, with a sequence number so equal payloads still notify, and the
+ * pushes just before it: several can land in one render (a refresh's page change, then its run and
+ * inbox), and a reader that only saw the last one would miss the others.
+ */
+export interface MemwiseChangeEntry { seq: number; change: MwChange }
+export const memwiseLastChangeAtom = atom<(MemwiseChangeEntry & { recent: MemwiseChangeEntry[] }) | null>(null)
+
+/** How many earlier pushes `memwiseLastChangeAtom` keeps. */
+export const RECENT_CHANGES_KEPT = 200
+
+/** The atom's next value after a push. */
+export function withChange(prev: (MemwiseChangeEntry & { recent: MemwiseChangeEntry[] }) | null, seq: number, change: MwChange): MemwiseChangeEntry & { recent: MemwiseChangeEntry[] } {
+  const entry = { seq, change }
+  return { ...entry, recent: [...(prev?.recent ?? []), entry].slice(-RECENT_CHANGES_KEPT) }
+}
+
+/**
+ * The pushes a reader hasn't handled yet, oldest first. A reader that has handled none (it just
+ * mounted, and fetches anyway) gets only the last one, as before.
+ */
+export function changesSince(last: (MemwiseChangeEntry & { recent?: MemwiseChangeEntry[] }) | null, handled: number | null): MwChange[] {
+  if (!last || handled === last.seq) return []
+  if (handled === null) return [last.change]
+  const recent = (last.recent ?? []).filter(e => e.seq > handled)
+  return recent.length && recent[recent.length - 1]!.seq === last.seq ? recent.map(e => e.change) : [last.change]
+}
 
 /** Cases list filter (playbook, status). */
 export const memwiseCaseFilterAtom = atom<CaseFilter>({})

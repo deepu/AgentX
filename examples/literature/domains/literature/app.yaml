@@ -1,0 +1,9 @@
+# Literature as an app (26 §3, §6): one project serves the whole team.
+title: Literature
+version: 1
+description: Ask what the published literature says, and keep the answers current.
+nouns: { one: project, many: projects }
+templates:
+  team:
+    title: Literature search
+    description: One library for the team

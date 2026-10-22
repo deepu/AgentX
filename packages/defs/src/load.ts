@@ -14,6 +14,7 @@ import { defaultDomainName, parseDomainFile, parsePageFile, parseViewFile, parse
 import { BINDINGS_DIR } from './plugin-types.ts';
 import type { WorkflowOrigin } from './plugin-types.ts';
 import { loadPluginsAndBindings, type LoadProjectOptions } from './project-plugins.ts';
+import { loadApps, loadMwProjects } from './projects.ts';
 import type { CaseTypeDef, Diagnostic, EntityTypeDef, ExampleCase, PolicyDoc, ProjectDefs, StepDef, WorkflowDef } from './types.ts';
 
 const posix = (p: string) => p.split(sep).join('/');
@@ -35,26 +36,35 @@ async function isDir(p: string): Promise<boolean> {
 }
 
 /**
+ * A file that replaces one of a workflow folder's (Stage 3, 26 §3): a project's override, by its
+ * path inside the folder. `file` is where it really is, relative to the root, for messages.
+ */
+export interface WorkflowOverlayFile { bytes: Buffer; file: string }
+
+/**
  * Loads `workflows/<id>/`. `dir` may be absolute or relative to the working directory.
  * Returns the workflow whenever `workflow.yaml` could be read, even with errors, so the
- * checks can still say everything that is wrong.
+ * checks can still say everything that is wrong. Stage 3: `overlay` files replace the folder's
+ * own (a project's overrides); they are part of the hash and are listed in `overridden`.
  */
-export async function loadWorkflow(dir: string, projectRoot: string): Promise<{ workflow?: WorkflowDef; diagnostics: Diagnostic[] }> {
+export async function loadWorkflow(dir: string, projectRoot: string, opts: { overlay?: Map<string, WorkflowOverlayFile> } = {}): Promise<{ workflow?: WorkflowDef; diagnostics: Diagnostic[] }> {
   const root = resolve(projectRoot);
   const abs = resolve(dir);
   const relDir = posix(relative(root, abs)) || '.';
   const rel = (p: string) => posix(relative(root, p));
   const diagnostics: Diagnostic[] = [];
-  const inDir = (f: string) => (relDir === '.' ? f : `${relDir}/${f}`);
+  const overlay = opts.overlay ?? new Map<string, WorkflowOverlayFile>();
+  const inDir = (f: string) => overlay.get(f)?.file ?? (relDir === '.' ? f : `${relDir}/${f}`);
   const shapeFile = inDir('workflow.yaml');
 
-  if (!existsSync(join(abs, 'workflow.yaml'))) {
+  if (!existsSync(join(abs, 'workflow.yaml')) && !overlay.has('workflow.yaml')) {
     return { diagnostics: [{ severity: 'error', code: 'missing-workflow-file', message: `${relDir} has no workflow.yaml`, file: relDir }] };
   }
 
   // Read every file once: the parsers use the text, the hash uses the bytes.
   const contents = new Map<string, Buffer>();
-  for (const f of await listFiles(abs)) contents.set(f, await readFile(join(abs, f)));
+  if (await isDir(abs)) for (const f of await listFiles(abs)) contents.set(f, await readFile(join(abs, f)));
+  for (const [f, o] of overlay) contents.set(f, o.bytes);
   const text = (f: string) => contents.get(f)!.toString('utf8');
 
   const shapeResult = parseWorkflowFile(text('workflow.yaml'), shapeFile);
@@ -73,7 +83,7 @@ export async function loadWorkflow(dir: string, projectRoot: string): Promise<{ 
   async function referenced(path: string, key: 'case' | 'policy', what: string): Promise<{ text: string; file: string } | undefined> {
     const target = resolve(abs, path);
     const inFolder = posix(relative(abs, target));
-    if (contents.has(inFolder)) return { text: text(inFolder), file: rel(target) };
+    if (contents.has(inFolder)) return { text: text(inFolder), file: overlay.get(inFolder)?.file ?? rel(target) };
     // Only files inside the project belong to it; anything else is never read.
     const fromRoot = relative(root, target);
     if (fromRoot === '..' || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot)) {
@@ -151,6 +161,7 @@ export async function loadWorkflow(dir: string, projectRoot: string): Promise<{ 
     hash: h.digest('hex'),
     ...(forkOrigin(shape.forkedFrom) ? { origin: forkOrigin(shape.forkedFrom)! } : {}),
     ...(shape.startsOn ? { startsOn: shape.startsOn } : {}),
+    ...(overlay.size ? { overridden: [...overlay.keys()].sort() } : {}),
   };
   rememberLocator(workflow, locatorOf(shape)!);
   diagnostics.push(...report.diagnostics);
@@ -256,6 +267,9 @@ export async function loadProject(root: string, opts: LoadProjectOptions = {}): 
   if (domains[DEFAULT_DOMAIN]) {
     domains[DEFAULT_DOMAIN].workflows = Object.values(project.workflows).filter((w) => w.domain === DEFAULT_DOMAIN).map((w) => w.id);
   }
+  // Stage 3 (26 §3): every domain as an app, and the projects made from them (projects.ts).
+  await loadApps(abs, project, diagnostics);
+  await loadMwProjects(abs, project, diagnostics);
   return { project, diagnostics };
 }
 

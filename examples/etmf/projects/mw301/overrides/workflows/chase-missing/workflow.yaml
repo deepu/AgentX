@@ -1,0 +1,21 @@
+workflow: chase-missing
+version: 2
+title: Chase missing documents
+owner: study_manager
+# MW-301's own copy of the eTMF template's playbook: a site gets 5 days for its missing documents,
+# not 3, before the study manager calls it.
+start: send_reminder
+starts_on:
+  - entered: Site.activating
+    with: { site: record }
+steps:
+  send_reminder:
+    on: { sent: wait_for_documents }
+    wait: { remind: 1d, timeout: 3d → escalate }
+  wait_for_documents:
+    wait_until: { record: case.site, condition: "start_up_pack_complete = 100%" }
+    on: { met: end }
+    wait: { timeout: 5d → escalate }
+  escalate:
+    on: { called: end }
+    wait: { remind: 2d, timeout: 14d → end }

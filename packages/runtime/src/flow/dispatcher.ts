@@ -39,10 +39,10 @@ export interface DispatcherDeps {
 
 interface EventRow {
   seq: string; id: string; entity: string; record_id: string; kind: EntityEvent['kind']; data: Record<string, unknown> | null;
-  by: string | null; at: Date; age_s: number; done: string[];
+  by: string | null; project?: string | null; at: Date; age_s: number; done: string[];
 }
 
-export function eventOf(r: Pick<EventRow, 'seq' | 'id' | 'entity' | 'record_id' | 'kind' | 'data' | 'by' | 'at'>): EntityEvent {
+export function eventOf(r: Pick<EventRow, 'seq' | 'id' | 'entity' | 'record_id' | 'kind' | 'data' | 'by' | 'at'> & { project?: string | null }): EntityEvent {
   const d = r.data ?? {};
   return {
     id: r.id, seq: Number(r.seq), entity: r.entity, recordId: r.record_id, kind: r.kind,
@@ -51,6 +51,7 @@ export function eventOf(r: Pick<EventRow, 'seq' | 'id' | 'entity' | 'record_id' 
     ...(typeof d.from === 'string' ? { from: d.from } : {}),
     ...(typeof d.transition === 'string' ? { transition: d.transition } : {}),
     ...(r.by ? { by: r.by } : {}),
+    ...(r.project ? { project: r.project } : {}),
     at: r.at instanceof Date ? r.at.toISOString() : String(r.at),
   };
 }
@@ -165,7 +166,7 @@ export class Dispatcher {
     let advancing = true;
     for (;;) {
       const { rows } = await pool.query<EventRow>(
-        `select e.seq::text, e.id, e.entity, e.record_id, e.kind, e.data, e.by, e.at,
+        `select e.seq::text, e.id, e.entity, e.record_id, e.kind, e.data, e.by, e.project, e.at,
                 extract(epoch from now() - e.at)::float8 as age_s,
                 array(select d.consumer from mw.event_deliveries d where d.event_id = e.id) as done
            from mw.entity_events e where e.seq > $1 order by e.seq limit $2`, [scan, BATCH]);

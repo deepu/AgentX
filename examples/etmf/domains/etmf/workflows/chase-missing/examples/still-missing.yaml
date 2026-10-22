@@ -1,0 +1,19 @@
+name: still-missing
+description: >
+  US-012 is reminded but still owes its PI's CV, so the case waits for the documents.
+records:
+  Sponsor:
+    - { id: spon_aster, name: Aster Bio }
+  Study:
+    - { id: stud_ast301, code: AST-301, sponsor: spon_aster }
+  Site:
+    - { id: site_us012, site_number: US-012, study: stud_ast301, status: activating }
+  ExpectedDocument:
+    - { id: expe_us012_protocol, site: site_us012, study: stud_ast301, artifact: Protocol signature page, phase: start_up, status: filed }
+    - { id: expe_us012_pi_cv, site: site_us012, study: stud_ast301, artifact: Investigator CV, phase: start_up, status: missing }
+case:
+  site: site_us012
+submit:
+  send_reminder: { outcome: sent }
+expect:
+  state: wait_for_documents

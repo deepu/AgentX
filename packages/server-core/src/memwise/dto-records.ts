@@ -261,6 +261,7 @@ export function toRecordPage(ctx: Pick<DtoContext, 'project'>, p: RecordPage, na
   return {
     entity: p.entity,
     domain: p.domain,
+    ...(p.project ? { project: p.project } : {}),
     domainName: domainName(project, p.domain),
     entityName: p.entityName || entityLabel(p.entity),
     regulated: !!p.regulated,

@@ -4,10 +4,12 @@
  *
  * Codes are stable; tools and editors key on them.
  */
+import { checkProjects } from './check-projects.ts';
 import { boundPluginTools, checkBindings } from './binding-checks.ts';
 import { checkDomains, checkWorkflowDomain } from './check-domains.ts';
 import { domainOf, scopedEntities } from './domains.ts';
 import { entityTools } from './entity-tools.ts';
+import { PROJECT_KERNEL_TOOLS } from './project-types.ts';
 import { shapeFileOf } from './load.ts';
 import { lineOf, type PathKey } from './source.ts';
 import { END_STATE, type CheckEnvironment, type Diagnostic, type EntityTypeDef, type FieldDef, type ProjectDefs, type Severity, type StepDef, type ValueType, type WorkflowDef } from './types.ts';
@@ -477,6 +479,8 @@ export function checkProject(project: ProjectDefs, env: CheckEnvironment): Diagn
   // Phase 6: the entity tools the kernel binds for every entity type (24 §3).
   const tools = { ...env.tools };
   for (const [name, t] of Object.entries(entityTools(project.entities))) tools[name] ??= { effect: t.effect };
+  // Stage 3: the kernel's projects.* tools (26 §3).
+  for (const [name, effect] of Object.entries(PROJECT_KERNEL_TOOLS)) tools[name] ??= { effect };
   env = { ...env, tools };
   const entities = project.entities;
   const declared = Object.keys(project.roles ?? {});
@@ -498,6 +502,14 @@ export function checkProject(project: ProjectDefs, env: CheckEnvironment): Diagn
   out.push(...checkDomains(project, env.roles));
   for (const workflow of Object.values(project.workflows)) {
     out.push(...checkWorkflow(workflow, env, { entities: scopedEntities(entities, domainOf(workflow)), project }));
+  }
+  // Stage 3 (26 §3): projects, entity scopes, and the playbooks a project changed with its own files.
+  out.push(...checkProjects(project, env.roles));
+  for (const p of Object.values(project.projects ?? {})) {
+    for (const workflow of Object.values(p.workflows)) {
+      if (!workflow.overridden?.length) continue;
+      out.push(...checkWorkflow(workflow, env, { entities: scopedEntities(entities, domainOf(workflow)), project }));
+    }
   }
   if (project.bindings) out.push(...checkBindings(project));
   return out;

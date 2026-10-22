@@ -1,7 +1,8 @@
 /**
  * The project switcher (doc 26 §2, mock `XSwitch`): the open project with its app above it, and a
  * menu with "Find a project", Waiting for you across all projects, the projects grouped by app
- * with their waiting counts, and "+ New project" / "+ Add an app" (from Stage 3).
+ * with their waiting counts (a draft tagged), the app home under each app ("All studies"), and
+ * "+ New project" / "+ Add an app" (Stage 3).
  */
 
 import * as React from 'react'
@@ -70,7 +71,7 @@ export function ProjectSwitcher({ apps, current, totalWaiting, onNewProject, onA
         <div className="max-h-[50vh] overflow-y-auto">
           {shown.map(app => (
             <div key={app.id} className="mb-1">
-              {(app.projects.length > 1 || app.projects[0]?.name !== app.name) && (
+              {(app.projects.length !== 1 || app.projects[0]?.name !== app.name || !!app.home) && (
                 <div className="flex items-center gap-2 px-2 pt-2 pb-1 text-label-sm font-medium text-secondary">
                   <AppIcon name={app.name} small />
                   <span className="truncate">{app.name}</span>
@@ -86,9 +87,21 @@ export function ProjectSwitcher({ apps, current, totalWaiting, onNewProject, onA
                 >
                   <span className="flex w-4 shrink-0 justify-center">{p.id === current.id && <Check className="size-3.5 text-accent" />}</span>
                   <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  {p.status === 'draft' && <Tag label={t('memwise.projects.status.draft')} />}
+                  {p.status === 'archived' && <Tag label={t('memwise.projects.status.archived')} />}
                   {p.waiting > 0 && <Count n={p.waiting} />}
                 </button>
               ))}
+              {app.home && !q && (
+                <button
+                  type="button"
+                  data-testid={`app-home-${app.id}`}
+                  onClick={() => go(routes.view.project(ALL_PROJECTS, { type: 'app', appId: app.id }))}
+                  className="flex w-full items-center gap-2 rounded-md py-1.5 pl-8 pr-2 text-left text-label text-accent hover:bg-fill-hover"
+                >
+                  {app.home.link ?? app.home.title}
+                </button>
+              )}
             </div>
           ))}
           {shown.length === 0 && <p className="px-2.5 py-2 text-label-sm text-tertiary">{t('memwise.shell.noProjectMatches')}</p>}
@@ -100,6 +113,10 @@ export function ProjectSwitcher({ apps, current, totalWaiting, onNewProject, onA
       </PopoverContent>
     </Popover>
   )
+}
+
+function Tag({ label }: { label: string }) {
+  return <span className="shrink-0 rounded-[4px] bg-fill-hover px-1.5 py-px text-caption text-secondary">{label}</span>
 }
 
 function Count({ n }: { n: number }) {

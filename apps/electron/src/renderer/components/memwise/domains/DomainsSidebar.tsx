@@ -14,7 +14,7 @@ import { BookOpen, Boxes, Database, FileText, Folder, LayoutDashboard, PanelsTop
 import type { MwChange, MwDomain, MwTreeNode } from '@memwise/shared/protocol'
 import type { SidebarItem } from '@/components/app-shell/LeftSidebar'
 import { navigate, routes } from '@/lib/navigate'
-import { memwiseDomainFilterAtom, memwiseDomainsAtom, memwiseLastChangeAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
+import { changesSince, memwiseDomainFilterAtom, memwiseDomainsAtom, memwiseLastChangeAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { getMemwiseApi } from '@/hooks/useMemwise'
 import type { NavigationState } from '../../../../shared/types'
 import { nestTree, treeNodeKey, type TreeEntry } from '../records/record-model'
@@ -90,9 +90,10 @@ export function useDomainSidebarItems(navState: NavigationState, t: TFunction): 
   // Record writes can add or move records: reload the levels already open.
   const handled = React.useRef<number | null>(null)
   React.useEffect(() => {
-    if (!lastChange || handled.current === lastChange.seq) return
-    handled.current = lastChange.seq
-    if (!isRefetching(lastChange.change)) return
+    const changes = changesSince(lastChange, handled.current)
+    if (!changes.length) return
+    handled.current = lastChange!.seq
+    if (!changes.some(isRefetching)) return
     for (const key of Object.keys(cacheRef.current)) {
       const [domain, parent] = key.split('|') as [string, string]
       const i = parent.indexOf(':')

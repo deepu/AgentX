@@ -43,6 +43,11 @@ export interface SessionMemwiseContext {
   /** The chat answers a conversation step: the `playbook_*` tools are offered. */
   conversation?: boolean;
   /**
+   * Stage 3 (26 §3): the conversation step is an app's create-project step ("Describe it in
+   * chat"): `project_options` and `project_draft` are offered instead of the playbook tools.
+   */
+  project?: boolean;
+  /**
    * Record chats: entity keys (in the record's domain) that say `keep_from_chat`, with their
    * names. Non-empty: `record_keep` is offered (25 §6).
    */
@@ -70,6 +75,7 @@ export function writeSessionMemwiseContext(workspaceRootPath: string, sessionId:
         ? { kind: 'page', id: ctx.anchor.id }
         : { kind: ctx.anchor.kind, id: ctx.anchor.id },
     ...(ctx.conversation ? { conversation: true } : {}),
+    ...(ctx.conversation && ctx.project ? { project: true } : {}),
     ...(ctx.anchor.kind === 'record' && ctx.keep?.length ? { keep: ctx.keep.map((k) => ({ entity: k.entity, name: k.name })) } : {}),
     ...(ctx.anchor.kind === 'record' && ctx.draft ? { draft: true } : {}),
     block: ctx.block.length > MEMWISE_CONTEXT_MAX_CHARS ? `${ctx.block.slice(0, MEMWISE_CONTEXT_MAX_CHARS)}\n… (shortened)` : ctx.block,
@@ -97,7 +103,10 @@ export function readSessionMemwiseContext(workspaceRootPath: string, sessionId: 
   }
 }
 
-/** Whether the session is a conversation-step chat (offers the `playbook_*` tools). */
+/**
+ * Whether the session is a conversation-step chat: it gets the `memwise` callbacks (the
+ * `playbook_*` tools, or in a create-project chat the `project_*` tools).
+ */
 export function sessionHasPlaybookTools(workspaceRootPath: string | undefined, sessionId: string | undefined): boolean {
   if (!workspaceRootPath || !sessionId) return false;
   return readSessionMemwiseContext(workspaceRootPath, sessionId)?.conversation === true;
@@ -116,13 +125,15 @@ export function sessionHasPageTools(workspaceRootPath: string | undefined, sessi
 }
 
 /**
- * Which MemWise session tools a session is offered: `playbook_*` in a conversation-step chat,
+ * Which MemWise session tools a session is offered: `playbook_*` in a conversation-step chat
+ * (`project_*` instead when it makes a project),
  * `record_get`/`record_query` in a record chat, and `record_keep` too when the record's domain
  * has an entity with `keep_from_chat`; `page_*` in a chat anchored to a page. One read of the
  * context file for all of them.
  */
 export function memwiseSessionToolOptions(workspaceRootPath: string | undefined, sessionId: string | undefined): {
   includePlaybookTools: boolean;
+  includeProjectTools: boolean;
   includeRecordTools: boolean;
   includeRecordKeep: boolean;
   includeRecordUpdate: boolean;
@@ -131,7 +142,8 @@ export function memwiseSessionToolOptions(workspaceRootPath: string | undefined,
   const ctx = workspaceRootPath && sessionId ? readSessionMemwiseContext(workspaceRootPath, sessionId) : null;
   const record = ctx?.anchor.kind === 'record';
   return {
-    includePlaybookTools: ctx?.conversation === true,
+    includePlaybookTools: ctx?.conversation === true && ctx.project !== true,
+    includeProjectTools: ctx?.conversation === true && ctx.project === true,
     includeRecordTools: anchorReadsRecords(ctx?.anchor.kind),
     includeRecordKeep: record && !!ctx?.keep?.length,
     includeRecordUpdate: record && ctx?.draft === true,

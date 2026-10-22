@@ -398,6 +398,15 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   4. MW-310 is copied from MW-301 and starts with no records.
   5. "TMF across studies" shows both running studies.
   6. Today's single-domain examples still load as one project each.
+- **As built** (branch `projects`, decisions D104–D109):
+  - **Storage:** `0009_projects` adds `mw.projects` (with `apps text[]`, every app a project runs), `project` on runs, records, pages, flags and firings, grants with `project` and `source`, RLS through `mw.project_visible` and `mw.project_apps`, and the backfill into one project per domain.
+  - **Definitions:** `app.yaml` (nouns, home columns, template cards), `projects/<id>/project.yaml` (people, connections, settings, `without`, `also`, `copied_from`), whole-file `overrides/` and `bindings/`; template versions are snapshots under `domains/<app>/versions/<n>/` (D106). An app no project runs has an implicit project, id = the app id (D107).
+  - **Multi-app projects (D105):** a project may run several apps (`also:`), records are project-scoped so those apps share them, and a playbook may run many cases per record. Tested as a firm running GST and income tax over shared clients (`packages/runtime/tests/stage3-firm.test.ts`).
+  - **App API:** `memwise:apps:list|home|publishTemplate`, `memwise:projects:list|get|create|update|start|archive|discard|describe|saveAsTemplate`, `memwise:projects:templateUpdate:review|take|skip` and `memwise:waiting:all`. Inbox items, runs and record queries carry `project`.
+  - **"Describe it in chat":** the app's `create-project` playbook opens a chat with `project_options` and `project_draft` (D109).
+  - **Screens:** `components/memwise/projects/` holds `NewProjectScreen`, `AppHomeScreen`, `WaitingAllScreen`, `ProjectSettingsScreen` and `TemplateUpdateScreen`, with `useMemwiseProjects()`. The shell runs on stored projects: the switcher (drafts tagged, app homes, + New project, + Add an app), routes `mw/*/app/<app>`, `mw/*/new/<app>` and `mw/<project>/update/<item>`, a draft's Home as its draft, the Project tab in Project settings, and per-project waiting (a template update waits on the project's Home and Waiting for you too), runs and record counts. Every app's own project has a row (D107), also once studies exist, so what someone with no study makes in the app still starts its playbooks.
+  - **Exit test:** points 1–6 are covered by `packages/runtime/tests/stage3-projects.test.ts`, `packages/server-core/src/memwise/__tests__/stage3-exit.test.ts` and `packages/db/tests/projects.test.ts`; the screens by `projects-render.test.tsx`; the desktop walkthrough (`scripts/walkthrough/stage3-projects.mjs`) screenshots are in `projects-and-pages-walkthrough/stage-3-projects/`.
+  - **Left for later:** tool calls still use the workspace binding (a project's own binding shows in settings but doesn't yet serve its tools); an app a project also runs has no overrides or pages in that project; the Rules chips of the Settings mock; dashboards and the record tree on Home still read the whole app, not one project.
 
 ### Stage 4 · Everything has a page (branch `every-page`)
 
@@ -486,9 +495,9 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
 
 ## 13. Open
 
-- **App first or study first.** These mocks put the app on top (eTMF › MW-301). Study first (MW-301 › eTMF, EDC, Safety) may suit teams that work one study at a time. The storage in §3 supports both, because the study key links projects, so the choice is mostly the switcher's grouping. Decide before Stage 3's switcher.
+- ~~**App first or study first.**~~ *Decided by default: app first (D104), reversible.* These mocks put the app on top (eTMF › MW-301). Study first (MW-301 › eTMF, EDC, Safety) may suit teams that work one study at a time. The storage in §3 supports both, because the study key links projects, so the choice is mostly the switcher's grouping.
 - **Whether a chat list survives** anywhere beyond Settings › Advanced (power users, developers).
 - **Seeing waiting items in other projects.** Without the rail, you only see them by opening the switcher. If that matters, add a dot on the switcher.
-- Bindings per project or per app by default.
+- ~~Bindings per project or per app by default.~~ *Per project, falling back to the app's (D109).*
 - Whether app homes are fixed per app or written by chat like other pages.
 - Pricing per project for the hosted version (Phase 7).

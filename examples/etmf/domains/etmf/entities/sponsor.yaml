@@ -1,5 +1,6 @@
 entity: Sponsor
 title: "{name}"
+scope: app                     # one sponsor for every study of the app (26 §3)
 fields:
   name: { type: Text, required: true }
 relationships:

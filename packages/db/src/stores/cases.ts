@@ -15,6 +15,8 @@ export interface NewCase {
   workflowId: string;
   workflowHash: string;
   values: Record<string, CaseValue>;
+  /** Stage 3: the project the case belongs to (absent: its workflow's domain's own project). */
+  project?: string;
 }
 
 /** One field change from the case's event log. */
@@ -33,10 +35,10 @@ export class PgCaseStore {
   async create(db: Queryable, c: NewCase): Promise<CaseSnapshot> {
     const values = c.values ?? {};
     const inserted = await db.query(
-      `insert into mw.cases (id, case_type, workflow_id, workflow_hash, values, seq)
-       values ($1, $2, $3, $4, $5, $6)
+      `insert into mw.cases (id, case_type, workflow_id, workflow_hash, values, seq, project)
+       values ($1, $2, $3, $4, $5, $6, $7)
        on conflict (id) do nothing`,
-      [c.id, c.caseType, c.workflowId, c.workflowHash, json(values), Object.keys(values).length ? 1 : 0],
+      [c.id, c.caseType, c.workflowId, c.workflowHash, json(values), Object.keys(values).length ? 1 : 0, c.project ?? null],
     );
     if (inserted.rowCount && Object.keys(values).length) await appendEvents(db, c.id, 1, values);
     const snapshot = await this.get(db, c.id);

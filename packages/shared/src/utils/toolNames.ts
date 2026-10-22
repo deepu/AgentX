@@ -37,6 +37,8 @@ const PLAIN_SESSION_TOOL_LABELS: Record<string, string> = {
   playbook_check: 'Check the draft',
   playbook_finish: 'Send the draft for review',
   // A chat anchored to a record (docs/memwise/25-literature-poc.md §6)
+  project_options: 'Look up what a project can start from',
+  project_draft: 'Draft the project',
   record_get: 'Read a record',
   record_query: 'Look up records',
   record_keep: 'Keep in MemWise',

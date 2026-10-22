@@ -50,7 +50,7 @@ export async function checkQuotes(db: Queryable, entities: Record<string, Entity
       await flagStore.close(db, entity, recordId, quoteFlagKey(field));
     } else {
       const where = !source ? `no ${of.ref} to quote from` : `not in the ${target!.entity}'s ${of.field}`;
-      await flagStore.raise(db, { entity, recordId, invariant: quoteFlagKey(field), message: `${QUOTE_FLAG_MESSAGE}: ${field} is ${where}` });
+      await flagStore.raise(db, { entity, recordId, invariant: quoteFlagKey(field), message: `${QUOTE_FLAG_MESSAGE}: ${field} is ${where}`, ...(row.project ? { project: row.project } : {}) });
     }
   }
   return found;

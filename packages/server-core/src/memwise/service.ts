@@ -325,6 +325,18 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       for (const p of DEMO_PEOPLE) {
         if (!(await k.people.byEmail(p.email))) await k.people.create({ name: p.name, email: p.email, roles: knownRoles(p.roles) })
       }
+      // Stage 3: the walkthrough records of each project (`projects/<id>/seed.yaml`), made once
+      // when it has none, in the background: the app opens while they are written.
+      void (async () => {
+        for (const p of await k.projects.list({ kind: 'system' })) {
+          try {
+            const r = await k.projects.seed(p.id, { kind: 'system' })
+            if (r.created) log.info(`[memwise] made ${r.created} walkthrough records in ${p.name}`)
+          } catch (e) {
+            log.warn(`[memwise] the walkthrough records of ${p.name} were not made: ${e instanceof Error ? e.message : String(e)}`)
+          }
+        }
+      })()
     }
 
     // ---- changes and re-indexing
@@ -336,6 +348,7 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       if (c.kind === 'run') emitMemwiseChange({ kind: 'run', id: c.runId, caseId: c.caseId, workflowId: c.workflowId })
       else if (c.kind === 'drafts') emitMemwiseChange({ kind: 'drafts', id: c.draftId })
       else if (c.kind === 'records') emitMemwiseChange({ kind: 'records', entity: c.entity, ...(c.recordId ? { id: c.recordId } : {}) })
+      else if (c.kind === 'projects') emitMemwiseChange({ kind: 'projects', ...(c.projectId ? { id: c.projectId } : {}) })
       // Pages (26 §4): the project, the page and the answer change.
       else if (c.kind === 'pages') emitMemwiseChange({ kind: 'pages', ...(c.project ? { projectId: c.project } : {}), ...(c.pageId ? { id: c.pageId } : {}), ...(c.changeId ? { changeId: c.changeId } : {}) })
       else if (c.kind === 'definitions') {

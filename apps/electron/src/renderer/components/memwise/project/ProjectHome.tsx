@@ -22,8 +22,8 @@ import { EdcProjectHome, isEdcApp } from '../edc/EdcProjectHome'
 import { humanize, relativeTime } from '../format'
 import { useNow } from '../use-now'
 import { Composer } from './AnchoredChat'
-import { pluralTitle, projectPlaybooks, sortWaiting, waitingIn, type ShellProject } from './project-model'
-import { playbookTitle, ShellPageFrame, ShellSection, WaitingCard } from './WaitingPage'
+import { caseProject, pluralTitle, projectPlaybooks, projectRecordScope, sortWaiting, waitingIn, type ShellProject } from './project-model'
+import { playbookTitle, ShellPageFrame, ShellSection, UpdateCard, WaitingCard } from './WaitingPage'
 
 const RECENT_SHOWN = 5
 
@@ -61,7 +61,7 @@ export function HomeChatColumn({ project, domain, send, busy }: HomeChatColumnPr
     return () => { stale = true }
   }, [workspaceId, project.id])
   // A domain with a home lists its recent questions (each has its page); others their chats.
-  const asked = useMemwiseRecordQuery(home?.entity ? { entity: home.entity, domain: project.id, limit: RECENT_SHOWN } : null)
+  const asked = useMemwiseRecordQuery(home?.entity ? { entity: home.entity, ...projectRecordScope(project), limit: RECENT_SHOWN } : null)
   // A project built on pages (26 §4): the pages its questions made, latest first.
   const pages = useMemwisePages(home && !home.entity ? project.id : null)
 
@@ -134,7 +134,7 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
   const dashboard = useMemwiseDashboard(board && !isEdcApp(domain) ? domain.id : null, board?.id ?? null)
   const home = domain?.home
   const ends = home ? [home.draftState, ...home.endStates].map(s => `'${s}'`).join(', ') : ''
-  const kept = useMemwiseRecordQuery(home?.entity ? { entity: home.entity, domain: project.id, filter: `not (status in (${ends}))`, limit: 8 } : null)
+  const kept = useMemwiseRecordQuery(home?.entity ? { entity: home.entity, ...projectRecordScope(project), filter: `not (status in (${ends}))`, limit: 8 } : null)
   // Written pages (26 §4): what changed on them this week, and the ones kept up to date.
   const pages = useMemwisePages(project.id)
   const openPage = (pageId: string) => navigate(routes.view.project(project.id, { type: 'page', pageId }))
@@ -142,17 +142,18 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
     const item = waiting.find(i => 'pageChange' in i && i.pageChange?.changeId === changeId)
     navigate(routes.view.project(project.id, item ? { type: 'waiting', itemId: item.id } : { type: 'change', changeId }))
   }
-  const own = new Set(projectPlaybooks(project.id, playbooks).map(p => p.id))
-  const running = (cases ?? []).filter(c => c.status === 'active' && own.has(c.workflowId)).slice(0, 4)
+  const own = new Set(projectPlaybooks(project, playbooks).map(p => p.id))
+  const running = (cases ?? []).filter(c => c.status === 'active' && own.has(c.workflowId) && (!project.stored || caseProject(c) === project.id)).slice(0, 4)
   const subtitle = [project.description, project.appName !== project.name ? t('memwise.shell.fromTemplate', { app: project.appName }) : undefined].filter(Boolean).join(' · ')
   const edc = isEdcApp(domain)
 
   const waitingSection = (
-    <ShellSection title={t('memwise.shell.waiting')} count={waiting.length}>
-      {waiting.length === 0 ? (
+    <ShellSection title={t('memwise.shell.waiting')} count={waiting.length + (project.update ? 1 : 0)}>
+      {waiting.length === 0 && !project.update ? (
         <p className="text-label text-tertiary">{t('memwise.shell.nothingWaiting')}</p>
       ) : (
         <div className="flex flex-col gap-2">
+          {project.update && <UpdateCard project={project} primary={waiting.length === 0} />}
           {waiting.slice(0, 3).map((item, i) => (
             <WaitingCard key={item.id} item={item} playbooks={playbooks} primary={i === 0 && waiting.length === 1} now={now} compact onOpen={() => navigate(routes.view.project(project.id, { type: 'waiting', itemId: item.id }))} />
           ))}

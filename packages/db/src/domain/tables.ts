@@ -26,6 +26,15 @@ export const SYSTEM_COLUMNS = ['id', 'lifecycle', 'created_at', 'updated_at', 'c
  */
 export const RECORD_COLUMNS = ['version', 'updated_by'] as const;
 
+/**
+ * Stage 3 (26 §3, D92): the project a row belongs to, on the table of every entity with
+ * `scope: project` (the default). A field named `project` is stored in `fld_project`.
+ */
+export const PROJECT_COLUMN = 'project';
+
+/** Whether an entity's records belong to one project (the default) or are shared by the app's projects. */
+export const projectScoped = (def: Pick<EntityTypeDef, 'scope'>): boolean => def.scope !== 'app';
+
 /** `ClientEngagement` -> `client_engagement`. */
 export function snake(name: string): string {
   return name
@@ -99,7 +108,7 @@ export function entityColumns(def: EntityTypeDef): EntityColumn[] {
     let column = snake(field);
     if (!column) throw new Error(`${def.entity}: field "${field}" has no usable column name`);
     if ((SYSTEM_COLUMNS as readonly string[]).includes(column)) throw new Error(`${def.entity}: field "${field}" uses the reserved column name "${column}"`);
-    if ((RECORD_COLUMNS as readonly string[]).includes(column)) column = `fld_${column}`;
+    if ((RECORD_COLUMNS as readonly string[]).includes(column) || column === PROJECT_COLUMN) column = `fld_${column}`;
     const other = seen.get(column);
     if (other !== undefined) throw new Error(`${def.entity}: fields "${other}" and "${field}" both map to column "${column}"`);
     seen.set(column, field);
@@ -180,6 +189,22 @@ async function syncTablesIn(db: Queryable, entities: Record<string, EntityTypeDe
       }
       await db.query(`alter table ${t} add column if not exists version int not null default 1, add column if not exists updated_by text`);
     }
+    // Stage 3: a field column named `project` (from before projects) moves to `fld_project`; then
+    // the project column, filled with the domain's own project for rows written before it.
+    if (existing.has(PROJECT_COLUMN) && !existing.has(`fld_${PROJECT_COLUMN}`) && entityColumns(def).some((c) => c.column === `fld_${PROJECT_COLUMN}`)) {
+      await db.query(`alter table ${t} rename column ${q(PROJECT_COLUMN)} to ${q(`fld_${PROJECT_COLUMN}`)}`);
+      existing.set(`fld_${PROJECT_COLUMN}`, existing.get(PROJECT_COLUMN)!);
+      existing.delete(PROJECT_COLUMN);
+      notes.push(`${def.entity}: column ${name}.project renamed to fld_project (the record's project column takes its place)`);
+    }
+    if (projectScoped(def) && !existing.has(PROJECT_COLUMN)) {
+      const domain = def.domain ?? DEFAULT_DOMAIN;
+      await db.query(`alter table ${t} add column ${q(PROJECT_COLUMN)} text`);
+      await db.query(`update ${t} set ${q(PROJECT_COLUMN)} = ${lit(domain)} where ${q(PROJECT_COLUMN)} is null`);
+      await db.query(`alter table ${t} alter column ${q(PROJECT_COLUMN)} set default mw.current_project(${lit(domain)}), alter column ${q(PROJECT_COLUMN)} set not null`);
+      await db.query(`create index if not exists ${q(projectIndexName(def))} on ${t} (${q(PROJECT_COLUMN)})`);
+      existing.set(PROJECT_COLUMN, 'text');
+    }
     for (const c of entityColumns(def)) {
       const have = existing.get(c.column);
       if (have === undefined) {
@@ -208,6 +233,11 @@ export function keyIndexName(def: EntityRef): string {
   let head = full.slice(0, PG_NAME_MAX - hash.length - 1);
   while (Buffer.byteLength(head) > PG_NAME_MAX - hash.length - 1) head = head.slice(0, -1);
   return `${head}_${hash}`;
+}
+
+/** The index on a project-scoped table's project column: `<table>__project`, shortened like `keyIndexName`. */
+export function projectIndexName(def: EntityRef): string {
+  return keyIndexName(def).replace(/__key$/, '__project').replace(/(_[0-9a-f]{10})$/, (h) => `p${h}`);
 }
 
 /** The columns of an entity's key (25 §3), in the key's order; empty when it has none. */
@@ -306,7 +336,8 @@ const CASE_SCOPED: [table: string, caseColumn: string][] = [['mw.cases', 'id'], 
  * may insert rows stamped with its own step run (and, with `creators`, only from those steps)
  * and update rows (with `updaters`, only from those steps).
  * Nobody but the owner may delete. A person whose grants in the domain are all scoped sees and
- * writes only rows inside the scope (24 §2). Fields with `access: [roles]` are readable only
+ * writes only rows inside the scope (24 §2), and (Stage 3, D92) a person with grants limited to
+ * some projects of the domain sees and writes only those projects' rows. Fields with `access: [roles]` are readable only
  * through `domain_read.<table>`, which nulls them for actors without one of the roles (a
  * workspace-wide role or a grant in the entity's domain) and lists them in `_hidden`; the view
  * also holds calculated and followed fields.
@@ -318,7 +349,8 @@ export function compileRls(entities: Record<string, EntityTypeDef>, opts: Domain
     sql.push(
       `alter table ${t} enable row level security`,
       `drop policy if exists mw_person_all on ${t}`,
-      `create policy mw_person_all on ${t} for all to ${app} using (mw.actor_kind() = 'person') with check (mw.actor_kind() = 'person')`,
+      // Stage 3 (D92): only in the projects the person can see.
+      `create policy mw_person_all on ${t} for all to ${app} using (mw.actor_kind() = 'person' and mw.project_visible(project)) with check (mw.actor_kind() = 'person' and mw.project_visible(project))`,
       `drop policy if exists mw_step_own_case on ${t}`,
       `create policy mw_step_own_case on ${t} for all to ${app}` +
         ` using (mw.actor_kind() = 'step' and ${col} = mw.token_case())` +
@@ -356,7 +388,7 @@ export function compileRls(entities: Record<string, EntityTypeDef>, opts: Domain
       // delete for anyone but the owner (24 §9).
       `revoke all on ${t} from ${app}`,
       `grant insert, update on ${t} to ${app}`,
-      `grant select (${[...SYSTEM_COLUMNS, ...RECORD_COLUMNS, ...cols.filter((c) => !c.access).map((c) => c.column)].map(q).join(', ')}) on ${t} to ${app}`,
+      `grant select (${[...SYSTEM_COLUMNS, ...RECORD_COLUMNS, ...(projectScoped(def) ? [PROJECT_COLUMN] : []), ...cols.filter((c) => !c.access).map((c) => c.column)].map(q).join(', ')}) on ${t} to ${app}`,
     );
   }
   sql.push(...compileReadViews(entities, opts));

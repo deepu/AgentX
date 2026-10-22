@@ -36,6 +36,14 @@ calls no tools, so a refresh it has to write (GLP-1's summary after the accept) 
 When another MemWise window is already open on the machine, pass `--user-data-dir=<dir>` in `launch.mjs`'s
 `args`, or the second app quits at once (one instance per user data folder).
 
+`stage3-projects.mjs` (Stage 3, replies in `stage3-replies.json`) needs the eTMF example's seeds, which
+run only when the project folder is made from the example at start: set
+`MEMWISE_EXAMPLE_PROJECT_DIR=$PWD/examples/etmf` and give a `<projectDir>` that doesn't exist yet. Its
+config needs a workspace already listed, or the first run drops the connection. It goes through the
+switcher, a study's Home and Project settings, publishes template v5 and reviews it (MW-301 already
+does it; MW-207 tested and taken), Waiting for you across projects, the app home, New project from a
+template card, and New project described in chat (the scripted model calls `project_draft`), then
+Start study.
 `shell-edc.mjs` (Stage 6) needs the fake Rave running and its address in the environment
 (`RAVE_URL=http://127.0.0.1:4790/RaveWebServices RAVE_USER=rave RAVE_PASSWORD=rave`, see the script's header). It
 seeds eTMF's side of study MW-301, waits for the first read of Rave, and goes from the EDC Home (XEdcHome) to the old

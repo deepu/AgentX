@@ -44,6 +44,10 @@ export {
 } from './plugins/tools.ts';
 export { createPluginServices, compareVersions, pluginNamespace, type PluginServiceDeps, type PluginServices } from './plugins/service.ts';
 export { loadPluginPolicies, PLUGIN_POLICIES_KIND } from './runs.ts';
+// Stage 3 (docs/memwise/26-projects-and-pages.md §3): projects inside apps
+export { createProjectsService, CREATE_PROJECT_PLAYBOOK, type ProjectsDeps } from './projects/service.ts';
+export { projectTools, PROJECT_OPTIONS_TOOL, CREATE_DRAFT_PROJECT_TOOL } from './projects/tools.ts';
+export { parseSeed, seedProjectRecords, SEED_FILE } from './projects/seed.ts';
 // Projects and pages (docs/memwise/26-projects-and-pages.md §4)
 export { createPagesService, pageChangeRefs, REFRESH_PAGE, type PagesCore, type PagesDeps } from './pages/service.ts';
 export { pageTools, pageToolDefinitions, PAGE_GET_TOOL, PAGE_COMPARE_TOOL, PAGE_ACCEPT_TOOL, PAGE_SEND_BACK_TOOL } from './pages/tools.ts';

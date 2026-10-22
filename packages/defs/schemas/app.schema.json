@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "app": {
+      "description": "The app id, the domain folder name.",
+      "type": "string"
+    },
+    "title": {
+      "description": "The app name people see, e.g. eTMF. Default the domain name.",
+      "type": "string"
+    },
+    "version": {
+      "description": "The template version; publishing a template update makes the next one. Default 1.",
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "description": {
+      "type": "string"
+    },
+    "nouns": {
+      "description": "What a project is called in this app, e.g. { one: study, many: studies }.",
+      "type": "object",
+      "properties": {
+        "one": {
+          "type": "string"
+        },
+        "many": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "one",
+        "many"
+      ],
+      "additionalProperties": false
+    },
+    "home": {
+      "description": "The app home, a page across its projects: { title: TMF across studies, link: All studies, columns }.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "link": {
+          "type": "string"
+        },
+        "columns": {
+          "description": "One row per project: { label, value: { count | percent | sum | avg: <Entity>, where } } read in that project, or { label, setting }.",
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "count": {
+                            "type": "string"
+                          },
+                          "where": {
+                            "type": "string",
+                            "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+                          }
+                        },
+                        "required": [
+                          "count"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "percent": {
+                            "type": "string"
+                          },
+                          "where": {
+                            "type": "string",
+                            "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+                          },
+                          "of": {
+                            "description": "Which rows make 100% (default all of them).",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "percent",
+                          "where"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "sum": {
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          },
+                          "where": {
+                            "type": "string",
+                            "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+                          }
+                        },
+                        "required": [
+                          "sum",
+                          "field"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "avg": {
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          },
+                          "where": {
+                            "type": "string",
+                            "description": "A condition: status = 'filed', start_up_pack_complete = 100%, cv_expires <= today + 30d."
+                          }
+                        },
+                        "required": [
+                          "avg",
+                          "field"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "number",
+                      "percent"
+                    ]
+                  }
+                },
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "setting": {
+                    "type": "string",
+                    "description": "A key of each project's settings, e.g. phase."
+                  }
+                },
+                "required": [
+                  "label",
+                  "setting"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "next": {
+          "description": "The setting holding each project's next milestone, { label, date }.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "templates": {
+      "description": "The template cards shown in New project, by id.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "description": "The line under the title, e.g. \"Many sites, visits\".",
+            "type": "string"
+          },
+          "without": {
+            "description": "Template paths a project made from this card leaves out: workflows/<id>, pages/<id>, views/<id>.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "settings": {
+            "description": "Initial project settings.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "title": "MemWise app",
+  "description": "domains/<id>/app.yaml: the domain as a template for projects."
+}
