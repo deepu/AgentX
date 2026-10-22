@@ -1,7 +1,8 @@
 // A fake of Medidata Rave Web Services (RWS) for the EDC app (26 §9, D96): read-only REST on a
 // local port, HTTP Basic sign-in as RWS uses, answering from a fixture of study MW-301 (twelve
 // sites, 186 randomised subjects, open queries of varying age, site staff, form status) and a
-// small second study, MW-207. Everything in it is made up.
+// small second study, MW-207 (six sites). The site numbers and staff are the eTMF example's
+// (examples/etmf/projects/*/seed.yaml), so its sites pair with these. Everything in it is made up.
 //
 // The paths follow RWS (`/RaveWebServices/studies/{StudyOID}/…`, StudyOID `MW-301(Prod)`), but the
 // bodies are JSON with ODM-style names (StudyOID, SiteNumber, SubjectKey) rather than the ODM XML
@@ -127,6 +128,16 @@ const MW301_SITES: [string, string, string, string, number, number][] = [
   ['110', 'Maple Leaf Clinical Trials', 'Toronto', 'CA', 27, 8],
   ['111', 'Nordic Heart and Metabolism', 'Oslo', 'NO', 20, 7],
   ['112', 'Clínica Vista Alegre', 'Lisbon', 'PT', 25, 7],
+];
+
+/** MW-207's sites: number, name, city, country, investigator, coordinator. */
+const MW207_SITES: [string, string, string, string, readonly [string, string], readonly [string, string]][] = [
+  ['201', 'Elbe Klinikum', 'Hamburg', 'DE', ['Aiko', 'Lindqvist'], ['Samuel', 'Sato']],
+  ['202', 'Front Range Clinical Research', 'Denver', 'US', ['Jonas', 'Keller'], ['Aiko', 'Murphy']],
+  ['203', "Clinique de l'Erdre", 'Nantes', 'FR', ['Ben', 'Weber'], ['Ruth', 'Berg']],
+  ['204', 'Scheldezorg Ziekenhuis', 'Ghent', 'BE', ['Lucia', 'Ruiz'], ['Felix', 'Ahmed']],
+  ['205', 'Donaupark Klinik', 'Vienna', 'AT', ['Ruth', 'Costa'], ['Karl', 'Ruiz']],
+  ['206', 'Morava Clinical Centre', 'Brno', 'CZ', ['Zoe', 'Brennan'], ['Zoe', 'Tanaka']],
 ];
 
 /** Investigator and coordinator per site: [first, last, title] each; site 104's coordinator started on 2 Sep. */
@@ -271,10 +282,15 @@ export function raveFixture(now: Date = new Date()): FakeRaveData {
     forms.push({ StudyOID: MW301, SiteNumber: n, PagesEntered: entered, PagesVerified: Math.round(entered * share), PagesOverdue: n === '104' ? 9 : n === '109' ? 6 : Math.floor(rand() * 3) });
   }
 
-  // MW-207: two sites, five subjects, so lists can be told apart by study.
-  for (const [n, name, city, country] of [['201', 'Northgate University Hospital', 'Leeds', 'GB'], ['202', 'Lakeshore Medical Center', 'Chicago', 'US']] as const) {
-    sites.push({ StudyOID: MW207, SiteNumber: n, LocationOID: n, SiteName: name, City: city, Country: country, Status: 'Active', EnrollmentTarget: 30, ActivatedDate: daysBefore(now, 60) });
-    users.push({ StudyOID: MW207, SiteNumber: n, Login: `crc${n}`, FirstName: 'Sam', LastName: `Reyes ${n}`, Email: `sam.reyes@site${n}.example`, Role: 'Study Coordinator', Active: true, StartDate: daysBefore(now, 60) });
+  // MW-207: six sites (the eTMF example's MW-207 sites, by the same numbers and staff), five
+  // subjects at the first two, so lists can be told apart by study.
+  for (const [n, name, city, country, pi, crc] of MW207_SITES) {
+    sites.push({ StudyOID: MW207, SiteNumber: n, LocationOID: n, SiteName: name, City: city, Country: country, Status: 'Active', EnrollmentTarget: 10, ActivatedDate: daysBefore(now, 60) });
+    const email = ([first, last]: readonly [string, string]) => `${first}.${last}@site${n}.example`.toLowerCase();
+    users.push({ StudyOID: MW207, SiteNumber: n, Login: `pi${n}`, FirstName: pi[0], LastName: pi[1], Title: 'Dr', Email: email(pi), Role: 'Investigator', Active: true, StartDate: daysBefore(now, 70) });
+    users.push({ StudyOID: MW207, SiteNumber: n, Login: `crc${n}`, FirstName: crc[0], LastName: crc[1], Email: email(crc), Role: 'Study Coordinator', Active: true, StartDate: daysBefore(now, 60) });
+    const entered = n === '201' ? 36 : n === '202' ? 24 : 0;
+    forms.push({ StudyOID: MW207, SiteNumber: n, PagesEntered: entered, PagesVerified: Math.round(entered * 0.75), PagesOverdue: 0 });
   }
   for (const key of ['201-001', '201-002', '201-003', '202-001', '202-002']) {
     subjects.push({ StudyOID: MW207, SiteNumber: key.slice(0, 3), SubjectKey: key, Status: 'Randomised', RandomisedDate: daysBefore(now, 30), LastVisit: 'Visit 2', LastVisitDate: daysBefore(now, 3) });

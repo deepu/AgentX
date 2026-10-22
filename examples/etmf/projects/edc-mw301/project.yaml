@@ -1,0 +1,11 @@
+# Study MW-301 in EDC (Stage 6 Part B): the same study as the eTMF project mw301, linked to it by
+# `study:`, not by a workspace setting. Its Rave connection reads this study only: the binding's
+# sync reads Rave's MW-301 into this project, and nothing of MW-207 lands here.
+app: edc
+name: Study MW-301
+study: MW-301
+people:
+  - { email: anika.rao@northlight.example, name: Anika Rao, roles: [study_manager], note: owner }
+  - { email: dana@northlight.example, name: Dana Brooks, roles: [data_manager], note: chases the old queries }
+connections:
+  rave: { title: Medidata Rave, plugin: memwise/medidata-rave, access: read }
