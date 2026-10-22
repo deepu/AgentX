@@ -18,7 +18,7 @@ import { navigate, routes } from '@/lib/navigate'
 import { memwiseInboxAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { getMemwiseApi } from '@/hooks/useMemwise'
 import { useMemwiseRecordCalls } from '@/hooks/useMemwiseRecords'
-import { boardCollisionDetection } from '../../../app-shell/kanban/board-collision'
+import { recordsBoardCollision } from './records-board-collision'
 import { humanize } from '../../format'
 import { ReasonBox, useReasonedWrite, writeResultMessage } from '../../records/RecordBlocks'
 import { useProjectShell } from '../shell-context'
@@ -99,7 +99,7 @@ export function RecordsBoard({ entity, entityName, states, rows, regulated, deta
           <ReasonBox onConfirm={move.asking} onCancel={move.cancel} busy={move.busy} label={t('memwise.record.reasonForMove')} />
         </div>
       )}
-      <DndContext sensors={sensors} autoScroll={false} collisionDetection={boardCollisionDetection} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
+      <DndContext sensors={sensors} autoScroll={false} collisionDetection={recordsBoardCollision} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
         <div className="flex gap-2 overflow-x-auto pb-2">
           {columns.map(col => (
             <BoardColumn key={col.state} state={col.state} total={col.total}>
