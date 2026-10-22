@@ -215,6 +215,34 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     expect((await api.call<MwDraft>(manager, ch.DRAFTS_GET, draftId)).stage).toBe('draft')
   }, 60_000)
 
+  it("a person whose only grant is in MW-207 can't read MW-301's copy, its drafts or its chats", async () => {
+    const kai = await svc.kernel.people.create({ name: 'Kai Moreno', email: 'kai@northlight.example', roles: [] })
+    await (svc.kernel as any).domains.setGrants(kai.id, [{ role: 'study_manager', domain: 'etmf', project: 'mw207' }], { kind: 'system' })
+    const k = ctxFor('kai-client', kai.id)
+    await expect(api.call(k, ch.PLAYBOOKS_GET, 'remind-site', 'mw301')).rejects.toThrow('That project was not found.')
+    expect(await api.call(k, ch.PLAYBOOKS_GET, 'remind-site', 'mw207')).toMatchObject({ id: 'remind-site' })
+    expect((await api.call<MwDraftSummary[]>(k, ch.DRAFTS_LIST, { workflowId: 'remind-site' })).map((d) => d.id)).not.toContain(draftId)
+    await expect(api.call(k, ch.DRAFTS_GET, draftId)).rejects.toThrow()
+    await expect(api.call(k, ch.CHAT_OPEN, { anchor: { kind: 'workflow', id: 'remind-site', project: 'mw301' }, message: 'What changed?' })).rejects.toThrow('That project was not found.')
+    await expect(api.call(k, ch.CHAT_OPEN, { anchor: { kind: 'records', id: 'etmf.Site', project: 'mw301' }, message: 'Which sites?' })).rejects.toThrow('That project was not found.')
+    await expect(api.call(k, ch.DRAFTS_CREATE, { workflowId: 'remind-site', kind: 'change', project: 'mw301' })).rejects.toThrow('That project was not found.')
+    // Their own study's chat reads MW-207's copy, never MW-301's draft.
+    const opened = await api.call<{ sessionId: string }>(k, ch.CHAT_OPEN, { anchor: { kind: 'workflow', id: 'remind-site', project: 'mw207' }, message: 'What does it send?' })
+    const ctx = { memwise: buildMemwiseToolCallbacks({ sessionId: opened.sessionId }) } as unknown as SessionToolContext
+    expect(parse(await handlePlaybookRead(ctx, { path: SEND })).content).not.toContain('copy the CRA')
+    // The study manager still sees their own draft.
+    expect(await api.call<MwDraft>(manager, ch.DRAFTS_GET, draftId)).toMatchObject({ id: draftId, project: 'mw301' })
+  }, 60_000)
+
+  it("a study copy's test run finds its record in that study only, and the app's page doesn't pick up a study's chat", async () => {
+    const ctx = { memwise: buildMemwiseToolCallbacks({ sessionId: chatId }) } as unknown as SessionToolContext
+    // AT-005 is MW-207's site: MW-301's copy doesn't find it.
+    expect(parse(await handlePlaybookTestRun(ctx, { record: 'AT-005' })).error).toContain('No ')
+    // Anika's playbook chat is MW-301's: the app's playbook page (no project) shows none.
+    expect((await api.call<{ sessionId: string | null }>(manager, ch.CHAT_FIND, { anchor: { kind: 'workflow', id: 'remind-site' } })).sessionId).toBeNull()
+    expect((await api.call<{ sessionId: string | null }>(manager, ch.CHAT_FIND, { anchor: { kind: 'workflow', id: 'remind-site', project: 'mw301' } })).sessionId).toBe(chatId)
+  }, 60_000)
+
   it('Send for review starts the change run, which waits for a manager', async () => {
     const sent = await api.call<any>(manager, ch.DRAFTS_SUBMIT, draftId)
     expect(sent).toMatchObject({ applied: true })

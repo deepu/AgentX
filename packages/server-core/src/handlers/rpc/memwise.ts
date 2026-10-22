@@ -26,7 +26,7 @@ import type {
   MwPublishTemplateInput, MwPublishTemplateResult, MwSaveAsTemplateInput, MwSaveAsTemplateResult, MwTakeTemplateUpdateResult,
   MwTemplateUpdateInput, MwTemplateUpdateReview, MwUpdateProjectInput, MwWaitingGroup,
 } from '@memwise/shared/protocol'
-import { META_PLAYBOOKS, type ApprovalDecision, type DraftDiff, type DraftMeta } from '@memwise/defs'
+import { META_PLAYBOOKS, seesProjectIn, type ApprovalDecision, type DraftDiff, type DraftMeta } from '@memwise/defs'
 import type { CompiledPolicy } from '@memwise/policy'
 import type {
   Actor, AuditService, CaseView, ChannelService, DomainsService, ExternalService, IdentityService, InboxItem, PageView, PluginsService,
@@ -853,6 +853,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
 
   /** An ordinary chat about a case, step or playbook: its record goes into the chat's system prompt. */
   async function openExplainChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, d: Awaited<ReturnType<typeof dto>>, workspaceId: string, anchor: ExplainAnchor, message?: string): Promise<string> {
+    if (anchor.kind === 'workflow') await requireProject(svc, actor, c, anchor.project)
     const { title, digest } = await caseDigest(svc, actor, c, d, anchor)
     const session = await deps.sessionManager.createSession(workspaceId, { name: `About ${title}` })
     const { PgChatAnchorStore } = await import('@memwise/db')
@@ -924,7 +925,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     if (!def) throw new Error('That record type was not found.')
     // The type's name, not its title template ("{site_number} · {name}").
     const title = entity.slice(entity.lastIndexOf('.') + 1)
-    // A list in a project (Stage 3) is that project's records only.
+    // A list in a project (Stage 3) is that project's records only, and the person must see it.
+    await requireProject(svc, actor, c, project)
     const scope = project && c.project.projects?.[project] ? project : undefined
     const rows = await recordsOf(svc).query({ entity, limit: 40, ...(scope ? { project: scope } : {}) }, actor)
     const fields = Object.entries(def.fields).map(([name, f]) => `${name}${f.description ? ` (${clipText(f.description, 80)})` : ''}`)
@@ -959,6 +961,30 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     return p && p.dir && !p.implicit ? p.id : undefined
   }
 
+  /**
+   * May the person see this project (Stage 3)? As startCase checks it: an app's own project, or a
+   * project `projects.get` gives them (a grant in one study doesn't reach another).
+   */
+  async function requireProject(svc: MemwiseService, actor: PersonActor, c: DtoContext, project: string | undefined): Promise<void> {
+    if (!project || c.project.domains?.[project]) return
+    if (!(await svc.kernel.projects.get(project, actor).catch(() => undefined))) throw new Error('That project was not found.')
+  }
+
+  /** May the person see this draft? A study copy's draft is that study's (Stage 4): its title, diff and chat. */
+  function seesDraft(c: DtoContext, actor: PersonActor, meta: { workflowId: string; project?: { id: string } }): boolean {
+    const project = meta.project?.id
+    if (!project) return true
+    const app = c.project.projects?.[project]?.app ?? c.project.workflows[meta.workflowId]?.domain
+    return app ? seesProjectIn(actor, [app], project) : true
+  }
+
+  /** The project an anchor's chat is stored with (workflow and records anchors): null for none. */
+  function anchorScope(c: DtoContext, anchor: MwChatAnchor): string | null | undefined {
+    if (anchor.kind === 'workflow') return ownCopyScope(c, anchor.project, anchor.id) ?? null
+    if (anchor.kind === 'records') return anchor.project && c.project.projects?.[anchor.project] ? anchor.project : null
+    return undefined
+  }
+
   /** The regulated app a playbook belongs to (Stage 5), if it is regulated. */
   function regulatedApp(c: DtoContext, workflowId: string): string | undefined {
     const app = c.project.workflows[workflowId]?.domain
@@ -976,17 +1002,19 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
   }
 
   /** The person's latest chat on the anchor whose session still exists, or null. */
-  async function findAnchoredChat(svc: MemwiseService, actor: PersonActor, anchor: MwChatAnchor): Promise<string | null> {
-    return (await anchoredChats(svc, actor, anchor, 1))[0] ?? null
+  async function findAnchoredChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, anchor: MwChatAnchor): Promise<string | null> {
+    return (await anchoredChats(svc, actor, c, anchor, 1))[0] ?? null
   }
 
   /** The person's chats on the anchor whose sessions still exist, latest first. */
-  async function anchoredChats(svc: MemwiseService, actor: PersonActor, anchor: MwChatAnchor, limit: number): Promise<string[]> {
+  async function anchoredChats(svc: MemwiseService, actor: PersonActor, c: DtoContext, anchor: MwChatAnchor, limit: number): Promise<string[]> {
     const { PgChatAnchorStore } = await import('@memwise/db')
     const key = await anchorKey(anchor)
     const found: string[] = []
-    // A playbook's or a list's chat in a study is that study's (Stage 3): another study's isn't reused.
-    const scope = (anchor.kind === 'workflow' || anchor.kind === 'records') && anchor.project ? anchor.project : undefined
+    // A playbook's or a list's chat in a study is that study's (Stage 3): another study's isn't
+    // reused, and the app's page (or a regulated app's, whose chats have no study) finds only
+    // chats of no project.
+    const scope = anchorScope(c, anchor)
     for (const a of await new PgChatAnchorStore().forAnchor(svc.kernel.pool, key.kind, key.id, actor.personId, scope)) {
       if (found.includes(a.chatId)) continue
       if (await deps.sessionManager.getSession(a.chatId).catch(() => null)) found.push(a.chatId)
@@ -1490,7 +1518,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
 
     /** `project` (Stage 3): that project's own copy (the template at its version plus its overrides). */
     async getPlaybook(ctx: RequestContext, id: string, project?: string): Promise<MwPlaybook> {
-      const { svc, c, d } = await begin(ctx)
+      const { svc, actor, c, d } = await begin(ctx)
+      if (typeof project === 'string' && project) await requireProject(svc, actor, c, project)
       const copy = typeof project === 'string' && project ? c.project.projects?.[project]?.workflows[id] : undefined
       const wf = copy ?? c.project.workflows[id]
       if (!wf) throw new Error('That playbook was not found.')
@@ -1704,7 +1733,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       // The project shell continues the person's chat on what's open, and sends their first
       // message visibly instead of a hidden opening turn (doc 26 §2).
       if (input?.reuse && input.anchor) {
-        const found = await findAnchoredChat(svc, actor, input.anchor)
+        const found = await findAnchoredChat(svc, actor, c, input.anchor)
         if (found) {
           if (message) sendFirst(found, message)
           return { sessionId: found }
@@ -1737,11 +1766,11 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
 
     /** The person's latest chat on an anchor that still exists (the project shell's left column). */
     async findChat(ctx: RequestContext, _workspaceId: string, input: { anchor: MwChatAnchor }): Promise<MwFindChatResult> {
-      const { svc, actor } = await begin(ctx)
+      const { svc, actor, c } = await begin(ctx)
       if (!input?.anchor?.kind) throw new Error('Choose what the chat is about.')
       const { isStageFiveAnchor, createRegulatedApi } = await import('./memwise-regulated')
       if (isStageFiveAnchor(input.anchor)) return createRegulatedApi(deps).findChat(ctx, input.anchor)
-      const recent = await anchoredChats(svc, actor, input.anchor, 8)
+      const recent = await anchoredChats(svc, actor, c, input.anchor, 8)
       return { sessionId: recent[0] ?? null, recent }
     },
 
@@ -1875,6 +1904,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const lookup = draftLookup(svc, actor, c)
       const out: MwDraftSummary[] = []
       for (const meta of metas) {
+        if (!seesDraft(c, actor, meta)) continue
         const facts = await lookup.facts(meta).catch(() => undefined)
         if (facts) out.push(d.toDraftSummary(facts))
       }
@@ -1886,7 +1916,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const authoring = authoringOf(svc)
       const lookup = draftLookup(svc, actor, c)
       const got = await authoring.getDraft(draftId)
-      if (!got) throw new Error(DRAFT_MESSAGES.missing)
+      if (!got || !seesDraft(c, actor, got.meta)) throw new Error(DRAFT_MESSAGES.missing)
       const diff = await authoring.diff(draftId).catch(() => undefined)
       const facts = await lookup.facts(got.meta, { got, diff })
       const pending = d.pendingEditByPath(got.edits)
@@ -1913,7 +1943,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const kind = input.kind ?? (c.project.workflows[input.workflowId] ? 'change' : 'create')
       if (kind === 'change' && !c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
       if (kind === 'create' && c.project.workflows[input.workflowId]) throw new Error('A playbook with that id already exists.')
-      // A study's own copy (Stage 3): only a change, by someone who may change it there.
+      // A study's own copy (Stage 3): only a change, by someone who sees the study and may change it there.
+      if (kind === 'change' && typeof input.project === 'string') await requireProject(svc, actor, c, input.project)
       const scope = kind === 'change' ? ownCopyScope(c, input.project, input.workflowId) : undefined
       await mayChangePlaybooks(svc, actor, input.workflowId, kind === 'create' ? 'create-playbook' : 'change-playbook', scope)
       const meta = await authoringOf(svc).createDraft({
@@ -1989,6 +2020,10 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const got = await authoring.getDraft(draftId)
       if (!got) return refusal('draft.missing', DRAFT_MESSAGES.missing!)
       if (got.meta.status !== 'open') return refusal('draft.not_open', DRAFT_MESSAGES.not_open!)
+      // Stage 5: a change request's draft goes with its request (Withdraw on the request's page),
+      // so the request never points at a discarded draft.
+      const cr = await changeRequestOf(svc, draftId)
+      if (cr) return refusal('draft.change_request', `${DRAFT_MESSAGES.change_request} (${cr.label})`)
       const refused = await mayChangeDraft(svc, actor, got.meta)
       if (refused) return refusal('draft.not_allowed', refused)
       await authoring.discardDraft(draftId, actor)

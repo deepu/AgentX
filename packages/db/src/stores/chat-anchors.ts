@@ -61,12 +61,16 @@ export class PgChatAnchorStore {
     return rows[0] && toAnchor(rows[0]);
   }
 
-  /** Chats anchored to a case, step or record (optionally only one person's), most recent first. */
-  async forAnchor(db: Queryable, anchorKind: ChatAnchor['anchorKind'], anchorId: string, personId?: string, scope?: string): Promise<ChatAnchor[]> {
+  /**
+   * Chats anchored to a case, step or record (optionally only one person's), most recent first.
+   * `scope`: only that project's chats; `null`: only chats of no project (an app's playbook page
+   * mustn't pick up a study's chat, whose tools change that study's copy); left out: any.
+   */
+  async forAnchor(db: Queryable, anchorKind: ChatAnchor['anchorKind'], anchorId: string, personId?: string, scope?: string | null): Promise<ChatAnchor[]> {
     const { rows } = await db.query<AnchorRow>(
       `select * from mw.chat_anchors where anchor_kind = $1 and anchor_id = $2 and ($3::text is null or person_id = $3)
-         and ($4::text is null or project = $4)
-       order by updated_at desc, chat_id`, [anchorKind, anchorId, personId ?? null, scope ?? null]);
+         and (case when $5::boolean then project is null else ($4::text is null or project = $4) end)
+       order by updated_at desc, chat_id`, [anchorKind, anchorId, personId ?? null, scope ?? null, scope === null]);
     return rows.map(toAnchor);
   }
 
