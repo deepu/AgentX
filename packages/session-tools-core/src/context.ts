@@ -415,6 +415,13 @@ export interface SessionToolContext {
    */
   memwiseRecords?: MemwiseRecordToolCallbacks;
 
+  /**
+   * A chat anchored to a MemWise page (docs/memwise/26-projects-and-pages.md §4): `page_get`,
+   * `page_update`, `page_create`. Injected by SessionManager only for page chats; the callbacks
+   * act as the chat's person, and every write is a new version that says it came from the chat.
+   */
+  memwisePages?: MemwisePageToolCallbacks;
+
   // ============================================================
   // Inter-Session Messaging
   // ============================================================
@@ -1158,4 +1165,41 @@ export function createNodeFileSystem(): FileSystemInterface {
       };
     },
   };
+}
+
+// ============================================================
+// MemWise page tool types (docs/memwise/26-projects-and-pages.md §4)
+// ============================================================
+
+export interface PageGetInput {
+  /** The page id; default: the page this chat is about. */
+  page?: string;
+}
+
+/** A new version of a page: its whole body (markdown with fenced blocks) and/or its title. */
+export interface PageUpdateInput {
+  /** The page id; default: the page this chat is about. */
+  page?: string;
+  title?: string;
+  body?: string;
+  /** What changed, in a few words, for the page's history ("Added how long each trial ran"). */
+  reason?: string;
+}
+
+/** A new draft page in the chat's project, optionally under a page. */
+export interface PageCreateInput {
+  title: string;
+  body?: string;
+  question?: string;
+  parent?: string;
+}
+
+/**
+ * MemWise page tool callbacks, injected by SessionManager for chats anchored to a page. They act
+ * as the person in the chat. Results are plain JSON.
+ */
+export interface MemwisePageToolCallbacks {
+  get(input: PageGetInput): Promise<unknown>;
+  update(input: PageUpdateInput): Promise<{ applied: boolean; message?: string; status?: string; [k: string]: unknown }>;
+  create(input: PageCreateInput): Promise<{ applied: boolean; message?: string; status?: string; [k: string]: unknown }>;
 }

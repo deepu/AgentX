@@ -93,6 +93,8 @@ export function affectedByChange(change: MwChange): AffectedLists {
     case 'triggers': return { ...NO_LISTS, inbox: true, cases: true }
     // Stage 3: a project was made, started or archived, or its template moved on ("Review template update").
     case 'projects': return { ...NO_LISTS, inbox: true, cases: true, playbooks: true, domains: true }
+    // Pages (26 §4): an answer change waits in the inbox; the domains list their pages.
+    case 'pages': return { ...NO_LISTS, inbox: !!change.changeId, cases: !!change.changeId, domains: true }
     default: return { ...NO_LISTS }
   }
 }

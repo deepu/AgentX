@@ -344,6 +344,8 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       else if (c.kind === 'drafts') emitMemwiseChange({ kind: 'drafts', id: c.draftId })
       else if (c.kind === 'records') emitMemwiseChange({ kind: 'records', entity: c.entity, ...(c.recordId ? { id: c.recordId } : {}) })
       else if (c.kind === 'projects') emitMemwiseChange({ kind: 'projects', ...(c.projectId ? { id: c.projectId } : {}) })
+      // Pages (26 §4): the project, the page and the answer change.
+      else if (c.kind === 'pages') emitMemwiseChange({ kind: 'pages', ...(c.project ? { projectId: c.project } : {}), ...(c.pageId ? { id: c.pageId } : {}), ...(c.changeId ? { changeId: c.changeId } : {}) })
       else if (c.kind === 'definitions') {
         // The kernel re-indexed (a publish, or a reindex): the app's view follows it.
         void refreshContext().then(() => {
@@ -454,6 +456,14 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     log.info(`[memwise] ready: ${Object.keys(indexed.project.workflows).length} playbook(s) from ${projectDir}`)
     // The relay connects in the background; its state shows in Settings → Public address.
     void publicAddress.start()
+    // Walkthroughs and demos (scripts/walkthrough): the Literature home as mock LHome shows it,
+    // with the owner as the lead. Only when asked for, and only once (it checks for its pages).
+    if (process.env.MEMWISE_SEED === 'literature-home' && indexed.project.domains?.literature) {
+      void import('./seed-literature')
+        .then(({ seedLiteratureHome }) => seedLiteratureHome(k, { lead: ownerPerson.id }))
+        .then((r) => log.info(`[memwise] Literature home ${r.created ? 'seeded' : 'already seeded'}`))
+        .catch((e) => log.warn(`[memwise] seeding the Literature home failed: ${errorMessage(e)}`))
+    }
     return service
   } catch (e) {
     const message = errorMessage(e)

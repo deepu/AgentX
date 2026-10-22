@@ -1,7 +1,7 @@
 entity: Article
 title: "{title}"
-key: [pmid]                    # one record per paper, whichever topic found it first
-list: [journal, year, study_type, phase, n, status]   # the records table's columns; the abstract only on the page
+key: [pmid]                    # one record per paper, whichever page's refresh found it first
+list: [journal, year, study_type, phase, n, weeks, status]   # the records table's columns; the abstract only on the page
 fields:
   pmid:          { type: Text, required: true, description: The PubMed id }
   doi:           { type: Text, description: "Link it as https://doi.org/<doi> when citing it" }
@@ -17,12 +17,10 @@ fields:
   study_type:    Enum[randomised_trial, non_randomised_trial, cohort, case_control, cross_sectional, systematic_review, review, preclinical, other]
   phase:         Enum[phase_1, phase_2, phase_3, phase_4, not_a_trial]
   n:             { type: Number, description: How many people were randomised or enrolled }
+  weeks:         { type: Number, description: "How long the trial ran, in weeks" }
   sponsor:       Text
   intervention:  Text
   condition:     Text
-relationships:
-  screenings: many Screening
-  evidence:   many Evidence
 lifecycle:
   initial: found
   states:
@@ -34,5 +32,5 @@ page:
   layout: split
   header: [title, journal, year, status]
   left:  [{ viewer: abstract }]
-  right: [{ fields: [study_type, phase, n, sponsor, intervention, condition] }, details, { related: [screenings, evidence] }]
+  right: [{ fields: [study_type, phase, n, weeks, sponsor, intervention, condition] }, details]
   below: [mentions, notes]

@@ -56,6 +56,8 @@ import type { RecordsDeps } from './records/context.ts';
 import { createDomainsService } from './records/domains.ts';
 import { flagInboxItems } from './records/inbox.ts';
 import { createRecordsService } from './records/service.ts';
+import { createPagesService, pageChangeRefs, type PagesCore } from './pages/service.ts';
+import { pageTools } from './pages/tools.ts';
 import { recordTypesFor, submitStep } from './submit.ts';
 import { defaultTestRunner } from './test-runner.ts';
 import type { Actor, Authoring, EntityRow, Explanation, InboxItem, Kernel, KernelOptions, RunRecord, StartRunInput } from './types.ts';
@@ -158,6 +160,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const pluginKernelTools = options.projectDir ? bindingTools(() => pluginServices?.ops) : [];
   // Stage 3: `projects.*`, for the create-project conversation.
   const projectKernelTools = options.projectDir ? projectTools(() => projectsService, (id) => people.actorFor(id)) : [];
+  // Pages (26 §4): the `page.*` tools "Refresh a page" calls, made with the pages service below.
+  let pagesCore: PagesCore | undefined;
+  const pageKernelTools = pageTools(() => pagesCore);
 
   // Phase 4: builtins for `run: { builtin }` (the caller's, and the kernel's real extractor), MCP
   // connections opened lazily and closed at shutdown, and the frozen bindings bound now.
@@ -178,7 +183,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   // so a plugin tool routed to that builtin runs the same code whether or not a plugin binds it.
   const boundExtractor = builtins.get(extractor.name) ?? extractor;
   const buildTools = () => {
-    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => entityToolRuntime), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools, ...projectKernelTools]);
+    const base = uniqueTools([...options.tools, ...recallTools(reader), ...domainTools(entities, () => entityToolRuntime), boundExtractor, inviteTool, ...playbookTools, ...pluginKernelTools, ...projectKernelTools, ...pageKernelTools]);
     const taken = new Map(base.map((t) => [t.name, t]));
     const fromPlugins = options.projectDir
       ? pluginTools(bound, taken, { root: options.projectDir, builtins, mcp })
@@ -232,6 +237,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     sourcedProvenance: (db: import('pg').PoolClient, stepRunId: string, values: Record<string, unknown>, sources: Record<string, string>, by: string) =>
       external!.sourcedProvenance(db, stepRunId, values, sources, by),
     signing: { people, entities: () => entities, project: () => indexed?.project },
+    // A refresh's review step has no role: the page's reviewers answer it (27 §4).
+    mayAnswer: (db: import('pg').PoolClient, s: import('./submit.ts').WaitingStep, by: import('./types.ts').SubmitStepInput['by'], outcome: string) =>
+      pagesCore ? pagesCore.answerRefusal(db, s.run_id, by, outcome) : Promise.resolve(undefined),
   };
   const versionStore = new PgVersionStore();
 
@@ -345,6 +353,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       return !p || !projectStartRefusal(p, workflowId);
     },
     log: (m) => { if ((options.logLevel ?? process.env.DBOS_LOG ?? 'warn') !== 'error') console.warn(`[memwise] ${m}`); },
+    extraSweep: (now) => pagesCore?.sweep(now) ?? Promise.resolve(),
   }, () => phase6Consumers());
   /** The records piece's event consumers (link pairing, invariant flags), run before the flow's own. */
   const recordEventConsumers = recordConsumers({ pool, entities: () => entities, emit: (change) => feed.emit(change) });
@@ -363,12 +372,34 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     return ids ? liveCache.workflows.filter((w) => ids.has(w.id)) : liveCache.workflows;
   }
 
+  pagesCore = createPagesService({
+    pool, project: () => indexed?.project, people, records: () => phase6.records,
+    start: (input, opts) => start(input, true, opts),
+    submitStep: (input) => submitStep(submitDeps, input),
+    // The kernel ends a replaced review itself: not a person's answer, so no reviewer check.
+    endReview: async (runId, comment) => {
+      const { rows } = await pool.query(
+        `select id, step_id, workflow_id, workflow_hash from mw.step_runs where run_id = $1 and status = 'waiting' and performer = 'person'
+          order by started_at desc limit 1`, [runId]);
+      const w = rows[0];
+      if (!w) return;
+      const step = (await defs.workflow(w.workflow_id, w.workflow_hash)).steps[w.step_id];
+      if (!step?.outcomes.includes('sent_back')) return;
+      const r = await submitStep({ ...submitDeps, mayAnswer: undefined },
+        { stepRunId: w.id, outcome: 'sent_back', values: {}, comment, by: { kind: 'person', personId: 'system', roles: [] } });
+      if (!r.applied && r.status !== 'stale') throw new Error(r.message ?? r.status);
+    },
+    log: (m) => { if ((options.logLevel ?? process.env.DBOS_LOG ?? 'warn') !== 'error') console.warn(`[memwise] ${m}`); },
+    emit: (c) => feed.emit(c),
+  });
+
   const kernel: Kernel = {
     pool,
     people: withPasswordRule(people, () => indexed?.project),
     ...phase6,
     triggers: flow.triggers,
     get projects() { return projectsService; },
+    pages: pagesCore,
 
     async index() {
       if (!options.projectDir) throw new Error('createKernel({ projectDir }) is needed to index');
@@ -493,7 +524,17 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     submitStep: (input) => submitStep(submitDeps, input),
 
     async inbox(actor) {
-      const items: InboxItem[] = await inbox(pool, defs, actor, entities);
+      const items: InboxItem[] = [];
+      // Pages (26 §4): "Review an answer change" says which page and what changed, and goes only to
+      // the page's owner or the app's reviewer role.
+      const steps = await inbox(pool, defs, actor, entities);
+      const refs = await pageChangeRefs(pool, steps.flatMap((i) => (i.kind === 'decision' || i.kind === 'input' ? [i.runId] : [])));
+      for (const item of steps) {
+        const ref = (item.kind === 'decision' || item.kind === 'input') ? refs.get(item.runId) : undefined;
+        if (!ref) { items.push(item); continue; }
+        if (!(await pagesCore!.reviewable(ref.pageId, actor))) continue;
+        items.push({ ...item, pageChange: ref } as InboxItem);
+      }
       // Phase 6: open flags, for the owners of their domains.
       items.push(...(await flagInboxItems(recordsDeps, actor)));
       // Phase 6: firings the storm guard held, for the workflow's owner role (24 §7).

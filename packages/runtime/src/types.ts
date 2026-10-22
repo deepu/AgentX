@@ -125,7 +125,7 @@ export interface StartRunInput {
   project?: string;
 }
 
-export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4, KernelPhase5, KernelPhase6, KernelStage3 {
+export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4, KernelPhase5, KernelPhase6, KernelStage3, KernelPages {
   /** Load the project folder and index it; returns the loader's diagnostics. */
   index(): Promise<Diagnostic[]>;
   startRun(input: StartRunInput): Promise<{ runId: string; caseId: string }>;
@@ -231,6 +231,8 @@ export type InboxItem = InboxItemBody & { project?: string };
 export type InboxItemBody =
   | { kind: 'input' | 'decision'; id: string; stepRunId: string; runId: string; caseId: string; workflowId: string;
       stepId: string; assignee?: string; since: string; dueAt?: string;
+      /** Pages (26 §4): the step reviews an answer change ("Review an answer change"). */
+      pageChange?: PageChangeRef;
       /** Phase 5: the step's form can read its documents (`extract:`, 23 §5): `kernel.external.extractForStep`. */
       extract?: { documentsField: string; fields: string[]; minConfidence: number };
       /** Phase 6: the workflow's domain, how the step is reviewed (24 §11) and the signature it needs. */
@@ -310,7 +312,9 @@ export type KernelChange =
   /** Phase 6: a trigger fired or firings were held or released. */
   | { kind: 'triggers' }
   /** Stage 3: a project was made, started, archived, changed, or its template moved on. */
-  | { kind: 'projects'; projectId?: string };
+  | { kind: 'projects'; projectId?: string }
+  /** Pages (26 §4): a page or a page change was written. */
+  | { kind: 'pages'; project?: string; pageId?: string; changeId?: string };
 
 export interface KernelPhase2 {
   readonly people: PeopleService;
@@ -922,6 +926,8 @@ export interface DomainSummary {
   views: { id: string; title: string; entity: string }[];
   /** Open flags and waiting items in this domain, for the sidebar. */
   flags: number;
+  /** Pages (26 §4): the app's own "Refresh a page" playbook (left out of `workflows`). */
+  pageRefresh?: string;
 }
 
 export interface DomainsService {
@@ -1047,3 +1053,153 @@ export interface WaitingCondition { record: RecordRef; condition: string; holds:
 export type { DashboardBlock as _DashboardBlock, FreePageDef as _FreePageDef };
 
 export type * from './projects/types.ts';
+// ================================================================ Projects and pages (docs/memwise/26-projects-and-pages.md §4)
+
+export type PageStatus = 'draft' | 'kept' | 'archived';
+
+/** A kept page's schedule: `every` is `daily`, `month` or a weekday (`mon` … `sun`). */
+export interface PageRefreshInfo { every: string; until?: string; next?: string; last?: string; playbook?: string; summaryDue?: string }
+
+/** What the waiting list needs about an answer change. */
+export interface PageChangeRef {
+  changeId: string;
+  pageId: string;
+  pageTitle: string;
+  project: string;
+  /** "1 new trial" */
+  label?: string;
+  /** What started the refresh that found it. */
+  from?: { kind: 'schedule' | 'manual' | 'summary'; every?: string; by?: string };
+  at: string;
+}
+
+/** A page in its project's tree (the sidebar's PAGES, Home's "Pages kept up to date"). */
+export interface PageSummary {
+  id: string;
+  project: string;
+  domain: string;
+  parent?: string;
+  title: string;
+  status: PageStatus;
+  question?: string;
+  /** The first paragraph, in plain words: what the page says now. */
+  headline: string;
+  refresh?: PageRefreshInfo;
+  /** Its `until` day has passed: it no longer refreshes (it stays kept). */
+  refreshEnded?: boolean;
+  /** Phase 6 written pages hang in the record tree: under an entity type, or one record. */
+  under?: { entity: string; id?: string };
+  pinned: boolean;
+  sumsChildren: boolean;
+  version: number;
+  owner?: string;
+  createdBy?: string;
+  updatedAt: string;
+  /** The answer change waiting for review, if any. */
+  pendingChange?: { id: string; label?: string };
+  /** The last refresh: when, and whether it changed anything. */
+  lastRefresh?: { at: string; status: 'accepted' | 'sent_back' | 'nothing_new' | 'pending'; title?: string };
+}
+
+/** One line of a page's history ("1 June, ATTAIN-MAINTAIN added, accepted by Leah"). */
+export interface PageHistoryEntry {
+  at: string;
+  kind: 'made' | 'asked' | 'chat' | 'person' | 'undo' | 'accepted' | 'sent_back' | 'nothing_new' | 'refresh';
+  version?: number;
+  /** Who: the person's name (`by`), or the chat or run it came through. */
+  by?: string;
+  byName?: string;
+  /** What changed, in a few words (an accepted change's title, a version's reason). */
+  text?: string;
+  changeId?: string;
+}
+
+/** A sub-page as its parent shows it. */
+export interface PageChild extends PageSummary {
+  /** Whether the parent's summary includes it: kept sub-pages only (drafts are left out). */
+  inSummary: boolean;
+}
+
+/** A page as it opens: its body with live blocks computed, sub-pages, history and what chat changed. */
+export interface PageView extends PageSummary {
+  /** The body with live blocks (`records`, `subpages`) computed now. */
+  body: string;
+  /** The body as written (live blocks as their queries). */
+  written: string;
+  chatId?: string;
+  regulated: boolean;
+  breadcrumb: { id: string; title: string }[];
+  children: PageChild[];
+  history: PageHistoryEntry[];
+  /** The last version came from a chat: the sections it changed (`''`: the text before the first heading), with Undo. */
+  changedFromChat?: { version: number; chatId?: string; sections: string[] };
+  /** Undo goes back one version (there is one to go back to). */
+  canUndo: boolean;
+  /** Sub-pages that changed in the last week (a parent's "What changed this week"). */
+  changes: { pageId: string; title: string; kind: 'accepted' | 'nothing_new' | 'made' | 'chat'; text?: string; byName?: string; at: string }[];
+}
+
+/** "Review an answer change" (mock LChange). */
+export interface PageChangeView {
+  id: string;
+  pageId: string;
+  pageTitle: string;
+  project: string;
+  status: 'pending' | 'accepted' | 'sent_back' | 'nothing_new';
+  fromVersion: number;
+  toVersion?: number;
+  summary: import('@memwise/db').PageChangeSummary;
+  /** The page now and as the refresh rewrote it. */
+  before: string;
+  after: string;
+  runId?: string;
+  caseId?: string;
+  /** The waiting "Review an answer change" step, while it waits. */
+  stepRunId?: string;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  comment?: string;
+  at: string;
+  /** Whether this person may accept or send it back. */
+  mayDecide: boolean;
+  /** The page changed since the refresh read it (a chat edit, an Undo): it can only be sent back. */
+  stale?: boolean;
+}
+
+export interface PageWriteResult { applied: boolean; page?: PageView; message?: string; status?: 'applied' | 'forbidden' | 'invalid' | 'stale' | 'missing' | 'regulated' }
+
+export interface PagesService {
+  /** A project's pages (not archived), parents before children. */
+  list(project: string, actor: Actor): Promise<PageSummary[]>;
+  get(id: string, actor: Actor): Promise<PageView | undefined>;
+  versions(id: string, actor: Actor): Promise<import('@memwise/db').WrittenPageVersion[]>;
+  /** A new page (a draft, unless `status` says otherwise). `via`: `chat:<id>` or `person:<id>`. */
+  create(input: { project: string; title: string; body?: string; question?: string; parent?: string; status?: PageStatus; chatId?: string;
+    sumsChildren?: boolean; via?: string; reason?: string }, actor: Actor): Promise<PageWriteResult>;
+  /**
+   * A new version. A draft changes freely; a kept page too, with Undo, except in a regulated
+   * domain (refused: there a change goes through a change request). An archived page is read only.
+   */
+  update(id: string, input: { title?: string; body?: string; parent?: string | null; expectedVersion?: number; via?: string; reason?: string;
+    sumsChildren?: boolean }, actor: Actor): Promise<PageWriteResult>;
+  /** Back one version: a new version with the body before the last one. */
+  undo(id: string, actor: Actor, opts?: { version?: number }): Promise<PageWriteResult>;
+  /** Kept, refreshed on a schedule (`every`: `mon` … `sun`, `daily`, `month`), optionally under a parent. */
+  keep(id: string, input: { every?: string; until?: string; parent?: string | null }, actor: Actor): Promise<PageWriteResult>;
+  archive(id: string, actor: Actor): Promise<PageWriteResult>;
+  /** Start its refresh now. */
+  refreshNow(id: string, actor: Actor): Promise<{ started: boolean; runId?: string; caseId?: string; message?: string }>;
+  getChange(id: string, actor: Actor): Promise<PageChangeView | undefined>;
+  /** Accept or send back an answer change: answers its "Review an answer change" step. */
+  decideChange(id: string, input: { decision: 'accept' | 'send_back'; comment?: string }, actor: Actor): Promise<{ applied: boolean; message?: string; status?: string }>;
+  /** Change the waiting change's page (the reviewer's chat): "Changed the update · Undo". */
+  reviseChange(id: string, input: { body: string; via?: string; note?: string }, actor: Actor): Promise<{ applied: boolean; change?: PageChangeView; message?: string }>;
+  /** Start the refreshes that are due at `now` (the minute sweep calls it). */
+  sweep(now?: Date): Promise<{ pageId: string; runId: string; caseId?: string }[]>;
+  /** The playbook that refreshes a page in this project (the app's own, else the built-in). */
+  refreshPlaybook(project: string): string;
+}
+
+export interface KernelPages {
+  readonly pages: PagesService;
+}

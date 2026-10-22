@@ -8,6 +8,7 @@ import { authoringToolDefinitions } from './authoring-tools.ts';
 import { kernelKey, linkStatus, tokenOf, type LinkRow } from './external/links.ts';
 import { externalToolDefinitions } from './external/service.ts';
 import { bindingToolDefinitions } from './plugins/kernel-tools.ts';
+import { pageToolDefinitions } from './pages/tools.ts';
 import { McpConnections } from './plugins/routes.ts';
 import { boundPlugins, pluginTool, toolClass } from './plugins/tools.ts';
 import { createKernel } from './kernel.ts';
@@ -44,7 +45,7 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
     // The playbooks.* and plugins.* definitions too, so meta-playbook examples can stub them.
     const tools = new Map<string, ToolDefinition>();
     const base = (opts.tools ?? ((url) => sampleTools({ databaseUrl: url })))(db.url);
-    for (const t of [...base, ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...projectTools()]) {
+    for (const t of [...base, ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...projectTools(), ...pageToolDefinitions()]) {
       if (!tools.has(t.name)) tools.set(t.name, t);
     }
     // `external.invite` is the kernel's own, sending through the (sample or stubbed) channel

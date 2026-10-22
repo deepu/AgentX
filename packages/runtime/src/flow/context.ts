@@ -33,6 +33,8 @@ export interface FlowDeps {
    */
   projectRuns?(project: string, workflowId: string): Promise<boolean>;
   log?: (message: string) => void;
+  /** More that the minute sweep does after the triggers (pages due for a refresh, 26 §4). */
+  extraSweep?(now: Date): Promise<unknown>;
 }
 
 /** A domain's display name ("Main" for the default domain without one). */

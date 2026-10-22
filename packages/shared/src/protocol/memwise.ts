@@ -368,6 +368,8 @@ export type MwInboxItemBody =
       domain?: string
       review?: MwInboxReview['review']
       sign?: MwInboxReview['sign']
+      /** Pages: the step reviews an answer change (`caseTitle` is the page's title). */
+      pageChange?: MwInboxPageChange
     }
   /** A person step that only decides (approval card: approve / send back with a comment). */
   | {
@@ -393,6 +395,8 @@ export type MwInboxItemBody =
       domain?: string
       review?: MwInboxReview['review']
       sign?: MwInboxReview['sign']
+      /** Pages: "Review an answer change": the page, "1 new trial", "From the page's Monday refresh". */
+      pageChange?: MwInboxPageChange
     }
   /** An agent step wants to run an effect that needs approval (e.g. sending an email). */
   | {
@@ -612,6 +616,8 @@ export type MwChatAnchor =
   | { kind: 'record'; entity: string; id: string }
   | { kind: 'project' | 'waiting'; id: string }
   | { kind: 'dashboard'; domain: string; id: string }
+  /** Pages (26 §4): a chat that reads and writes the page (`page_get`, `page_update`, `page_create`). */
+  | { kind: 'page'; id: string }
 
 /** The person's latest chat on an anchor (`memwise:chat:find`): null when there is none yet. */
 export interface MwFindChatResult {
@@ -657,9 +663,12 @@ export interface MwChange {
    * `drafts`: a draft was created, edited, checked, published or discarded (`id` = draft id).
    * `plugins` (Phase 4): a plugin was installed, or a binding or identity link changed.
    */
-  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins' | 'external' | 'relay' | 'records' | 'triggers'
+  kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins' | 'external' | 'relay' | 'records' | 'triggers' | 'pages'
     /** Stage 3: a project was made, started, archived or changed, or its template moved on (`id` = project id). */
     | 'projects'
+  /** Pages (26 §4): the project, and the answer change when one changed (`id` is the page id). */
+  projectId?: string
+  changeId?: string
   /** Phase 6 `records`: the entity key and record id that changed. */
   entity?: string
   /** The run id for `run` changes; the record id for `records`. */
@@ -1446,6 +1455,8 @@ export interface MwDomain {
   detail?: MwDomainDetail
   /** The domain's home (`home:` in domain.yaml): a question box over its drafts and records. */
   home?: MwDomainHome
+  /** Pages (26 §4): the app's own "Refresh a page" playbook, when it names one (not listed with the playbooks). */
+  pageRefresh?: string
 }
 
 /**
@@ -1456,10 +1467,10 @@ export interface MwDomain {
 export interface MwDomainHome {
   ask?: string
   placeholder?: string
-  /** Entity key of the drafts (`literature.Topic`). */
-  entity: string
+  /** Entity key of the drafts (`literature.Topic`); absent when asking makes a draft page (26 §4). */
+  entity?: string
   /** Its plural-free display name ("Topic"). */
-  entityTitle: string
+  entityTitle?: string
   draftState: string
   /** States with no way out (closed): not listed. */
   endStates: string[]
@@ -1470,12 +1481,16 @@ export interface MwDomainHome {
 export interface MwAskInput {
   domain: string
   question: string
+  /** Stage 3: the project it is asked in (a study of the app); absent, the app's own. */
+  project?: string
 }
 
 export interface MwAskResult {
   sessionId: string
   entity: string
   recordId: string
+  /** Pages (26 §4): a home without an entity asked into this draft page (`entity` and `recordId` are empty). */
+  pageId?: string
 }
 
 export type MwRecordFieldSource =
@@ -2236,4 +2251,240 @@ export interface MwPublishTemplateInput {
   appId: string
   /** Template path → new content; null removes the file. */
   files: Record<string, string | null>
+}
+
+// ================================================================ Projects and pages, Stage 2 (docs/memwise/26-projects-and-pages.md §4)
+// PAGES CONTRACT: pages built from a question, kept up to date by a refresh. Change only additively.
+//
+// memwise:pages:list            (workspaceId, { projectId })                         → MwPageSummary[]
+// memwise:pages:get             (workspaceId, { pageId })                            → MwPage | null
+// memwise:pages:versions        (workspaceId, { pageId })                            → MwPageVersion[]
+// memwise:pages:undo            (workspaceId, { pageId, version? })                  → MwPageWriteResult
+// memwise:pages:keep            (workspaceId, MwPageKeepInput)                       → MwPageWriteResult
+// memwise:pages:create         (workspaceId, MwPageCreateInput)                     → MwPageWriteResult
+// memwise:pages:archive         (workspaceId, { pageId })                            → MwPageWriteResult
+// memwise:pages:refresh         (workspaceId, { pageId })                            → MwPageRefreshResult
+// memwise:pageChanges:get       (workspaceId, { changeId })                          → MwPageChange | null
+// memwise:pageChanges:decide    (workspaceId, MwPageChangeDecideInput)               → MwSubmitResult
+// memwise:project:ask           (workspaceId, MwProjectAskInput)                     → MwProjectAskResult
+//
+// Changes push `memwise:changed` with kind `pages` (`projectId`, `id` = page id, `changeId`).
+// A chat anchored to a page (`MwOpenChatInput` anchor `{ kind: 'page', id }`) gets `page_get`,
+// `page_update` and `page_create`, acting as the person; every write is a new version with Undo.
+
+export type MwPageStatus = 'draft' | 'kept' | 'archived'
+
+/** When a kept page refreshes: `every` is `mon` … `sun`, `daily` or `month`; times are ISO. */
+export interface MwPageRefresh {
+  every: string
+  until?: string
+  next?: string
+  last?: string
+  /** The playbook that refreshes it (the app's own, else `refresh-page`). */
+  playbook?: string
+  /** A sub-page changed: the parent's summary refreshes at the next sweep. */
+  summaryDue?: string
+}
+
+/** A page in its project's tree: the sidebar's PAGES, Home's "Pages kept up to date". */
+export interface MwPageSummary {
+  id: string
+  projectId: string
+  parent?: string
+  title: string
+  status: MwPageStatus
+  question?: string
+  /** The first paragraph in plain words: what the page says now. */
+  headline: string
+  refresh?: MwPageRefresh
+  /** Its `until` day has passed: it no longer refreshes (it stays kept). */
+  refreshEnded?: boolean
+  /** Phase 6 written pages hang in the record tree (under an entity type, or one record), not in PAGES. */
+  under?: { entity: string; id?: string }
+  pinned: boolean
+  /** It sums up its kept sub-pages. */
+  sumsChildren: boolean
+  version: number
+  owner?: string
+  ownerName?: string
+  updatedAt: string
+  /** The answer change waiting for review ("1 new trial"). */
+  pendingChange?: { id: string; label?: string }
+  lastRefresh?: { at: string; status: 'accepted' | 'sent_back' | 'nothing_new' | 'pending'; title?: string }
+}
+
+/** One line of a page's history ("1 June, ATTAIN-MAINTAIN added, accepted by Leah"). */
+export interface MwPageHistoryEntry {
+  at: string
+  kind: 'made' | 'asked' | 'chat' | 'person' | 'undo' | 'accepted' | 'sent_back' | 'nothing_new' | 'refresh'
+  version?: number
+  by?: string
+  byName?: string
+  text?: string
+  changeId?: string
+}
+
+export interface MwPageChild extends MwPageSummary {
+  /** In the parent's summary: kept sub-pages only. */
+  inSummary: boolean
+}
+
+/** A sub-page's line in "What changed this week". */
+export interface MwPageRecentChange {
+  pageId: string
+  title: string
+  kind: 'accepted' | 'nothing_new' | 'made' | 'chat'
+  text?: string
+  byName?: string
+  at: string
+}
+
+/**
+ * A page as it opens. `body` is markdown with fenced blocks: `chart`, `tiles`, `table` (written,
+ * frozen) and `records`, `subpages` (live: their JSON comes back with `result` / `pages` filled in
+ * for this viewer, computed now). `written` is the body as stored.
+ */
+export interface MwPage extends MwPageSummary {
+  body: string
+  written: string
+  chatId?: string
+  regulated: boolean
+  breadcrumb: { id: string; title: string }[]
+  children: MwPageChild[]
+  history: MwPageHistoryEntry[]
+  /** The last version came from a chat: the sections it changed (`''` = before the first heading). */
+  changedFromChat?: { version: number; chatId?: string; sections: string[] }
+  canUndo: boolean
+  changes: MwPageRecentChange[]
+}
+
+export interface MwPageVersion {
+  version: number
+  title: string
+  body: string
+  by?: string
+  byName?: string
+  /** `chat:<id>`, `run:<id>`, `person:<id>` */
+  via?: string
+  reason?: string
+  at: string
+}
+
+export interface MwPageWriteResult {
+  applied: boolean
+  status?: 'applied' | 'forbidden' | 'invalid' | 'stale' | 'missing' | 'regulated'
+  message?: string
+  page?: MwPage
+}
+
+/**
+ * A page made by a person, not from a question ("Save as a page" from a records list). With
+ * `status: 'kept'` it is kept at once (`every`, `until` as in MwPageKeepInput).
+ */
+export interface MwPageCreateInput {
+  projectId: string
+  title: string
+  /** Markdown with fenced blocks, e.g. a ```records block `{ "entity": "etmf.Site", "filter": "status = 'active'", "columns": ["country"] }`. */
+  body?: string
+  question?: string
+  parent?: string
+  sumsChildren?: boolean
+  status?: 'draft' | 'kept'
+  every?: string
+  until?: string
+}
+
+export interface MwPageKeepInput {
+  pageId: string
+  /** `mon` … `sun`, `daily`, `month`; default the project's (`pages.every`), else Monday. */
+  every?: string
+  /** Stop refreshing after this day (YYYY-MM-DD): "Keep watching, daily until 28 Oct". */
+  until?: string
+  /** Put it under a page (null: at the top). */
+  parent?: string | null
+}
+
+export interface MwPageRefreshResult {
+  started: boolean
+  runId?: string
+  caseId?: string
+  message?: string
+}
+
+/** What the refresh that found an answer change was ("From the page's Monday refresh"). */
+export interface MwPageChangeFrom {
+  kind: 'schedule' | 'manual' | 'summary'
+  every?: string
+  by?: string
+  byName?: string
+}
+
+/** "Review an answer change" (mock LChange). */
+export interface MwPageChange {
+  id: string
+  pageId: string
+  pageTitle: string
+  projectId: string
+  status: 'pending' | 'accepted' | 'sent_back' | 'nothing_new'
+  fromVersion: number
+  toVersion?: number
+  /** "1 new trial" */
+  label?: string
+  /** For the history: "ATTAIN-MAINTAIN added". */
+  title?: string
+  /** The headline now and after the change. */
+  before?: string
+  after?: string
+  /** When the headline stays: "The same, plus: …". */
+  plus?: string
+  sections: { heading: string; markdown: string; origin: 'refresh' | 'chat'; changed?: 'added' | 'changed' }[]
+  removed: string[]
+  leftOut: { title: string; href?: string; why: string }[]
+  numbers: { added: string[]; removed: string[] }
+  chatNote?: string
+  from?: MwPageChangeFrom
+  /** The whole page now and as the refresh rewrote it. */
+  beforeBody: string
+  afterBody: string
+  runId?: string
+  caseId?: string
+  /** The waiting review step (its inbox item is `step:<stepRunId>`). */
+  stepRunId?: string
+  reviewedBy?: string
+  reviewedByName?: string
+  comment?: string
+  at: string
+  mayDecide: boolean
+  /** The page changed since the refresh read it (a chat edit, an Undo): it can only be sent back. */
+  stale?: boolean
+}
+
+export interface MwPageChangeDecideInput {
+  changeId: string
+  decision: 'accept' | 'send_back'
+  comment?: string
+}
+
+/** On an `input`/`decision` inbox item that reviews an answer change: what the Waiting page shows. */
+export interface MwInboxPageChange {
+  changeId: string
+  pageId: string
+  pageTitle: string
+  projectId: string
+  label?: string
+  from?: MwPageChangeFrom
+  at: string
+}
+
+/** A question asked in a project: makes a draft page and opens a chat anchored to it, answering. */
+export interface MwProjectAskInput {
+  projectId: string
+  question: string
+  /** Put the draft under this page (asked from a page). */
+  parent?: string
+}
+
+export interface MwProjectAskResult {
+  sessionId: string
+  pageId: string
 }

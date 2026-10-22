@@ -33,7 +33,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Markdown } from '@memwise/ui'
 import { cn } from '@/lib/utils'
 import { CaseFieldList } from './CaseValues'
-import { isMetaPlaybook } from './draft/draft-model'
+import { isPlaybookBuilder } from './draft/draft-model'
 import { GeneratedForm, type FormSuggestions, type UploadFile } from './GeneratedForm'
 import { MessagePreview, messageShape } from './MessagePreview'
 import { BindingReview } from './plugins/BindingReview'
@@ -126,7 +126,7 @@ const KIND_ICON: Record<MwInboxItem['kind'], React.ReactNode> = {
 
 /** The draft a playbook change's decision is about: the case value `draft`. */
 export function reviewDraftOf(item: MwInboxItem): string | undefined {
-  if (item.kind !== 'decision' || !isMetaPlaybook(item.workflowId)) return undefined
+  if (item.kind !== 'decision' || !isPlaybookBuilder(item.workflowId)) return undefined
   const value = item.context.draft?.value
   return typeof value === 'string' && value ? value : undefined
 }
@@ -445,7 +445,7 @@ function DecisionBody({ item, actions, people, roles, draftId, playbookTitles }:
           </div>
         </Info_Section>
       )}
-      {isMetaPlaybook(item.workflowId) && (
+      {isPlaybookBuilder(item.workflowId) && (
         <Info_Alert variant="info" icon={<FilePen />} data-review-draft={draftId}>
           <Info_Alert.Title>{t('memwise.inbox.review.title')}</Info_Alert.Title>
           <Info_Alert.Description>{t('memwise.inbox.review.description')}</Info_Alert.Description>
@@ -492,7 +492,7 @@ function DecisionBody({ item, actions, people, roles, draftId, playbookTitles }:
  * the playbook by its title.
  */
 export function reviewContext(item: Extract<MwInboxItem, { kind: 'decision' }>, playbookTitles?: Record<string, string>): Record<string, MwCaseValue> {
-  if (!isMetaPlaybook(item.workflowId)) return item.context
+  if (!isPlaybookBuilder(item.workflowId)) return item.context
   const { draft: _draft, ...rest } = item.context
   const playbook = rest.playbook
   if (playbook && !playbook.hidden && typeof playbook.value === 'string' && playbook.value) {

@@ -70,6 +70,9 @@ export function approverRoles(policy: CompiledPolicy, workflow: WorkflowDef, ste
 export const mayApprove = (actor: Actor, roles: string[] | undefined, domain: string = DEFAULT_DOMAIN, project?: string, projectApps?: string[] | null) =>
   actor.kind === 'system' || (isPerson(actor) && mayseeProject(actor, domain, project, projectApps) && (!roles || roles.some((r) => hasRole(actor, r, domain, project))));
 
+/** Case fields that name a case, as the app's titles read them (`page_title`: a page's refresh). */
+const TITLE_FIELDS = ['client_name', 'legal_name', 'title', 'subject', 'page_title'];
+
 function summary(r: any, values: Record<string, CaseValue>, workflow?: WorkflowDef, actor?: Actor): CaseSummary {
   // A few leading values for a title, never a hidden one. Names and text first: jsonb sorts keys
   // by length, which would otherwise drop `client_name` behind `pan` and `flags`.
@@ -77,7 +80,8 @@ function summary(r: any, values: Record<string, CaseValue>, workflow?: WorkflowD
   const fields = workflow?.caseType.fields ?? {};
   const texty = (k: string) => { const t = fields[k]?.type; return t?.kind === 'scalar' && (t.name === 'PersonName' || t.name === 'Text'); };
   // Then references: the record a case is about names it when its texts don't (a paper's reading).
-  const rank = (k: string) => (texty(k) ? 2 : fields[k]?.type.kind === 'ref' ? 1 : 0);
+  // The fields a title is read from first (dto `caseTitle`) always make it in.
+  const rank = (k: string) => (TITLE_FIELDS.includes(k) ? 3 : texty(k) ? 2 : fields[k]?.type.kind === 'ref' ? 1 : 0);
   const keys = Object.keys(values).sort((a, b) => rank(b) - rank(a));
   for (const k of keys) {
     if (Object.keys(shown).length >= 4) break;

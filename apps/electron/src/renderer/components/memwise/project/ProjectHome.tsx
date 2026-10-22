@@ -1,8 +1,8 @@
 /**
  * A project's Home (doc 26 §2, mocks `Main`, `LHome`). The chat column asks "What do you want to
  * know about …?" with a question box, questions to try and the recent chats; the page beside it
- * is the project's pinned page: what waits for the person, the project's first dashboard, the
- * pages kept up to date (a domain with a `home:`), and what is running now.
+ * is the project's pinned page: what changed this week on its written pages, what waits for the
+ * person, the pages kept up to date, the project's first dashboard, and what is running now.
  */
 
 import * as React from 'react'
@@ -14,6 +14,8 @@ import { memwiseCasesAtom, memwiseDomainsAtom, memwiseInboxAtom, memwisePlaybook
 import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { getMemwiseApi } from '@/hooks/useMemwise'
 import { useMemwiseDashboard, useMemwiseRecordQuery } from '@/hooks/useMemwiseRecords'
+import { useMemwisePages } from '@/hooks/useMemwisePages'
+import { PagesKeptTable, WhatChangedThisWeek } from '../pages'
 import { getSessionTitle } from '@/utils/session'
 import { DashboardView } from '../domains/DashboardView'
 import { humanize, relativeTime } from '../format'
@@ -58,11 +60,16 @@ export function HomeChatColumn({ project, domain, send, busy }: HomeChatColumnPr
     return () => { stale = true }
   }, [workspaceId, project.id])
   // A domain with a home lists its recent questions (each has its page); others their chats.
-  const asked = useMemwiseRecordQuery(home ? { entity: home.entity, ...projectRecordScope(project), limit: RECENT_SHOWN } : null)
+  const asked = useMemwiseRecordQuery(home?.entity ? { entity: home.entity, ...projectRecordScope(project), limit: RECENT_SHOWN } : null)
+  // A project built on pages (26 §4): the pages its questions made, latest first.
+  const pages = useMemwisePages(home && !home.entity ? project.id : null)
 
   const recent: { key: string; title: string; kind: string; at?: string; open: () => void }[] = []
   for (const r of asked.data?.rows ?? []) {
     recent.push({ key: `r:${r.id}`, title: r.title, kind: t('memwise.shell.page'), open: () => navigate(routes.view.project(project.id, { type: 'record', entity: r.entity, recordId: r.id })) })
+  }
+  for (const p of [...(pages.data ?? [])].filter(p => p.question).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)).slice(0, RECENT_SHOWN)) {
+    recent.push({ key: `p:${p.id}`, title: p.title, kind: t('memwise.shell.page'), at: p.updatedAt, open: () => navigate(routes.view.project(project.id, { type: 'page', pageId: p.id })) })
   }
   for (const id of recentChats) {
     const meta = sessions.get(id)
@@ -126,7 +133,14 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
   const dashboard = useMemwiseDashboard(board ? domain.id : null, board?.id ?? null)
   const home = domain?.home
   const ends = home ? [home.draftState, ...home.endStates].map(s => `'${s}'`).join(', ') : ''
-  const kept = useMemwiseRecordQuery(home ? { entity: home.entity, ...projectRecordScope(project), filter: `not (status in (${ends}))`, limit: 8 } : null)
+  const kept = useMemwiseRecordQuery(home?.entity ? { entity: home.entity, ...projectRecordScope(project), filter: `not (status in (${ends}))`, limit: 8 } : null)
+  // Written pages (26 §4): what changed on them this week, and the ones kept up to date.
+  const pages = useMemwisePages(project.id)
+  const openPage = (pageId: string) => navigate(routes.view.project(project.id, { type: 'page', pageId }))
+  const openChange = (changeId: string) => {
+    const item = waiting.find(i => 'pageChange' in i && i.pageChange?.changeId === changeId)
+    navigate(routes.view.project(project.id, item ? { type: 'waiting', itemId: item.id } : { type: 'change', changeId }))
+  }
   const own = new Set(projectPlaybooks(project, playbooks).map(p => p.id))
   const running = (cases ?? []).filter(c => c.status === 'active' && own.has(c.workflowId) && (!project.stored || caseProject(c) === project.id)).slice(0, 4)
   const subtitle = [project.description, project.appName !== project.name ? t('memwise.shell.fromTemplate', { app: project.appName }) : undefined].filter(Boolean).join(' · ')
@@ -134,6 +148,9 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
   return (
     <ShellPageFrame crumb={t('memwise.shell.homeCrumb')} title={project.name} subtitle={subtitle || undefined}>
       <div data-testid="project-pinned-page">
+        <div className="mb-6 empty:hidden">
+          <WhatChangedThisWeek projectId={project.id} onOpenChange={openChange} onOpenPage={openPage} />
+        </div>
         <ShellSection title={t('memwise.shell.waiting')} count={waiting.length + (project.update ? 1 : 0)}>
           {waiting.length === 0 && !project.update ? (
             <p className="text-label text-tertiary">{t('memwise.shell.nothingWaiting')}</p>
@@ -152,7 +169,12 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
           )}
         </ShellSection>
 
-        {home && <KeptPages project={project} rows={kept.data} />}
+        {home?.entity && <KeptPages project={project} rows={kept.data} />}
+        {(pages.data ?? []).some(p => p.status === 'kept') && (
+          <div className="mb-6">
+            <PagesKeptTable pages={pages.data ?? []} onOpenPage={openPage} now={new Date(now)} />
+          </div>
+        )}
 
         {board && dashboard.data && (
           <ShellSection title={dashboard.data.title}>

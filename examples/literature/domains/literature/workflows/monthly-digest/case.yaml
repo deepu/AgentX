@@ -1,0 +1,5 @@
+case: monthly_digest
+fields:
+  recipients: { type: Email, required: true, description: "Who gets the digest: the team's list" }
+  subject:    { type: Text, description: "The email's subject, like Literature digest, June 2026" }
+  digest:     { type: Text, description: "The month across the kept pages: what changed, what stayed, each with its link" }

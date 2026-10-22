@@ -1,0 +1,120 @@
+name: finds-a-new-trial
+description: >
+  Monday's refresh of "Weight loss" (under GLP-1). PubMed added ATTAIN-MAINTAIN since the page last
+  refreshed; it was stored in Papers last week by another page's refresh but not read yet, so
+  storing it again gives back the same record. "Read a paper" reads it, the writer adds a section
+  on keeping weight off after switching from injections, the compare step finds the answer changed,
+  and the medical affairs lead accepts the change.
+records:
+  Article:
+    - id: arti_attain_maintain
+      pmid: "99001020"
+      doi: 10.1038/s41591-026-04386-7
+      title: "Orforglipron for weight maintenance after switching from injectable incretin therapy (ATTAIN-MAINTAIN): a randomised, double-blind, placebo-controlled, phase 3 trial."
+      journal: Nat Med
+      published: "2026-05-27"
+      year: 2026
+      article_types: [Journal Article, Randomized Controlled Trial, "Clinical Trial, Phase III"]
+      authors: Aronne LJ, Horn DB, le Roux CW, et al.
+      abstract: >-
+        ATTAIN-MAINTAIN was a 52-week, phase 3, randomised, double-blind, placebo-controlled trial of
+        once-daily oral orforglipron for weight maintenance in adults with obesity who had reached a
+        body weight plateau on weekly injectable incretin therapy. In all, 376 participants who had lost
+        weight on tirzepatide (n=205) or semaglutide (n=171) were randomly assigned to switch to
+        orforglipron or placebo. Cohort 1 participants who achieved body weight plateau maintained a model-based
+        estimate (MBE) of 74.7% (s.e.m. 4.05) of body weight reduction with orforglipron compared with
+        an MBE of 49.2% (s.e.m. 3.92) with placebo. In cohort 2, 79.3% of the weight lost on
+        semaglutide was maintained with orforglipron versus 37.6% with placebo. Eli Lilly and Company.
+      status: found
+case:
+  page: page_weight_loss
+  reason: schedule
+tools:
+  page.get:
+    id: page_weight_loss
+    title: Weight loss
+    question: How much weight do people lose on oral GLP-1s?
+    body: "Oral GLP-1s give 9 to 13 points more weight loss than placebo, and 7 points in people with type 2 diabetes."
+    last_refresh: "2026-05-25T07:00:00Z"
+    sums_children: false
+  PubMed.search_articles:
+    pmids: ["99001020"]
+    total_count: 1
+    returned_count: 1
+    query: (orforglipron OR "oral semaglutide") AND (weight OR obesity)
+    query_translation: (orforglipron OR "oral semaglutide"[All Fields]) AND (weight OR obesity)
+    has_more: false
+  PubMed.get_article_metadata:
+    count: 1
+    articles:
+      - identifiers: { pmid: "99001020", doi: 10.1038/s41591-026-04386-7 }
+        title: "Orforglipron for weight maintenance after switching from injectable incretin therapy (ATTAIN-MAINTAIN): a randomised, double-blind, placebo-controlled, phase 3 trial."
+        journal: { title: Nature Medicine, iso_abbreviation: Nat Med }
+        publication_date: { year: "2026", month: "05", day: "27" }
+        article_types: [Journal Article, Randomized Controlled Trial, "Clinical Trial, Phase III"]
+  page.compare: { outcome: material, change: pch_attain_maintain }
+  page.accept_change: { page: page_weight_loss, version: 5 }
+model:
+  searcher:
+    - toolCalls:
+        - { name: page.get, args: { page: page_weight_loss } }
+    - toolCalls:
+        - { name: PubMed.search_articles, args: { query: (orforglipron OR "oral semaglutide") AND (weight OR obesity), datetype: edat, date_from: 2026/05/25, max_results: 50 } }
+    - toolCalls:
+        - { name: PubMed.get_article_metadata, args: { pmids: ["99001020"] } }
+    - toolCalls:
+        - name: literature.article.create
+          args: { pmid: "99001020", doi: 10.1038/s41591-026-04386-7, title: "Orforglipron for weight maintenance after switching from injectable incretin therapy (ATTAIN-MAINTAIN): a randomised, double-blind, placebo-controlled, phase 3 trial.", journal: Nat Med, published: "2026-05-27", year: 2026, article_types: [Journal Article, Randomized Controlled Trial, "Clinical Trial, Phase III"], authors: "Aronne LJ, Horn DB, le Roux CW, et al." }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: found
+            writes: { query: (orforglipron OR "oral semaglutide") AND (weight OR obesity), searched_from: 2026/05/25, found_count: 1, new_articles: [arti_attain_maintain] }
+            rationale: One paper added since the last refresh on 25 May; it is stored but not read yet.
+  extractor:
+    - toolCalls:
+        - { name: literature.article.get, args: { id: arti_attain_maintain } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: extracted
+            writes: { study_type: randomised_trial, phase: phase_3, n: 376, sponsor: Eli Lilly and Company, intervention: Orforglipron once daily by mouth after weekly injections, condition: Obesity after weight loss on injectable incretins }
+            quotes:
+              study_type: randomly assigned to switch to orforglipron or placebo
+              phase: 52-week, phase 3, randomised, double-blind, placebo-controlled trial
+              n: 376 participants who had lost weight
+              sponsor: Eli Lilly and Company.
+              intervention: once-daily oral orforglipron for weight maintenance
+              condition: adults with obesity who had reached a body weight plateau on weekly injectable incretin therapy
+            rationale: A randomised phase 3 trial; 205 and 171 people switched from tirzepatide and semaglutide.
+  writer:
+    - toolCalls:
+        - { name: page.get, args: { page: page_weight_loss } }
+        - { name: literature.article.get, args: { id: arti_attain_maintain } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: written
+            writes:
+              body: |-
+                Oral GLP-1s give 9 to 13 points more weight loss than placebo, and 7 points in people with type 2 diabetes.
+
+                ## Keeping weight off after injections
+
+                ```table
+                {"columns":[{"key":"from","label":"Switched from"},{"key":"drug","label":"Kept on orforglipron"},{"key":"placebo","label":"Kept on placebo"}],"rows":[{"from":"Tirzepatide (205 people)","drug":{"text":"74.7%","quote":{"text":"maintained a model-based estimate (MBE) of 74.7% (s.e.m. 4.05) of body weight reduction with orforglipron","cite":"ATTAIN-MAINTAIN · Aronne LJ et al. Nat Med 2026","href":"https://doi.org/10.1038/s41591-026-04386-7"}},"placebo":"49.2%"},{"from":"Semaglutide (171 people)","drug":{"text":"79.3%","quote":{"text":"79.3% of the weight lost on semaglutide was maintained with orforglipron","cite":"ATTAIN-MAINTAIN · Aronne LJ et al. Nat Med 2026","href":"https://doi.org/10.1038/s41591-026-04386-7"}},"placebo":"37.6%"}]}
+                ```
+              label: 1 new trial
+              change_title: ATTAIN-MAINTAIN added
+              plus: after switching from weekly injections, orforglipron kept about three quarters of the weight lost, against 38 to 49% on placebo.
+            rationale: ATTAIN-MAINTAIN is the first trial of keeping weight off on a pill after injections.
+submit:
+  review: { outcome: accepted }
+expect:
+  outcome: found
+  state: end
+  writes: { found_count: 1, new_articles: [arti_attain_maintain], change: pch_attain_maintain, label: 1 new trial }
+  effects: { page.compare: 1, page.accept_change: 1, page.send_back_change: 0 }   # "Read a paper" runs as its own case
+  entities:
+    Article:
+      - { pmid: "99001020", study_type: randomised_trial, phase: phase_3, n: 376 }

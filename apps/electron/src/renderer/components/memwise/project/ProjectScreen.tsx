@@ -2,7 +2,8 @@
  * One screen of the project shell (doc 26 §2): two cards, the chat about what's open on the left
  * (about 488px, at least 400) and the page on the right. Every MemWise route in the shell lands
  * here; the page column reuses the existing pages (an inbox item, a playbook, a run, a record,
- * a dashboard, a record type's list), and the chat column is `AnchoredChat`.
+ * a dashboard, a record type's list, a written page and its answer changes), and the chat column
+ * is `AnchoredChat`.
  */
 
 import * as React from 'react'
@@ -15,10 +16,13 @@ import { AppShellProvider, useAppShellContext } from '@/context/AppShellContext'
 import { memwiseCasesAtom, memwiseDomainsAtom, memwiseInboxAtom, memwisePlaybooksAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { getMemwiseApi, waitForSession } from '@/hooks/useMemwise'
 import { useMemwiseRecordPage } from '@/hooks/useMemwiseRecords'
+import { useMemwisePage, useMemwisePageChange } from '@/hooks/useMemwisePages'
+import type { MwInboxItem } from '@memwise/shared/protocol'
 import { ALL_PROJECTS, projectRoute, type ProjectView } from '../../../../shared/project-route'
 import { CasePage, InboxDetailPage, PlaybookPage } from '../MemwisePages'
 import { DashboardPage, EntitiesPage } from '../domains/DomainsPages'
 import { RecordPage } from '../records/RecordPages'
+import { PageChangeScreen, PageScreen } from '../pages'
 import { inboxItemStepTitle } from '../format'
 import { AnchoredChat } from './AnchoredChat'
 import { HomeChatColumn, HomePinnedPage } from './ProjectHome'
@@ -55,6 +59,9 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
   // A record's chat is titled with the record (its page loads the same data).
   const recordPage = useMemwiseRecordPage(details.type === 'record' ? details.entity : null, details.type === 'record' ? details.recordId : null)
   const recordTitle = recordPage.data?.title
+  // A written page's chat is titled with the page; an answer change's with its page too.
+  const writtenPage = useMemwisePage(details.type === 'page' ? details.pageId : null)
+  const openChange = useMemwisePageChange(details.type === 'change' ? details.changeId : null)
 
   // A chat a page opened (a step's chat), shown until the person opens another page.
   const [pinned, setPinned] = React.useState<{ route: string; sessionId: string } | null>(null)
@@ -85,9 +92,10 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
 
   const item = details.type === 'waiting' && details.itemId ? inbox?.find(i => i.id === details.itemId) ?? null : null
   const entityType = details.type === 'record' ? domain?.entities.find(e => e.key === details.entity) : undefined
+  const reviewing = item ? pageChangeOf(item) : undefined
   // Stage 3: an app's home and New project talk about the app (its own project, id = app id).
   const appAnchor = details.type === 'app' || details.type === 'new' ? details.appId : null
-  const anchor = appAnchor ? { kind: 'project' as const, id: appAnchor } : all ? { kind: 'waiting' as const, id: ALL_PROJECTS } : chatAnchorFor(project.id, details, item)
+  const anchor = appAnchor ? { kind: 'project' as const, id: appAnchor } : all ? { kind: 'waiting' as const, id: ALL_PROJECTS } : chatAnchorFor(project.id, details, item, openChange.data?.pageId)
   const appOf = (id: string) => apps.find(a => a.id === id)
 
   // "Describe it in chat" from the chat column of New project: the app's create-project chat opens here.
@@ -110,9 +118,10 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
     const api = getMemwiseApi()
     if (!workspaceId || !api || typeof api.memwiseAsk !== 'function') { toast.error(t('memwise.notAvailable')); return }
     try {
-      const r = await api.memwiseAsk(workspaceId, { domain: project.domain, question })
+      const r = await api.memwiseAsk(workspaceId, { domain: project.domain, question, ...(project.stored && project.id !== project.domain ? { project: project.id } : {}) })
       await waitForSession(store, r.sessionId)
-      navigate(routes.view.project(project.id, { type: 'record', entity: r.entity, recordId: r.recordId }))
+      // A project built on pages answers into a draft page (26 §4); the page's chat is the one asked.
+      navigate(routes.view.project(project.id, r.pageId ? { type: 'page', pageId: r.pageId } : { type: 'record', entity: r.entity, recordId: r.recordId }))
     } catch (err) {
       toast.error(t('memwise.home.failed'), { description: err instanceof Error ? err.message : String(err) })
     }
@@ -128,14 +137,15 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
     if (all) return t('memwise.shell.waitingAll')
     switch (details.type) {
       case 'home': return project!.name
-      case 'waiting': return item ? inboxItemStepTitle(item, t) : t('memwise.shell.waiting')
+      case 'waiting': return reviewing ? t('memwise.pages.change.chatTitle', { page: reviewing.pageTitle }) : item ? inboxItemStepTitle(item, t) : t('memwise.shell.waiting')
       case 'dashboard': return domain?.pages.find(p => p.id === details.pageId)?.title ?? t('memwise.dashboard.title')
       case 'playbook': return playbooks?.find(p => p.id === details.workflowId)?.title ?? details.workflowId
       case 'run': return cases?.find(c => c.caseId === details.caseId)?.title ?? t('memwise.shell.run')
       case 'record': return recordTitle ?? entityType?.title ?? t('memwise.shell.record')
       case 'records': return pluralTitle(domain?.entities.find(e => e.key === details.entity)?.title ?? details.entity)
       case 'settings': return t('memwise.shell.projectSettings')
-      case 'page': return t('memwise.shell.page')
+      case 'page': return writtenPage.data?.title ?? t('memwise.shell.page')
+      case 'change': return openChange.data ? t('memwise.pages.change.chatTitle', { page: openChange.data.pageTitle }) : t('memwise.pages.change.title')
       default: return project!.name
     }
   }
@@ -148,7 +158,7 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
       title={title}
       placeholder={details.type === 'new'
         ? t('memwise.projects.new.describePlaceholder', { one: appOf(details.appId)?.nouns?.one ?? t('memwise.projects.project') })
-        : item ? t('memwise.shell.askStep') : entityType ? t('memwise.shell.askAboutThis', { what: entityType.title.toLowerCase() }) : placeholderFor(details.type, all, t)}
+        : reviewing || details.type === 'change' ? t('memwise.pages.change.askPlaceholder') : item ? t('memwise.shell.askStep') : entityType ? t('memwise.shell.askAboutThis', { what: entityType.title.toLowerCase() }) : placeholderFor(details.type, all, t)}
       sessionId={pinnedChat ?? (details.type === 'home' ? details.chatId ?? null : null)}
       alwaysNew={isHome || details.type === 'new'}
       {...(details.type === 'new' ? { onSend: describe } : {})}
@@ -217,10 +227,22 @@ function RecordInItsProject({ entity, recordId, projects }: { entity: string; re
 
 /** The page column: what the route names. */
 function PageColumn({ view, project, projects, stored }: { view: ProjectView; project: ShellProject; projects: ShellProject[]; stored: boolean }) {
-  const { t } = useTranslation()
   const domains = useAtomValue(memwiseDomainsAtom)
+  const inbox = useAtomValue(memwiseInboxAtom)
   const domain = domains?.find(d => d.id === project.domain) ?? null
   const d = view.details
+  const go = (details: Parameters<typeof routes.view.project>[1]) => navigate(routes.view.project(project.id, details))
+  const pageActions = {
+    onOpenPage: (pageId: string) => go({ type: 'page', pageId }),
+    onOpenRecord: (entity: string, recordId: string) => go({ type: 'record', entity, recordId }),
+    onUrlClick: (url: string) => { void window.electronAPI?.openUrl(url) },
+  }
+  // An answer change opens as its review in Waiting for you when it waits for this person.
+  const openChange = (changeId: string) => {
+    const waiting = inbox?.find(i => pageChangeOf(i)?.changeId === changeId)
+    go(waiting ? { type: 'waiting', itemId: waiting.id } : { type: 'change', changeId })
+  }
+  const reviewing = d.type === 'waiting' && d.itemId ? pageChangeOf(inbox?.find(i => i.id === d.itemId)) : undefined
   // Stage 3: the app home and New project belong to an app, not to one project.
   if (d.type === 'app') return <AppHomeScreen key={d.appId} appId={d.appId} />
   if (d.type === 'new') return <NewProjectScreen key={d.appId} appId={d.appId} />
@@ -235,13 +257,31 @@ function PageColumn({ view, project, projects, stored }: { view: ProjectView; pr
       if (project.status === 'draft') return <NewProjectScreen key={project.id} appId={project.appId} draftId={project.id} />
       return <HomePinnedPage project={project} domain={domain} />
     case 'update': return <TemplateUpdateScreen key={d.itemId} projectId={project.id} inboxItemId={d.itemId} />
-    case 'waiting': return d.itemId ? <InboxDetailPage itemId={d.itemId} /> : <WaitingPage projectId={project.id} projects={projects} />
+    case 'waiting':
+      if (reviewing) {
+        return (
+          <PageChangeScreen
+            key={reviewing.changeId}
+            projectId={reviewing.projectId}
+            changeId={reviewing.changeId}
+            {...pageActions}
+            onDone={() => go({ type: 'waiting' })}
+          />
+        )
+      }
+      return d.itemId ? <InboxDetailPage itemId={d.itemId} /> : <WaitingPage projectId={project.id} projects={projects} />
     case 'dashboard': return <DashboardPage key={`${d.domain}:${d.pageId}`} domainId={d.domain} pageId={d.pageId} {...(d.params ? { params: d.params } : {})} />
     case 'playbook': return <PlaybookPage playbookId={d.workflowId} />
     case 'run': return <CasePage caseId={d.caseId} />
     case 'record': return <RecordPage key={`${d.entity}:${d.recordId}`} entity={d.entity} recordId={d.recordId} />
     case 'records': return <EntitiesPage key={`${project.id}:${d.entity}`} domainId={project.domain} entity={d.entity} {...(project.stored ? { projectId: project.id } : {})} />
     case 'settings': return <ProjectSettingsPage project={project} {...(d.tab ? { tab: d.tab } : {})} />
-    case 'page': return <div className="flex h-full items-center justify-center p-8 text-label text-tertiary">{t('memwise.shell.pageMissing')}</div>
+    case 'page': return <PageScreen key={d.pageId} projectId={project.id} pageId={d.pageId} {...pageActions} onOpenChange={openChange} />
+    case 'change': return <PageChangeScreen key={d.changeId} projectId={project.id} changeId={d.changeId} {...pageActions} onDone={() => go({ type: 'waiting' })} />
   }
+}
+
+/** The answer change an inbox item reviews (26 §4), if it is one. */
+function pageChangeOf(item: MwInboxItem | null | undefined) {
+  return item && 'pageChange' in item ? item.pageChange : undefined
 }
