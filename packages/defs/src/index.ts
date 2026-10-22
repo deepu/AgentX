@@ -15,6 +15,7 @@ export * from './project-types.ts';
 export { parseCondition, conditionNames, CONDITION_FUNCTIONS } from './condition.ts';
 export { entityKey, keyOf, splitEntityKey, domainOf, scopedEntities, resolveEntity, domainEntities, hasRole, rolesIn, grantInProject, seesProject, seesProjectIn } from './domains.ts';
 export { crashPoint } from './testing.ts';
+export { fillTitle } from './record-title.ts';
 // Literature (docs/memwise/25-literature-poc.md §4): the one quote normaliser.
 export { normalizeQuoteText, quoteIn, quoteInValue, textsOf, findQuote } from './quotes.ts';
 

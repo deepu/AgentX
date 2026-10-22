@@ -4,7 +4,10 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { loadProject } from '@memwise/defs';
 import { parseSeed } from '../src/projects/seed.ts';
+import { titleOf } from '../src/flow/records.ts';
+import { recordTitle } from '../src/records/context.ts';
 import { MW207, MW301, raveFixture } from './fixtures/fake-rave-http.ts';
 
 const REPO = resolve(import.meta.dir, '../../..');
@@ -43,5 +46,19 @@ describe('Stage 4: the eTMF seeds match Rave', () => {
     expect(text).toContain(`coordinator_email: ${crc.Email}`);
     expect(text).toContain(rave.studies.find((s) => s.StudyOID === MW301)!.StudyName);
   });
-});
 
+  test("a study's title doesn't repeat its code (Rave's name starts with it), in eTMF and EDC", async () => {
+    const { project } = await loadProject(join(REPO, 'examples/etmf'));
+    const mw301 = rave.studies.find((s) => s.StudyOID === MW301)!;
+    expect(mw301.StudyName.startsWith(`${mw301.ProtocolName}:`)).toBe(true);
+    const etmf = project.entities!['etmf.Study']!;
+    const edc = project.entities!['edc.Study']!;
+    const values = { code: mw301.ProtocolName, title: mw301.StudyName, protocol: mw301.ProtocolName, name: mw301.StudyName };
+    for (const def of [etmf, edc]) {
+      expect(recordTitle(def, 'stud_1', values)).toBe(mw301.StudyName);
+      expect(titleOf(def, 'stud_1', values)).toBe(mw301.StudyName);
+    }
+    // A site still reads "101 · Northgate University Hospital".
+    expect(recordTitle(project.entities!['etmf.Site']!, 'site_101', { site_number: '101', name: 'Northgate University Hospital' })).toBe('101 · Northgate University Hospital');
+  });
+});

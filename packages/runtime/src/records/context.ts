@@ -1,7 +1,7 @@
 // What every records module shares (24 §2–§6): entity types by key, their domains, record
 // titles, the reasons step writes carry, and plain-words wording of conditions and values.
 import {
-  DEFAULT_DOMAIN, defaultDomainName, keyOf, resolveEntity, splitEntityKey, type DomainDef, type EntityTypeDef, type FieldDef,
+  DEFAULT_DOMAIN, defaultDomainName, fillTitle, keyOf, resolveEntity, splitEntityKey, type DomainDef, type EntityTypeDef, type FieldDef,
   type ProjectDefs, type StepToken, type WorkflowDef,
 } from '@memwise/defs';
 import { mentionTokens, PgMentionStore, type MentionSourceKind, type Queryable } from '@memwise/db';
@@ -62,14 +62,8 @@ export function firstTextField(def: EntityTypeDef): string | undefined {
 /** How a record is named (24 §4): the `title:` template, else the first Text field, else the id. */
 export function recordTitle(def: EntityTypeDef, id: string, values: Record<string, unknown>): string {
   if (def.title) {
-    let missing = 0;
-    const t = def.title.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, name: string) => {
-      const v = name === 'id' ? id : name === 'status' ? values.status : values[name];
-      if (v === null || v === undefined || v === '') { missing++; return ''; }
-      return typeof v === 'object' ? JSON.stringify(v) : String(v);
-    });
-    const clean = t.replace(/^[\s·:|,–—-]+|[\s·:|,–—-]+$/g, '').trim();
-    if (clean && missing < (def.title.match(/\{/g) ?? []).length) return clean;
+    const t = fillTitle(def.title, (name) => (name === 'id' ? id : name === 'status' ? values.status : values[name]));
+    if (t.title && t.filled > 0) return t.title;
   }
   const f = firstTextField(def);
   const v = f ? values[f] : undefined;
