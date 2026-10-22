@@ -4,11 +4,15 @@ import { _electron as electron } from 'playwright';
 import { mkdirSync } from 'fs';
 const [configDir, projectDir, outDir, scriptPath] = process.argv.slice(2);
 mkdirSync(outDir, { recursive: true });
+// A walkthrough talks to the scripted model only: whatever reaches a real model (a base URL, a key,
+// a token in the shell that started it) never reaches the app.
+const BLOCKED = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'];
+const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !BLOCKED.includes(k)));
 const app = await electron.launch({
   executablePath: process.env.MEMWISE_REPO + '/node_modules/electron/dist/electron',
   args: [process.env.MEMWISE_REPO + '/apps/electron', '--no-sandbox'],
   cwd: process.env.MEMWISE_REPO + '',
-  env: { ...process.env, MEMWISE_CONFIG_DIR: configDir, MEMWISE_PROJECT_DIR: projectDir, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' },
+  env: { ...env, MEMWISE_CONFIG_DIR: configDir, MEMWISE_PROJECT_DIR: projectDir, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' },
   timeout: 120000,
 });
 app.process().stdout.on('data', d => process.stdout.write('[main] ' + d));

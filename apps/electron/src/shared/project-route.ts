@@ -18,6 +18,9 @@
  *   cr         `{crId}`                  (Stage 5: a change request, by id or label `CR-014`)
  *   audit      `{entity}:{recordId}`     (Stage 5: the audit trail; none: the whole project's)
  *   tmf        `{zone}`                  (Stage 5: the TMF index; a zone's sub-page)
+ *   update     `{inboxItemId}`           (Stage 3: review a template update, `template-update:<project>:<to>`)
+ *   app        `{appId}`                 (Stage 3: the app home, "TMF across studies"; under `*`)
+ *   new        `{appId}`                 (Stage 3: New project in that app; under `*`)
  * `*` as the project is "all projects" (Waiting for you across every project).
  */
 
@@ -37,8 +40,11 @@ export type ProjectDetails =
   | { type: 'cr'; crId: string }
   | { type: 'audit'; entity?: string; recordId?: string }
   | { type: 'tmf'; zone?: string }
+  | { type: 'update'; itemId: string }
+  | { type: 'app'; appId: string }
+  | { type: 'new'; appId: string }
 
-export const PROJECT_DETAIL_TYPES = ['home', 'waiting', 'page', 'change', 'dashboard', 'playbook', 'run', 'record', 'records', 'settings', 'cr', 'audit', 'tmf'] as const
+export const PROJECT_DETAIL_TYPES = ['home', 'waiting', 'page', 'change', 'dashboard', 'playbook', 'run', 'record', 'records', 'settings', 'update', 'app', 'new', 'cr', 'audit', 'tmf'] as const
 
 /** Types whose id may be left out. */
 const OPTIONAL_ID: readonly string[] = ['home', 'waiting', 'settings', 'audit', 'tmf']
@@ -71,6 +77,9 @@ export function packProjectDetail(d: ProjectDetails): string {
     case 'record': return `${d.entity}:${d.recordId}`
     case 'records': return d.entity
     case 'settings': return d.tab ?? ''
+    case 'update': return d.itemId
+    case 'app': return d.appId
+    case 'new': return d.appId
     case 'cr': return d.crId
     case 'audit': return d.entity && d.recordId ? `${d.entity}:${d.recordId}` : ''
     case 'tmf': return d.zone ?? ''
@@ -100,6 +109,9 @@ export function unpackProjectDetail(type: string, id: string): ProjectDetails | 
     }
     case 'records': return { type: 'records', entity: id }
     case 'settings': return id ? { type: 'settings', tab: id } : { type: 'settings' }
+    case 'update': return { type: 'update', itemId: id }
+    case 'app': return { type: 'app', appId: id }
+    case 'new': return { type: 'new', appId: id }
     case 'cr': return { type: 'cr', crId: id }
     case 'audit': {
       if (!id) return { type: 'audit' }

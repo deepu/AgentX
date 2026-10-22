@@ -68,7 +68,8 @@ export async function getTransitions(db: Queryable, runId: string): Promise<Tran
 
 /** The run's pinned snapshot (D36). */
 export async function loadWorkflowDef(db: Queryable, id: string, hash: string): Promise<WorkflowDef> {
-  const { rows } = await db.query(`select body from mw.definitions where kind = 'workflow' and id = $1 and hash = $2`, [id, hash]);
+  // Stage 3: a project's own copy of a playbook is a `project_workflow` row of the same id (26 §3).
+  const { rows } = await db.query(`select body from mw.definitions where kind in ('workflow', 'project_workflow') and id = $1 and hash = $2`, [id, hash]);
   if (!rows[0]) throw new Error(`workflow ${id}@${hash} is not indexed`);
   return rows[0].body;
 }
@@ -97,14 +98,21 @@ export interface PolicySources {
   workspace?: PolicyDoc;
   /** Domain id -> its `policy.yaml`. */
   domains: Record<string, PolicyDoc>;
+  /** Stage 3 (26 §3): project id -> the app layer as the project has it (its own policy.yaml, or the version it took). */
+  projects?: Record<string, PolicyDoc>;
 }
 
 /** The row `kernel.index()` writes, from the loaded project. */
-export function policySourcesOf(project: Pick<ProjectDefs, 'workspace' | 'domains' | 'domainPolicy'>): PolicySources {
+export function policySourcesOf(project: Pick<ProjectDefs, 'workspace' | 'domains' | 'domainPolicy' | 'projects'>): PolicySources {
   const domains: Record<string, PolicyDoc> = {};
   for (const [id, d] of Object.entries(project.domains ?? {})) if (d.policy) domains[id] = d.policy;
   if (project.domainPolicy && !domains[DEFAULT_DOMAIN]) domains[DEFAULT_DOMAIN] = project.domainPolicy;
-  return { ...(project.workspace?.policy ? { workspace: project.workspace.policy } : {}), domains };
+  // Only where a project's layer isn't its app's own: an override, or an older template version.
+  const projects: Record<string, PolicyDoc> = {};
+  for (const p of Object.values(project.projects ?? {})) {
+    if (!p.implicit && p.policy && p.policy !== domains[p.app]) projects[p.id] = p.policy;
+  }
+  return { ...(project.workspace?.policy ? { workspace: project.workspace.policy } : {}), domains, ...(Object.keys(projects).length ? { projects } : {}) };
 }
 
 /** The policy sources as last indexed; a database indexed before Phase 6 has only the default domain's. */
@@ -116,15 +124,18 @@ export async function loadPolicySources(db: Queryable): Promise<PolicySources> {
   return { domains: domain ? { [DEFAULT_DOMAIN]: domain } : {} };
 }
 
-/** The workspace and domain layers for a workflow of `domain` (`layersFor`'s inputs). */
-export function policyLayersFor(sources: PolicySources, domain: string = DEFAULT_DOMAIN): { workspacePolicy?: PolicyDoc; domainPolicy?: PolicyDoc } {
-  const domainPolicy = sources.domains[domain];
+/**
+ * The workspace and domain layers for a workflow of `domain` (`layersFor`'s inputs). Stage 3: a
+ * project's own copy of a playbook (`project`) runs under the project's app layer when it has one.
+ */
+export function policyLayersFor(sources: PolicySources, domain: string = DEFAULT_DOMAIN, project?: string): { workspacePolicy?: PolicyDoc; domainPolicy?: PolicyDoc } {
+  const domainPolicy = (project ? sources.projects?.[project] : undefined) ?? sources.domains[domain];
   return { ...(sources.workspace ? { workspacePolicy: sources.workspace } : {}), ...(domainPolicy ? { domainPolicy } : {}) };
 }
 
 /** The workspace and domain layers of a workflow of a loaded project (checks, drafts). */
-export const projectPolicyLayers = (project: Pick<ProjectDefs, 'workspace' | 'domains' | 'domainPolicy'>, workflow: Pick<WorkflowDef, 'domain'>) =>
-  policyLayersFor(policySourcesOf(project), workflow.domain ?? DEFAULT_DOMAIN);
+export const projectPolicyLayers = (project: Pick<ProjectDefs, 'workspace' | 'domains' | 'domainPolicy' | 'projects'>, workflow: Pick<WorkflowDef, 'domain' | 'project'>) =>
+  policyLayersFor(policySourcesOf(project), workflow.domain ?? DEFAULT_DOMAIN, workflow.project);
 
 /** Definition kind of the bound plugins' policy layers (one row for the whole set, written at index). */
 export const PLUGIN_POLICIES_KIND = 'plugin_policies';

@@ -47,6 +47,8 @@ import {
   memwiseEntityTypesAtom,
   memwiseInboxAtom,
   memwiseLastChangeAtom,
+  changesSince,
+  withChange,
   memwisePeopleAtom,
   memwisePlaybooksAtom,
   memwisePluginsAtom,
@@ -93,6 +95,8 @@ export function affectedByChange(change: MwChange): AffectedLists {
     case 'triggers': return { ...NO_LISTS, inbox: true, cases: true }
     // Stage 5: a change request moved (a QA sign-off is an inbox item) or an inspector asked.
     case 'regulated': return { ...NO_LISTS, inbox: true, playbooks: true, drafts: true }
+    // Stage 3: a project was made, started or archived, or its template moved on ("Review template update").
+    case 'projects': return { ...NO_LISTS, inbox: true, cases: true, playbooks: true, domains: true }
     // Pages (26 §4): an answer change waits in the inbox; the domains list their pages.
     case 'pages': return { ...NO_LISTS, inbox: !!change.changeId, cases: !!change.changeId, domains: true }
     default: return { ...NO_LISTS }
@@ -266,7 +270,8 @@ export function useMemwiseData(workspaceId: string | null | undefined): void {
       if (p.domains) void loadDomains(workspaceId, api)
     }
     const off = api.onMemwiseChanged((change: MwChange) => {
-      setLastChange({ seq: ++seq.current, change })
+      const next = ++seq.current
+      setLastChange(prev => withChange(prev, next, change))
       const a = affectedByChange(change)
       const p = pending.current
       pending.current = {
@@ -386,9 +391,10 @@ export function useMemwiseQuery<T>(
   }, [key, workspaceId, nonce])
 
   useEffect(() => {
-    if (!lastChange || handledSeq.current === lastChange.seq) return
-    handledSeq.current = lastChange.seq
-    if (key && refetchRef.current(lastChange.change, dataRef.current)) setNonce(n => n + 1)
+    const changes = changesSince(lastChange, handledSeq.current)
+    if (!changes.length) return
+    handledSeq.current = lastChange!.seq
+    if (key && changes.some(c => refetchRef.current(c, dataRef.current))) setNonce(n => n + 1)
   }, [lastChange, key])
 
   const reload = useCallback(() => setNonce(n => n + 1), [])

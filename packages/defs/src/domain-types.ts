@@ -102,6 +102,8 @@ export interface Grant {
   domain: string;
   /** `{ sponsor: 'spon_…' }`: rows whose `sponsor` column holds one of these ids. */
   scope?: Record<string, string[]>;
+  /** Stage 3 (26 §3, D92): the one project of the domain it holds in; absent: every project. */
+  project?: string;
 }
 
 // ---------------------------------------------------------------- entity additions (24 §4)
@@ -399,6 +401,8 @@ export interface EntityEvent {
   transition?: string;
   /** Who made the change (the version's `by`). */
   by?: string;
+  /** Stage 3: the record's project (absent for an app-scoped record). */
+  project?: string;
   at: string;
 }
 

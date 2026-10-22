@@ -315,7 +315,7 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
   const history = [...versions].reverse().slice(0, 20).map((v) => versionSummary(v, labelsAll));
 
   const page: RecordPage = {
-    entity: key, domain, entityName: def.entity, regulated: isRegulated(project, def), id, title, ...(status ? { status } : {}),
+    entity: key, domain, ...(row.project ? { project: row.project } : {}), entityName: def.entity, regulated: isRegulated(project, def), id, title, ...(status ? { status } : {}),
     layout, fields, parents, related, cases, ...(lifecycle ? { lifecycle } : {}),
     flags: flagsNow, signatures: sigs,
     ...(note ? { notes: { body: note.body, version: note.version, by: labels.get(note.by) ?? (await deps.people.get(note.by))?.name ?? note.by, at: note.at } } : {}),

@@ -6,7 +6,10 @@
 //   node scripts/walkthrough/fake-anthropic.mjs [port] [script.json] [tools.mjs]
 //
 // script.json: [{ "match": "regex", "reply": "markdown" }, ...]; the first match wins. Requests
-// whose system prompt asks for a title get a short title from the user's words.
+// whose system prompt asks for a title get a short title from the user's words. An entry may call
+// one tool instead: { "match": "regex", "tool": { "name": "project_draft", "input": {...} } } (the
+// offered tool whose name ends with `name`); the turn after its result is answered by the entry
+// { "afterTool": "project_draft", "reply": "markdown" }.
 // tools.mjs (optional) exports `toolReply(body)`: for a request it recognises (a playbook step's
 // agent, by the tools it is offered), it returns `{ toolCalls: [{ name, input }] }` with the wire
 // tool names (`step__finish`), and the server answers with those tool calls; `null` falls through
@@ -38,6 +41,37 @@ function systemText(system) {
   return typeof system === 'string' ? system : (system ?? []).map(b => b.text ?? '').join('\n')
 }
 
+/** The tool whose result the last message carries, if it does. */
+function answeredTool(messages) {
+  const last = messages[messages.length - 1]
+  if (!last || last.role !== 'user' || typeof last.content === 'string') return undefined
+  const result = last.content.find(b => b.type === 'tool_result')
+  if (!result) return undefined
+  for (let i = messages.length - 2; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role !== 'assistant' || typeof m.content === 'string') continue
+    const use = m.content.find(b => b.type === 'tool_use' && b.id === result.tool_use_id)
+    if (use) return use.name
+  }
+  return undefined
+}
+
+/** `{ text }`, or `{ tool: { name, input } }` with the offered tool's full name. */
+function turnFor(body) {
+  const answered = answeredTool(body.messages ?? [])
+  if (answered) {
+    const s = script.find(x => x.afterTool && answered.endsWith(x.afterTool))
+    return { text: s?.reply ?? 'Done.' }
+  }
+  const plain = lastUserText(body.messages ?? []).replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim()
+  for (const s of script) {
+    if (!s.tool || !s.match || !new RegExp(s.match, 'i').test(plain)) continue
+    const offered = (body.tools ?? []).find(t => t.name === s.tool.name || t.name.endsWith(`__${s.tool.name}`) || t.name.endsWith(s.tool.name))
+    if (offered) return { tool: { name: offered.name, input: s.tool.input ?? {} }, text: s.reply ?? '' }
+  }
+  return { text: replyFor(body) }
+}
+
 function replyFor(body) {
   const user = lastUserText(body.messages ?? [])
   const sys = systemText(body.system)
@@ -51,11 +85,11 @@ function replyFor(body) {
   // The person's own words come last in the turn; system reminders may be wrapped around them.
   const plain = user.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim()
   // Context the app puts before the person's words (a page, a record) may hold any text, so their
-  // last paragraph is matched first, then the whole turn.
+  // last paragraph is matched first, then the whole turn. Tool entries (`tool`, `afterTool`) aren't replies.
   const last = plain.replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, ' ').trim().split(/\n\s*\n/).filter(Boolean).pop() ?? plain
   for (const text of [last, plain]) {
     for (const s of script) {
-      if (new RegExp(s.match, 'i').test(text)) return s.reply
+      if (!s.tool && s.match && new RegExp(s.match, 'i').test(text)) return s.reply
     }
   }
   return FALLBACK
@@ -87,6 +121,8 @@ const server = createServer((req, res) => {
     }
     let body = {}
     try { body = JSON.parse(raw || '{}') } catch { /* empty */ }
+    const turn = turnFor(body)
+    const text = turn.text
     const model = body.model ?? 'claude-sonnet-5-5'
     const id = `msg_fake_${Date.now().toString(36)}`
     let calls = null
@@ -112,11 +148,12 @@ const server = createServer((req, res) => {
       res.end()
       return
     }
-    const text = replyFor(body)
-    console.log(`[fake-anthropic] ${body.stream ? 'stream' : 'json'} ${model}: ${JSON.stringify(lastUserText(body.messages ?? []).slice(-80))} -> ${JSON.stringify(text.slice(0, 60))}`)
+    console.log(`[fake-anthropic] ${body.stream ? 'stream' : 'json'} ${model}: ${JSON.stringify(lastUserText(body.messages ?? []).slice(-80))} -> ${turn.tool ? `tool ${turn.tool.name}` : JSON.stringify(text.slice(0, 60))}`)
+    const toolUse = turn.tool ? { type: 'tool_use', id: `toolu_fake_${Date.now().toString(36)}`, name: turn.tool.name, input: turn.tool.input } : null
     if (!body.stream) {
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ id, type: 'message', role: 'assistant', model, content: [{ type: 'text', text }], stop_reason: 'end_turn', stop_sequence: null, usage: usage(text) }))
+      const content = [...(text ? [{ type: 'text', text }] : []), ...(toolUse ? [toolUse] : [])]
+      res.end(JSON.stringify({ id, type: 'message', role: 'assistant', model, content, stop_reason: toolUse ? 'tool_use' : 'end_turn', stop_sequence: null, usage: usage(text) }))
       return
     }
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
@@ -132,7 +169,12 @@ const server = createServer((req, res) => {
         return
       }
       send('content_block_stop', { type: 'content_block_stop', index: 0 })
-      send('message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: usage(text).output_tokens } })
+      if (toolUse) {
+        send('content_block_start', { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: toolUse.id, name: toolUse.name, input: {} } })
+        send('content_block_delta', { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: JSON.stringify(toolUse.input) } })
+        send('content_block_stop', { type: 'content_block_stop', index: 1 })
+      }
+      send('message_delta', { type: 'message_delta', delta: { stop_reason: toolUse ? 'tool_use' : 'end_turn', stop_sequence: null }, usage: { output_tokens: usage(text).output_tokens } })
       send('message_stop', { type: 'message_stop' })
       res.end()
     }

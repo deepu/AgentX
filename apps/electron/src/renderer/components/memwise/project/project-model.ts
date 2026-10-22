@@ -5,7 +5,7 @@
  * and the project id is the domain id. Pure functions, so the screens and tests share them.
  */
 
-import type { MwChatAnchor, MwDomain, MwInboxItem, MwPageSummary, MwPlaybookSummary, MwTrigger } from '@memwise/shared/protocol'
+import type { MwApp, MwChatAnchor, MwDomain, MwInboxItem, MwPageSummary, MwPlaybookSummary, MwProjectStatus, MwRecordQueryInput, MwTrigger } from '@memwise/shared/protocol'
 import type { ProjectDetails } from '../../../../shared/project-route'
 import { inboxItemProject } from '@memwise/shared/protocol'
 import { isMetaPlaybook } from '../draft/draft-model'
@@ -16,16 +16,36 @@ export interface ShellProject {
   /** The app it is a copy of (Stage 1: the domain itself). */
   appId: string
   appName: string
+  /**
+   * The domain whose definitions it shows (its playbooks, record types, pages): its app's. In
+   * Stage 1 the project id; from Stage 3 a study `mw301` shows the `etmf` domain.
+   */
+  domain: string
+  /** Every app it runs, `appId` first (D105: a firm's one project running GST and ITR). */
+  apps: string[]
   description?: string
   regulated: boolean
   /** Items waiting for the person in this project. */
   waiting: number
+  /** Stage 3: the project is stored (its records and runs are its own, filtered by its id). */
+  stored?: boolean
+  status?: MwProjectStatus
+  /** An app's own project (no project.yaml). */
+  implicit?: boolean
+  /** A newer template version waits for review (`from`: the version it is on). */
+  update?: { to: number; from?: number }
 }
 
 export interface ShellApp {
   id: string
   name: string
   projects: ShellProject[]
+  /** Stage 3: the app home's link ("All studies"). */
+  home?: { title: string; link?: string }
+  /** Stage 3: the person may make projects here. */
+  canCreate?: boolean
+  /** Stage 3: what a project is called here ({ one: study, many: studies }). */
+  nouns?: { one: string; many: string }
 }
 
 /** The default domain (24 §2): a project with no domains of its own shows as the workspace. */
@@ -73,11 +93,64 @@ export function shellProjects(domains: MwDomain[] | null | undefined, inbox: MwI
   return list.map(d => {
     const name = d.id === DEFAULT_PROJECT ? workspaceName || d.name : d.name
     return {
-      id: d.id, name, appId: d.id, appName: name, regulated: d.regulated,
+      id: d.id, name, appId: d.id, appName: name, domain: d.id, apps: [d.id], regulated: d.regulated,
       ...(d.description ? { description: d.description } : {}),
       waiting: counts.get(d.id) ?? 0,
     }
   })
+}
+
+/**
+ * Projects as stored (Stage 3): each project the person sees, once, with its waiting count from
+ * the server. An app's own project of the default domain shows as Stage 1 showed it: only when it
+ * is the only one or has something in it. Archived projects go last.
+ */
+export function storedShellProjects(apps: MwApp[], domains: MwDomain[] | null | undefined, workspaceName?: string): ShellProject[] {
+  const seen = new Map<string, ShellProject>()
+  for (const app of apps) {
+    for (const p of app.projects) {
+      if (seen.has(p.id)) continue
+      const domain = domains?.find(d => d.id === p.app)
+      const name = p.implicit && p.id === DEFAULT_PROJECT ? workspaceName || p.name : p.name
+      seen.set(p.id, {
+        id: p.id, name, appId: p.app, appName: p.app === app.id ? app.title : p.appTitle, domain: p.app, apps: p.apps,
+        regulated: domain?.regulated ?? false, waiting: p.waiting, stored: true, status: p.status,
+        ...(domain?.description && p.implicit ? { description: domain.description } : {}),
+        ...(p.implicit ? { implicit: true } : {}), ...(p.update ? { update: { ...p.update, from: p.templateVersion } } : {}),
+      })
+    }
+  }
+  const all = [...seen.values()]
+  const own = all.filter(p => !(p.implicit && p.id === DEFAULT_PROJECT))
+  const defaultDomain = domains?.find(d => d.id === DEFAULT_PROJECT)
+  const shownDefault = all.filter(p => p.implicit && p.id === DEFAULT_PROJECT && (p.waiting > 0 || (defaultDomain ? hasContent(defaultDomain) : false)))
+  const list = own.length ? [...own, ...shownDefault] : all
+  const rank = (p: ShellProject) => (p.status === 'archived' ? 1 : 0)
+  return list.map((p, i) => ({ p, i })).sort((a, b) => rank(a.p) - rank(b.p) || a.i - b.i).map(x => x.p)
+}
+
+/** Apps as stored, each with the shown projects that run it (a project running two apps is under both). */
+export function storedShellApps(apps: MwApp[], projects: ShellProject[]): ShellApp[] {
+  const out: ShellApp[] = []
+  for (const app of apps) {
+    const own = projects.filter(p => p.apps.includes(app.id))
+    if (!own.length && !app.canCreate) continue
+    out.push({
+      id: app.id, name: app.title, projects: own, canCreate: app.canCreate, nouns: app.nouns,
+      ...(app.home ? { home: app.home } : {}),
+    })
+  }
+  return out
+}
+
+/** The records a project's lists show: its domain's, and only its own once projects are stored. */
+export function projectRecordScope(project: Pick<ShellProject, 'id' | 'domain' | 'stored'>): Pick<MwRecordQueryInput, 'domain' | 'project'> {
+  return { domain: project.domain, ...(project.stored ? { project: project.id } : {}) }
+}
+
+/** The run's project: Stage 3's own field, else (Stage 1) its playbook's domain. */
+export function caseProject(c: { project?: string; domain?: string }): string {
+  return c.project ?? c.domain ?? DEFAULT_PROJECT
 }
 
 function hasContent(d: MwDomain): boolean {
@@ -100,10 +173,17 @@ export function pickProject(projects: ShellProject[], wanted?: string | null, la
   return projects.find(p => p.id === wanted) ?? projects.find(p => p.id === last) ?? projects[0] ?? null
 }
 
-/** A project's playbooks for the sidebar (the meta playbooks that build playbooks are left out). */
-export function projectPlaybooks(projectId: string, playbooks: MwPlaybookSummary[] | null | undefined): MwPlaybookSummary[] {
-  return (playbooks ?? []).filter(p => (p.domain ?? DEFAULT_PROJECT) === projectId && !isMetaPlaybook(p.id))
+/**
+ * A project's playbooks for the sidebar: every app's it runs (the meta playbooks that build
+ * playbooks are left out). Pass the project, or (Stage 1) a domain id.
+ */
+export function projectPlaybooks(project: string | Pick<ShellProject, 'apps'>, playbooks: MwPlaybookSummary[] | null | undefined): MwPlaybookSummary[] {
+  const apps = typeof project === 'string' ? [project] : project.apps
+  return (playbooks ?? []).filter(p => apps.includes(p.domain ?? DEFAULT_PROJECT) && !isMetaPlaybook(p.id) && !APP_PLAYBOOKS.includes(p.id))
 }
+
+/** The app's own playbooks (`@memwise/defs` APP_PLAYBOOKS): they make projects, so no project lists them. */
+export const APP_PLAYBOOKS: readonly string[] = ['create-project']
 
 /**
  * The short tag beside a playbook in the sidebar: how it starts. `email` for an incoming message,
@@ -207,4 +287,9 @@ export function chatAnchorFor(projectId: string, details: ProjectDetails, item?:
     case 'tmf': return { kind: 'tmf', id: projectId }
     default: return { kind: 'project', id: projectId }
   }
+}
+
+/** The inbox item id of a project's template update (as Waiting across projects names it). */
+export function updateItemId(project: Pick<ShellProject, 'id' | 'update'>): string | undefined {
+  return project.update ? `template-update:${project.id}:${project.update.to}` : undefined
 }

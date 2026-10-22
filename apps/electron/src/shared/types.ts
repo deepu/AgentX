@@ -867,6 +867,23 @@ export interface ElectronAPI {
   memwiseListInspectorQuestions(workspaceId: string, filter: { project?: string; linkId?: string; open?: boolean }): Promise<import('@memwise/shared/protocol').MwInspectorQuestion[]>
   memwiseAnswerInspectorQuestion(workspaceId: string, input: { questionId: string; answer: string }): Promise<import('@memwise/shared/protocol').MwInspectorQuestion>
   memwiseGetTmfIndex(workspaceId: string, input: { project: string; study?: string; zone?: string }): Promise<import('@memwise/shared/protocol').MwTmfIndex>
+  // Stage 3: projects inside apps (docs/memwise/26-projects-and-pages.md §3)
+  memwiseListApps(workspaceId: string): Promise<import('@memwise/shared/protocol').MwApp[]>
+  memwiseGetAppHome(workspaceId: string, appId: string): Promise<import('@memwise/shared/protocol').MwAppHome>
+  memwisePublishTemplate(workspaceId: string, input: import('@memwise/shared/protocol').MwPublishTemplateInput): Promise<import('@memwise/shared/protocol').MwPublishTemplateResult>
+  memwiseListProjects(workspaceId: string, filter?: { app?: string }): Promise<import('@memwise/shared/protocol').MwProjectSummary[]>
+  memwiseGetProject(workspaceId: string, projectId: string): Promise<import('@memwise/shared/protocol').MwProjectDetail | null>
+  memwiseCreateProject(workspaceId: string, input: import('@memwise/shared/protocol').MwCreateProjectInput): Promise<import('@memwise/shared/protocol').MwProjectDetail>
+  memwiseUpdateProject(workspaceId: string, input: import('@memwise/shared/protocol').MwUpdateProjectInput): Promise<import('@memwise/shared/protocol').MwProjectDetail>
+  memwiseStartProject(workspaceId: string, projectId: string): Promise<import('@memwise/shared/protocol').MwProjectDetail>
+  memwiseArchiveProject(workspaceId: string, projectId: string): Promise<import('@memwise/shared/protocol').MwProjectDetail>
+  memwiseDiscardProject(workspaceId: string, projectId: string): Promise<void>
+  memwiseDescribeProject(workspaceId: string, input: import('@memwise/shared/protocol').MwDescribeProjectInput): Promise<import('@memwise/shared/protocol').MwDescribeProjectResult>
+  memwiseSaveAsTemplate(workspaceId: string, input: import('@memwise/shared/protocol').MwSaveAsTemplateInput): Promise<import('@memwise/shared/protocol').MwSaveAsTemplateResult>
+  memwiseReviewTemplateUpdate(workspaceId: string, input: import('@memwise/shared/protocol').MwTemplateUpdateInput): Promise<import('@memwise/shared/protocol').MwTemplateUpdateReview | null>
+  memwiseTakeTemplateUpdate(workspaceId: string, input: import('@memwise/shared/protocol').MwTemplateUpdateInput): Promise<import('@memwise/shared/protocol').MwTakeTemplateUpdateResult>
+  memwiseSkipTemplateUpdate(workspaceId: string, input: import('@memwise/shared/protocol').MwTemplateUpdateInput): Promise<void>
+  memwiseWaitingAll(workspaceId: string): Promise<import('@memwise/shared/protocol').MwWaitingGroup[]>
   onMemwiseChanged(callback: (change: import('@memwise/shared/protocol').MwChange) => void): () => void
 
   // Automations

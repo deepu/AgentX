@@ -552,6 +552,14 @@ export function formatMemwiseContextForPrompt(ctx: SessionMemwiseContext): strin
     lines.push('- `playbook_check`: validates the draft: its checks, then its AI checks on the request\'s past cases, compared with what people decided ("41 of 42 match"). Run it after every change and report the result in one line.');
     lines.push('- `playbook_finish` is not used here: the person sends the request to QA with their signature on its page, and QA\'s signature publishes it.');
     lines.push('Never edit playbook files with Write, Edit or Bash: the live playbook changes only when QA signs the change request.');
+  } else if (ctx.conversation && ctx.project) {
+    lines.push('');
+    lines.push('## Project tools');
+    lines.push('');
+    lines.push('This chat is a step of the app\'s create-project playbook: it makes a new project (a study, a topic) as a draft.');
+    lines.push('- `project_options`: the template cards, the projects that may be copied, roles, pages, playbooks and people. Read it first.');
+    lines.push('- `project_draft`: the first call makes the draft from a template card or a copy (records are never copied) and finishes this step; later calls change its name, study, people or settings.');
+    lines.push('Keep the chat short: say in a few lines what the draft starts from and what it leaves out. The draft page beside the chat shows the rest, and nothing runs until the person presses Start there.');
   } else if (ctx.conversation) {
     lines.push('');
     lines.push('## Playbook tools');

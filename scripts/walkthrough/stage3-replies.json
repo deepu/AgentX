@@ -1,0 +1,37 @@
+[
+ {
+  "match": "start study mw-311|ask your first question",
+  "reply": "",
+  "tool": {
+   "name": "project_draft",
+   "input": {
+    "name": "Study MW-311",
+    "copyFrom": "mw301",
+    "study": "MW-311",
+    "settings": {
+     "phase": 3,
+     "next_milestone": {
+      "label": "First site",
+      "date": "2027-02-01"
+     }
+    }
+   }
+  }
+ },
+ {
+  "afterTool": "project_draft",
+  "reply": "It starts from MW-301's way of working, including the 5 days between reminders it changed.\n\nRecords start empty. Sites and staff come in when you upload the site list or connect your CTMS.\n\nCheck the draft on the right, then press **Start study**."
+ },
+ {
+  "match": "what needs me first",
+  "reply": "**Two things across your studies.** The template update for MW-207 decides how it chases documents, so I'd review that first. Then the visit report in MW-301."
+ },
+ {
+  "match": "template update|what's in",
+  "reply": "One change to a playbook you use: **Chase missing documents** waits 5 days between reminders. This project already does that, so nothing changes here."
+ },
+ {
+  "match": ".",
+  "reply": "Here's what the records say. Ask me about a study, a site or a document."
+ }
+]

@@ -1,0 +1,19 @@
+# Study MW-301, a Phase 3 study made from the eTMF template at version 4. It waits 5 days for a
+# site's missing documents instead of 3 (overrides/workflows/chase-missing/workflow.yaml).
+app: etmf
+version: 4
+template: phase3
+name: Study MW-301
+study: MW-301
+people:
+  - { email: anika.rao@northlight.example, name: Anika Rao, roles: [study_manager], note: owner }
+  - { email: priya.shah@northlight.example, name: Priya Shah, roles: [cra], note: writes visit reports }
+  - { email: tom.okafor@northlight.example, name: Tom Okafor, roles: [tmf_specialist], note: signs for filing }
+connections:
+  storage: { title: Study TMF storage }
+  email:   { title: Study email }
+  pubmed:  { title: PubMed, access: read }
+  vault:   { title: Veeva Vault, access: read }
+settings:
+  phase: 3
+  next_milestone: { label: Inspection, date: "2026-11-16" }

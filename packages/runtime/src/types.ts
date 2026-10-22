@@ -5,6 +5,7 @@ import type { ModelProvider, ModelRoleConfig, SecretProvider, ToolDefinition } f
 import type { StepResult, StepRunInput } from '@memwise/step-engine';
 import type pg from 'pg';
 import type { RunEvent } from './machine.ts';
+import type { KernelStage3 } from './projects/types.ts';
 
 /** Runs one agent step. Registered as the DBOS workflow `memwise.step.agent`; tests swap in a fake. */
 export type StepExecutor = (input: StepRunInput) => Promise<StepResult>;
@@ -116,9 +117,15 @@ export interface StartRunInput {
   workflowHash?: string;
   /** Who started it, recorded in the input provenance. */
   by?: string;
+  /**
+   * Stage 3 (26 §3): the project to run it in. Its own copy of the playbook runs (the template at
+   * the version it took, plus its overrides); a draft or archived project runs nothing. Absent:
+   * the project of `workflowHash`'s copy, else the app's own project (id = the domain id).
+   */
+  project?: string;
 }
 
-export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4, KernelPhase5, KernelPhase6, KernelPages, KernelRegulated {
+export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4, KernelPhase5, KernelPhase6, KernelStage3, KernelPages, KernelRegulated {
   /** Load the project folder and index it; returns the loader's diagnostics. */
   index(): Promise<Diagnostic[]>;
   startRun(input: StartRunInput): Promise<{ runId: string; caseId: string }>;
@@ -215,7 +222,13 @@ export interface SubmitResult {
   message?: string;
 }
 
-export type InboxItem =
+/**
+ * What waits for a person (Waiting for you). Stage 3 (26 §3): each item carries its project, so
+ * Waiting for you can be one project's or every project's, grouped by project.
+ */
+export type InboxItem = InboxItemBody & { project?: string };
+
+export type InboxItemBody =
   | { kind: 'input' | 'decision'; id: string; stepRunId: string; runId: string; caseId: string; workflowId: string;
       stepId: string; assignee?: string; since: string; dueAt?: string;
       /** Pages (26 §4): the step reviews an answer change ("Review an answer change"). */
@@ -248,6 +261,8 @@ export type InboxItem =
 
 export interface CaseSummary {
   caseId: string; runId: string; workflowId: string; workflowVersion: number; workflowHash: string;
+  /** Stage 3: the project the run belongs to. */
+  project?: string;
   state: string; status: RunStatus; stopReason?: string; createdAt: string; updatedAt: string;
   /** For titles: a few leading values. */
   values: Record<string, unknown>;
@@ -304,6 +319,8 @@ export type KernelChange =
   | { kind: 'regulated'; project: string }
   /** Stage 5: an entry was added to a project's audit log. */
   | { kind: 'audit'; project: string }
+  /** Stage 3: a project was made, started, archived, changed, or its template moved on. */
+  | { kind: 'projects'; projectId?: string }
   /** Pages (26 §4): a page or a page change was written. */
   | { kind: 'pages'; project?: string; pageId?: string; changeId?: string };
 
@@ -311,7 +328,8 @@ export interface KernelPhase2 {
   readonly people: PeopleService;
   submitStep(input: SubmitStepInput): Promise<SubmitResult>;
   inbox(actor: Actor): Promise<InboxItem[]>;
-  listCases(filter: { workflowId?: string; status?: RunStatus; limit?: number }, actor: Actor): Promise<CaseSummary[]>;
+  /** Stage 3: `project` narrows to one project; a person sees only runs of projects they can see. */
+  listCases(filter: { workflowId?: string; status?: RunStatus; limit?: number; project?: string }, actor: Actor): Promise<CaseSummary[]>;
   getCaseView(caseId: string, actor: Actor): Promise<CaseView | undefined>;
   liveCounts(workflowId: string): Promise<LiveCounts>;
   explain(input: ExplainInput): Promise<Explanation>;
@@ -747,6 +765,8 @@ export interface RecordPage {
   /** Entity key. */
   entity: string;
   domain: string;
+  /** Stage 3: the project it belongs to (absent for records every project of the app shares). */
+  project?: string;
   entityName: string;
   regulated: boolean;
   id: string;
@@ -871,6 +891,8 @@ export interface RecordQuery {
   columns?: string[];
   limit?: number;
   offset?: number;
+  /** Stage 3: only this project's records (app-scoped types are shared and ignore it). */
+  project?: string;
 }
 
 export interface RecordQueryResult {
@@ -930,7 +952,8 @@ export interface DomainsService {
 export interface RecordsService {
   page(entity: string, id: string, actor: Actor, opts?: { review?: { stepRunId: string } }): Promise<RecordPage | undefined>;
   /** Create a record as a person or the system (seeding, the app's "New"); steps use the entity tools. */
-  create(input: { entity: string; values: Record<string, unknown>; status?: string; reason?: string; id?: string }, actor: Actor): Promise<RecordWriteResult>;
+  /** Stage 3: `project`, the project the record belongs to (absent: the app's own project; ignored for an app-scoped type). */
+  create(input: { entity: string; values: Record<string, unknown>; status?: string; reason?: string; id?: string; project?: string }, actor: Actor): Promise<RecordWriteResult>;
   update(input: { entity: string; id: string; values: Record<string, unknown>; reason?: string }, actor: Actor): Promise<RecordWriteResult>;
   transition(input: { entity: string; id: string; transition: string; reason?: string }, actor: Actor): Promise<RecordWriteResult>;
   query(query: RecordQuery, actor: Actor): Promise<RecordQueryResult>;
@@ -1041,6 +1064,7 @@ export interface WaitingCondition { record: RecordRef; condition: string; holds:
 
 export type { DashboardBlock as _DashboardBlock, FreePageDef as _FreePageDef };
 
+export type * from './projects/types.ts';
 // ================================================================ Projects and pages (docs/memwise/26-projects-and-pages.md §4)
 
 export type PageStatus = 'draft' | 'kept' | 'archived';
