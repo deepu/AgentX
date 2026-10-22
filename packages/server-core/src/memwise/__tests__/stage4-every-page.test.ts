@@ -249,4 +249,20 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     expect(await api.call<{ applied: boolean }>(manager, ch.RECORDS_CHAT_FILTER_CLEAR, { entity: 'etmf.Site', project: 'mw301' })).toEqual({ applied: true })
     expect(await api.call(manager, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site', project: 'mw301' })).toBeNull()
   }, 60_000)
+
+  it('"Save as a page" keeps the page in the study: in its list and tree, not the other study\'s', async () => {
+    const made = await api.call<{ applied: boolean; page?: { id: string } }>(manager, ch.PAGES_CREATE, {
+      projectId: 'mw301', title: 'Sites: Missing documents', status: 'kept',
+      body: '```records\nentity: etmf.Site\nfilter: missing_documents > 0\n```\n',
+    })
+    expect(made.applied).toBe(true)
+    const id = made.page!.id
+    const listed = async (projectId: string) => (await api.call<{ id: string }[]>(manager, ch.PAGES_LIST, { projectId })).map((p) => p.id)
+    expect(await listed('mw301')).toContain(id)
+    expect(await listed('mw207')).not.toContain(id)
+    const inTree = async (project: string) => (await api.call<{ kind: string; pageId?: string }[]>(manager, ch.RECORDS_TREE, { domain: 'etmf', project }))
+      .some((n) => n.kind === 'page' && n.pageId === id)
+    expect(await inTree('mw301')).toBe(true)
+    expect(await inTree('mw207')).toBe(false)
+  }, 60_000)
 })

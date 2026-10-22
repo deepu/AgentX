@@ -112,7 +112,8 @@ export async function buildTree(deps: RecordsDeps, _service: RecordsService, dom
   const hasChildren = (def: EntityTypeDef) => childrenOf(def).length > 0 || pagesUnder(def).length > 0;
 
   return withActor(deps.pool, actor, async (db) => {
-    const written = await writtenPages.list(db, domain);
+    // A study's tree holds its own written pages (Stage 3), not every study's of the app.
+    const written = (await writtenPages.list(db, domain)).filter((p) => !opts.project || p.project === opts.project);
     const out: TreeNode[] = [];
     const recordNodes = (def: EntityTypeDef, r: RecordQueryResult): TreeNode[] => r.rows.map((row) => ({
       kind: 'record', entity: keyOf(def), id: row.id, title: row.title, ...(row.status ? { status: row.status } : {}), hasChildren: hasChildren(def),
