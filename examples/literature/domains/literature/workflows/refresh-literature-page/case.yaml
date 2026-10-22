@@ -1,0 +1,22 @@
+case: literature_page_refresh
+fields:
+  page_title:    { type: Text, description: "The page's title when the refresh started: it names the run" }
+  page:          { type: Text, required: true, description: "The page being refreshed (its id)" }
+  reason:        { type: Text, description: "What started it: schedule, manual or summary (a sub-page changed)" }
+  asked_by:      { type: Text, description: "The person who asked for it, when someone did" }
+  query:         { type: Text, description: The PubMed search used this time }
+  searched_from: { type: Text, description: "The entry date searched from (YYYY/MM/DD)" }
+  found_count:   { type: Number, description: How many papers PubMed added since the last refresh }
+  new_articles:  { type: List<Ref<Article>>, description: "The papers found that aren't read yet" }
+  body:          { type: Text, description: "The page as the writer rewrote it" }
+  title:         { type: Text, description: "The page's title, when the writer changed it" }
+  label:         { type: Text, description: "What the refresh found, for the waiting list, like 1 new trial" }
+  change_title:  { type: Text, description: "What changed, for the page's history, like ATTAIN-MAINTAIN added" }
+  plus:          { type: Text, description: "When the headline stays: what the change adds, in one sentence" }
+  left_out:      { type: List<LeftOut>, description: "Papers the writer looked at and left out, with why" }
+  change:        { type: Text, description: "The answer change waiting for review" }
+types:
+  LeftOut:
+    title: Text
+    href:  Text
+    why:   Text

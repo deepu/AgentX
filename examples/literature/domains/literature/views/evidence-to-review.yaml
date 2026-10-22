@@ -1,6 +1,0 @@
-title: Evidence to review
-entity: Evidence
-filter: "status = 'kept'"
-group: topic
-sort: [outcome]
-columns: [article, intervention, comparator, outcome, timepoint, effect, ci_low, ci_high, unit, quote]

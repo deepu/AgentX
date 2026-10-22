@@ -1,0 +1,52 @@
+name: answered-from-a-page
+description: >
+  Dr Ruth Adeyemi asks whether oral semaglutide 25 mg is as good as the injection. The "Weight loss"
+  page already answers it, so PubMed isn't searched; the writer drafts the reply with its
+  references, the medical affairs lead signs it, and it is emailed to her.
+case:
+  sender: ruth.adeyemi@example.org
+  subject: Oral semaglutide 25 mg vs the injection
+  question: Is oral semaglutide 25 mg as good as the weekly 2.4 mg injection for weight loss?
+  received_at: "2026-06-02T09:14:00Z"
+tools:
+  page.list:
+    - { id: page_weight_loss, title: Weight loss, status: kept, question: How much weight do people lose on oral GLP-1s?, headline: "Oral GLP-1s give 9 to 13 points more weight loss than placebo.", parent: page_glp1, every: mon }
+  page.get:
+    id: page_weight_loss
+    title: Weight loss
+    body: "Oral GLP-1s give 9 to 13 points more weight loss than placebo.\n\n## Note under the chart\n\nAn indirect comparison found oral semaglutide 25 mg and the weekly 2.4 mg injection gave similar weight loss (difference 1.0 points, 95% CI -1.6 to 3.6)."
+approvals:
+  email.send: approve        # the platform asks a person before any message goes
+model:
+  searcher:
+    - toolCalls:
+        - { name: page.list, args: {} }
+    - toolCalls:
+        - { name: page.get, args: { page: page_weight_loss } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: found
+            writes:
+              evidence: "Weight loss (kept page): an indirect comparison found oral semaglutide 25 mg and the weekly 2.4 mg injection gave similar weight loss, a difference of 1.0 points (95% CI -1.6 to 3.6); it compares two separate trials."
+              pages: [page_weight_loss]
+            rationale: The Weight loss page answers it; no need to search PubMed.
+  writer:
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: drafted
+            writes:
+              reply: "Dear Dr Adeyemi,\n\nThe two have not been compared head to head. An indirect comparison of separate trials found similar weight loss with oral semaglutide 25 mg and the weekly 2.4 mg injection: a difference of 1.0 percentage points (95% CI -1.6 to 3.6) [1]. Because the trials were separate, this is weaker evidence than a direct trial.\n\n[1] Plotkin M et al. 2026."
+              references: ["Plotkin M et al. 2026"]
+            rationale: A direct answer, the number with its interval, and what it can't tell.
+submit:
+  sign: { outcome: signed }
+expect:
+  outcome: done
+  state: end
+  writes: { pages: [page_weight_loss] }
+  effects: { literature.enquiry.create: 1, literature.enquiry.transition: 2, email.send: 1, PubMed.search_articles: 0 }
+  entities:
+    Enquiry:
+      - { from: ruth.adeyemi@example.org, references: [Plotkin M et al. 2026], pages: [page_weight_loss] }

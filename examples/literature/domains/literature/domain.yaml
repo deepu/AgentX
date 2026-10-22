@@ -1,16 +1,17 @@
 domain: literature
 name: Literature
-description: "Ask what the published literature says; keep watching the questions that matter, with a weekly PubMed search, AI screening checked by a person, and the evidence kept from the papers."
+description: "Ask what the published literature says. Each question becomes a page; keep the ones that matter and they refresh from PubMed every week, with every change to the answer reviewed. Papers are read once into Papers; doctors' enquiries are answered from the pages first."
 owner: lead                    # flags, held automations and triggered cases go to the medical affairs lead
-home:
-  ask: What does the literature say?
-  placeholder: Ask a question, e.g. How much weight do adults with type 2 diabetes lose on oral GLP-1s?
-  entity: Topic
-  question: question
-  name: name
-  page: answer
+home:                          # no entity: a question makes a draft page (26 §4)
+  ask: What do you want to know from the literature?
+  placeholder: Ask a question the evidence can answer
   suggested:
+    - How often do people stop oral GLP-1s because of side effects?
+    - Does weight come back after switching from injections to a pill?
     - How much weight do adults with type 2 diabetes lose on oral GLP-1 receptor agonists, compared with placebo?
-    - Does orforglipron lower HbA1c more than oral semaglutide in type 2 diabetes?
-    - What are the gastrointestinal side effects of oral GLP-1 receptor agonists?
     - Do SGLT2 inhibitors reduce heart failure hospitalisation in people without diabetes?
+pages:                         # kept pages refresh with the Literature's own "Refresh a page"
+  refresh: refresh-literature-page
+  reviewer: lead               # the lead reviews answer changes, besides whoever kept the page
+  every: mon
+intake: { address: enquiries } # doctors' questions emailed in start "Answer an enquiry"

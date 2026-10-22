@@ -1,0 +1,12 @@
+case: enquiry_answer
+fields:
+  sender:      { type: Email, required: true, description: Who asked }
+  subject:     { type: Text, required: true }
+  question:    { type: Text, required: true, description: The enquiry as it came in }
+  received_at: DateTime
+  enquiry:     { type: Ref<Enquiry>, description: The enquiry kept in Enquiries }
+  evidence:    { type: Text, description: "What the pages and papers say about the question, with their links" }
+  pages:       { type: List<Text>, description: The kept pages the answer came from }
+  reply:       { type: Text, description: "The reply: plain words for a doctor, every claim with its reference" }
+  references:  { type: List<Text>, description: "DOI or PubMed links, and the pages drawn on" }
+  sign_comment: { type: Text, description: "What the medical lead asked to change, when they sent it back" }

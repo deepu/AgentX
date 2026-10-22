@@ -11,5 +11,5 @@ map:
 outcomeFrom: { tool: literature.article.get, field: status }
 outcomes: [found, read]
 ---
-Read the paper's record. A paper another topic's check has already read keeps what was read from
+Read the paper's record. A paper another page's refresh has already read keeps what was read from
 it, so the case ends here: each paper is read once.

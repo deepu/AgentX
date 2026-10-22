@@ -203,7 +203,8 @@ export function caseTitle(values: Record<string, unknown>, caseId: string, caseT
     const plugin = plain(values.plugin)
     if (typeof plugin === 'string' && plugin.trim()) return `Bind ${project ? pluginTitle(project, plugin.trim()) : plugin.trim()}`
   }
-  for (const key of ['client_name', 'legal_name', 'title', 'subject']) {
+  // `page_title`: a page's refresh is named after the page.
+  for (const key of ['client_name', 'legal_name', 'title', 'subject', 'page_title']) {
     const v = plain(values[key])
     if (typeof v === 'string' && v.trim()) return v.trim()
   }

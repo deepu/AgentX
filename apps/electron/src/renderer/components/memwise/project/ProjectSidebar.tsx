@@ -9,16 +9,17 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { BookOpen, ChevronDown, ChevronRight, Database, FileText, FolderTree, LayoutDashboard, MessageCircle, Plus, RefreshCw, Settings, SquareCheckBig } from 'lucide-react'
-import type { MwDomain, MwTreeNode } from '@memwise/shared/protocol'
+import type { MwDomain, MwPageSummary, MwTreeNode } from '@memwise/shared/protocol'
 import { cn } from '@/lib/utils'
 import { navigate, routes } from '@/lib/navigate'
 import { memwiseLastChangeAtom, memwiseNewPlaybookDialogAtom, memwisePeopleOnlyAtom, memwisePlaybooksAtom, memwiseStatusAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { getMemwiseApi } from '@/hooks/useMemwise'
 import { useMemwiseTriggers } from '@/hooks/useMemwiseRecords'
+import { useMemwisePages } from '@/hooks/useMemwisePages'
 import type { ProjectDetails } from '../../../../shared/project-route'
 import { nestTree, treeNodeKey } from '../records/record-model'
 import { ProjectSwitcher } from './ProjectSwitcher'
-import { initials, playbookStartTag, projectPlaybooks, projectRecordTypes, type ShellApp, type ShellProject } from './project-model'
+import { initials, playbookStartTag, projectPlaybooks, projectRecordTypes, writtenPagePlace, type ShellApp, type ShellProject } from './project-model'
 import { useMemwiseChangeRequest } from '@/hooks/useMemwiseRegulated'
 import { keepsTmf } from '../regulated/RegulatedDomainLinks'
 import { TMF_ZONES, zoneName } from '../regulated/regulated-model'
@@ -50,6 +51,9 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
   const ownPlaybooks = projectPlaybooks(project.id, playbooks)
   const shownPlaybooks = showAllPlaybooks ? ownPlaybooks : ownPlaybooks.slice(0, PLAYBOOKS_SHOWN)
   const records = projectRecordTypes(domain)
+  // Written pages list above as pages (26 §4); one written under a record stays in the record tree.
+  const pageList = useMemwisePages(project.id).data
+  const written = React.useMemo(() => new Map((pageList ?? []).map(p => [p.id, p])), [pageList])
   const me = status?.me
   // Stage 5: a change request is under its playbook; the TMF index is a live page with a sub-page per zone.
   const { data: openChange } = useMemwiseChangeRequest(details.type === 'cr' ? project.id : null, details.type === 'cr' ? details.crId : null)
@@ -98,7 +102,8 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
             ))}
           </>
         )}
-        {domain && <PageTree domain={domain} projectId={project.id} details={details} />}
+        <WrittenPages projectId={project.id} details={details} />
+        {domain && <PageTree domain={domain} projectId={project.id} details={details} written={written} />}
 
         {ownPlaybooks.length > 0 && <Section title={t('memwise.shell.playbooks')} {...(peopleOnly ? {} : { onAdd: () => openNewPlaybook(true) })} addLabel={t('memwise.shell.newPlaybook')} />}
         {shownPlaybooks.map(p => (
@@ -218,15 +223,72 @@ function Row({ icon: Icon, label, active, badge, tag, refresh, draft, depth = 0,
 
 export { Row as ProjectSidebarRow }
 
+// ---------------------------------------------------------------- written pages
+
+/**
+ * The project's written pages (26 §4; mock `LHome`): kept pages and drafts, sub-pages under their
+ * parent. A kept page that refreshes shows the refresh mark; a draft says so. A parent opens when
+ * the page open is under it, and the first one with sub-pages starts open.
+ */
+function WrittenPages({ projectId, details }: { projectId: string; details: ProjectDetails }) {
+  // A page written under a record (`under`) shows in the record tree, under that record.
+  const all = useMemwisePages(projectId).data
+  const pages = React.useMemo(() => (all ?? []).filter(p => writtenPagePlace(p) === 'top'), [all])
+  const activeId = details.type === 'page' ? details.pageId : undefined
+  const byParent = React.useMemo(() => {
+    const m = new Map<string, MwPageSummary[]>()
+    const ids = new Set(pages.map(p => p.id))
+    for (const p of pages) {
+      const k = p.parent && ids.has(p.parent) ? p.parent : ''
+      m.set(k, [...(m.get(k) ?? []), p])
+    }
+    return m
+  }, [pages])
+  const ancestors = React.useMemo(() => {
+    const out = new Set<string>()
+    const parentOf = new Map(pages.map(p => [p.id, p.parent]))
+    let cur = activeId ? parentOf.get(activeId) : undefined
+    while (cur && !out.has(cur)) { out.add(cur); cur = parentOf.get(cur) }
+    return out
+  }, [pages, activeId])
+  const [toggled, setToggled] = React.useState<Record<string, boolean>>({})
+  const firstParent = (byParent.get('') ?? []).find(p => byParent.has(p.id))?.id
+  const isOpen = (id: string) => toggled[id] ?? (ancestors.has(id) || id === firstParent)
+  const go = (pageId: string) => navigate(routes.view.project(projectId, { type: 'page', pageId }))
+
+  const render = (list: MwPageSummary[], depth: number): React.ReactNode => list.map(p => {
+    const kids = byParent.get(p.id)
+    const open = !!kids && isOpen(p.id)
+    return (
+      <React.Fragment key={p.id}>
+        <Row
+          icon={FileText}
+          label={p.title}
+          depth={depth}
+          inTree
+          draft={p.status === 'draft'}
+          refresh={p.status === 'kept' && !!p.refresh && !p.refreshEnded}
+          caret={kids ? (open ? 'open' : 'closed') : undefined}
+          onCaret={() => setToggled(t => ({ ...t, [p.id]: !open }))}
+          active={activeId === p.id}
+          onClick={() => go(p.id)}
+        />
+        {open && kids && render(kids, depth + 1)}
+      </React.Fragment>
+    )
+  })
+  return <div data-testid="shell-written-pages">{render(byParent.get('') ?? [], 0)}</div>
+}
+
 // ---------------------------------------------------------------- pages tree
 
 type TreeCache = Record<string, MwTreeNode[] | 'loading'>
 
 /**
- * PAGES until written pages exist (Stage 2): the project's dashboards, then its record tree
+ * PAGES after the written pages (Stage 2): the project's dashboards, then its record tree
  * (records that have pages of their own, a level at a time, from memwise:records:tree).
  */
-function PageTree({ domain, projectId, details }: { domain: MwDomain; projectId: string; details: ProjectDetails }) {
+function PageTree({ domain, projectId, details, written }: { domain: MwDomain; projectId: string; details: ProjectDetails; written: Map<string, MwPageSummary> }) {
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
   const lastChange = useAtomValue(memwiseLastChangeAtom)
   const [cache, setCache] = React.useState<TreeCache>({})
@@ -300,6 +362,23 @@ function PageTree({ domain, projectId, details }: { domain: MwDomain; projectId:
   const renderNodes = (nodes: MwTreeNode[], depth: number): React.ReactNode => nestTree(nodes).map(e => {
     const n = e.node
     if (n.kind === 'page') {
+      const w = written.get(n.pageId)
+      if (w && writtenPagePlace(w) === 'top') return null
+      if (w) {
+        return (
+          <Row
+            key={`written:${n.pageId}`}
+            icon={FileText}
+            label={w.title}
+            depth={depth}
+            inTree
+            draft={w.status === 'draft'}
+            refresh={w.status === 'kept' && !!w.refresh && !w.refreshEnded}
+            active={details.type === 'page' && details.pageId === n.pageId}
+            onClick={() => go({ type: 'page', pageId: n.pageId })}
+          />
+        )
+      }
       return (
         <Row
           key={`page:${n.pageId}:${JSON.stringify(n.params)}`}

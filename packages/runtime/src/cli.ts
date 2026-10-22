@@ -19,6 +19,7 @@ import { format } from 'node:util';
 import { authoringToolDefinitions } from './authoring-tools.ts';
 import { externalToolDefinitions } from './external/service.ts';
 import { bindingToolDefinitions } from './plugins/kernel-tools.ts';
+import { pageToolDefinitions } from './pages/tools.ts';
 import { loadProjectAt } from './plugins/load.ts';
 import { discoverMcpTools } from './plugins/routes.ts';
 import { compareVersions } from './plugins/service.ts';
@@ -55,7 +56,7 @@ const USAGE = `usage:
  */
 function boundTools(project?: ProjectDefs): Record<string, { effect?: import('@memwise/defs').EffectClass; inputSchema?: Record<string, unknown> }> {
   const noReader = {} as StepRecordReader; // only names, classes and schemas are read, never executed
-  const defs: ToolDefinition[] = [...sampleTools(), ...recallTools(noReader), ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...externalToolDefinitions(), ...domainTools(project?.entities ?? {})];
+  const defs: ToolDefinition[] = [...sampleTools(), ...recallTools(noReader), ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...externalToolDefinitions(), ...pageToolDefinitions(), ...domainTools(project?.entities ?? {})];
   const out: ReturnType<typeof boundTools> = Object.fromEntries(defs.map((t) => [t.name, { effect: typeof t.effect === 'string' ? t.effect : undefined, inputSchema: t.inputSchema }]));
   if (project) for (const [name, t] of Object.entries(pluginToolEnvironment(boundPlugins(project)))) out[name] ??= t;
   return out;

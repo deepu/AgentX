@@ -1,0 +1,23 @@
+workflow: refresh-page
+version: 1
+title: Refresh a page
+# Built in (26 §4): keeps a kept page current. It starts on the page's schedule (Keep), when
+# someone asks for a refresh, or when a sub-page of a page that sums them up changed. The writer
+# rewrites the page from its question, its last body and what is new; the compare step decides
+# whether the answer changed; if it did, "Review an answer change" waits for the page's owner (or
+# the app's reviewer role), and nothing reaches the page until they accept it. An app may name its
+# own refresh in domain.yaml (`pages: { refresh: … }`), e.g. one that searches its sources first.
+case: ./case.yaml
+start: write
+steps:
+  write:                       # the agent rewrites the page
+    on: { written: compare }
+  compare:                     # headline, numbers, sections: did the answer change?
+    on: { material: review, nothing_new: end }
+  review:                      # "Review an answer change"
+    on: { accepted: accept, sent_back: send_back }
+    wait: { remind: 3d, timeout: 30d → send_back }
+  accept:
+    on: { done: end }
+  send_back:
+    on: { done: end }

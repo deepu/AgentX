@@ -7,7 +7,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { MwCaseSummary, MwDomain, MwInboxItem, MwPlaybookSummary, MwTrigger } from '@memwise/shared/protocol'
 import {
-  anchorKeyOf, chatAnchorFor, groupByApp, initials, pickProject, playbookStartTag, pluralTitle, projectPlaybooks, shellProjects, sortWaiting, waitingIn,
+  anchorKeyOf, chatAnchorFor, groupByApp, initials, pickProject, playbookStartTag, pluralTitle, projectPlaybooks, shellProjects, sortWaiting, waitingIn, writtenPagePlace,
 } from '../project/project-model'
 import { shellRouteFor, type ShellRouteData } from '../project/shell-routes'
 import { parseRouteToNavigationState } from '../../../../shared/route-parser'
@@ -98,6 +98,9 @@ describe('the chat beside each page', () => {
     expect(chatAnchorFor('etmf', { type: 'playbook', workflowId: 'activate-site' })).toEqual({ kind: 'workflow', id: 'activate-site' })
     expect(chatAnchorFor('etmf', { type: 'run', caseId: 'c1' })).toEqual({ kind: 'case', id: 'c1' })
     expect(chatAnchorFor('etmf', { type: 'record', entity: 'etmf.Site', recordId: 's1' })).toEqual({ kind: 'record', entity: 'etmf.Site', id: 's1' })
+    expect(chatAnchorFor('literature', { type: 'page', pageId: 'pg_1' })).toEqual({ kind: 'page', id: 'pg_1' })
+    expect(chatAnchorFor('literature', { type: 'change', changeId: 'pch_1' })).toEqual({ kind: 'project', id: 'literature' })
+    expect(chatAnchorFor('literature', { type: 'change', changeId: 'pch_1' }, null, 'pg_1')).toEqual({ kind: 'page', id: 'pg_1' })
     expect(anchorKeyOf({ kind: 'record', entity: 'etmf.Site', id: 's1' })).toBe('record:etmf.Site:s1')
     // Stage 5: a change request's chat edits it; the audit trail and the TMF index have their own.
     expect(chatAnchorFor('etmf', { type: 'cr', crId: 'CR-014' })).toEqual({ kind: 'change', id: 'CR-014', project: 'etmf' })
@@ -142,5 +145,13 @@ describe('older routes open inside a project', () => {
     expect(to('settings')).toBeNull()
     expect(to(routes.view.draft('d1'))).toBeNull()
     expect(to('mw/etmf')).toBeNull()
+  })
+})
+
+describe('written pages in the sidebar', () => {
+  test('a page written under a record stays in the record tree; others list at the top of PAGES', () => {
+    expect(writtenPagePlace({})).toBe('top')
+    expect(writtenPagePlace({ under: { entity: 'client', id: 'c1' } })).toBe('record-tree')
+    expect(writtenPagePlace({ under: { entity: 'study' } })).toBe('record-tree')
   })
 })

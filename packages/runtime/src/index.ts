@@ -44,6 +44,14 @@ export {
 } from './plugins/tools.ts';
 export { createPluginServices, compareVersions, pluginNamespace, type PluginServiceDeps, type PluginServices } from './plugins/service.ts';
 export { loadPluginPolicies, PLUGIN_POLICIES_KIND } from './runs.ts';
+// Projects and pages (docs/memwise/26-projects-and-pages.md §4)
+export { createPagesService, pageChangeRefs, REFRESH_PAGE, type PagesCore, type PagesDeps } from './pages/service.ts';
+export { pageTools, pageToolDefinitions, PAGE_GET_TOOL, PAGE_COMPARE_TOOL, PAGE_ACCEPT_TOOL, PAGE_SEND_BACK_TOOL } from './pages/tools.ts';
+export {
+  blockJson, changedSections, compareBodies, fences, headline, LIVE_BLOCKS, numbersIn, PAGE_BLOCKS, plainText, replaceFences, sections,
+  type BodyComparison, type Fence, type PageBlockKind, type Section,
+} from './pages/blocks.ts';
+export { nextRefresh, normalEvery } from './pages/schedule.ts';
 // Stage 5: regulated projects (docs/memwise/26-projects-and-pages.md §7, §8)
 export { AUDIT_EXPORT_FORMAT, verifyAuditExport } from './regulated/audit-log.ts';
 export { QA_MEANING, RAISER_MEANING, DEFAULT_VALIDATION_LIMIT } from './regulated/changes.ts';

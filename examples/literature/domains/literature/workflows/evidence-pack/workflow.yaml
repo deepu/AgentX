@@ -1,0 +1,12 @@
+workflow: evidence-pack
+version: 1
+title: Evidence pack
+owner: lead
+# Not built yet (26 §6): an evidence pack for a product or a question, put together from the kept
+# pages and their papers. For now a person puts it together and says when it's done.
+start: assemble
+steps:
+  assemble:
+    assignee: lead
+    on: { done: end }
+    wait: { remind: 7d, timeout: 30d → end }

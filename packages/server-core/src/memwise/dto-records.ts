@@ -77,9 +77,18 @@ export function toDomain(ctx: Pick<DtoContext, 'project'>, s: DomainSummary): Mw
 /** The domain's `home:` with its entity resolved, or undefined when it has none (or it doesn't resolve). */
 export function toDomainHome(project: ProjectDefs, domainId: string): MwDomainHome | undefined {
   const home = project.domains?.[domainId]?.home
-  const def = home ? project.entities[home.entity] ?? Object.values(project.entities).find((e) => (e.domain ?? DEFAULT_DOMAIN) === domainId && e.entity === home.entity) : undefined
+  if (!home) return undefined
+  // Pages (26 §4): a home without an entity asks into a draft page (memwise:project:ask).
+  if (!home.entity) {
+    return {
+      ...(home.ask ? { ask: home.ask } : {}), ...(home.placeholder ? { placeholder: home.placeholder } : {}),
+      draftState: 'draft', endStates: [], suggested: [...home.suggested],
+    }
+  }
+  const entity = home.entity
+  const def = project.entities[entity] ?? Object.values(project.entities).find((e) => (e.domain ?? DEFAULT_DOMAIN) === domainId && e.entity === entity)
   const chart = def?.lifecycleChart
-  if (!home || !def || !chart) return undefined
+  if (!def || !chart) return undefined
   return {
     ...(home.ask ? { ask: home.ask } : {}),
     ...(home.placeholder ? { placeholder: home.placeholder } : {}),

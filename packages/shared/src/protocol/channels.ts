@@ -522,6 +522,18 @@ export const RPC_CHANNELS = {
     INSPECTORS_QUESTIONS: 'memwise:inspectors:questions',
     INSPECTORS_ANSWER: 'memwise:inspectors:answer',
     TMF_INDEX: 'memwise:tmf:index',
+    // Projects and pages, Stage 2 (docs/memwise/26-projects-and-pages.md §4)
+    PAGES_LIST: 'memwise:pages:list',
+    PAGES_GET: 'memwise:pages:get',
+    PAGES_VERSIONS: 'memwise:pages:versions',
+    PAGES_UNDO: 'memwise:pages:undo',
+    PAGES_KEEP: 'memwise:pages:keep',
+    PAGES_ARCHIVE: 'memwise:pages:archive',
+    PAGES_CREATE: 'memwise:pages:create',
+    PAGES_REFRESH: 'memwise:pages:refresh',
+    PAGE_CHANGES_GET: 'memwise:pageChanges:get',
+    PAGE_CHANGES_DECIDE: 'memwise:pageChanges:decide',
+    PROJECT_ASK: 'memwise:project:ask',
   },
   pages: {
     GET: 'pages:get',

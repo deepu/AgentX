@@ -170,3 +170,31 @@ Full text from PMC, Embase or ClinicalTrials.gov, two reviewers and conflicts, a
 - An interval label field with no value renders empty; a record-page chart `of:` a calculated field draws nothing.
 - The renderer has no client wrapper for `memwise:records:keep` (chat keeps through the session tool). The handler keeps only from a chat of the workspace anchored to a record.
 - `packages/ui/eslint.config.mjs` registers its style plugin as `craft-styles` while the rules are named `memwise-styles/…`, so `bun run lint:ui` can't run as the repo stands.
+
+## 12. As rebuilt on pages
+
+Stage 2 of [26](26-projects-and-pages.md) (§6, D94, D99–D103) rebuilt the example on pages. What this
+document describes above is the first version; this is what the example is now.
+
+- **The question is the page.** The Literature home has no entity: asking makes a draft **page** with the
+  question, under the page it was asked from, and a chat anchored to it that answers and writes the page
+  (`page_update`), every number in a `table` cell carrying the abstract's words it came from. Keep makes it
+  refresh every Monday. There are no Topic, Screening or Evidence types: their screening and evidence work is
+  the refresh's, and a page's tables carry the evidence with its quotes.
+- **Records:** Papers (`Article`, keyed by PMID, read once, with `weeks` added) and Enquiries.
+- **Refresh a page** (`refresh-literature-page`, named in domain.yaml as `pages.refresh`) replaces Set up a
+  watch and Check a topic: search PubMed by entry date since the page's last refresh and store the papers,
+  "Read a paper" for each new one (unchanged), rewrite the page, compare, and "Review an answer change" for
+  the page's owner or the lead. A page that sums up its sub-pages searches nothing and sums up the kept ones.
+- **Playbooks:** Answer an enquiry (built: email in, the kept pages first then PubMed, a drafted reply with
+  references, the lead's signature, the email), Monthly digest (built), Evidence pack (a stub).
+- **What carried over:** keyed records, checked quotes, the chart kit (now one renderer with `tiles`, `table`,
+  `records` and `subpages`), the PubMed binding and plugin, Read a paper, and the playbook model choice. The
+  record chat and "Keep as evidence" (D83) stay in the kernel for other apps; Literature doesn't use them.
+- **Tests:** `literature-pages-exit.test.ts` (server-core) runs the exit test on fixtures: the side-effects
+  question, Keep, a refresh with a fixture paper added (Example Trial D), the answer change accepted, "Add how
+  long each trial ran" with Undo, and GLP-1's summary leaving the draft out. It replaces
+  `literature-exit.test.ts`, whose Topic flow is gone. `literature-seed.test.ts` checks the walkthrough seed
+  (`seedLiteratureHome`, the LHome state). The runtime's `literature.test.ts` keeps its own fixture project
+  and still covers keys, quotes and charts.
+
