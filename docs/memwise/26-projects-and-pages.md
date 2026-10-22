@@ -490,6 +490,17 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
 - **One study across apps, through the project:**
   - "Also in other apps" lists each other app's projects naming the same `study:`, and the study's record in that project. It names the project ("Linked through Study MW-301") and opens the record there. It falls back to a record of the same key anywhere only when no such project has one.
   - Link pairing (D71) does the same for records: a record of a project with a study pairs only within the other app's projects of that study. Site 201 of eTMF's MW-301 is not MW-207's 201 in EDC.
+- **After the Part B review:**
+  - **One study, one project.** Identity links are one per Rave record, so a second project reading the same study would find everything linked already and stay empty. The smaller sound fix was chosen over scoping links by project:
+    - Only the first active project by id reads a study. Any other project naming it (or one with no study, which reads every study) is reported as a clash against that project, as a sync error.
+    - Records a project's read already links but that sit in another project are moved into it, with a version recorded. These are records read for the workspace before the project connected, or under an earlier `study:`.
+  - **One project's failure is its own.** A project whose read fails, such as a study the account can't see, is skipped for the rest of the read, and the other projects are still read. The sync records:
+    - when the read happened;
+    - one error line per failed project (`<project>: <why>`), with a retry within five minutes.
+    
+    The error thrown is the combined one. Each project's EDC home shows only its own line.
+  - **Pairing:** a record of a project whose study no project of the other app names pairs with nothing there. It no longer falls back to anywhere.
+  - **Charts** on a project's page count that project's records, like its KPIs and tables.
 - **A project's pages and tree are its own:** in a stored project, the sidebar's record tree and a defined page's KPIs, tables and heatmaps read that project's records (`project` on `memwise:records:tree` and `memwise:pages:dashboard`). EDC's Study MW-301 lists MW-301's sites, and its old queries page counts MW-301's queries only.
 - **Seeds:** Stage 3's eTMF seeds no longer make `edc.Site` rows, since EDC's sites come only from Rave. Their sites are numbered as Rave numbers them: MW-301 101–112, MW-207 201–206, with Rave's staff. Each pairs with its EDC site and shows Rave's name, investigator and coordinator. The fake Rave's MW-207 has the eTMF example's six sites and staff.
 - **Tests:** `edc-exit.test.ts` covers Part B in three more cases:

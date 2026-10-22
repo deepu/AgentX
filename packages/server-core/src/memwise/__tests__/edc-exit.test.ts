@@ -20,7 +20,7 @@
  *    default, and one study is linked across apps through the projects naming it.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { cpSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTestDatabase, postgresAvailable, tableOf, type TestDatabase } from '@memwise/db'
@@ -48,6 +48,7 @@ const PASSWORD = 'a long enough password'
 describe.skipIf(!postgresAvailable())('Stage 6 exit: EDC from Medidata Rave, and a study across apps', () => {
   let db: TestDatabase
   let dir: string
+  let projectDir: string
   let svc: MemwiseService
   let rave: FakeRave
   const api = fakeServer()
@@ -91,7 +92,7 @@ describe.skipIf(!postgresAvailable())('Stage 6 exit: EDC from Medidata Rave, and
     env('MEMWISE_RELAY_URL', undefined)
     db = await createTestDatabase('mw_exit_edc', { migrate: false })
     dir = mkdtempSync(join(tmpdir(), 'mw-exit-edc-'))
-    const projectDir = join(dir, 'project')
+    projectDir = join(dir, 'project')
     cpSync(join(REPO, 'examples', 'etmf'), projectDir, { recursive: true })
     svc = (await startMemwiseService({
       configDir: dir,
@@ -452,4 +453,82 @@ describe.skipIf(!postgresAvailable())('Stage 6 exit: EDC from Medidata Rave, and
     expect((await api.call<MwLinkedRecord[]>(dana, ch.RECORDS_LINKED, { entity: 'edc.Site', id: edc201 })).map((r) => r.id)).toEqual([right])
     expect((await db.pool.query(`select 1 from mw.identity_links where record_id = $1`, [wrong])).rows).toHaveLength(0)
   }, 60_000)
+
+  // ------------------------------------------------------------------ Part B review
+
+  it('review: one project\'s failed read is its own; the other projects are still read', async () => {
+    const mw207 = rave.data.studies.find((x) => x.StudyOID === MW207)!
+    rave.data.studies = rave.data.studies.filter((x) => x !== mw207) // the account no longer sees MW-207
+    rave.setCoordinator({ site: '101', name: 'Nora Quist', email: 'nora.quist@site101.example' })
+    const before = Date.now()
+    try {
+      const failed = await svc.kernel.identity.resolve({ plugin: RAVE_PLUGIN }).then(() => undefined, (e: Error) => e)
+      expect(failed?.message).toMatch(/^edc-mw207: .*no study MW-207/)
+      expect(failed?.message).not.toContain('edc-mw301')
+      // MW-301 was read all the same: 101's new coordinator is there.
+      expect((await tableRows('edc.Site', (t) => `select coordinator from ${t} where project = 'edc-mw301' and site_number = '101'`))[0]!.coordinator).toBe('Nora Quist')
+      const sync = (await svc.kernel.identity.syncs()).find((x) => x.plugin === RAVE_PLUGIN)!
+      expect(Date.parse(sync.at!)).toBeGreaterThanOrEqual(before - 1000)
+      expect(Date.parse(sync.nextDue!) - Date.parse(sync.errorAt!)).toBeLessThanOrEqual(5 * 60_000 + 1000)
+      // Each project's home shows its own read: MW-301's is fine, MW-207's says why.
+      expect((await api.call<MwEdcHome>(dana, ch.EDC_HOME, { projectId: 'edc-mw301', domain: 'edc' })).source?.error).toBeUndefined()
+      expect((await api.call<MwEdcHome>(dana, ch.EDC_HOME, { projectId: 'edc-mw207', domain: 'edc' })).source?.error).toMatch(/^[^\n]*no study MW-207/)
+    } finally {
+      rave.data.studies.push(mw207)
+    }
+    await svc.kernel.identity.resolve({ plugin: RAVE_PLUGIN })
+    expect((await svc.kernel.identity.syncs()).find((x) => x.plugin === RAVE_PLUGIN)?.error).toBeUndefined()
+  }, 60_000)
+
+  it('review: records read before a project read its study move into it', async () => {
+    // As if MW-207 had been read for the workspace before edc-mw207 connected (or under another `study:`).
+    await tableRows('edc.Site', (t) => `update ${t} set project = 'edc' where project = 'edc-mw207' returning id`)
+    expect(await tableRows('edc.Site', (t) => `select count(*)::int as n from ${t} where project = 'edc-mw207'`)).toEqual([{ n: 0 }])
+    await svc.kernel.identity.resolve({ plugin: RAVE_PLUGIN })
+    expect(await tableRows('edc.Site', (t) => `select project, count(*)::int as n from ${t} where study = 'MW-207' group by project`)).toEqual([{ project: 'edc-mw207', n: 6 }])
+  }, 60_000)
+
+  it('review: a study is read into one project; a study no EDC project names pairs with nothing; a project\'s chart is its own', async () => {
+    const files = {
+      // A second EDC project naming MW-301: it can't read it too (links are one per Rave record).
+      'projects/edc-mw301b/project.yaml': 'app: edc\nname: Study MW-301 again\nstudy: MW-301\nconnections:\n  rave: { title: Medidata Rave, plugin: memwise/medidata-rave, access: read }\n',
+      // An eTMF study no EDC project names.
+      'projects/mw999/project.yaml': 'app: etmf\nversion: 4\ntemplate: phase3\nname: Study MW-999\nstudy: MW-999\n',
+      // A chart on an EDC page.
+      'domains/edc/pages/sites-by-country.yaml': 'title: Sites by country\nblocks:\n  - chart: { kind: bar, entity: Site, by: country, title: Sites by country }\n',
+    }
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(join(projectDir, path, '..'), { recursive: true })
+      writeFileSync(join(projectDir, path), text)
+    }
+    try {
+      expect((await svc.kernel.index()).filter((d) => d.severity === 'error')).toEqual([])
+      const failed = await svc.kernel.identity.resolve({ plugin: RAVE_PLUGIN }).then(() => undefined, (e: Error) => e)
+      expect(failed?.message).toBe('edc-mw301b: study MW-301 is read from Medidata Rave into edc-mw301 already; one study is read into one project. Name another study for edc-mw301b, or remove its Medidata Rave connection.')
+      expect(await tableRows('edc.Site', (t) => `select project, count(*)::int as n from ${t} group by project order by project`))
+        .toEqual([{ project: 'edc-mw207', n: 6 }, { project: 'edc-mw301', n: 12 }])
+
+      // eTMF's MW-999 has a site 203: no EDC project names MW-999, so it pairs with nothing (not MW-207's 203).
+      const sponsor = (await query(tom, 'etmf.Sponsor')).rows[0]!.id
+      const make = async (entity: string, values: Record<string, unknown>) => {
+        const r = await api.call(tom, ch.RECORDS_CREATE, { entity, values, project: 'mw999', reason: 'study set-up' })
+        expect(r).toMatchObject({ applied: true })
+        return r.id as string
+      }
+      const study = await make('etmf.Study', { code: 'MW-999', title: 'Another study', sponsor })
+      const site = await make('etmf.Site', { site_number: '203', study })
+      await svc.kernel.triggers.settle(30_000)
+      expect((await db.pool.query(`select 1 from mw.identity_links where record_id = $1`, [site])).rows).toHaveLength(0)
+
+      // A chart on a project's page counts that project's sites.
+      type Chart = { blocks: { kind: string; chart?: { total: number } }[] }
+      const total = async (project?: string) => (await api.call<Chart>(dana, ch.PAGES_DASHBOARD, { domain: 'edc', pageId: 'sites-by-country', ...(project ? { project } : {}) }))
+        .blocks.find((b) => b.kind === 'chart')!.chart!.total
+      expect(await total('edc-mw207')).toBe(6)
+      expect(await total()).toBe(18)
+    } finally {
+      for (const path of Object.keys(files)) rmSync(join(projectDir, path.startsWith('projects/') ? path.split('/').slice(0, 2).join('/') : path), { recursive: true, force: true })
+      await svc.kernel.index()
+    }
+  }, 120_000)
 })
