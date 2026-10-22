@@ -1,8 +1,9 @@
-// Seeds the eTMF example for Stage 4's walkthrough (doc 26 §11), through the app's own calls, as the
-// owner: a study with three sites in EDC and eTMF, their coordinators and CRAs, their expected
-// documents (DE-104 still owes three and had its first reminder), a few TMF documents in different
-// states, and a document that arrives by "File a TMF document". DE-104 then moves to Activating, which
-// starts "Chase missing documents" for it.
+// Seeds Stage 4's walkthrough (doc 26 §11) on top of the eTMF example's own seeds (Study MW-301 and
+// MW-207, made from examples/etmf/projects/*/seed.yaml when the project folder is made), through the
+// app's own calls, as the owner: the owner's signing password, site 101's CRA and first reminder (it
+// still owes two documents), a few more MW-301 documents in different states, "Send document
+// reminders" started on site 101 in Study MW-301 (it waits for the study manager's approval), and a
+// CV that arrives by "File a TMF document" (it waits for the TMF specialist's signature).
 
 /** A small real PDF, one text line per row (Helvetica), as base64. */
 export function pdfBase64(pages) {
@@ -28,69 +29,71 @@ export function pdfBase64(pages) {
 }
 
 const DOCS = [
-  { name: 'de104-protocol-signature-page.pdf', site: 'DE-104', artifact: 'Protocol signature page', status: 'in_qc', pages: [['MW-301 Protocol version 3.0', 'Investigator signature page', 'Site DE-104, Charite Studienzentrum'], ['Dr. Jonas Weber', 'Signature', '2 Oct 2026']] },
-  { name: 'fr201-lab-ranges.pdf', site: 'FR-201', artifact: 'Lab normal ranges', status: 'indexed', pages: [['Laboratoire Leon Berard', 'Normal ranges, haematology', 'Valid from 1 Sep 2026']] },
-  { name: 'us012-gcp.pdf', site: 'US-012', artifact: 'GCP certificates', status: 'filed', pages: [['GCP certificate', 'Dr. Mei Chen', 'Completed 12 Jan 2026']] },
-  { name: 'de104-sub-cv.pdf', site: 'DE-104', artifact: 'Sub-investigator CVs', status: 'rejected', pages: [['Curriculum vitae', 'Dr. Anna Krause', 'Sub-investigator'], ['Unsigned']] },
-  { name: 'fr201-irb.pdf', site: 'FR-201', artifact: 'IRB approval', status: 'received', pages: [['Comite de protection des personnes', 'Avis favorable', 'MW-301']] },
-  { name: 'us012-1572.pdf', site: 'US-012', artifact: 'FDA Form 1572', status: 'filed', pages: [['Form FDA 1572', 'Statement of investigator', 'Dr. Mei Chen']] },
+  { name: '104-protocol-signature-page.pdf', site: '104', artifact: 'Protocol signature page', status: 'in_qc', pages: [['MW-301 Protocol version 3.0', 'Investigator signature page', 'Site 104, Kliniken am Stadtpark'], ['Dr. Jonas Weber', 'Signature', '2 Oct 2026']] },
+  { name: '103-lab-ranges.pdf', site: '103', artifact: 'Lab normal ranges', status: 'indexed', pages: [['Hopital Saint-Clair', 'Normal ranges, haematology', 'Valid from 1 Sep 2026']] },
+  { name: '104-sub-cv.pdf', site: '104', artifact: 'Sub-investigator CVs', status: 'rejected', pages: [['Curriculum vitae', 'Dr. Anna Krause', 'Sub-investigator'], ['Unsigned']] },
+  { name: '103-irb.pdf', site: '103', artifact: 'IRB approval', status: 'received', pages: [['Comite de protection des personnes', 'Avis favorable', 'MW-301']] },
 ]
 
 export async function seedEveryPage(win) {
   const docs = DOCS.map((d) => ({ ...d, data: pdfBase64(d.pages) }))
-  const incoming = pdfBase64([['Dr. med. Lena Vogel', 'Curriculum vitae', 'Principal Investigator', 'Clinical research experience'], ['L. Vogel', 'Signature', '14 Mar 2026', 'Date']])
+  const incoming = pdfBase64([['Dr. Helen Marsh', 'Curriculum vitae', 'Principal Investigator, site 101', 'Clinical research experience'], ['H. Marsh', 'Signature', '14 Oct 2026', 'Date']])
   return await win.evaluate(async ({ docs, incoming }) => {
     const api = window.electronAPI
     const ws = new URLSearchParams(location.search).get('workspaceId')
+    const project = 'mw301'
     const out = []
     const create = async (entity, values, status) => {
-      const r = await api.memwiseCreateRecord(ws, { entity, values, ...(status ? { status } : {}), reason: 'study set-up' })
+      const r = await api.memwiseCreateRecord(ws, { entity, values, project, ...(status ? { status } : {}), reason: 'study set-up' })
       if (!r.applied) throw new Error(`create ${entity}: ${r.message} ${JSON.stringify(r.errors ?? {})}`)
       return r.id
     }
-    const existing = await api.memwiseQueryRecords(ws, { entity: 'etmf.Sponsor' }).catch(() => null)
-    if (existing && existing.total > 0) return ['already seeded']
+    // The example's own seeds come first (made when the project folder is), with EDC's sites from Rave.
+    // Wait until both studies are seeded (their document counts stop moving) and Rave has been read.
+    const count = async (entity, p) => (await api.memwiseQueryRecords(ws, { entity, project: p, limit: 1 }).catch(() => null))?.total ?? 0
+    let last = -1
+    for (let i = 0; i < 90; i++) {
+      const now = (await count('etmf.Document', 'mw301')) + (await count('etmf.Document', 'mw207'))
+      const ready = (await count('etmf.Site', 'mw301')) >= 12 && (await count('etmf.Site', 'mw207')) >= 6 && (await count('edc.Site', 'edc-mw301')) > 0
+      if (ready && now > 0 && now === last) break
+      last = now
+      await new Promise((r) => setTimeout(r, 3000))
+    }
+    const sites = await api.memwiseQueryRecords(ws, { entity: 'etmf.Site', project, limit: 50 })
+    if (!sites?.total) throw new Error('Study MW-301 has no sites: launch with MEMWISE_EXAMPLE_PROJECT_DIR and a new project folder (README.md)')
+    const site = (n) => {
+      const row = sites.rows.find((r) => String(r.values?.site_number ?? r.title).split(' ')[0] === n)
+      if (!row) throw new Error(`no site ${n} in MW-301: ${JSON.stringify(sites.rows.map((r) => [r.title, r.values]).slice(0, 3))}`)
+      return row
+    }
+    const study = (await api.memwiseQueryRecords(ws, { entity: 'etmf.Study', project })).rows[0]
+    out.push(`MW-301: ${sites.total} sites, study "${study?.title}"`)
+    const already = await api.memwiseQueryRecords(ws, { entity: 'etmf.Reminder', project }).catch(() => null)
+    if (already && already.total > 0) return [...out, 'already seeded']
     // The owner signs with a password (eTMF is regulated).
     const pw = await api.memwiseSetOwnPassword(ws, { password: 'walkthrough-pass-1' }).catch((e) => ({ applied: false, message: String(e) }))
     out.push(`password: ${pw.applied ? 'set' : pw.message ?? pw.code}`)
-    const sponsor = await create('etmf.Sponsor', { name: 'Aster Bio' })
-    const study = await create('etmf.Study', { code: 'MW-301', title: 'A phase 3 study of MW-301 in solid tumours', sponsor })
-    const artifacts = ['IRB approval', 'Clinical trial agreement', 'Investigator CV', 'Financial disclosure', 'Lab certification',
-      'GCP certificates', 'FDA Form 1572', 'Protocol signature page', 'Lab normal ranges', 'Sub-investigator CVs']
-    const sites = [
-      { n: 'US-012', name: 'Harbor Oncology, Boston', pi: 'Dr. Mei Chen', filed: 10, coordinator: 'coordinator@harbor-oncology.example', cra: ['Tom Okafor', 'tom.okafor@northlight.example'] },
-      { n: 'DE-104', name: 'Charite Studienzentrum, Berlin', pi: 'Dr. Jonas Weber', filed: 7, coordinator: 'coordinator@charite-studien.example', cra: ['Priya Shah', 'priya.shah@northlight.example'], reminded: true, pick: true },
-      { n: 'FR-201', name: 'Centre Leon Berard, Lyon', pi: 'Dr. Claire Martin', filed: 4, coordinator: 'coordinator@leon-berard.example', cra: ['Priya Shah', 'priya.shah@northlight.example'] },
-    ]
-    const ids = {}
-    for (const s of sites) {
-      await create('edc.Site', { site_number: s.n, name: s.name, principal_investigator: s.pi }, 'active')
-      const site = await create('etmf.Site', { site_number: s.n, study, coordinator_email: s.coordinator, cra_name: s.cra[0], cra_email: s.cra[1] })
-      ids[s.n] = site
-      await create('etmf.Person', { name: s.pi, role: 'Principal investigator', site })
-      for (let i = 0; i < artifacts.length; i++) {
-        await create('etmf.ExpectedDocument', { site, study, artifact: artifacts[i], phase: 'start_up' }, i < s.filed ? 'filed' : undefined)
-      }
-      if (s.reminded) await create('etmf.Reminder', { site, sent_to: s.coordinator, subject: 'MW-301: 3 documents needed', sent_at: '2026-10-09T09:00:00Z' })
-      out.push(`${s.n} seeded`)
-    }
+    // Site 101 (Leeds) still owes its Investigator CV and medical licence, and had its first reminder.
+    const s101 = site('101')
+    const upd = await api.memwiseUpdateRecord(ws, { entity: 'etmf.Site', id: s101.id, values: { cra_name: 'Priya Shah', cra_email: 'priya.shah@northlight.example' }, reason: 'CRA assigned' })
+    out.push(`101 CRA: ${upd.applied ? 'ok' : upd.message}`)
+    await create('etmf.Reminder', { site: s101.id, sent_to: 'owen.price@site101.example', subject: 'MW-301: 2 documents needed', sent_at: '2026-10-09T09:00:00Z' })
     for (const d of docs) {
       const file = await api.memwiseUploadFile(ws, { name: d.name, mime: 'application/pdf', data: d.data })
       try {
-        await create('etmf.Document', { file, artifact: d.artifact, study, site: ids[d.site], version: '1', received_at: '2026-10-12T09:00:00Z' }, d.status)
+        await create('etmf.Document', { file, artifact: d.artifact, study: study.id, site: site(d.site).id, version: '1', received_at: '2026-10-12T09:00:00Z' }, d.status)
         out.push(`${d.artifact} (${d.site}): ${d.status}`)
       } catch (e) {
         out.push(`${d.artifact} (${d.site}): ${e.message}`)
       }
     }
-    for (const s of sites.filter((x) => x.pick)) {
-      const r = await api.memwiseTransitionRecord(ws, { entity: 'etmf.Site', id: ids[s.n], transition: 'picked', reason: 'Site selected: contract and budget signed' })
-      out.push(`${s.n} picked: ${r.applied ? 'ok' : r.message}`)
-    }
-    // A CV arrives from US-012: "File a TMF document" files it after the TMF specialist signs.
-    const original = await api.memwiseUploadFile(ws, { name: 'vogel-cv.pdf', mime: 'application/pdf', data: incoming })
-    const started = await api.memwiseStartCase(ws, { workflowId: 'file-document', values: { original, sender: 'coordinator@harbor-oncology.example', received_at: '2026-10-20T08:12:00Z' } })
-    out.push(`file-document: ${started.caseId ?? JSON.stringify(started)}`)
+    // "Send document reminders" on site 101, in the study's own copy of the playbook.
+    const started = await api.memwiseStartCase(ws, { workflowId: 'remind-site', project, values: { site: s101.id } })
+    out.push(`remind-site: ${started.caseId ?? JSON.stringify(started)}`)
+    // A CV arrives: "File a TMF document" files it after the TMF specialist signs (the Sign page).
+    const original = await api.memwiseUploadFile(ws, { name: 'marsh-cv.pdf', mime: 'application/pdf', data: incoming })
+    const filing = await api.memwiseStartCase(ws, { workflowId: 'file-document', project, values: { original, sender: 'owen.price@site101.example', received_at: '2026-10-20T08:12:00Z' } })
+    out.push(`file-document: ${filing.caseId ?? JSON.stringify(filing)}`)
     return out
   }, { docs, incoming })
 }

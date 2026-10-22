@@ -53,10 +53,16 @@ goes through the switcher (XSwitcher), EDC's Study MW-301 (XEdcHome) with its li
 queries page (XQueries), site 104 in EDC (XSite) and with "Open in eTMF" the same site in eTMF, the study opened in
 eTMF's project (XStudy-etmf), and EDC's Study MW-207 (XEdcHome-207).
 
-`every-page-etmf.mjs` (Stage 4) seeds with `seed-every-page.mjs` and runs on `every-page-replies.json`, whose
-entries also make scripted tool calls (`"tools": [{ "name", "input" }]`): the playbook's chat drafts a change
-and test-runs it on site 104, the page sends it for review, and the Sites chat filters the list, which is
-saved as a page. Run it with `MEMWISE_SCRIPTED_MODELS=1 MEMWISE_SCRIPTED_EXAMPLE=second-reminder` (the
-playbooks' agent steps replay their examples' turns), and `MEMWISE_APP_NAME=<something>` when another copy
-of the app is running (it holds the single-instance lock). The config folder must be one the postgres user
-can reach (not under a private /tmp folder).
+`every-page-etmf.mjs` (Stage 4) runs inside Study MW-301, so it needs the eTMF example's seeds and the fake
+Rave, as for `shell-edc.mjs` (`MEMWISE_EXAMPLE_PROJECT_DIR=$PWD/examples/etmf`, a `<projectDir>` that doesn't
+exist yet, and `RAVE_*`). The playbook's chat needs the meta playbooks, which come from the intake example, so make
+the example folder a copy of `examples/etmf` with `examples/intake/workflows/{create,change}-playbook`, `bind-plugin`
+and `refresh-page` added under `workflows/`. `seed-every-page.mjs` adds site 101's CRA and first reminder, a few documents, and
+starts "Send document reminders" on site 101. It runs on `every-page-replies.json`, whose entries also make
+scripted tool calls (`"tools": [{ "name", "input" }]`): the playbook's chat drafts a change to MW-301's own
+copy and test-runs it on site 101, the page sends it for review, and the Sites chat filters MW-301's list,
+which is saved as a page in the study. It ends on the sidebar counts of eTMF's and EDC's Study MW-207. Run it
+with `MEMWISE_SCRIPTED_MODELS=1 MEMWISE_SCRIPTED_EXAMPLE=second-reminder` (the playbooks' agent steps replay
+their examples' turns), and `MEMWISE_APP_NAME=<something>` when another copy of the app is running (it holds
+the single-instance lock). The config folder must be one the postgres user can reach (not under a private
+/tmp folder).

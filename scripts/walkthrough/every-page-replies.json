@@ -17,11 +17,11 @@
    {
     "name": "playbook_test_run",
     "input": {
-     "record": "site 104"
+     "record": "site 101"
     }
    }
   ],
-  "reply": "Done: from the second reminder on, the reminder is sent to the site coordinator **and copies the site's CRA**. It's in a draft; the live playbook hasn't changed.\n\nI ran the draft on **site 104** in a throwaway copy: it found 3 missing documents, drafted the reminder, and would record it as sent to the coordinator, copying Priya Shah (the CRA). Nothing was sent.\n\nWhen you're happy with it, use **Send for review** on the page."
+  "reply": "Done: from the second reminder on, the reminder is sent to the site coordinator **and copies the site's CRA**. It's a draft of **Study MW-301's own copy** of the playbook; the live copy hasn't changed, and other studies keep theirs.\n\nI ran the draft on **site 101** in a throwaway copy: it found 2 missing documents, drafted the reminder to Owen Price, and would record it as sent, copying Priya Shah (the CRA). Nothing was sent.\n\nWhen you're happy with it, use **Send for review** on the page."
  },
  {
   "match": "missing documents|still owe|missing",
@@ -48,11 +48,11 @@
     }
    }
   ],
-  "reply": "2 sites still owe documents: **FR-201** (6 missing) and **DE-104** (3 missing). The list beside this chat now shows just those two; save it as a page to keep it."
+  "reply": "3 of Study MW-301's sites still owe documents: **109** (6 missing), **101** (2) and **110** (1). The list beside this chat now shows just those three; save it as a page to keep it."
  },
  {
   "match": "why|test run|what happened",
-  "reply": "The test run copied site 104, its study and its expected documents into a throwaway database and replayed the latest chase's model turns. It stopped at **Wait for the upload**, where the next reminder waits 5 days."
+  "reply": "The test run copied site 101, its study and its expected documents into a throwaway database and replayed the latest reminder run's model turns. It stopped at **Wait for the upload**, where the next reminder waits 5 days."
  },
  {
   "match": ".",
