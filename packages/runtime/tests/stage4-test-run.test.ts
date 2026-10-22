@@ -57,7 +57,7 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
       name: 'Anika Rao', email: 'anika@northlight.example', roles: ['study_manager', 'tmf_specialist', 'manager', 'staff'],
     })).id);
     cra = await kernel.people.actorFor((await kernel.people.create({ name: 'Ola Nowak', email: 'ola@northlight.example', roles: ['cra', 'staff'] })).id);
-    // In Study MW-301: site DE-104 with three documents missing and one reminder sent, its
+    // In Study MW-301: site 101 with two documents missing and one reminder sent, its
     // reminders started by the study manager. Study MW-207 has a site of its own.
     const create = async (entity: string, values: Record<string, unknown>, project = 'mw301') => {
       const r = await kernel.records.create({ entity, values, project, reason: 'study set-up' }, { kind: 'system' });
@@ -66,11 +66,11 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     };
     const sponsor = await create('etmf.Sponsor', { name: 'Meridian Pharma' });
     const study = await create('etmf.Study', { code: 'MW-301', sponsor });
-    siteId = await create('etmf.Site', { site_number: 'DE-104', study, cra_name: 'Priya Shah', cra_email: 'priya.shah@northlight.example' });
-    for (const artifact of ['Protocol signature page', 'Lab normal ranges', 'Sub-investigator CVs']) {
+    siteId = await create('etmf.Site', { site_number: '101', study, cra_name: 'Priya Shah', cra_email: 'priya.shah@northlight.example' });
+    for (const artifact of ['Investigator CV', 'Medical licence']) {
       await create('etmf.ExpectedDocument', { site: siteId, study, artifact, phase: 'start_up' });
     }
-    await create('etmf.Reminder', { site: siteId, sent_to: 'coordinator@charite-studien.example', subject: 'MW-301: 3 documents needed' });
+    await create('etmf.Reminder', { site: siteId, sent_to: 'owen.price@site101.example', subject: 'MW-301: 2 documents needed' });
     const study207 = await create('etmf.Study', { code: 'MW-207', sponsor }, 'mw207');
     otherStudySite = await create('etmf.Site', { site_number: 'AT-005', study: study207 }, 'mw207');
     await kernel.startRun({ workflowId: 'remind-site', case: { site: siteId }, project: 'mw301', by: manager.personId });
@@ -84,9 +84,9 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     const run = await kernel.waitForRun(rows[0].id, { until: (r) => r.state === 'approve_email' || r.status !== 'active', timeoutMs: 60_000 });
     expect(run.state).toBe('approve_email');
     const kase = await kernel.getCase(run.caseId);
-    expect(kase!.values.missing_documents?.value).toBe(3);
+    expect(kase!.values.missing_documents?.value).toBe(2);
     expect(kase!.values.reminders_sent?.value).toBe(1);
-    expect(kase!.values.email_to?.value).toBe('coordinator@charite-studien.example');
+    expect(kase!.values.email_to?.value).toBe('owen.price@site101.example');
   }, 90_000);
 
   test('a change draft of a project\'s copy of a playbook copies the domain and keeps to the playbook', async () => {
@@ -123,11 +123,11 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     expect(run.status).toBe('pass');
     expect(run.record).toMatchObject({ entity: 'etmf.Site', id: siteId });
     expect(run.replayedCase).toBeTruthy();
-    expect(run.copied).toMatchObject({ 'etmf.Site': 1, 'etmf.ExpectedDocument': 3, 'etmf.Reminder': 1, 'etmf.Study': 1, 'etmf.Sponsor': 1 });
+    expect(run.copied).toMatchObject({ 'etmf.Site': 1, 'etmf.ExpectedDocument': 2, 'etmf.Reminder': 1, 'etmf.Study': 1, 'etmf.Sponsor': 1 });
     expect(run.trace?.steps.map((s) => s.state)).toEqual(['find_missing', 'draft_email', 'approve_email', 'send']);
     expect(run.trace?.state).toBe('wait_for_upload');
     const reminder = run.trace?.calls.find((c) => c.tool === 'etmf.reminder.create');
-    expect(reminder?.args).toMatchObject({ sent_to: 'coordinator@charite-studien.example', copied: 'priya.shah@northlight.example' });
+    expect(reminder?.args).toMatchObject({ sent_to: 'owen.price@site101.example', copied: 'priya.shah@northlight.example' });
     expect(await authoring.lastTestRun(draftId)).toMatchObject({ status: 'pass', hash: run.hash });
   }, 180_000);
 
@@ -142,7 +142,7 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
       record: { entity: 'etmf.Site', id: siteId }, status: 'pass',
     });
     expect(file).not.toContain('priya.shah@northlight.example');
-    expect(file).not.toContain('coordinator@');
+    expect(file).not.toContain('owen.price@');
     const mine = await authoring.lastTestRun(draftId, manager);
     expect(mine && 'trace' in mine && mine.trace?.calls.length).toBeGreaterThan(0);
     for (const other of [await authoring.lastTestRun(draftId, cra), await authoring.lastTestRun(draftId)]) {

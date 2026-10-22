@@ -1,7 +1,7 @@
 /**
  * Projects and pages, Stage 4 (docs/memwise/26-projects-and-pages.md §11): in Study MW-301, the
  * playbook page's chat changes MW-301's own copy of "Send document reminders" in a draft, the
- * draft runs on MW-301's site DE-104 in a throwaway database, and it goes for review; a list's
+ * draft runs on MW-301's site 101 in a throwaway database, and it goes for review; a list's
  * chat filters MW-301's list.
  *
  * Against a real Postgres with the eTMF example and scripted models. The chat is not run on a
@@ -86,16 +86,16 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
 
     const sponsor = await create('etmf.Sponsor', { name: 'Meridian Pharma' })
     const study = await create('etmf.Study', { code: 'MW-301', sponsor })
-    siteId = await create('etmf.Site', { site_number: 'DE-104', study, cra_name: 'Priya Shah', cra_email: 'priya.shah@northlight.example' })
-    for (const artifact of ['Protocol signature page', 'Lab normal ranges', 'Sub-investigator CVs']) {
+    siteId = await create('etmf.Site', { site_number: '101', study, cra_name: 'Priya Shah', cra_email: 'priya.shah@northlight.example' })
+    for (const artifact of ['Investigator CV', 'Medical licence']) {
       await create('etmf.ExpectedDocument', { site: siteId, study, artifact, phase: 'start_up' })
     }
-    await create('etmf.Reminder', { site: siteId, sent_to: 'coordinator@charite-studien.example', subject: 'MW-301: 3 documents needed' })
+    await create('etmf.Reminder', { site: siteId, sent_to: 'owen.price@site101.example', subject: 'MW-301: 2 documents needed' })
     // Study MW-207 has a site that owes a document too: nothing of it shows in MW-301.
     const study207 = await create('etmf.Study', { code: 'MW-207', sponsor }, 'mw207')
     site207 = await create('etmf.Site', { site_number: 'AT-005', study: study207 }, 'mw207')
     await create('etmf.ExpectedDocument', { site: site207, study: study207, artifact: 'Lab normal ranges', phase: 'start_up' }, 'mw207')
-    // The study manager starts MW-301's reminders for DE-104.
+    // The study manager starts MW-301's reminders for site 101.
     expect(await api.call(manager, ch.CASES_START, { workflowId: 'remind-site', values: { site: siteId }, project: 'mw301' })).toMatchObject({ project: 'mw301' })
   }, 180_000)
 
@@ -110,7 +110,7 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     const cases = await until('the chase', () => api.call<any[]>(manager, ch.CASES_LIST, { workflowId: 'remind-site' }), (xs) => xs.length > 0, 30_000)
     const c = await until('at approve_email', () => api.call<MwCase>(manager, ch.CASES_GET, cases[0].caseId), (x) => x.state === 'approve_email' || x.status !== 'active', 60_000)
     expect(c.state).toBe('approve_email')
-    expect(c.values.email_to?.value).toBe('coordinator@charite-studien.example')
+    expect(c.values.email_to?.value).toBe('owen.price@site101.example')
   }, 90_000)
 
   it('the playbook\'s chat drafts the change: kept at once, in a draft of its own', async () => {
@@ -158,13 +158,13 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     expect((await attempt(cra.id, 'ola-client')).error).toContain('study_manager')
   }, 60_000)
 
-  it('the chat runs it on site 104: nothing is sent, and the reminder would copy Priya Shah', async () => {
+  it('the chat runs it on site 101: nothing is sent, and the reminder would copy Priya Shah', async () => {
     const ctx = { memwise: buildMemwiseToolCallbacks({ sessionId: chatId }) } as unknown as SessionToolContext
-    const run = parse(await handlePlaybookTestRun(ctx, { record: 'site 104' }))
+    const run = parse(await handlePlaybookTestRun(ctx, { record: 'site 101' }))
     expect(run.error).toBeUndefined()
     expect(run).toMatchObject({ status: 'pass', stoppedAt: 'wait_for_upload (active)' })
     const reminder = run.calls.find((c: any) => c.tool === 'etmf.reminder.create')
-    expect(reminder.args).toMatchObject({ sent_to: 'coordinator@charite-studien.example', copied: 'priya.shah@northlight.example' })
+    expect(reminder.args).toMatchObject({ sent_to: 'owen.price@site101.example', copied: 'priya.shah@northlight.example' })
 
     const draft = await api.call<MwDraft>(manager, ch.DRAFTS_GET, draftId)
     expect(draft.testRun).toBe('pass')
@@ -175,7 +175,7 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
 
   it('the page runs it on a record too, and refuses one it can\'t start from', async () => {
     const r = await api.call<MwTestRunDraftResult>(manager, ch.DRAFTS_TEST_RUN, { draftId, record: { entity: 'etmf.Site', id: siteId } })
-    expect(r).toMatchObject({ applied: true, testRun: { status: 'pass', record: { title: expect.stringContaining('DE-104') } } })
+    expect(r).toMatchObject({ applied: true, testRun: { status: 'pass', record: { title: expect.stringContaining('101') } } })
     const study = (await api.call<any>(manager, ch.RECORDS_QUERY, { entity: 'etmf.Study' })).rows[0].id
     const refused = await api.call<MwTestRunDraftResult>(manager, ch.DRAFTS_TEST_RUN, { draftId, record: { entity: 'etmf.Study', id: study } })
     expect(refused).toMatchObject({ applied: false, code: 'draft.test_run_failed' })
@@ -230,15 +230,16 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     const opened = await api.call<{ sessionId: string }>(manager, ch.CHAT_OPEN, { anchor: { kind: 'records', id: 'etmf.Site', project: 'mw301' }, message: 'Which sites are missing documents?' })
     const context = sessions.contexts.get(opened.sessionId)!
     expect(context.anchor).toEqual({ kind: 'records', id: 'etmf.Site', project: 'mw301' })
-    expect(context.block).toContain('DE-104')
+    expect(context.block).toContain('The list of Site records (etmf.Site) in Study MW-301: 1 ')
+    expect(context.block).toContain('"title": "101"')
     expect(context.block).not.toContain('AT-005')
     const ctx = { memwiseRecords: buildMemwiseRecordToolCallbacks({ sessionId: opened.sessionId }) } as unknown as SessionToolContext
     expect(parse(await handleRecordsFilter(ctx, { filter: 'missing_documentz > 0', label: 'Missing documents' })).error).toBeTruthy()
     const set = parse(await handleRecordsFilter(ctx, { filter: 'missing_documents > 0', label: 'Missing documents', chips: ['Missing documents'] }))
-    // MW-301's DE-104 only: MW-207's AT-005 owes a document too.
+    // MW-301's site 101 only: MW-207's AT-005 owes a document too.
     expect(set).toMatchObject({ applied: true, total: 1, chips: ['Missing documents'] })
     const inRecords = (await handleRecordQuery(ctx, { entity: 'etmf.Site', filter: 'missing_documents > 0' })).content[0]!.text
-    expect(inRecords).toContain('DE-104')
+    expect(inRecords).toMatch(/\b101\b/)
     expect(inRecords).not.toContain('AT-005')
     const shown = await api.call<MwRecordsChatFilter | null>(manager, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site', project: 'mw301' })
     expect(shown).toMatchObject({ entity: 'etmf.Site', sessionId: opened.sessionId, filter: 'missing_documents > 0', label: 'Missing documents', project: 'mw301' })

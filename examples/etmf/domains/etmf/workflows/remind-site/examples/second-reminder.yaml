@@ -1,63 +1,62 @@
 name: second-reminder
 description: >
-  DE-104 still owes three start-up documents a week after its first reminder. The reminder is drafted
-  to the coordinator, the study manager approves it, it is recorded as the site's second reminder, and
-  the site gets 5 days to upload.
+  Site 101 of MW-301 (Leeds) still owes two start-up documents a week after its first reminder. The
+  reminder is drafted to the coordinator, the study manager approves it, it is recorded as the
+  site's second reminder, and the site gets 5 days to upload.
 records:
   Sponsor:
-    - { id: spon_aster, name: Aster Bio }
+    - { id: spon_meridian, name: Meridian Pharma }
   Study:
-    - { id: stud_mw301, code: MW-301, sponsor: spon_aster }
+    - { id: stud_mw301, code: MW-301, title: "MW-301: meriglutide once weekly in adults with type 2 diabetes (phase 3)", sponsor: spon_meridian }
   Site:
-    - id: site_de104
-      site_number: DE-104
+    - id: site_101
+      site_number: "101"
       study: stud_mw301
       status: activating
       cra_name: Priya Shah
       cra_email: priya.shah@northlight.example
   # The coordinator's address is EDC's (read from Rave), followed by the eTMF site through its link.
   edc.Site:
-    - { id: edcs_de104, site_number: DE-104, name: Charité Studienzentrum, coordinator: Lena Hoffmann, coordinator_email: coordinator@charite-studien.example }
+    - { id: edcs_101, site_number: "101", name: Northgate University Hospital, coordinator: Owen Price, coordinator_email: owen.price@site101.example }
   ExpectedDocument:
-    - { id: expe_de104_protocol, site: site_de104, study: stud_mw301, artifact: Protocol signature page, phase: start_up, status: missing }
-    - { id: expe_de104_lab, site: site_de104, study: stud_mw301, artifact: Lab normal ranges, phase: start_up, status: missing }
-    - { id: expe_de104_sub_cv, site: site_de104, study: stud_mw301, artifact: Sub-investigator CVs, phase: start_up, status: missing }
-    - { id: expe_de104_irb, site: site_de104, study: stud_mw301, artifact: IRB approval, phase: start_up, status: filed }
+    - { id: expe_101_cv, site: site_101, study: stud_mw301, artifact: Investigator CV, phase: start_up, status: missing }
+    - { id: expe_101_licence, site: site_101, study: stud_mw301, artifact: Medical licence, phase: start_up, status: missing }
+    - { id: expe_101_irb, site: site_101, study: stud_mw301, artifact: IRB approval, phase: start_up, status: filed }
   Reminder:
-    - { id: remi_de104_1, site: site_de104, sent_to: coordinator@charite-studien.example, subject: "MW-301: 3 documents needed", sent_at: "2026-10-09T09:00:00Z" }
+    - { id: remi_101_1, site: site_101, sent_to: owen.price@site101.example, subject: "MW-301: 2 documents needed", sent_at: "2026-10-09T09:00:00Z" }
 case:
-  site: site_de104
+  site: site_101
 model:
   writer:
     - toolCalls:
-        - { name: etmf.site.get, args: { id: site_de104 } }
-        - { name: etmf.expected_document.list, args: { filter: "site = 'site_de104' and status = 'missing'" } }
+        - { name: etmf.site.get, args: { id: site_101 } }
+        - { name: etmf.expected_document.list, args: { filter: "site = 'site_101' and status = 'missing'" } }
     - toolCalls:
         - name: step.finish
           args:
             outcome: drafted
             writes:
-              email_to: coordinator@charite-studien.example
+              email_to: owen.price@site101.example
               email_cc: priya.shah@northlight.example
-              email_subject: "MW-301: 3 documents needed before the 28 Oct visit"
+              email_subject: "MW-301: 2 documents needed before the 28 Oct visit"
               email_body: |
-                Hello,
+                Hello Owen,
 
-                Before Priya's visit on Wed 28 Oct we still need the protocol signature page, the
-                sub-investigator CVs and the current lab normal ranges. This is our second reminder.
+                Before Priya's visit on Wed 28 Oct we still need Dr Marsh's CV and her medical
+                licence. This is our second reminder.
 
                 Could you upload them by Mon 26 Oct? The link below needs no login.
-            rationale: Second reminder; three start-up documents are still missing (the list from the site's expected documents).
+            rationale: Second reminder; two start-up documents are still missing (the list from the site's expected documents).
 submit:
   approve_email: { outcome: approved }
 expect:
   outcome: found
   state: wait_for_upload
   writes:
-    missing_documents: 3
+    missing_documents: 2
     reminders_sent: 1
-    email_to: coordinator@charite-studien.example
+    email_to: owen.price@site101.example
   entities:
     Reminder:
-      - { site: site_de104 }
-      - { site: site_de104, sent_to: coordinator@charite-studien.example, subject: "MW-301: 3 documents needed before the 28 Oct visit" }
+      - { site: site_101 }
+      - { site: site_101, sent_to: owen.price@site101.example, subject: "MW-301: 2 documents needed before the 28 Oct visit" }

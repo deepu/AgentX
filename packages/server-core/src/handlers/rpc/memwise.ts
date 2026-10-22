@@ -913,7 +913,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
   async function openRecordsChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, entity: string, message?: string, project?: string): Promise<string> {
     const def = c.project.entities[entity]
     if (!def) throw new Error('That record type was not found.')
-    const title = def.title ?? def.entity
+    // The type's name, not its title template ("{site_number} · {name}").
+    const title = entity.slice(entity.lastIndexOf('.') + 1)
     // A list in a project (Stage 3) is that project's records only.
     const scope = project && c.project.projects?.[project] ? project : undefined
     const rows = await recordsOf(svc).query({ entity, limit: 40, ...(scope ? { project: scope } : {}) }, actor)
