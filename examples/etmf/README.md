@@ -97,8 +97,13 @@ tools. Its binding maps Rave's studies, sites, subjects and queries onto `edc.St
 `edc.Subject` and `edc.Query`, and reads them again every 15 minutes (`sync:`). Every Rave field is
 owned by the plugin, so it is read only here and shows Rave as its source, with when it was read.
 
+- **Projects:** `projects/edc-mw301` and `projects/edc-mw207` are EDC's studies. Each names its study
+  (`study: MW-301`) and has a read-only Rave connection, so the sync reads that study only, into that
+  project. The same `study:` links each to eTMF's project of the study (`mw301`, `mw207`). "Also in other
+  apps" goes there, and sites pair only within the same study.
 - **Site** rolls up `randomised`, `open_queries` and `old_queries` (open longer than 14 days). eTMF's
-  Site follows its name, PI and coordinator.
+  Site follows its name, PI and coordinator. The eTMF seeds number their sites as Rave does (MW-301:
+  101–112, MW-207: 201–206) and make no EDC records, since those come from Rave.
 - `chase-old-queries` (**Chase old queries**, every Monday): the `chaser` drafts one reminder per site
   with old queries to its coordinator. Each email is approved with its exact text before it goes.
 - eTMF's `new-coordinator` (**Ask a new coordinator for their documents**): starts when EDC's Site

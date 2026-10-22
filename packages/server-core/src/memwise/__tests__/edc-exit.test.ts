@@ -15,14 +15,17 @@
  *    and emails her once approved.
  * 6. Chase old queries drafts one reminder per site with old queries (5), each approved before it
  *    goes, and the EDC home lists them as waiting.
+ * 7. Part B, with projects: each EDC project names its study (`study:` in project.yaml), and Rave is
+ *    read per project, into it. The home reads the project's study before RAVE_STUDY or the app's
+ *    default, and one study is linked across apps through the projects naming it.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { cpSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createTestDatabase, postgresAvailable, type TestDatabase } from '@memwise/db'
+import { createTestDatabase, postgresAvailable, tableOf, type TestDatabase } from '@memwise/db'
 import type {
-  MwCase, MwEdcHome, MwInboxItem, MwLinkedRecord, MwRecordPage, MwRecordQueryResult, MwStudyApps,
+  MwCase, MwEdcHome, MwInboxItem, MwLinkedRecord, MwRecordPage, MwRecordQueryResult, MwStudyApps, MwTreeNode,
 } from '@memwise/shared/protocol'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import { scriptedProvider, type ScriptedTurn } from '@memwise/gateway'
@@ -35,7 +38,7 @@ import { scriptedModels } from '../models'
 import { startMemwiseService, type MemwiseService } from '../service'
 import { RAVE_PLUGIN } from '../rave'
 import {
-  FAKE_RAVE_PASSWORD, FAKE_RAVE_USER, MW301, startFakeRave, type FakeRave,
+  FAKE_RAVE_PASSWORD, FAKE_RAVE_USER, MW207, MW301, startFakeRave, type FakeRave,
 } from '../../../../runtime/tests/fixtures/fake-rave-http'
 
 const REPO = join(import.meta.dir, '..', '..', '..', '..', '..')
@@ -109,7 +112,11 @@ describe.skipIf(!postgresAvailable())('Stage 6 exit: EDC from Medidata Rave, and
       ['Tom Ellis', 'tom@northlight.example', 'study_manager'],
     ] as const
     const made = []
-    for (const [name, email, role] of people) made.push(await svc.kernel.people.create({ name, email, roles: [role], password: PASSWORD }))
+    for (const [name, email, role] of people) {
+      // Dana is a person of the EDC projects (project.yaml): she is there already; her workspace role is set here.
+      const there = await svc.kernel.people.byEmail(email)
+      made.push(there ? await svc.kernel.people.setRoles(there.id, [...new Set([...there.roles, role])]) : await svc.kernel.people.create({ name, email, roles: [role], password: PASSWORD }))
+    }
     dana = ctxFor('dana-client', made[0]!.id)
     priya = ctxFor('priya-client', made[1]!.id)
     tom = ctxFor('tom-client', made[2]!.id)
@@ -364,4 +371,85 @@ describe.skipIf(!postgresAvailable())('Stage 6 exit: EDC from Medidata Rave, and
     // Rave was only read.
     expect(new Set(rave.calls.map((c) => c.method))).toEqual(new Set(['GET']))
   }, 120_000)
+
+  // ------------------------------------------------------------------ Part B: one study per project
+
+  const tableRows = async (entity: string, sql: (table: string) => string) => {
+    const def = (await svc.kernel.project()).project.entities[entity]!
+    return (await db.pool.query(sql(tableOf(def)))).rows
+  }
+
+  it('Part B: each EDC project reads its own study from Rave, into itself', async () => {
+    // examples/etmf/projects/edc-mw301 and edc-mw207: `study:` and a Rave connection each.
+    const projects = (await svc.kernel.project()).project.projects!
+    expect(projects['edc-mw301']).toMatchObject({ app: 'edc', study: 'MW-301' })
+    expect(projects['edc-mw207']).toMatchObject({ app: 'edc', study: 'MW-207' })
+    expect(projects.edc).toBeUndefined() // projects run the app, so it has no project of its own
+    expect(await tableRows('edc.Site', (t) => `select project, study, count(*)::int as n from ${t} group by project, study order by project`))
+      .toEqual([{ project: 'edc-mw207', study: 'MW-207', n: 6 }, { project: 'edc-mw301', study: 'MW-301', n: 12 }])
+    expect(await tableRows('edc.Study', (t) => `select project, rave_ref from ${t} order by project`))
+      .toEqual([{ project: 'edc-mw207', rave_ref: MW207 }, { project: 'edc-mw301', rave_ref: MW301 }])
+    expect(await tableRows('edc.Query', (t) => `select project, count(*)::int as n from ${t} where study = 'MW-207' group by project`))
+      .toEqual([{ project: 'edc-mw207', n: 1 }])
+    // A project's page tree has its own sites only.
+    const tree = await api.call<MwTreeNode[]>(dana, ch.RECORDS_TREE, { domain: 'edc', project: 'edc-mw207' })
+    expect(tree.filter((n) => n.kind === 'record' && n.entity === 'edc.Site').map((n) => (n as { title: string }).title.slice(0, 3)).sort())
+      .toEqual(['201', '202', '203', '204', '205', '206'])
+    // And its old queries page counts its own: MW-301's 23 old queries at 5 sites, not MW-207's one.
+    const page = await api.call<{ blocks: { kind: string; value?: number | null }[] }>(dana, ch.PAGES_DASHBOARD, { domain: 'edc', pageId: 'old-queries', project: 'edc-mw301' })
+    expect(page.blocks.filter((b) => b.kind === 'kpi').map((b) => b.value)).toEqual([23, 5])
+    const everywhere = await api.call<{ blocks: { kind: string; value?: number | null }[] }>(dana, ch.PAGES_DASHBOARD, { domain: 'edc', pageId: 'old-queries' })
+    expect(everywhere.blocks.filter((b) => b.kind === 'kpi').map((b) => b.value)).toEqual([24, 6])
+    // Each project's read asked Rave for its study only: no project read both.
+    const sitesRead = new Set(rave.calls.filter((c) => /\/sites$/.test(c.path)).map((c) => decodeURIComponent(c.path)))
+    expect([...sitesRead].sort()).toEqual([`/RaveWebServices/studies/${MW207}/sites`, `/RaveWebServices/studies/${MW301}/sites`])
+  })
+
+  it('Part B: the home reads the project\'s study before RAVE_STUDY or the app default', async () => {
+    const mw207 = await api.call<MwEdcHome>(dana, ch.EDC_HOME, { projectId: 'edc-mw207', domain: 'edc' })
+    expect(mw207.study).toMatchObject({ key: 'MW-207', record: { entity: 'edc.Study' } })
+    expect(mw207.sites.map((x) => x.number).sort()).toEqual(['201', '202', '203', '204', '205', '206'])
+    expect(mw207.randomised.value).toBe(5)
+    env('RAVE_STUDY', MW207)
+    try {
+      // The project names MW-301: the connection's study doesn't change that.
+      const mw301 = await api.call<MwEdcHome>(dana, ch.EDC_HOME, { projectId: 'edc-mw301', domain: 'edc' })
+      expect(mw301.study.key).toBe('MW-301')
+      expect(mw301.sites).toHaveLength(12)
+      // No project named: the connection's study, before the app's default (the most sites).
+      expect((await api.call<MwEdcHome>(dana, ch.EDC_HOME, { projectId: 'edc', domain: 'edc' })).study.key).toBe('MW-207')
+    } finally {
+      env('RAVE_STUDY', undefined)
+    }
+    expect((await api.call<MwEdcHome>(dana, ch.EDC_HOME, { projectId: 'edc', domain: 'edc' })).study.key).toBe('MW-301')
+  })
+
+  it('Part B: one study is linked across apps through the projects naming it', async () => {
+    // eTMF's MW-301 and MW-207, each in its own study project (projects/mw301, mw207).
+    const create = async (entity: string, values: Record<string, unknown>, project: string) => {
+      const r = await api.call(tom, ch.RECORDS_CREATE, { entity, values, project, reason: 'study set-up' })
+      expect(r).toMatchObject({ applied: true })
+      return r.id as string
+    }
+    const sponsor = (await query(tom, 'etmf.Sponsor')).rows[0]!.id
+    const study301 = await create('etmf.Study', { code: 'MW-301', title: 'Meriglutide once weekly (phase 3)', sponsor }, 'mw301')
+    const study207 = await create('etmf.Study', { code: 'MW-207', title: 'Meriglutide in adolescents (phase 2)', sponsor }, 'mw207')
+
+    // From EDC's MW-301 project: eTMF's MW-301 project, not the record of the same key elsewhere.
+    const also301 = await api.call<MwStudyApps>(dana, ch.STUDY_APPS, { projectId: 'edc-mw301', domain: 'edc' })
+    expect(also301.study.key).toBe('MW-301')
+    expect(also301.apps).toEqual([expect.objectContaining({ domain: 'etmf', project: { id: 'mw301', name: 'Study MW-301' }, record: expect.objectContaining({ id: study301 }) })])
+    const also207 = await api.call<MwStudyApps>(dana, ch.STUDY_APPS, { projectId: 'edc-mw207', domain: 'edc' })
+    expect(also207.apps).toEqual([expect.objectContaining({ domain: 'etmf', project: { id: 'mw207', name: 'Study MW-207' }, record: expect.objectContaining({ id: study207 }) })])
+
+    // Sites pair within the study: 201 in eTMF's MW-301 is not MW-207's 201 in EDC.
+    const wrong = await create('etmf.Site', { site_number: '201', study: study301 }, 'mw301')
+    const right = await create('etmf.Site', { site_number: '201', study: study207 }, 'mw207')
+    const paired = await until('MW-207\'s eTMF site 201 paired with EDC\'s', () => api.call<MwRecordPage>(priya, ch.RECORDS_PAGE, { entity: 'etmf.Site', id: right }),
+      (p) => p?.fields.some((f) => f.name === 'coordinator' && f.value === 'Samuel Sato'), 30_000)
+    expect(paired.fields.find((f) => f.name === 'principal_investigator')?.value).toBe('Dr Aiko Lindqvist')
+    const edc201 = (await tableRows('edc.Site', (t) => `select id from ${t} where project = 'edc-mw207' and site_number = '201'`))[0]!.id
+    expect((await api.call<MwLinkedRecord[]>(dana, ch.RECORDS_LINKED, { entity: 'edc.Site', id: edc201 })).map((r) => r.id)).toEqual([right])
+    expect((await db.pool.query(`select 1 from mw.identity_links where record_id = $1`, [wrong])).rows).toHaveLength(0)
+  }, 60_000)
 })
