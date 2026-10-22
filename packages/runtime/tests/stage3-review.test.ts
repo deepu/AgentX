@@ -126,6 +126,22 @@ describe.skipIf(!pgAvailable)('Stage 3 review: projects kept safe', () => {
     await kernel.index();
   });
 
+  test("a study's pages are the study's: its app's domain, its people only", async () => {
+    const pat = await actor('pat@shop.example');
+    const made = await kernel.pages.create({ project: 'north', title: 'Weekly takings', body: 'Up 4%.' }, pat);
+    expect(made).toMatchObject({ applied: true, page: { project: 'north' } });
+    const id = made.page!.id;
+    expect((await kernel.pages.list('north', pat)).map((p) => [p.id, p.domain])).toEqual([[id, 'shop']]);
+    // Rita works only in Both: North's pages aren't hers to see or write.
+    await kernel.projects.update('both', { people: [{ email: 'quinn@shop.example', name: 'Quinn', roles: ['clerk'] }, { email: 'rita@shop.example', name: 'Rita', roles: ['clerk'] }] }, SYSTEM);
+    const rita = await actor('rita@shop.example');
+    expect(await kernel.pages.list('north', rita)).toEqual([]);
+    expect(await kernel.pages.get(id, rita)).toBeUndefined();
+    expect(await kernel.pages.create({ project: 'north', title: 'Mine', body: 'x' }, rita)).toMatchObject({ applied: false, status: 'forbidden' });
+    // A page in Both, where she has a role, is fine.
+    expect(await kernel.pages.create({ project: 'both', title: 'Shelf check', body: 'x' }, rita)).toMatchObject({ applied: true });
+  });
+
   test('"Describe it" reuses only the draft the caller made, never someone else\'s of the same name', async () => {
     const tool = projectTools(() => kernel.projects, (id) => kernel.people.actorFor(id)).find((t) => t.name === CREATE_DRAFT_PROJECT_TOOL)!;
     const as = async (email: string) => ({ token: { onBehalfOf: (await kernel.people.byEmail(email))!.id } }) as unknown as ToolContext;
