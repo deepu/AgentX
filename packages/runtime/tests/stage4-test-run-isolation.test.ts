@@ -9,19 +9,20 @@ import type { RecordQuery, RecordQueryResult } from '../src/types.ts';
 
 const LITERATURE = resolve(import.meta.dir, '../../../examples/literature');
 
-/** One topic, as the person sees it; no related rows. */
+/** One enquiry, as the person sees it; no related rows. */
 async function query(q: RecordQuery): Promise<RecordQueryResult> {
-  const rows = q.entity.endsWith('Topic') && /id = 'topic_1'/.test(q.filter ?? '')
-    ? [{ id: 'topic_1', title: 'Oral GLP-1s', values: { name: 'Oral GLP-1s', question: 'Do they work?', query: 'semaglutide AND oral' }, hidden: [], status: 'active' }]
+  const rows = q.entity.endsWith('Enquiry') && /id = 'enq_1'/.test(q.filter ?? '')
+    ? [{ id: 'enq_1', title: 'Oral GLP-1s', values: { from: 'dr.lee@clinic.example', subject: 'Oral GLP-1s', question: 'Do oral GLP-1s work for weight loss?' }, hidden: [] }]
     : [];
   return { rows, columns: [], total: rows.length } as unknown as RecordQueryResult;
 }
 
 async function source(extra: Partial<TestRunSource> = {}): Promise<TestRunSource> {
   const { project } = await loadProject(LITERATURE);
-  const workflow = project.workflows['check-topic']!;
+  // Answering an enquiry searches PubMed (a bound MCP server whose tools only read).
+  const workflow = project.workflows['answer-enquiry']!;
   return {
-    project, workflow, record: { entity: 'literature.Topic', id: 'topic_1' }, query,
+    project, workflow, record: { entity: 'literature.Enquiry', id: 'enq_1' }, query,
     // Every tool says it only reads, as the PubMed binding does.
     effectOf: () => 'read',
     ...extra,
