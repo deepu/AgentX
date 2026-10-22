@@ -6,13 +6,24 @@ import { PgEntityStore, PgPageStore, withActor, type Queryable } from '@memwise/
 import { keyOf, type DashboardBlock, type DashboardValue, type EntityTypeDef, type FreePageDef, type ViewDef } from '@memwise/defs';
 import type { Actor, DashboardData, RecordQuery, RecordQueryResult, RecordRef, RecordsService, TreeNode } from '../types.ts';
 import { chartData } from './charts.ts';
-import { domainDef, domainOfEntity, entityByName, recordTitle, refEntity, type RecordsDeps } from './context.ts';
+import { domainDef, domainOfEntity, entityByName, firstTextField, recordTitle, refEntity, type RecordsDeps } from './context.ts';
 
 const entityStore = new PgEntityStore();
 const writtenPages = new PgPageStore();
 
 /** A group of more than this many records is one tree entry that opens a view. */
 export const TREE_GROUP_LIMIT = 25;
+
+/**
+ * The asked columns plus the fields the record's title is made of (`{site_number} · {name}`, else
+ * its first text field): a query for a few columns still names each row as everywhere else.
+ */
+function withTitleFields(def: EntityTypeDef, columns: string[]): string[] {
+  const fromTemplate = [...(def.title ?? '').matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]!);
+  const first = firstTextField(def);
+  const extra = [...fromTemplate, ...(first ? [first] : [])].filter((f) => f in def.fields);
+  return [...new Set([...columns, ...extra])];
+}
 
 /** Runs a records query under the actor, with `params.<x>` values for its filter. */
 export async function queryRecords(deps: RecordsDeps, def: EntityTypeDef, q: Omit<RecordQuery, 'entity' | 'domain'>, actor: Actor,
@@ -21,7 +32,7 @@ export async function queryRecords(deps: RecordsDeps, def: EntityTypeDef, q: Omi
   const run = async (c: Queryable) => {
     const r = await entityStore.query(c, def, entities, {
       ...(q.filter ? { filter: q.filter } : {}), ...(q.sort ? { sort: q.sort } : {}), ...(q.group ? { group: q.group } : {}),
-      ...(q.columns ? { columns: q.columns } : {}), limit: Math.min(q.limit ?? 100, 1000), offset: q.offset ?? 0,
+      ...(q.columns ? { columns: withTitleFields(def, q.columns) } : {}), limit: Math.min(q.limit ?? 100, 1000), offset: q.offset ?? 0,
       ...(Object.keys(params).length ? { params } : {}),
     });
     // The records the rows (and the groups, when grouped by a reference) point at, by title.

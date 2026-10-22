@@ -179,6 +179,12 @@ function TableBlock({ code, className, onUrlClick }: { code: string; className?:
 
 // ---------------------------------------------------------------- records (live)
 
+/** A field name in words for a column head: `missing_documents` → "Missing documents". */
+function fieldWords(name: string): string {
+  const words = name.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim().toLowerCase()
+  return words ? words[0]!.toUpperCase() + words.slice(1) : name
+}
+
 function RecordsBlock({ code, className }: { code: string; className?: string }) {
   const { t } = useTranslation()
   const { onOpenRecord } = React.useContext(PageBlocksContext)
@@ -207,7 +213,7 @@ function RecordsBlock({ code, className }: { code: string; className?: string })
             <thead>
               <tr className="border-b border-border">
                 <th className="px-3.5 py-2 text-left text-label-sm font-medium text-secondary">{t('pageBlock.recordTitle')}</th>
-                {columns.map((c) => <th key={c} className="px-3.5 py-2 text-left text-label-sm font-medium text-secondary">{c}</th>)}
+                {columns.map((c) => <th key={c} className="px-3.5 py-2 text-left text-label-sm font-medium text-secondary">{fieldWords(c)}</th>)}
               </tr>
             </thead>
             <tbody>

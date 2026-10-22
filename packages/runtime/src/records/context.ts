@@ -54,7 +54,7 @@ export const plainValues = (values: Record<string, unknown>) =>
   Object.entries(values).map(([k, v]) => `${k} is ${plainValue(v)}`).join(', ');
 
 /** The first Text-like field, the default title source. */
-function firstTextField(def: EntityTypeDef): string | undefined {
+export function firstTextField(def: EntityTypeDef): string | undefined {
   return Object.entries(def.fields).find(([, f]) => f.type.kind === 'scalar' && (f.type.name === 'Text' || f.type.name === 'PersonName'))?.[0]
     ?? Object.entries(def.fields).find(([, f]) => f.type.kind === 'identifier')?.[0];
 }

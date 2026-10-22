@@ -11,7 +11,7 @@ import { setupI18n, i18n } from '@memwise/shared/i18n'
 
 mock.module('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: '' }))
 mock.module('pdfjs-dist', () => ({ GlobalWorkerOptions: {}, getDocument: () => ({ promise: new Promise(() => {}) }) }))
-const { TooltipProvider } = await import('@memwise/ui')
+const { TooltipProvider, Markdown } = await import('@memwise/ui')
 const { RecordPageView } = await import('../records/RecordPageView')
 const { SignatureCard } = await import('../records/SignatureCard')
 const { ChatChip, ShellTable, Tag } = await import('../project/pages/shell-ui')
@@ -162,5 +162,21 @@ describe('a draft on its playbook page (D121, D122)', () => {
     expect(full).toContain('Test run on DE-104')
     expect(full).toContain('coordinator@site.example')
     expect(full).not.toContain('shown only to them')
+  })
+})
+
+describe('a list saved as a page (D123)', () => {
+  test("its live records block names each row by its title and each column in words", () => {
+    const block = {
+      entity: 'etmf.Site', filter: 'missing_documents > 0', columns: ['missing_documents', 'reminders_sent'], title: 'Sites: Missing documents',
+      result: {
+        entity: 'etmf.Site', total: 1, columns: [{ name: 'missing_documents', type: 'Number' }, { name: 'reminders_sent', type: 'Number' }],
+        rows: [{ id: 'site_1', title: 'DE-104 · Charite', values: { missing_documents: 3, reminders_sent: 1 } }],
+      },
+    }
+    const html = render(<Markdown mode="full">{'```records\n' + JSON.stringify(block) + '\n```'}</Markdown>)
+    expect(html).toContain('>Missing documents</th>')
+    expect(html).toContain('>Reminders sent</th>')
+    expect(html).toContain('DE-104 · Charite')
   })
 })
