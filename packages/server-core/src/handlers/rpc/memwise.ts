@@ -1469,7 +1469,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (!c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
       let caseId: string
       try {
-        ({ caseId } = await svc.kernel.startRun({ workflowId: input.workflowId, case: input.values ?? {}, by: actor.personId }))
+        ({ caseId } = await svc.kernel.startRun({ workflowId: input.workflowId, case: input.values ?? {}, by: actor.personId, ...(typeof input.project === 'string' && input.project ? { project: input.project } : {}) }))
       } catch (e) {
         // StartRunError: values that need fixing, reported per field like submitStep's
         const errors = (e as { status?: string; errors?: Record<string, string[]> })

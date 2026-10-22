@@ -328,6 +328,8 @@ export interface MwStartCaseInput {
   workflowId: string
   /** Plain initial values (provenance `input`, by the current person). */
   values?: Record<string, unknown>
+  /** Stage 3: the project to run it in (a study); absent: its app's own project. */
+  project?: string
 }
 
 // ---------------------------------------------------------------- inbox

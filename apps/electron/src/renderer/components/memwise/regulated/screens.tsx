@@ -15,6 +15,7 @@ import { Info_Page } from '@/components/info/Info_Page'
 import { navigate, routes } from '@/lib/navigate'
 import { memwiseDomainsAtom, memwiseRolesAtom, memwiseStatusAtom } from '@/atoms/memwise'
 import { downloadBase64 } from '@/hooks/useMemwiseRecords'
+import { useMemwiseProjects } from '@/hooks/useMemwiseProjects'
 import {
   useMemwiseAuditLog, useMemwiseChangeRequest, useMemwiseInspectorLinks, useMemwiseInspectorQuestions, useMemwiseRegulatedCalls, useMemwiseTmfIndex,
 } from '@/hooks/useMemwiseRegulated'
@@ -50,10 +51,13 @@ export const defaultRegulatedNavigation: Required<RegulatedNavigation> = {
 
 const nav = (given?: RegulatedNavigation): Required<RegulatedNavigation> => ({ ...defaultRegulatedNavigation, ...given })
 
-/** The project's name: the domain's, for now. */
+/** The project's name: an app's own project is the app (domain); a study is a project of it (Stage 3). */
 function useProjectName(projectId: string): string {
   const domains = useAtomValue(memwiseDomainsAtom)
-  return domains?.find(d => d.id === projectId)?.name ?? humanize(projectId)
+  const apps = useMemwiseProjects().data
+  return domains?.find(d => d.id === projectId)?.name
+    ?? apps?.flatMap(a => a.projects).find(p => p.id === projectId)?.name
+    ?? humanize(projectId)
 }
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))

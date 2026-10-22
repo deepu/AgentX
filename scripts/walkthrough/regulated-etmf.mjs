@@ -15,6 +15,8 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const PASSWORD = 'walkthrough-pass-1'
+/** Stage 3: the study project of the eTMF app the walkthrough runs in. */
+const STUDY = 'mw301'
 const QC_PATH = 'domains/etmf/workflows/file-document/steps/qc.md'
 const CLASSIFY_PATH = 'domains/etmf/workflows/file-document/steps/classify.md'
 const SIGNED_RULE = 'A CV is signed and dated by the person it is about, within the last two years.'
@@ -77,7 +79,7 @@ export default async ({ win, shot }) => {
   if (already?.total) throw new Error('This walkthrough needs a fresh config folder and project.')
   await call(win, 'memwiseSetOwnPassword', { password: PASSWORD })
   const create = async (entity, values) => {
-    const r = await call(win, 'memwiseCreateRecord', { entity, values, reason: 'study set-up' })
+    const r = await call(win, 'memwiseCreateRecord', { entity, values, reason: 'study set-up', project: STUDY })
     if (!r.applied) throw new Error(`create ${entity}: ${r.message}`)
     return r.id
   }
@@ -104,7 +106,7 @@ export default async ({ win, shot }) => {
   const cases = []
   for (const f of files) {
     const doc = await call(win, 'memwiseUploadFile', { name: f.name, mime: 'application/pdf', data: f.data })
-    const c = await call(win, 'memwiseStartCase', { workflowId: 'file-document', values: { original: doc, sender: 'coordinator@site.example', received_at: new Date().toISOString() } })
+    const c = await call(win, 'memwiseStartCase', { workflowId: 'file-document', project: STUDY, values: { original: doc, sender: 'coordinator@site.example', received_at: new Date().toISOString() } })
     if (!c.caseId) throw new Error(`start ${f.name}: ${JSON.stringify(c)}`)
     cases.push({ ...f, caseId: c.caseId })
   }
@@ -134,7 +136,7 @@ export default async ({ win, shot }) => {
   console.log('validation 1', first.status, first.passed, '/', first.total)
 
   // The change request's page, with its first (failed) validation, and its chat.
-  await go(win, `mw/etmf/cr/${cr.label}`); await wait(win, 3500)
+  await go(win, `mw/${STUDY}/cr/${cr.label}`); await wait(win, 3500)
   await shot('01-change-failed')
   const box = win.locator('[data-testid="shell-composer"] textarea')
   if (await box.count()) {
@@ -147,17 +149,17 @@ export default async ({ win, shot }) => {
   console.log('write classify', JSON.stringify(await write(CLASSIFY_PATH, live(CLASSIFY_PATH).replace('checkpoint:\n', `checkpoint:\n  - ${SIGNED_RULE}\n`), 'The AI check now includes signature and date')))
   const second = await call(win, 'memwiseValidateChangeRequest', { crId: cr.id })
   console.log('validation 2', second.status, second.passed, '/', second.total)
-  await go(win, 'mw/etmf'); await wait(win, 1000)
-  await go(win, `mw/etmf/cr/${cr.label}`); await wait(win, 3500)
+  await go(win, `mw/${STUDY}`); await wait(win, 1000)
+  await go(win, `mw/${STUDY}/cr/${cr.label}`); await wait(win, 3500)
   await shot('03-change-passed')
   await win.locator('[data-change-request]').first().screenshot({ path: `${process.argv[4]}/EChange.png` }).catch(e => console.log('EChange element shot', e.message))
 
   // Waiting for you: the raiser's sign-off.
-  await go(win, 'mw/etmf/waiting'); await wait(win, 3000)
+  await go(win, `mw/${STUDY}/waiting`); await wait(win, 3000)
   await shot('04-waiting-signoff')
 
   // The raiser signs it to QA (Part 11: password and meaning).
-  await go(win, `mw/etmf/cr/${cr.label}`); await wait(win, 3000)
+  await go(win, `mw/${STUDY}/cr/${cr.label}`); await wait(win, 3000)
   await win.locator('[data-action="send"]').first().click(); await wait(win, 1200)
   await shot('05-sign-dialog')
   await win.locator('input[type="password"]').last().fill(PASSWORD)
@@ -168,7 +170,7 @@ export default async ({ win, shot }) => {
   console.log('CR status', after.status, JSON.stringify(after.signoffs.map(s => [s.role, s.status])))
 
   // Project settings: give inspectors access.
-  await go(win, 'mw/etmf/settings/inspectors'); await wait(win, 3000)
+  await go(win, `mw/${STUDY}/settings/inspectors`); await wait(win, 3000)
   await shot('07-inspectors')
   // With no link yet the form is open already.
   const newLink = win.locator('[data-action="new-link"]')
@@ -180,7 +182,7 @@ export default async ({ win, shot }) => {
   await shot('09-inspectors-created')
 
   // The audit trail, with the AI's entries.
-  await go(win, 'mw/etmf/audit'); await wait(win, 3500)
+  await go(win, `mw/${STUDY}/audit`); await wait(win, 3500)
   await shot('10-audit')
   const verify = win.locator('[data-action="verify"]')
   if (await verify.count()) { await verify.first().click(); await wait(win, 2500); await shot('11-audit-verified') }
@@ -190,14 +192,14 @@ export default async ({ win, shot }) => {
   const unsigned = await call(win, 'memwiseGetCase', cases.find(c => !c.signed).caseId)
   const docId = unsigned.values?.document?.value ?? unsigned.values?.document
   if (typeof docId === 'string') {
-    await go(win, `mw/etmf/audit/${encodeURIComponent(`etmf.Document:${docId}`)}`); await wait(win, 3500)
+    await go(win, `mw/${STUDY}/audit/${encodeURIComponent(`etmf.Document:${docId}`)}`); await wait(win, 3500)
     await shot('11c-audit-document')
   } else console.log('no document on the unsigned case', JSON.stringify(unsigned.values?.document))
 
   // The TMF index and a zone.
-  await go(win, 'mw/etmf/tmf'); await wait(win, 3500)
+  await go(win, `mw/${STUDY}/tmf`); await wait(win, 3500)
   await shot('12-tmf-index')
-  await go(win, 'mw/etmf/tmf/site-management'); await wait(win, 3500)
+  await go(win, `mw/${STUDY}/tmf/site-management`); await wait(win, 3500)
   await shot('13-tmf-zone')
   console.log('URL', decodeURIComponent(win.url().split('route=')[1] ?? ''))
 }
