@@ -103,8 +103,25 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     return { svc, actor, r: regulatedOf(svc) }
   }
 
+  /**
+   * Stage 3 (26 §3): the project shell names a project of an app (a study, `mw301`). Its change
+   * requests, audit trail and inspector links are its app's (`etmf`): a playbook is the app's, and
+   * so is the trail the database writes. Its TMF index is its own records'. An app's own project
+   * (the app id) is the app.
+   */
+  async function scopeOf(svc: MemwiseService, actor: PersonActor, project: string): Promise<{ app: string; name: string; projects?: string[] }> {
+    const domains = (await svc.kernel.project().catch(() => undefined))?.project.domains ?? {}
+    if (domains[project]) return { app: project, name: domains[project]!.name ?? project }
+    const p = await svc.kernel.projects.get(project, actor).catch(() => undefined)
+    return p ? { app: p.app, name: p.name, projects: [p.id] } : { app: project, name: project }
+  }
+  const appOf = async (svc: MemwiseService, actor: PersonActor, project: string | undefined): Promise<string | undefined> =>
+    project ? (await scopeOf(svc, actor, project)).app : undefined
+  const appQuery = async (svc: MemwiseService, actor: PersonActor, q: MwAuditQuery): Promise<MwAuditQuery> =>
+    ({ ...q, project: (await appOf(svc, actor, q.project))! })
+
   async function requireView(svc: MemwiseService, actor: PersonActor, crId: unknown, project?: string): Promise<ChangeRequestView> {
-    const v = await regulatedOf(svc).changes.get(requireId(crId, 'change request'), actor, project)
+    const v = await regulatedOf(svc).changes.get(requireId(crId, 'change request'), actor, await appOf(svc, actor, project))
     if (!v) throw new Error('That change request was not found.')
     return v
   }
@@ -169,11 +186,11 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
   async function openPageChat(svc: MemwiseService, actor: PersonActor, workspaceId: string, kind: 'audit' | 'tmf', project: string, message?: string): Promise<string> {
     const r = regulatedOf(svc)
     const who = (await personName(svc, actor.personId)) ?? undefined
-    const domain = (await svc.kernel.project().catch(() => undefined))?.project.domains?.[project]
-    const name = domain?.name ?? project
+    const scope = await scopeOf(svc, actor, project)
+    const name = scope.name
     const lines: string[] = []
     if (kind === 'audit') {
-      const out = await r.auditLog.list({ project, limit: 5000 }, actor)
+      const out = await r.auditLog.list({ project: scope.app, limit: 5000 }, actor)
       const entries = out.entries.map(toAuditEntry).slice(-PAGE_CHAT_ENTRIES)
       lines.push(`The audit trail of the project ${name}: every change by people and AI, append-only, each entry chained to the one before (chain ${out.chain.ok ? 'intact' : `broken: ${out.chain.message ?? 'an entry changed'}`}).`)
       lines.push(out.entries.length > entries.length ? `The latest ${entries.length} of ${out.entries.length} entries, oldest first:` : `All ${entries.length} entries, oldest first:`)
@@ -181,7 +198,7 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
       lines.push('')
       lines.push('This chat is about the audit trail above. An AI entry names its model and quotes the sentence it relied on: say so when you cite one. Entries cannot be edited; the trail is exported, signed, from its page.')
     } else {
-      const idx = toTmfIndex(await r.tmf.index({ project }, actor))
+      const idx = toTmfIndex(await r.tmf.index({ project: scope.app, ...(scope.projects ? { projects: scope.projects } : {}) }, actor))
       const k = idx.kpis
       lines.push(`The TMF index of the project ${name}${idx.study ? ` (${idx.study.label})` : ''}, built from the TMF Reference Model with the expected documents from the study plan.`)
       lines.push(`Filed ${k.filed} of ${k.expected} expected; missing ${k.missing}; waiting for QC ${k.inQc}${k.oldestInQcDays !== null ? ` (oldest ${k.oldestInQcDays} days)` : ''}; filed late ${k.filedLate} (more than ${k.lateAfterDays} days after final).`)
@@ -253,10 +270,10 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     // ---------------------------------------------------------------- change requests
 
     async listChanges(ctx: RequestContext, filter: { project?: string; workflowId?: string; status?: MwChangeRequestStatus | MwChangeRequestStatus[] }): Promise<MwChangeRequestSummary[]> {
-      const { actor, r } = await begin(ctx)
+      const { svc, actor, r } = await begin(ctx)
       const wanted = filter?.status === undefined ? undefined : (Array.isArray(filter.status) ? filter.status : [filter.status]).filter((s) => STATUSES.includes(s))
       const list = await r.changes.list({
-        ...(str(filter?.project) ? { project: str(filter.project)! } : {}),
+        ...(str(filter?.project) ? { project: (await appOf(svc, actor, str(filter.project)))! } : {}),
         ...(str(filter?.workflowId) ? { workflowId: str(filter.workflowId)! } : {}),
         ...(wanted?.length ? { status: wanted } : {}),
       }, actor)
@@ -264,8 +281,8 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     },
 
     async getChange(ctx: RequestContext, input: { crId: string; project?: string }): Promise<MwChangeRequest | null> {
-      const { actor, r } = await begin(ctx)
-      const v = await r.changes.get(requireId(input?.crId, 'change request'), actor, str(input?.project))
+      const { svc, actor, r } = await begin(ctx)
+      const v = await r.changes.get(requireId(input?.crId, 'change request'), actor, await appOf(svc, actor, str(input?.project)))
       return v ? toChangeRequest(v) : null
     },
 
@@ -333,14 +350,14 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     // ---------------------------------------------------------------- the audit log
 
     async auditLog(ctx: RequestContext, query: MwAuditQuery): Promise<MwAuditLog> {
-      const { actor, r } = await begin(ctx)
-      const out = await r.auditLog.list(auditQuery(query), actor)
+      const { svc, actor, r } = await begin(ctx)
+      const out = await r.auditLog.list(await appQuery(svc, actor, auditQuery(query)), actor)
       return { entries: out.entries.map(toAuditEntry), chain: { ...out.chain } }
     },
 
     async auditLogExport(ctx: RequestContext, query: MwAuditQuery): Promise<MwAuditExport> {
-      const { actor, r } = await begin(ctx)
-      const q = auditQuery(query)
+      const { svc, actor, r } = await begin(ctx)
+      const q = await appQuery(svc, actor, auditQuery(query))
       const doc = await r.auditLog.export(q, actor)
       const day = doc.exportedAt.slice(0, 10)
       const scope = q.recordId ? `-${q.recordId}` : q.caseId ? `-${q.caseId}` : ''
@@ -352,7 +369,7 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     },
 
     async auditVerify(ctx: RequestContext, input: { project: string } | { exportJson: string }): Promise<MwAuditVerifyResult> {
-      const { r } = await begin(ctx)
+      const { svc, actor, r } = await begin(ctx)
       if (input && 'exportJson' in input && typeof input.exportJson === 'string') {
         if (input.exportJson.length > MAX_VERIFY_JSON) throw new Error('That file is too large to check here.')
         let parsed: unknown
@@ -361,26 +378,26 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
         }
         return toAuditVerify(await r.auditLog.verify({ export: parsed }))
       }
-      const project = requireId((input as { project?: string })?.project, 'project')
+      const project = (await appOf(svc, actor, requireId((input as { project?: string })?.project, 'project')))!
       return toAuditVerify(await r.auditLog.verify({ project }))
     },
 
     // ---------------------------------------------------------------- inspectors
 
     async listInspectors(ctx: RequestContext, input: { project: string }): Promise<MwInspectorLink[]> {
-      const { actor, r } = await begin(ctx)
-      return (await r.inspectors.list(requireId(input?.project, 'project'), actor)).map(toInspectorLink)
+      const { svc, actor, r } = await begin(ctx)
+      return (await r.inspectors.list((await appOf(svc, actor, requireId(input?.project, 'project')))!, actor)).map(toInspectorLink)
     },
 
     async createInspector(ctx: RequestContext, input: MwInspectorLinkInput): Promise<MwInspectorLinkCreated> {
-      const { actor, r } = await begin(ctx)
+      const { svc, actor, r } = await begin(ctx)
       const inspectors = Array.isArray(input?.inspectors)
         ? input.inspectors.filter((p) => p && str(p.name)).map((p) => ({
           name: str(p.name)!, ...(str(p.email) ? { email: str(p.email)! } : {}), ...(str(p.organisation) ? { organisation: str(p.organisation)! } : {}),
         }))
         : []
       const made = await r.inspectors.create({
-        project: requireId(input?.project, 'project'), name: requireId(input.name, 'name for the inspection'),
+        project: (await appOf(svc, actor, requireId(input?.project, 'project')))!, name: requireId(input.name, 'name for the inspection'),
         inspectors, expiresAt: requireId(input.expiresAt, 'end date'),
       }, actor)
       return { link: toInspectorLink(made.link), token: made.token, ...(made.url ? { url: made.url } : {}) }
@@ -397,9 +414,9 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     },
 
     async inspectorQuestions(ctx: RequestContext, filter: { project?: string; linkId?: string; open?: boolean }): Promise<MwInspectorQuestion[]> {
-      const { actor, r } = await begin(ctx)
+      const { svc, actor, r } = await begin(ctx)
       const list = await r.inspectors.questions({
-        ...(str(filter?.project) ? { project: str(filter.project)! } : {}),
+        ...(str(filter?.project) ? { project: (await appOf(svc, actor, str(filter.project)))! } : {}),
         ...(str(filter?.linkId) ? { linkId: str(filter.linkId)! } : {}),
         ...(typeof filter?.open === 'boolean' ? { open: filter.open } : {}),
       }, actor)
@@ -414,9 +431,11 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     // ---------------------------------------------------------------- the TMF index
 
     async tmfIndex(ctx: RequestContext, input: { project: string; study?: string; zone?: string }): Promise<MwTmfIndex> {
-      const { actor, r } = await begin(ctx)
+      const { svc, actor, r } = await begin(ctx)
+      const scope = await scopeOf(svc, actor, requireId(input?.project, 'project'))
       return toTmfIndex(await r.tmf.index({
-        project: requireId(input?.project, 'project'),
+        project: scope.app,
+        ...(scope.projects ? { projects: scope.projects } : {}),
         ...(str(input.study) ? { study: str(input.study)! } : {}),
         ...(str(input.zone) ? { zone: str(input.zone)! } : {}),
       }, actor))

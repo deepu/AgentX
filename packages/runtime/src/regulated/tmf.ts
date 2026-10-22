@@ -78,7 +78,9 @@ export function createTmfService(deps: TmfDeps): TmfService {
         await entityStore.list(db, expDef, { limit: 100_000 }),
         siteDef ? await entityStore.list(db, siteDef, { limit: 10_000 }) : [],
       ] as StoredEntityRow[][]);
-      const inStudy = (r: StoredEntityRow) => !input.study || r.values.study === input.study;
+      // Stage 3: a study project's records (and those every project of the app shares).
+      const inProjects = (r: StoredEntityRow) => !input.projects || r.project === undefined || input.projects.includes(r.project);
+      const inStudy = (r: StoredEntityRow) => inProjects(r) && (!input.study || r.values.study === input.study);
       const docRows = docs!.filter(inStudy);
       const expRows = expected!.filter(inStudy);
       const siteLabel = new Map(sites!.map((s) => [s.id, recordTitle(siteDef!, s.id, s.values)]));
@@ -144,6 +146,11 @@ export function createTmfService(deps: TmfDeps): TmfService {
       if (input.study && studyDef) {
         const study = await withActor(deps.pool, actor as Actor, (db) => entityStore.get(db, studyDef, input.study!));
         if (study) result.study = { id: study.id, label: recordTitle(studyDef, study.id, study.values) };
+      } else if (input.projects && studyDef) {
+        // A study project holds its one Study record.
+        const studies = (await withActor(deps.pool, actor as Actor, (db) => entityStore.list(db, studyDef, { limit: 1000 })))
+          .filter((r) => r.project !== undefined && input.projects!.includes(r.project));
+        if (studies.length === 1) result.study = { id: studies[0]!.id, label: recordTitle(studyDef, studies[0]!.id, studies[0]!.values) };
       }
 
       const zone = input.zone ? zoneById(input.zone) : undefined;

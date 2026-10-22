@@ -368,7 +368,11 @@ export interface TmfIndex {
 }
 
 export interface TmfService {
-  index(input: { project: string; study?: string; zone?: string }, actor: Actor): Promise<TmfIndex>;
+  /**
+   * `project`: the regulated app (`etmf`). `projects` (Stage 3): only records of these projects of
+   * it, a study's (records every project shares are kept); with one study among them, it names it.
+   */
+  index(input: { project: string; projects?: string[]; study?: string; zone?: string }, actor: Actor): Promise<TmfIndex>;
 }
 
 export interface KernelRegulated {

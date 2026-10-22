@@ -85,6 +85,8 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
     return anchor?.anchorKind === 'change' ? change : step
   }
   return {
+    // The step's other tools (Stage 3's project tools) belong to step chats only.
+    ...step,
     vocabulary: async () => (await pick()).vocabulary(),
     read: async (input) => (await pick()).read(input),
     write: async (input) => (await pick()).write(input),

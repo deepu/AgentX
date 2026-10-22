@@ -32,7 +32,7 @@ function write(root: string, files: Record<string, string>) {
 
 const codes = (ds: Diagnostic[]) => ds.filter((d) => d.severity === 'error').map((d) => `${d.code} ${d.file ?? ''}`).sort();
 const waitFor = (p: ProjectDefs, id: string) => p.projects![id]!.workflows['chase-missing']!.states.wait_for_documents!.wait?.timeout;
-const ROLES = { roles: ['tmf_specialist', 'study_manager', 'cra'] };
+const ROLES = { roles: ['tmf_specialist', 'study_manager', 'cra', 'qa'] };
 async function load(dir: string) {
   const { project, diagnostics } = await loadProject(dir);
   return { project, all: [...diagnostics, ...checkProject(project, { tools: {}, ...ROLES })] };

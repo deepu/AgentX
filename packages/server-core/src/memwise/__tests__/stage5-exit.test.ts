@@ -26,6 +26,7 @@ import { join } from 'node:path'
 import { createTestDatabase, postgresAvailable, type TestDatabase } from '@memwise/db'
 import type {
   MwAuditExport, MwAuditLog, MwAuditVerifyResult, MwChangeRequest, MwChangeSignResult, MwOpenChangeResult, MwInboxItem, MwInspectorLink, MwInspectorQuestion,
+  MwChangeRequestSummary,
   MwTmfIndex,
 } from '@memwise/shared/protocol'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
@@ -415,6 +416,25 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     const { sessionId } = await api.call<{ sessionId: string }>(anikaCtx, ch.CHAT_OPEN, { anchor: { kind: 'tmf', id: 'etmf' }, message: 'Which zones are behind?' })
     expect(sessions.contexts.get(sessionId)).toMatchObject({ anchor: { kind: 'tmf', id: 'etmf' } })
     expect(sessions.contexts.get(sessionId)!.block).toContain('05 · Site Management · 5 · 4 · 1')
+  })
+
+  it('Stage 3: a study of the app (mw301) has the app\'s change requests, trail and inspector links, and its own TMF index', async () => {
+    const cr = await api.call<MwChangeRequest>(anikaCtx, ch.CHANGES_GET, { crId: 'CR-014', project: 'etmf' })
+    expect(await api.call<MwChangeRequest>(anikaCtx, ch.CHANGES_GET, { crId: 'CR-014', project: 'mw301' })).toMatchObject({ id: cr.id, project: 'etmf' })
+    expect((await api.call<MwChangeRequestSummary[]>(anikaCtx, ch.CHANGES_LIST, { project: 'mw301' })).map((c) => c.id)).toContain(cr.id)
+    const trail = await api.call<{ entries: unknown[] }>(anikaCtx, ch.AUDIT_LOG, { project: 'etmf' })
+    expect((await api.call<{ entries: unknown[] }>(anikaCtx, ch.AUDIT_LOG, { project: 'mw301' })).entries).toHaveLength(trail.entries.length)
+    expect(await api.call<unknown[]>(anikaCtx, ch.INSPECTORS_LIST, { project: 'mw301' })).toEqual(await api.call<unknown[]>(anikaCtx, ch.INSPECTORS_LIST, { project: 'etmf' }))
+
+    // The study's own plan: one expected document in MW-301; the records above are the app's own project's.
+    const r = await kernel().records.create({ entity: 'etmf.Study', values: { code: 'MW-301', title: 'Aster-1, study project', sponsor: ids.sponsor }, project: 'mw301', reason: 'study set-up' }, { kind: 'system' })
+    const site = await kernel().records.create({ entity: 'etmf.Site', values: { site_number: '201', study: r.id }, project: 'mw301', reason: 'study set-up' }, { kind: 'system' })
+    const e = await kernel().records.create({ entity: 'etmf.ExpectedDocument', values: { site: site.id, study: r.id, artifact: 'Protocol', phase: 'start_up' }, project: 'mw301', reason: 'study set-up' }, { kind: 'system' })
+    expect([r.message, site.message, e.message]).toEqual([undefined, undefined, undefined])
+    const tmf = await api.call<MwTmfIndex>(anikaCtx, ch.TMF_INDEX, { project: 'mw301' })
+    expect(tmf.kpis).toMatchObject({ expected: 1, filed: 0, missing: 1 })
+    expect(tmf.study).toMatchObject({ id: r.id })
+    expect((await api.call<MwTmfIndex>(anikaCtx, ch.TMF_INDEX, { project: 'etmf' })).kpis.expected).toBeGreaterThan(1)
   })
 
   it('a change log that continues a paper one starts at the paper number, never below a used one', async () => {
