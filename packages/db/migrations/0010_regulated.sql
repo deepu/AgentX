@@ -141,12 +141,15 @@ end $$;
 revoke execute on function mw.audit_append(text, text, text, text, text, text, text, text, jsonb) from public;
 grant execute on function mw.audit_append(text, text, text, text, text, text, text, text, jsonb) to memwise_app;
 
--- The project (domain) a case belongs to: its playbook's domain.
+-- The project (domain) a case belongs to: its playbook's domain. A Stage 3 project runs its own
+-- copy of the app's playbook (a hash of its own, not indexed): that copy's app is the playbook's.
 create or replace function mw.audit_project_of_case(p_case_id text) returns text
   language sql stable security definer set search_path = mw, pg_temp as $$
     select coalesce((select d.body ->> 'domain' from mw.runs r
                       join mw.definitions d on d.kind = 'workflow' and d.id = r.workflow_id and d.hash = r.workflow_hash
-                     where r.case_id = p_case_id order by r.created_at limit 1), 'domain')
+                     where r.case_id = p_case_id order by r.created_at limit 1),
+                    (select mw.workflow_domain(r.workflow_id) from mw.runs r where r.case_id = p_case_id order by r.created_at limit 1),
+                    'domain')
   $$;
 
 -- The project of a record: its entity key's domain (`etmf.Document` → etmf), a case's playbook's

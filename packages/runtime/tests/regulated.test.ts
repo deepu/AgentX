@@ -18,6 +18,7 @@ import { createKernel } from '../src/kernel.ts';
 import { createAuditLogService } from '../src/regulated/audit-log.ts';
 import { inspectorSees, withoutAiProse } from '../src/regulated/inspectors.ts';
 import { main } from '../src/cli.ts';
+import { waitingAppOf } from '../src/projects/service.ts';
 import type { AuditExport, ChangeRequestView, Kernel, PersonActor } from '../src/types.ts';
 import {
   answerQc, cvFile, FAKE_CLASSIFIER_MODEL, FAKE_VERIFIER_MODEL, fakeModelRoles, fakeRegulatedProvider, fileAtQc, until, type FakeIndex,
@@ -374,6 +375,21 @@ describe.skipIf(!pgAvailable)('regulated projects (Stage 5) on the eTMF example'
 
   // ---------------------------------------------------------------- the TMF index
 
+  test('a record type added after 0010 ran (a new app\'s table, as EDC\'s are) is in the trail too', async () => {
+    // Typed tables are made by the domain DDL at index, after the migrations: each gets the row
+    // trigger that writes mw.record_versions, which the audit trigger watches. So a table made
+    // later needs nothing of its own.
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(projectDir, 'domains', 'edc', 'entities'), { recursive: true });
+    writeFileSync(join(projectDir, 'domains', 'edc', 'domain.yaml'), 'domain: edc\nname: EDC\nowner: study_manager\nregulated: true\n');
+    writeFileSync(join(projectDir, 'domains', 'edc', 'entities', 'subject.yaml'), 'entity: Subject\ntitle: "{code}"\nfields:\n  code: { type: Text, required: true }\n');
+    expect((await kernel.index()).filter((d) => d.severity === 'error')).toEqual([]);
+    const subject = await create('edc.Subject', { code: 'MW-301-101-001' });
+    const trail = (await kernel.auditLog.list({ project: 'edc', entity: 'edc.Subject', recordId: subject }, anika)).entries;
+    expect(trail.map((e) => e.action)).toEqual(['record.created']);
+    expect(await kernel.auditLog.verify({ project: 'edc' })).toMatchObject({ ok: true });
+  });
+
   test('the TMF index: expected, filed, missing and in QC by zone, and by site within a zone', async () => {
     await create('etmf.ExpectedDocument', { site: ids.site101, study: ids.study, artifact: 'IRB approval letter', phase: 'start_up' });
     await create('etmf.ExpectedDocument', { site: ids.site109, study: ids.study, artifact: 'Lab normal ranges', phase: 'start_up' });
@@ -391,5 +407,15 @@ describe.skipIf(!pgAvailable)('regulated projects (Stage 5) on the eTMF example'
     expect(site.zone!.sites.map((s) => [s.label, s.expected, s.filed, s.missing])).toEqual([['101', 2, 2, 0], ['104', 2, 2, 0], ['109', 1, 0, 1]]);
     expect(site.zone!.missing).toEqual([expect.objectContaining({ artifact: 'Investigator CV', site: '109' })]);
     expect(site.zone!.documents).toHaveLength(4);
+  });
+});
+
+describe('Stage 5 on Stage 3', () => {
+  test('a change request or an inspector question waits under its app; a step under its own project', () => {
+    const cr = { kind: 'change-request', id: 'x', signoff: 'raiser', since: '', changeRequest: { project: 'etmf' } } as never;
+    const question = { kind: 'inspector-question', id: 'q', since: '', question: { project: 'etmf' } } as never;
+    expect([waitingAppOf(cr), waitingAppOf(question)]).toEqual(['etmf', 'etmf']);
+    expect(waitingAppOf({ ...(cr as object), project: 'mw301' } as never)).toBeUndefined();
+    expect(waitingAppOf({ kind: 'input', id: 's', project: 'mw301' } as never)).toBeUndefined();
   });
 });
