@@ -92,7 +92,8 @@ export function testRunForChat(r: DraftTestRun): Record<string, unknown> {
  * The record a test run starts from, by id or by words of its title ("104", "site DE-104"): among
  * the records of the type the playbook starts from, as the person sees them.
  */
-async function findTestRecord(svc: MemwiseService, actor: PersonActor, workflowId: string, input: PlaybookTestRunInput): Promise<{ entity: string; id: string }> {
+/** `inProject`: a study copy's draft is tested on that study's records only. */
+async function findTestRecord(svc: MemwiseService, actor: PersonActor, workflowId: string, input: PlaybookTestRunInput, inProject?: string): Promise<{ entity: string; id: string }> {
   const { project } = await svc.kernel.project()
   const wf = project.workflows[workflowId]
   if (!wf) throw new Error('That playbook was not found.')
@@ -110,7 +111,7 @@ async function findTestRecord(svc: MemwiseService, actor: PersonActor, workflowI
     // "site 104": the type's own name isn't part of the title.
     const typeName = project.entities[entity]!.entity.toLowerCase()
     const parts = words.split(/\s+/).filter((w) => w.length > 0 && w !== typeName && w !== `${typeName}s`)
-    const r = await records.query({ entity, limit: 200 }, actor).catch(() => undefined)
+    const r = await records.query({ entity, limit: 200, ...(inProject ? { project: inProject } : {}) }, actor).catch(() => undefined)
     const row = r?.rows.find((x) => x.id === input.record.trim())
       ?? r?.rows.find((x) => x.title.toLowerCase() === words)
       ?? r?.rows.find((x) => x.title.toLowerCase().includes(words) || (parts.length > 0 && parts.every((w) => x.title.toLowerCase().includes(w))))
@@ -129,8 +130,11 @@ export async function mayChangePlaybooks(svc: MemwiseService, actor: PersonActor
   const meta = project.workflows[metaId]
   if (!meta) throw new Error(`Changing playbooks is not set up in this project (the ${metaId} playbook is missing).`)
   const assignee = meta.steps[meta.start]?.assignee
-  // A role everywhere, or (Stage 3) the role in the project whose own copy of the playbook changes.
-  const holds = (role: string) => actor.roles.includes(role) || (!!scope && (actor.grants ?? []).some((g) => g.role === role && g.project === scope))
+  // A role everywhere, the role across the playbook's app, or (Stage 3) the role in the project
+  // whose own copy of the playbook changes (as Stage 5's holdsRole and reaches count grants).
+  const app = (workflowId ? project.workflows[workflowId]?.domain : undefined) ?? (scope ? project.projects?.[scope]?.app : undefined)
+  const holds = (role: string) => actor.roles.includes(role) || (actor.grants ?? []).some((g) =>
+    g.role === role && (app ? g.domain === app : !!scope) && (g.project ? g.project === scope : !!app))
   if (!assignee || holds(assignee)) return
   const known = new Set((await svc.kernel.people.roles()).map((r) => r.id))
   const owner = workflowId ? (scope ? project.projects?.[scope]?.workflows[workflowId] : project.workflows[workflowId])?.owner : undefined
@@ -459,7 +463,7 @@ function buildStepToolCallbacks(opts: MemwiseChatToolsOptions): MemwiseToolCallb
       const pc = await playbookChat()
       const found = pc ? { svc: pc.svc, actor: pc.actor, draft: pc.draft } : await ctx().then(({ svc, actor, s }) => ({ svc, actor, draft: s.draft }))
       if (!found.draft) throw new Error('Nothing to run yet: write the change into the draft first.')
-      const record = await findTestRecord(found.svc, found.actor, found.draft.workflowId, input)
+      const record = await findTestRecord(found.svc, found.actor, found.draft.workflowId, input, found.draft.project?.id)
       const run = await authoringOf(found.svc).testRun(found.draft.id, record, found.actor)
       emitMemwiseChange({ kind: 'drafts', id: found.draft.id })
       opts.log?.(`[memwise] chat ${sessionId} test run of ${found.draft.id} on ${record.entity} ${record.id}: ${run.status}`)

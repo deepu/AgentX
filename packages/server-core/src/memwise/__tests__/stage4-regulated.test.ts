@@ -121,11 +121,23 @@ describe.skipIf(!postgresAvailable())('Stage 4 in a regulated app: a playbook ch
     expect(found.sessionId).toBe(sessionId)
     const owner = ctxFor('owner-client', svc.owner.id)
     expect((await api.call<{ sessionId: string | null }>(owner, ch.CHAT_FIND, { anchor: { kind: 'change', id: cr.id, project: 'mw301' } })).sessionId).toBeNull()
+    // The study's playbook page finds the chat again (it is stored with no study: the request is the app's).
+    expect((await api.call<{ sessionId: string | null }>(manager, ch.CHAT_FIND, { anchor: { kind: 'workflow', id: 'remind-site', project: 'mw301' } })).sessionId).toBe(sessionId)
+    // Discarding the request's draft is refused like sending it: it goes with the request (Withdraw).
+    expect(await api.call(manager, ch.DRAFTS_DISCARD, wrote.draftId)).toMatchObject({ applied: false, code: 'draft.change_request' })
     // Once the person opens the request's own chat ("Chat about the change"), that one is shown.
     const crChat = await api.call<{ sessionId: string }>(manager, ch.CHAT_OPEN, { anchor: { kind: 'change', id: cr.id, project: 'mw301' }, reuse: true })
     expect(crChat.sessionId).not.toBe(sessionId)
     expect((await api.call<{ sessionId: string | null }>(manager, ch.CHAT_FIND, { anchor: { kind: 'change', id: cr.id, project: 'mw301' } })).sessionId).toBe(crChat.sessionId)
   }, 240_000)
+
+  it('a grant of the role across the app may raise it', async () => {
+    const lea = await svc.kernel.people.create({ name: 'Lea Novak', email: 'lea@northlight.example', roles: [] })
+    await (svc.kernel as any).domains.setGrants(lea.id, [{ role: 'study_manager', domain: 'etmf' }], { kind: 'system' })
+    const { wrote } = await edit(ctxFor('lea-client', lea.id))
+    expect(wrote.error).toBeUndefined()
+    expect(wrote).toMatchObject({ status: 'kept', changeRequest: expect.stringMatching(/^CR-\d{3}$/) })
+  }, 60_000)
 
   it('a grant in one study can\'t raise a change to the whole app\'s playbook', async () => {
     const mara = await svc.kernel.people.create({ name: 'Mara Novak', email: 'mara@northlight.example', roles: [] })

@@ -120,7 +120,7 @@ describe.skipIf(!pgAvailable)('Stage 3: projects inside apps', () => {
     // files-a-pi-cv's scripted classifier writes these ids; the seed gives MW-301's records the same.
     const example = parseYaml(readFileSync(join(root, 'domains/etmf/workflows/file-document/examples/files-a-pi-cv.yaml'), 'utf8'));
     const writes = example.model.classifier.flatMap((t: any) => t.toolCalls ?? []).find((c: any) => c.name === 'step.finish').args.writes;
-    const title = async (entity: string, id: string) => (await kernel.records.page(entity, id, anika)).title;
+    const title = async (entity: string, id: string) => (await kernel.records.page(entity, id, anika))?.title;
     expect(await title('etmf.Study', writes.study)).toBe('MW-301: meriglutide once weekly in adults with type 2 diabetes (phase 3)');
     expect(await title('etmf.Site', writes.site)).toMatch(/^101\b/);
     expect(await title('etmf.Person', writes.about)).toBe('Helen Marsh');
