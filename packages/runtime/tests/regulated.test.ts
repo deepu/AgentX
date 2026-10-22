@@ -17,6 +17,7 @@ import { draftDir } from '@memwise/defs';
 import { createKernel } from '../src/kernel.ts';
 import { createAuditLogService } from '../src/regulated/audit-log.ts';
 import { inspectorSees, withoutAiProse } from '../src/regulated/inspectors.ts';
+import { holdsRole, reaches } from '../src/regulated/changes.ts';
 import { main } from '../src/cli.ts';
 import { waitingAppOf } from '../src/projects/service.ts';
 import type { AuditExport, ChangeRequestView, Kernel, PersonActor } from '../src/types.ts';
@@ -417,5 +418,31 @@ describe('Stage 5 on Stage 3', () => {
     expect([waitingAppOf(cr), waitingAppOf(question)]).toEqual(['etmf', 'etmf']);
     expect(waitingAppOf({ ...(cr as object), project: 'mw301' } as never)).toBeUndefined();
     expect(waitingAppOf({ kind: 'input', id: 's', project: 'mw301' } as never)).toBeUndefined();
+  });
+});
+
+describe('roles and reach on Stage 3 studies (change requests are the app\'s)', () => {
+  const person = (grants: { role: string; domain: string; project?: string }[], roles: string[] = []): PersonActor => ({ kind: 'person', personId: 'p', roles, grants });
+  const inMw207 = person([{ role: 'qa', domain: 'etmf', project: 'mw207' }, { role: 'study_manager', domain: 'etmf', project: 'mw207' }]);
+  const acrossApp = person([{ role: 'qa', domain: 'etmf' }]);
+
+  test('a grant in one study holds its role in that study only, never for the app as a whole', () => {
+    expect(holdsRole(inMw207, 'study_manager', 'etmf', 'mw207')).toBe(true);
+    expect(holdsRole(inMw207, 'study_manager', 'etmf', 'mw301')).toBe(false);
+    // QA's signature on a change request (the app's): no study is named, so a study's grant doesn't count.
+    expect(holdsRole(inMw207, 'qa', 'etmf')).toBe(false);
+    expect(holdsRole(acrossApp, 'qa', 'etmf')).toBe(true);
+    expect(holdsRole(acrossApp, 'qa', 'etmf', 'mw301')).toBe(true);
+    expect(holdsRole(person([], ['qa']), 'qa', 'etmf')).toBe(true);
+    expect(holdsRole({ kind: 'system' }, 'qa', 'etmf')).toBe(false);
+  });
+
+  test('a person sees a study through a grant in it or across the app; the app as a whole only across it', () => {
+    expect(reaches(inMw207, 'etmf', 'mw207')).toBe(true);
+    expect(reaches(inMw207, 'etmf', 'mw301')).toBe(false);
+    expect(reaches(inMw207, 'etmf')).toBe(false);
+    expect(reaches(acrossApp, 'etmf')).toBe(true);
+    // No grant in the app: workspace-wide roles see all of it (as mw.domain_project_visible).
+    expect(reaches(person([{ role: 'cra', domain: 'edc', project: 'edc-mw301' }]), 'etmf', 'mw301')).toBe(true);
   });
 });

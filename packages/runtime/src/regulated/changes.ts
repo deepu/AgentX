@@ -63,10 +63,27 @@ const auditStore = new PgAuditLog();
 /** The project (domain) of a live playbook. */
 const projectOf = (wf: Pick<WorkflowDef, 'domain'>) => wf.domain ?? DEFAULT_DOMAIN;
 
-/** Whether the person holds `role`, workspace-wide or granted in `domain`. */
-export function holdsRole(actor: Actor, role: string, domain: string): boolean {
+/**
+ * Whether the person holds `role` in `domain`: workspace-wide, or by a grant there. With `project`
+ * (a study of the app, Stage 3) a grant in that study counts too, as `mw.actor_has_role_in_project`.
+ * Without it the act is the whole app's (a change request, an app-level inspector link), so only a
+ * grant across the app counts: a study's grant reaches that study, not its app.
+ */
+export function holdsRole(actor: Actor, role: string, domain: string, project?: string): boolean {
   if (actor.kind !== 'person') return false;
-  return actor.roles.includes(role) || !!actor.grants?.some((g) => g.role === role && g.domain === domain);
+  return actor.roles.includes(role)
+    || !!actor.grants?.some((g) => g.role === role && g.domain === domain && (!g.project || (project !== undefined && g.project === project)));
+}
+
+/**
+ * Whether the person reaches `project` of `domain` (a study), or with none the whole app, as
+ * `mw.domain_project_visible`: no grant in the domain (workspace-wide roles), or a grant there
+ * that reaches it. A grant in one study doesn't reach the app as a whole.
+ */
+export function reaches(actor: Actor, domain: string, project?: string): boolean {
+  if (actor.kind !== 'person') return true;
+  const inDomain = (actor.grants ?? []).filter((g) => g.domain === domain);
+  return !inDomain.length || inDomain.some((g) => !g.project || (project !== undefined && g.project === project));
 }
 
 /** The role whose signature makes a change request of a domain live: `qa:`, else the owner. */
@@ -405,6 +422,8 @@ export function createChangesService(deps: ChangesDeps): ChangesKernelService {
       if (!deps.project()?.domains?.[project]?.regulated) {
         throw new Error(`${live.title ?? live.id} is not in a regulated domain: change it with a draft, no change request needed`);
       }
+      // A change request changes the app's playbook for every study of it: a grant in one study isn't enough.
+      if (!reaches(by, project)) throw new Error(`a change to ${live.title ?? live.id} is the whole app's: it needs a role across ${deps.project()?.domains?.[project]?.name ?? project}, not in one of its projects`);
       const a = authoring();
       let draftId = input.draftId;
       if (draftId) {
@@ -494,6 +513,7 @@ export function createChangesService(deps: ChangesDeps): ChangesKernelService {
         if (by.personId !== cr.raisedBy) {
           return { applied: false, status: 'not-your-turn', message: `${label} is sent to QA by the person who raised it (${await nameOf(cr.raisedBy)})` };
         }
+        if (!reaches(by, cr.project)) return { applied: false, status: 'forbidden', message: `${label} is the whole app's: sending it needs a role across the app, not in one of its projects` };
         if (!cr.reason.trim()) return { applied: false, status: 'no-reason', message: `give the reason for ${label} before sending it to QA` };
         if (!validated) return { applied: false, status: 'not-validated', message: `${label} needs a validation run that passes on the draft as it is now` };
         const refused = await checkSigningPassword(deps.people, by, input, RAISER_MEANING, { changeRequest: cr.id });

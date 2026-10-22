@@ -112,9 +112,16 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
    */
   async function scopeOf(svc: MemwiseService, actor: PersonActor, project: string): Promise<{ app: string; name: string; projects?: string[] }> {
     const domains = (await svc.kernel.project().catch(() => undefined))?.project.domains ?? {}
-    if (domains[project]) return { app: project, name: domains[project]!.name ?? project }
+    if (domains[project]) {
+      // The app as a whole (every study's trail and links): a grant in one of its studies isn't enough.
+      const { reaches } = await import('@memwise/runtime')
+      if (!reaches(actor, project)) throw new Error('That project was not found.')
+      return { app: project, name: domains[project]!.name ?? project }
+    }
+    // A project the person can't see is refused like one that doesn't exist (as startCase does).
     const p = await svc.kernel.projects.get(project, actor).catch(() => undefined)
-    return p ? { app: p.app, name: p.name, projects: [p.id] } : { app: project, name: project }
+    if (!p) throw new Error('That project was not found.')
+    return { app: p.app, name: p.name, projects: [p.id] }
   }
   const appOf = async (svc: MemwiseService, actor: PersonActor, project: string | undefined): Promise<string | undefined> =>
     project ? (await scopeOf(svc, actor, project)).app : undefined

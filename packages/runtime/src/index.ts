@@ -58,7 +58,7 @@ export {
 export { nextRefresh, normalEvery } from './pages/schedule.ts';
 // Stage 5: regulated projects (docs/memwise/26-projects-and-pages.md §7, §8)
 export { AUDIT_EXPORT_FORMAT, verifyAuditExport } from './regulated/audit-log.ts';
-export { QA_MEANING, RAISER_MEANING, DEFAULT_VALIDATION_LIMIT } from './regulated/changes.ts';
+export { QA_MEANING, RAISER_MEANING, DEFAULT_VALIDATION_LIMIT, holdsRole, reaches } from './regulated/changes.ts';
 export { INSPECTOR_TOKEN_PREFIX, MAX_INSPECTOR_DAYS } from './regulated/inspectors.ts';
 export { TMF_ZONES, LATE_AFTER_DAYS, zoneOfArtifact } from './regulated/tmf.ts';
 export { wordDiff, listDiff } from './regulated/word-diff.ts';

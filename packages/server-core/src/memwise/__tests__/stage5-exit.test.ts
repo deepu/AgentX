@@ -20,6 +20,8 @@
  * 6. The TMF index counts the zone and site documents.
  * 7. Stage 3 (one project per study): MW-301's trail page has no MW-207 entries, a MW-301
  *    inspector link can't open a MW-207 document, and the export names the study it was asked for.
+ *    A person whose grant is in MW-207 only can't list, make, end or extend MW-301's inspector
+ *    links, see its questions, or raise a change request (the app's).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -75,6 +77,7 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
   let unsignedCase = ''
   let oldCase = ''
   let liveHash = ''
+  let link301 = ''
 
   const kernel = () => svc.kernel
   const create = async (entity: string, values: Record<string, unknown>) => {
@@ -446,7 +449,15 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     expect(whole.entries.some((e) => inProject(e) === 'mw301') && whole.entries.some((e) => inProject(e) === 'mw207')).toBe(true)
     expect(t301.chain.ok && t207.chain.ok).toBe(true)
     expect(t301.entries.some((e) => inProject(e) === 'mw207' || docs207.includes(e.recordId ?? ''))).toBe(false)
+    // Every entry of MW-301's page is MW-301's, or the app's change requests, or a record every
+    // project shares (no project of its own); nothing else goes untagged.
+    const untagged = t301.entries.filter((e) => inProject(e) === undefined)
     expect(t301.entries.every((e) => inProject(e) === undefined || inProject(e) === 'mw301')).toBe(true)
+    const sharedRecords = new Set((await db.pool.query<{ record_id: string }>(
+      `select record_id from mw.record_versions group by record_id having bool_and(project is null)`)).rows.map((r) => r.record_id))
+    const strays = untagged.filter((e) => !(e.action.startsWith('change.') || e.entity === 'change_request' || (e.recordId && sharedRecords.has(e.recordId))))
+    expect(strays.map((e) => `${e.action} ${e.entity ?? ''}`)).toEqual([])
+    expect(untagged.some((e) => e.action.startsWith('change.'))).toBe(true)
     expect(t301.entries.some((e) => e.recordId === doc301)).toBe(true)
     expect(t301.entries.some((e) => e.action.startsWith('change.') && e.recordId === cr.id)).toBe(true)
     expect(t207.entries.some((e) => inProject(e) === 'mw301' || docs301.includes(e.recordId ?? ''))).toBe(false)
@@ -454,9 +465,25 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     // The app's own records (made above without a study) aren't a study's either.
     expect(t301.entries.some((e) => e.recordId === ids.site101)).toBe(false)
     expect((await trailOf('mw301', { entity: 'etmf.Document', recordId: doc207 })).entries).toEqual([])
-    // A study's run lands in the study (Start passes it): its steps are in its trail only.
-    const started = await api.call<{ caseId: string }>(anikaCtx, ch.CASES_START, { workflowId: 'chase-missing', project: 'mw301' })
-    await until('the MW-301 run\'s first settled step', () => trailOf('mw301', { caseId: started.caseId }), (t) => t.entries.length > 0).catch(() => undefined)
+    // A study's run lands in the study (Start passes it): a CV for one of MW-301's sites is
+    // classified by the AI (a settled step) and its entries are in MW-301's trail only.
+    const firstIn = async (entity: string) => (await db.pool.query<{ record_id: string }>(
+      `select record_id from mw.record_versions where entity = $1 and project = 'mw301' order by at, record_id limit 1`, [entity])).rows[0]!.record_id
+    const [study301, site301, pi301] = [await firstIn('etmf.Study'), await firstIn('etmf.Site'), await firstIn('etmf.Person')]
+    const expected301 = await kernel().records.create({ entity: 'etmf.ExpectedDocument', values: { site: site301, study: study301, artifact: 'Investigator CV', phase: 'start_up' }, project: 'mw301', reason: 'study set-up' }, { kind: 'system' })
+    const cv301 = 'Investigator CV - MW-301 resubmitted.pdf'
+    index.set(cv301, {
+      artifact: 'Investigator CV', study: study301, site: site301, about: pi301, expected_document: expected301.id!,
+      document_date: new Date().toISOString().slice(0, 10), version: '2', signed: true,
+    })
+    const original = await kernel().saveFile(cvFile(cv301), { kind: 'system' })
+    const started = await api.call<{ caseId: string }>(anikaCtx, ch.CASES_START, {
+      workflowId: 'file-document', project: 'mw301', values: { original, sender: 'coordinator@site.example', received_at: new Date().toISOString() },
+    })
+    const run301 = await until('the MW-301 run\'s first settled step', () => trailOf('mw301', { caseId: started.caseId }),
+      (t) => t.entries.some((e) => e.action.startsWith('step.')))
+    expect(run301.entries.length).toBeGreaterThan(0)
+    expect(run301.entries.every((e) => inProject(e) === 'mw301')).toBe(true)
     expect((await trailOf('mw207', { caseId: started.caseId })).entries).toEqual([])
 
     // The export stays the app's chain, and says which project it was asked for.
@@ -473,6 +500,7 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
       expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
     })
     expect(made.link).toMatchObject({ project: 'etmf', inProject: 'mw301' })
+    link301 = made.link.id
     const linksOf = async (project: string) => (await api.call<MwInspectorLink[]>(anikaCtx, ch.INSPECTORS_LIST, { project })).map((l) => l.id)
     expect(await linksOf('mw301')).toEqual([made.link.id])
     expect(await linksOf('mw207')).toEqual([])
@@ -511,6 +539,45 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     expect(tmf.kpis.filed).toBe(docs301.length)
     expect((await api.call<MwTmfIndex>(anikaCtx, ch.TMF_INDEX, { project: 'mw207' })).kpis.filed).toBe(docs207.length)
   }, 120_000)
+
+  it('Stage 3: a grant in one study reaches that study only (inspector links, their questions, change requests)', async () => {
+    const mara = await kernel().people.create({ name: 'Mara Novak', email: 'mara@northlight.example', roles: [], password: PASSWORD })
+    await kernel().domains.setGrants(mara.id, [{ role: 'study_manager', domain: 'etmf', project: 'mw207' }, { role: 'qa', domain: 'etmf', project: 'mw207' }], { kind: 'system' })
+    const maraCtx = ctxFor('mara-client', mara.id)
+    const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString()
+    const input = (project: string) => ({ project, name: 'An inspection', inspectors: [{ name: 'GCP inspector' }], expiresAt })
+    const active = await api.call<{ link: MwInspectorLink }>(anikaCtx, ch.INSPECTORS_CREATE, input('mw301'))
+
+    // MW-301, and the app as a whole (every study's links and trail), are refused as unknown.
+    for (const project of ['mw301', 'etmf', 'no-such-project']) {
+      await expect(api.call(maraCtx, ch.INSPECTORS_LIST, { project })).rejects.toThrow('That project was not found.')
+      await expect(api.call(maraCtx, ch.INSPECTORS_QUESTIONS, { project })).rejects.toThrow('That project was not found.')
+      await expect(api.call(maraCtx, ch.INSPECTORS_CREATE, input(project))).rejects.toThrow('That project was not found.')
+      await expect(api.call(maraCtx, ch.AUDIT_LOG, { project })).rejects.toThrow('That project was not found.')
+    }
+    await expect(api.call(maraCtx, ch.INSPECTORS_REVOKE, { linkId: active.link.id })).rejects.toThrow()
+    await expect(api.call(maraCtx, ch.INSPECTORS_EXTEND, { linkId: active.link.id, expiresAt })).rejects.toThrow()
+    expect((await api.call<MwInspectorLink[]>(anikaCtx, ch.INSPECTORS_LIST, { project: 'mw301' })).find((l) => l.id === active.link.id)).toMatchObject({ status: 'active' })
+    // MW-301's question (asked above) is hers by no other road either: not by its link, not unfiltered, not in her inbox.
+    expect((await api.call<MwInspectorQuestion[]>(anikaCtx, ch.INSPECTORS_QUESTIONS, { linkId: link301 })).length).toBe(1)
+    expect(await api.call<MwInspectorQuestion[]>(maraCtx, ch.INSPECTORS_QUESTIONS, { linkId: link301 })).toEqual([])
+    expect((await api.call<MwInspectorQuestion[]>(maraCtx, ch.INSPECTORS_QUESTIONS, {})).some((q) => q.inProject !== 'mw207')).toBe(false)
+    expect((await inbox(maraCtx)).some((i) => i.kind === 'inspector-question')).toBe(false)
+
+    // In MW-207 she owns its inspector access.
+    const own = await api.call<{ link: MwInspectorLink }>(maraCtx, ch.INSPECTORS_CREATE, input('mw207'))
+    expect(own.link).toMatchObject({ project: 'etmf', inProject: 'mw207' })
+    expect((await api.call<MwInspectorLink[]>(maraCtx, ch.INSPECTORS_LIST, { project: 'mw207' })).map((l) => l.id)).toEqual([own.link.id])
+    expect(await api.call<MwInspectorLink>(maraCtx, ch.INSPECTORS_EXTEND, { linkId: own.link.id, expiresAt: new Date(Date.now() + 14 * 86_400_000).toISOString() })).toMatchObject({ status: 'active' })
+    expect(await api.call<MwInspectorLink>(maraCtx, ch.INSPECTORS_REVOKE, { linkId: own.link.id })).toMatchObject({ status: 'revoked' })
+    expect((await api.call<{ entries: unknown[] }>(maraCtx, ch.AUDIT_LOG, { project: 'mw207' })).entries.length).toBeGreaterThan(0)
+
+    // Change requests are the app's (a playbook changes for every study): a grant in one study
+    // neither raises one nor signs one as QA (runtime/tests/regulated.test.ts covers QA's role).
+    await expect(api.call(maraCtx, ch.CHANGES_OPEN, { workflowId: 'file-document', title: 'From one study' })).rejects.toThrow(/whole app/)
+    expect((await inbox(maraCtx)).some((i) => i.kind === 'change-request')).toBe(false)
+    await api.call(anikaCtx, ch.INSPECTORS_REVOKE, { linkId: active.link.id })
+  }, 60_000)
 
   it('a change log that continues a paper one starts at the paper number, never below a used one', async () => {
     const low = await api.call<MwOpenChangeResult>(anikaCtx, ch.CHANGES_OPEN, { workflowId: 'file-document', title: 'Below the log', number: 3 })

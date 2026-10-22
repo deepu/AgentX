@@ -200,7 +200,8 @@ export function createAuditLogService(deps: AuditLogDeps): AuditLogService {
         ...(q.entity ? { entity: q.entity } : {}), ...(q.recordId ? { recordId: q.recordId } : {}),
         data: {
           entries: entries.length, complete: doc.complete, lastSeq: entries.at(-1)?.seq ?? 0,
-          ...(q.askedFor && q.askedFor.project !== q.project ? { inProject: q.askedFor.project } : {}),
+          // The project it was asked for (the app's own when none was named): only change requests go untagged.
+          inProject: q.askedFor?.project ?? q.project,
         },
       });
       return { ...doc, signature };

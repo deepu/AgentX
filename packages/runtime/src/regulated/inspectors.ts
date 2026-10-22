@@ -15,7 +15,7 @@ import { isDocumentLike } from '../records/review.ts';
 import { entityByName, recordTitle, refEntity } from '../records/context.ts';
 import { signatureViews } from '../records/page.ts';
 import type { Actor, InboxItem, PersonActor, PublicRequestInfo } from '../types.ts';
-import { holdsRole } from './changes.ts';
+import { holdsRole, reaches as personReaches } from './changes.ts';
 import { TMF_ZONES, zoneOfArtifact } from './tmf.ts';
 import type {
   AuditEntryView, AuditLogService, InspectorDocument, InspectorIndex, InspectorLinkView, InspectorQuestionView, InspectorRefusal,
@@ -111,8 +111,25 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
   const reaches = (scope: LinkScope, row: Pick<StoredEntityRow, 'project'>) =>
     !scope.projects || row.project === undefined || scope.projects.includes(row.project);
 
+  /** The study a scope names, if it is one. */
+  const studyOf = (scope: LinkScope) => scope.projects?.[0];
+  /** Whether a person may see what a scope reaches: the study (a grant in it or across the app), or the whole app. */
+  const sees = (actor: Actor, scope: LinkScope) => personReaches(actor, scope.app, studyOf(scope));
+  function mustSee(actor: Actor, scope: LinkScope, id: string) {
+    if (!sees(actor, scope)) throw new Error(`there is no project ${id}`);
+  }
+  /** The owner's role (or, with no owner, being able to see it) in the scope: a study's grant reaches that study only. */
+  const ownsScope = (actor: PersonActor, scope: LinkScope) => {
+    const owner = owners(scope.app);
+    return owner ? holdsRole(actor, owner, scope.app, studyOf(scope)) : sees(actor, scope);
+  };
+
   /** `data.inProject` of a study's entries (none for the app's own). */
-  const inProjectData = (scope: LinkScope) => (scope.projects?.length === 1 ? { inProject: scope.projects[0]! } : {});
+  // Every inspector entry names its project: a study's link its study; an app-level link the app
+  // (only the app's whole trail shows it), or for a document the document's own project, so a view
+  // of a MW-301 document is in MW-301's trail. Only change requests are the app's with no project.
+  const inProjectData = (scope: LinkScope, recordProject?: string | null) =>
+    ({ inProject: scope.projects?.[0] ?? recordProject ?? scope.app });
 
   /** The record types an inspector sees: the project's documents that are filed. */
   function documentTypes(project: string): EntityTypeDef[] {
@@ -164,11 +181,11 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
   }
   const refused = (x: unknown): x is InspectorRefusal => !!x && typeof x === 'object' && 'refused' in x;
 
-  async function logged(l: InspectorLinkRow, action: string, rec: { entity?: string; recordId?: string }, data: Record<string, unknown> = {}) {
+  async function logged(l: InspectorLinkRow, action: string, rec: { entity?: string; recordId?: string; project?: string }, data: Record<string, unknown> = {}) {
     const scope = await scopeOf(l.project);
     await deps.auditLog().append({
       project: scope.app, actorKind: 'inspector', actor: l.id, actorLabel: who(l), action,
-      ...(rec.entity ? { entity: rec.entity } : {}), ...(rec.recordId ? { recordId: rec.recordId } : {}), data: { link: l.name, ...data, ...inProjectData(scope) },
+      ...(rec.entity ? { entity: rec.entity } : {}), ...(rec.recordId ? { recordId: rec.recordId } : {}), data: { link: l.name, ...data, ...inProjectData(scope, rec.project) },
     });
   }
 
@@ -238,8 +255,9 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
       const domain = deps.project()?.domains?.[scope.app];
       if (!domain) throw new Error(`there is no project ${input.project}`);
       if (!domain.regulated) throw new Error(`${domain.name ?? scope.app} is not regulated: inspector access is for regulated projects`);
+      mustSee(by, scope, input.project);
       const owner = domain.owner;
-      if (owner && !holdsRole(by, owner, scope.app)) throw new Error(`only the ${deps.project()?.roles[owner]?.title ?? owner} gives inspectors access`);
+      if (owner && !holdsRole(by, owner, scope.app, studyOf(scope))) throw new Error(`only the ${deps.project()?.roles[owner]?.title ?? owner} gives inspectors access`);
       const expires = new Date(input.expiresAt);
       if (!Number.isFinite(expires.getTime()) || expires.getTime() <= Date.now()) throw new Error('the access must end in the future');
       if (expires.getTime() - Date.now() > MAX_INSPECTOR_DAYS * 86_400_000) throw new Error(`inspector access can last at most ${MAX_INSPECTOR_DAYS} days`);
@@ -258,9 +276,9 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
     },
 
     async list(project: string, actor: Actor) {
-      void actor;
       // A study's links only; the app's own project lists every link of the app.
       const scope = await scopeOf(project);
+      mustSee(actor, scope, project);
       return Promise.all((await store.list(deps.pool, scope.projects ?? await projectsOfApp(scope.app))).map(linkView));
     },
 
@@ -268,8 +286,8 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
       const l = await store.get(deps.pool, id);
       if (!l) throw new Error(`there is no inspector link ${id}`);
       const scope = await scopeOf(l.project);
-      const owner = owners(scope.app);
-      if (owner && !holdsRole(by, owner, scope.app) && by.personId !== l.createdBy) throw new Error('only the project owner ends inspector access');
+      mustSee(by, scope, l.project);
+      if (!ownsScope(by, scope) && by.personId !== l.createdBy) throw new Error('only the project owner ends inspector access');
       const r = (await store.revoke(deps.pool, id, by.personId))!;
       await deps.auditLog().append({ project: scope.app, actorKind: 'person', actor: by.personId, actorLabel: await nameOf(by.personId), action: 'inspector.link_revoked', data: { link: l.id, name: l.name, ...inProjectData(scope) } });
       deps.emit({ kind: 'regulated', project: scope.app });
@@ -280,8 +298,8 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
       const l = await store.get(deps.pool, id);
       if (!l) throw new Error(`there is no inspector link ${id}`);
       const scope = await scopeOf(l.project);
-      const owner = owners(scope.app);
-      if (owner && !holdsRole(by, owner, scope.app)) throw new Error('only the project owner changes inspector access');
+      mustSee(by, scope, l.project);
+      if (!ownsScope(by, scope)) throw new Error('only the project owner changes inspector access');
       const at = new Date(expiresAt);
       if (!Number.isFinite(at.getTime()) || at.getTime() <= Date.now()) throw new Error('the access must end in the future');
       if (at.getTime() - Date.now() > MAX_INSPECTOR_DAYS * 86_400_000) throw new Error(`inspector access can last at most ${MAX_INSPECTOR_DAYS} days`);
@@ -292,19 +310,24 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
     },
 
     async questions(filter: { project?: string; linkId?: string; open?: boolean }, actor: Actor) {
-      void actor;
       // A study's questions only; the app's own project has every question of the app.
       let project: string[] | undefined;
       if (filter.project) {
         const scope = await scopeOf(filter.project);
+        mustSee(actor, scope, filter.project);
         project = scope.projects ?? await projectsOfApp(scope.app);
       }
-      return Promise.all((await store.questions(deps.pool, { ...filter, ...(project ? { project } : {}) })).map((q) => questionView(q)));
+      const out: InspectorQuestionView[] = [];
+      // Whatever the filter, only the questions of projects the person sees.
+      for (const q of await store.questions(deps.pool, { ...filter, ...(project ? { project } : {}) })) {
+        if (sees(actor, await scopeOf(q.project))) out.push(await questionView(q));
+      }
+      return out;
     },
 
     async answer(questionId: string, answer: string, by: PersonActor) {
       const q = await store.question(deps.pool, questionId);
-      if (!q) throw new Error(`there is no question ${questionId}`);
+      if (!q || !sees(by, await scopeOf(q.project))) throw new Error(`there is no question ${questionId}`);
       if (!answer.trim()) throw new Error('write the answer first');
       const r = await store.answer(deps.pool, questionId, answer.trim(), by.personId);
       if (!r) throw new Error('this question was answered already');
@@ -351,7 +374,7 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
       if (refused(l)) return l;
       const found = await filedDocument(l, entity, id);
       if (!found) return undefined;
-      await logged(l, 'inspector.viewed', { entity: keyOf(found.def), recordId: id }, { version: found.row.version });
+      await logged(l, 'inspector.viewed', { entity: keyOf(found.def), recordId: id, project: found.row.project }, { version: found.row.version });
       return documentView(found.def, found.row);
     },
 
@@ -360,7 +383,7 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
       if (refused(l)) return l;
       const found = await filedDocument(l, entity, id);
       if (!found) return undefined;
-      await logged(l, 'inspector.viewed', { entity: keyOf(found.def), recordId: id }, { view: 'trail' });
+      await logged(l, 'inspector.viewed', { entity: keyOf(found.def), recordId: id, project: found.row.project }, { view: 'trail' });
       const key = keyOf(found.def);
       const scope = await scopeOf(l.project);
       const { entries, chain } = await deps.auditLog().list({
@@ -378,7 +401,7 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
       if (!doc.file) return undefined;
       const file = await deps.files.read(deps.pool, doc.file.id);
       if (!file) return undefined;
-      await logged(l, 'inspector.downloaded', { entity: keyOf(found.def), recordId: id }, { file: doc.file.name, sha256: doc.file.sha256, version: found.row.version });
+      await logged(l, 'inspector.downloaded', { entity: keyOf(found.def), recordId: id, project: found.row.project }, { file: doc.file.name, sha256: doc.file.sha256, version: found.row.version });
       return { name: file.meta.name, mime: file.meta.mime, data: file.data };
     },
 
@@ -410,8 +433,7 @@ export function createInspectorService(deps: InspectorDeps): InspectorService & 
       const out: InboxItem[] = [];
       for (const q of open) {
         const scope = await scopeOf(q.project);
-        const owner = owners(scope.app);
-        if (owner && !holdsRole(actor, owner, scope.app)) continue;
+        if (!ownsScope(actor, scope)) continue;
         // A study's question waits in that study; an app's in every project of the app.
         out.push({
           kind: 'inspector-question' as const, id: `inspector-question:${q.id}`, question: await questionView(q), since: q.askedAt,
