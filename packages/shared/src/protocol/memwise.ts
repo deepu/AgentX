@@ -159,6 +159,8 @@ export interface MwPlaybook {
   startFields?: string[]
   /** Phase 4: a plugin's workflow (referenced through its binding) or a fork of one. */
   origin?: MwWorkflowOrigin
+  /** Stage 4 with Stage 3: read as a project's own copy that changes the template (its overrides). */
+  overridden?: boolean
 }
 
 /** Live mode of the map: where the open cases are. */
@@ -328,6 +330,8 @@ export interface MwStartCaseInput {
   workflowId: string
   /** Plain initial values (provenance `input`, by the current person). */
   values?: Record<string, unknown>
+  /** Stage 3: the project to run it in (its own copy of the playbook); absent: as the kernel decides. */
+  project?: string
 }
 
 // ---------------------------------------------------------------- inbox
@@ -612,12 +616,14 @@ export interface MwOpenChatInput {
  * you page (`waiting`), both by project id, and a dashboard (`dashboard`: domain and page id).
  */
 export type MwChatAnchor =
-  | { kind: 'case' | 'step' | 'workflow'; id: string }
+  | { kind: 'case' | 'step'; id: string }
+  /** A playbook; `project` (Stage 4 with Stage 3): a study's own copy of it, whose chat drafts changes to that copy. */
+  | { kind: 'workflow'; id: string; project?: string }
   | { kind: 'record'; entity: string; id: string }
   | { kind: 'project' | 'waiting'; id: string }
   | { kind: 'dashboard'; domain: string; id: string }
   /** Stage 4 (26 §2): a record type's list (`id`: the entity key); its chat may filter the list (`records_filter`). */
-  | { kind: 'records'; id: string }
+  | { kind: 'records'; id: string; project?: string }
   /** Pages (26 §4): a chat that reads and writes the page (`page_get`, `page_update`, `page_create`). */
   | { kind: 'page'; id: string }
 
@@ -722,6 +728,8 @@ export interface MwDraftSummary {
   inChat?: boolean
   /** Stage 4 (26 §5): the playbook's own chat drafted it (the chat's session id). */
   chatId?: string
+  /** Stage 4 with Stage 3: the project whose own copy of the playbook it changes (absent: the app's template). */
+  project?: string
   /** Stage 4: the last test run's status, when it covers the current content. */
   testRun?: 'pass' | 'fail' | 'skip'
   /**
@@ -752,6 +760,8 @@ export interface MwFileChange {
   hunks: MwDiffHunk[]
   /** The live file changed since the draft was made. */
   conflict?: boolean
+  /** A project's draft: where publishing writes it (the project's override of the file). */
+  writesTo?: string
   /** Which pending chat edit last touched it (for highlighting). */
   pendingEditId?: string
   /** The live file's text (absent for an added file). */
@@ -903,16 +913,21 @@ export interface MwRecordsChatFilter {
   chips: string[]
   sort?: { field: string; desc?: boolean }[]
   columns?: string[]
+  /** Stage 4 with Stage 3: the project whose list it filters. */
+  project?: string
   at: string
 }
 
-export interface MwRecordsChatFilterInput { entity: string }
+/** `project`: the list of that project (Stage 3). */
+export interface MwRecordsChatFilterInput { entity: string; project?: string }
 
 export interface MwCreateDraftInput {
   /** The playbook to change; with `create`, the new playbook's id. */
   workflowId: string
   title: string
   kind?: 'create' | 'change'
+  /** Stage 4 with Stage 3: change this project's own copy of the playbook, not the app's template. */
+  project?: string
 }
 
 /** Editor edits: whole files, project-relative paths (`workflows/<id>/steps/check.md`). */

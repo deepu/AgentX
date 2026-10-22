@@ -213,6 +213,17 @@ export function projectRecordTypes(domain: MwDomain | null | undefined): { key: 
   return domain.entities.map(e => ({ key: e.key, title: pluralTitle(e.title), count: e.count }))
 }
 
+/**
+ * The sidebar's RECORDS rows with their counts. A stored project (Stage 3) shows its own counts
+ * only: until they are read a row has no count, never the app's count across every project.
+ */
+export function sidebarRecordCounts(
+  project: Pick<ShellProject, 'stored'>, types: { key: string; title: string; count: number }[], own: Record<string, number> | null | undefined,
+): { key: string; title: string; count?: number }[] {
+  if (!project.stored) return types
+  return types.map(r => (own && typeof own[r.key] === 'number' ? { ...r, count: own[r.key] } : { key: r.key, title: r.title }))
+}
+
 /** "Site" → "Sites", "Study" → "Studies"; titles already plural stay as they are. */
 export function pluralTitle(title: string): string {
   if (/s$/i.test(title)) return title
@@ -263,7 +274,11 @@ export function writtenPagePlace(p: Pick<MwPageSummary, 'under'>): 'top' | 'reco
   return p.under ? 'record-tree' : 'top'
 }
 
-export function chatAnchorFor(projectId: string, details: ProjectDetails, item?: MwInboxItem | null, changePageId?: string): MwChatAnchor {
+/**
+ * `scope` (Stage 4 with Stage 3): a stored project's id. A playbook's chat there changes that
+ * project's own copy, and a list's chat filters that project's records.
+ */
+export function chatAnchorFor(projectId: string, details: ProjectDetails, item?: MwInboxItem | null, changePageId?: string, scope?: string): MwChatAnchor {
   switch (details.type) {
     case 'waiting':
       if (details.itemId && item) {
@@ -272,10 +287,10 @@ export function chatAnchorFor(projectId: string, details: ProjectDetails, item?:
       }
       return { kind: 'waiting', id: projectId }
     case 'dashboard': return { kind: 'dashboard', domain: details.domain, id: details.pageId }
-    case 'playbook': return { kind: 'workflow', id: details.workflowId }
+    case 'playbook': return { kind: 'workflow', id: details.workflowId, ...(scope ? { project: scope } : {}) }
     case 'run': return { kind: 'case', id: details.caseId }
     case 'record': return { kind: 'record', entity: details.entity, id: details.recordId }
-    case 'records': return { kind: 'records', id: details.entity }
+    case 'records': return { kind: 'records', id: details.entity, ...(scope ? { project: scope } : {}) }
     case 'page': return { kind: 'page', id: details.pageId }
     case 'change': return changePageId ? { kind: 'page', id: changePageId } : { kind: 'project', id: projectId }
     default: return { kind: 'project', id: projectId }

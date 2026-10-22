@@ -69,8 +69,9 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
   const [pinned, setPinned] = React.useState<{ route: string; sessionId: string } | null>(null)
   const shellValue = React.useMemo(() => ({
     projectId: project?.id ?? '',
+    ...(project?.name ? { projectName: project.name } : {}),
     showChat: (sessionId: string) => setPinned({ route: routeKey, sessionId }),
-  }), [project?.id, routeKey])
+  }), [project?.id, project?.name, routeKey])
   const pinnedChat = pinned?.route === routeKey ? pinned.sessionId : null
 
   // Where the Stage 3 screens go: inside the shell, and a chat into the chat column.
@@ -97,7 +98,7 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
   const reviewing = item ? pageChangeOf(item) : undefined
   // Stage 3: an app's home and New project talk about the app (its own project, id = app id).
   const appAnchor = details.type === 'app' || details.type === 'new' ? details.appId : null
-  const anchor = appAnchor ? { kind: 'project' as const, id: appAnchor } : all ? { kind: 'waiting' as const, id: ALL_PROJECTS } : chatAnchorFor(project.id, details, item, openChange.data?.pageId)
+  const anchor = appAnchor ? { kind: 'project' as const, id: appAnchor } : all ? { kind: 'waiting' as const, id: ALL_PROJECTS } : chatAnchorFor(project.id, details, item, openChange.data?.pageId, project.stored ? project.id : undefined)
   const appOf = (id: string) => apps.find(a => a.id === id)
 
   // "Describe it in chat" from the chat column of New project: the app's create-project chat opens here.

@@ -1312,6 +1312,7 @@
   "memwise.everyPage.openReview": "Prüfung öffnen",
   "memwise.everyPage.passed": "bestanden",
   "memwise.everyPage.pickRecord": "Datensatz wählen",
+  "memwise.everyPage.projectCopy": "Eigene Kopie von {{project}}, Version {{version}}",
   "memwise.everyPage.publishedBy": "Version {{version}}, veröffentlicht am {{date}} von {{name}}",
   "memwise.everyPage.recordsExplain": "Datensätze werden von Ihren Playbooks und von Personen gepflegt. Jede Änderung steht im Verlauf des Datensatzes.",
   "memwise.everyPage.runTest": "Test starten",

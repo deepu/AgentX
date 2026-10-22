@@ -7,19 +7,20 @@
 import type { MwRecordsChatFilter } from '@memwise/shared/protocol'
 
 const filters = new Map<string, MwRecordsChatFilter>()
-const keyOf = (personId: string, entity: string) => `${personId}\u0000${entity}`
+/** Per person, record type and (Stage 3) project: MW-301's Sites list keeps its own filter. */
+const keyOf = (personId: string, entity: string, project?: string) => `${personId}\u0000${entity}\u0000${project ?? ''}`
 
 export function setRecordsChatFilter(f: Omit<MwRecordsChatFilter, 'at'> & { personId: string }): MwRecordsChatFilter {
   const { personId, ...rest } = f
   const value: MwRecordsChatFilter = { ...rest, at: new Date().toISOString() }
-  filters.set(keyOf(personId, f.entity), value)
+  filters.set(keyOf(personId, f.entity, f.project), value)
   return value
 }
 
-export function getRecordsChatFilter(personId: string, entity: string): MwRecordsChatFilter | null {
-  return filters.get(keyOf(personId, entity)) ?? null
+export function getRecordsChatFilter(personId: string, entity: string, project?: string): MwRecordsChatFilter | null {
+  return filters.get(keyOf(personId, entity, project)) ?? null
 }
 
-export function clearRecordsChatFilter(personId: string, entity: string): boolean {
-  return filters.delete(keyOf(personId, entity))
+export function clearRecordsChatFilter(personId: string, entity: string, project?: string): boolean {
+  return filters.delete(keyOf(personId, entity, project))
 }

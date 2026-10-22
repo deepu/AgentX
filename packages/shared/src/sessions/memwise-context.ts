@@ -22,12 +22,14 @@ export const MEMWISE_CONTEXT_MAX_CHARS = 24_000;
 
 /** What a chat is anchored to. A record anchor names its entity key (`literature.topic`). */
 export type MemwiseChatAnchor =
-  | { kind: 'case' | 'step' | 'workflow'; id: string }
+  | { kind: 'case' | 'step'; id: string }
+  /** A playbook; `project` (Stage 4 with Stage 3): that study's own copy of it. */
+  | { kind: 'workflow'; id: string; project?: string }
   | { kind: 'record'; entity: string; id: string }
   /** The project shell (doc 26 §2): a project's Home or Waiting for you (id: the project), a dashboard (`<domain>:<page>`). */
   | { kind: 'project' | 'waiting' | 'dashboard'; id: string }
   /** Stage 4 (26 §2): a record type's list (id: the entity key); its chat filters the list (`records_filter`). */
-  | { kind: 'records'; id: string }
+  | { kind: 'records'; id: string; project?: string }
   /** A page (26 §4): the chat reads and writes it with `page_get` / `page_update` / `page_create`. */
   | { kind: 'page'; id: string };
 
@@ -83,7 +85,9 @@ export function writeSessionMemwiseContext(workspaceRootPath: string, sessionId:
       ? { kind: 'record', entity: ctx.anchor.entity, id: ctx.anchor.id }
       : ctx.anchor.kind === 'page'
         ? { kind: 'page', id: ctx.anchor.id }
-        : { kind: ctx.anchor.kind, id: ctx.anchor.id },
+        : (ctx.anchor.kind === 'workflow' || ctx.anchor.kind === 'records') && ctx.anchor.project
+          ? { kind: ctx.anchor.kind, id: ctx.anchor.id, project: ctx.anchor.project }
+          : { kind: ctx.anchor.kind, id: ctx.anchor.id } as MemwiseChatAnchor,
     ...(ctx.conversation ? { conversation: true } : {}),
     ...(ctx.conversation && ctx.project ? { project: true } : {}),
     ...(ctx.anchor.kind === 'record' && ctx.keep?.length ? { keep: ctx.keep.map((k) => ({ entity: k.entity, name: k.name })) } : {}),

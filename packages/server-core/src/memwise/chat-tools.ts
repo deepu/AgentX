@@ -123,15 +123,17 @@ async function findTestRecord(svc: MemwiseService, actor: PersonActor, workflowI
  * for a new one), where the project has that role; a project with roles of its own (the eTMF's
  * has no `staff`) lets the playbook's owner role change it instead (D122).
  */
-export async function mayChangePlaybooks(svc: MemwiseService, actor: PersonActor, workflowId?: string, metaId: 'change-playbook' | 'create-playbook' = 'change-playbook'): Promise<void> {
+export async function mayChangePlaybooks(svc: MemwiseService, actor: PersonActor, workflowId?: string, metaId: 'change-playbook' | 'create-playbook' = 'change-playbook', scope?: string): Promise<void> {
   const { project } = await svc.kernel.project()
   const meta = project.workflows[metaId]
   if (!meta) throw new Error(`Changing playbooks is not set up in this project (the ${metaId} playbook is missing).`)
   const assignee = meta.steps[meta.start]?.assignee
-  if (!assignee || actor.roles.includes(assignee)) return
+  // A role everywhere, or (Stage 3) the role in the project whose own copy of the playbook changes.
+  const holds = (role: string) => actor.roles.includes(role) || (!!scope && (actor.grants ?? []).some((g) => g.role === role && g.project === scope))
+  if (!assignee || holds(assignee)) return
   const known = new Set((await svc.kernel.people.roles()).map((r) => r.id))
-  const owner = workflowId ? project.workflows[workflowId]?.owner : undefined
-  if (!known.has(assignee) && owner && actor.roles.includes(owner)) return
+  const owner = workflowId ? (scope ? project.projects?.[scope]?.workflows[workflowId] : project.workflows[workflowId])?.owner : undefined
+  if (!known.has(assignee) && owner && holds(owner)) return
   throw new Error(`Changing playbooks is for someone with the ${known.has(assignee) || !owner ? assignee : owner} role.`)
 }
 
@@ -140,10 +142,10 @@ export async function mayChangePlaybooks(svc: MemwiseService, actor: PersonActor
  * review, test-run it)? They may change the playbook, and the draft is theirs: made by them, or
  * by the CLI. Undefined when they may; else why not, in words.
  */
-export async function mayChangeDraft(svc: MemwiseService, actor: PersonActor, meta: Pick<DraftMeta, 'kind' | 'workflowId' | 'createdBy'>): Promise<string | undefined> {
+export async function mayChangeDraft(svc: MemwiseService, actor: PersonActor, meta: Pick<DraftMeta, 'kind' | 'workflowId' | 'createdBy' | 'project'>): Promise<string | undefined> {
   if (meta.kind === 'binding') return undefined // the binding review screen has its own steps
   try {
-    await mayChangePlaybooks(svc, actor, meta.workflowId, meta.kind === 'create' ? 'create-playbook' : 'change-playbook')
+    await mayChangePlaybooks(svc, actor, meta.workflowId, meta.kind === 'create' ? 'create-playbook' : 'change-playbook', meta.project?.id)
   } catch (e) {
     return e instanceof Error ? e.message : String(e)
   }
@@ -168,7 +170,7 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
    * (`chatId`): each edit is kept at once (the page shows it, with Discard), and the page's
    * "Send for review" button, not the chat, sends it on.
    */
-  async function playbookChat(): Promise<{ svc: MemwiseService; actor: PersonActor; workflowId: string; draft?: DraftMeta } | undefined> {
+  async function playbookChat(): Promise<{ svc: MemwiseService; actor: PersonActor; workflowId: string; scope?: string; draft?: DraftMeta } | undefined> {
     const svc = getMemwiseService()
     if (!svc) throw new Error('Playbooks are not running in this app right now.')
     const { PgChatAnchorStore } = await import('@memwise/db')
@@ -176,9 +178,13 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
     if (!anchor || anchor.anchorKind !== 'workflow') return undefined
     if (!anchor.personId) throw new Error('This chat has no person to act for.')
     const actor = await svc.kernel.people.actorFor(anchor.personId)
+    // Stage 3: a playbook's chat in a study changes that study's own copy of it.
+    // (Only a project with its own folder has a copy; the app's own project runs the template.)
+    const defs = (await svc.kernel.project()).project
+    const scope = anchor.scope && defs.projects?.[anchor.scope]?.dir && !defs.projects[anchor.scope]!.implicit ? anchor.scope : undefined
     const drafts = await authoringOf(svc).listDrafts({ workflowId: anchor.anchorId }).catch(() => [] as DraftMeta[])
-    const draft = drafts.filter((d) => d.chatId === sessionId && d.status === 'open').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
-    return { svc, actor, workflowId: anchor.anchorId, ...(draft ? { draft } : {}) }
+    const draft = drafts.filter((d) => d.chatId === sessionId && d.status === 'open' && d.project?.id === scope).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    return { svc, actor, workflowId: anchor.anchorId, ...(scope ? { scope } : {}), ...(draft ? { draft } : {}) }
   }
 
   async function ctx(): Promise<{ svc: MemwiseService; actor: PersonActor; s: ConversationState }> {
@@ -305,7 +311,7 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
         const path = input.path ? { path: input.path } : {}
         if (input.playbook) return authoring.read({ workflowId: input.playbook, ...path })
         if (pc.draft && !input.live) return authoring.read({ draftId: pc.draft.id, ...path })
-        return authoring.read({ workflowId: pc.workflowId, ...path })
+        return authoring.read({ workflowId: pc.workflowId, ...path, ...(pc.scope ? { project: pc.scope } : {}) })
       }
       const { svc, s } = await ctx()
       const authoring = authoringOf(svc)
@@ -319,16 +325,17 @@ export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): Memwis
       const pc = await playbookChat()
       if (pc) {
         const { svc, actor } = pc
-        await mayChangePlaybooks(svc, actor, pc.workflowId)
+        await mayChangePlaybooks(svc, actor, pc.workflowId, 'change-playbook', pc.scope)
         if (pc.draft && await changeRunActive(svc, pc.draft)) {
           throw new Error('This change was sent for review, so it can\'t be changed from here now. Tell the person: the reviewer can send it back, or they can wait for it to be approved and then change it again.')
         }
         const authoring = authoringOf(svc)
         const { project } = await svc.kernel.project()
-        const live = project.workflows[pc.workflowId]
+        const live = pc.scope ? project.projects?.[pc.scope]?.workflows[pc.workflowId] : project.workflows[pc.workflowId]
         if (!live) throw new Error('That playbook was not found.')
         const draft = pc.draft ?? await authoring.createDraft({
           workflowId: pc.workflowId, title: input.title ?? input.summary, kind: 'change', chatId: sessionId,
+          ...(pc.scope ? { project: pc.scope } : {}),
         }, actor)
         if (!pc.draft) opts.log?.(`[memwise] chat ${sessionId} started draft ${draft.id} (change ${pc.workflowId})`)
         const { edit, diagnostics } = await authoring.write({
@@ -589,6 +596,8 @@ export interface RecordChatContext {
   domain: string
   /** Stage 4: a chat about a record type's list, by entity key. */
   list?: string
+  /** Stage 4 with Stage 3: the project whose list it is; its queries and filter are that project's. */
+  scope?: string
 }
 
 /**
@@ -632,7 +641,10 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
     const actor = await svc.kernel.people.actorFor(anchor.personId)
     const { project } = await svc.kernel.project()
     // A chat about a record type's list (Stage 4): no record of its own; `records_filter` filters the list.
-    if (list) return { svc, actor, records, project, entity: '', id: '', domain: project.entities[list]?.domain ?? 'domain', list }
+    if (list) {
+      const scope = anchor.scope && project.projects?.[anchor.scope] ? anchor.scope : undefined
+      return { svc, actor, records, project, entity: '', id: '', domain: project.entities[list]?.domain ?? 'domain', list, ...(scope ? { scope } : {}) }
+    }
     if (!rec) return { svc, actor, records, project, entity: '', id: '', domain: page || 'domain' }
     const domain = project.entities[rec.entity]?.domain ?? rec.entity.split('.')[0] ?? 'domain'
     return { svc, actor, records, project, entity: rec.entity, id: rec.id, domain }
@@ -668,6 +680,7 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
         ...(input.sort?.length ? { sort: input.sort } : {}),
         ...(input.columns?.length ? { columns: input.columns } : {}),
         limit: Math.min(Math.max(input.limit ?? 50, 1), 200),
+        ...(c.scope ? { project: c.scope } : {}),
       }, c.actor)
       return queryForChat(r)
     },
@@ -704,9 +717,9 @@ export function buildMemwiseRecordToolCallbacks(opts: MemwiseChatToolsOptions & 
       const entity = input.entity ? entityKey(c, input.entity) : c.list
       if (entity !== c.list) throw new Error(`This chat filters the ${c.list} list, not ${input.entity}.`)
       const sort = input.sort?.length ? input.sort : undefined
-      const r = await c.records.query({ entity, filter: input.filter, ...(sort ? { sort } : {}), limit: 5 }, c.actor)
+      const r = await c.records.query({ entity, filter: input.filter, ...(sort ? { sort } : {}), limit: 5, ...(c.scope ? { project: c.scope } : {}) }, c.actor)
       const set = setRecordsChatFilter({
-        personId: c.actor.personId, entity, sessionId, filter: input.filter,
+        personId: c.actor.personId, entity, sessionId, filter: input.filter, ...(c.scope ? { project: c.scope } : {}),
         label: input.label.trim(), chips: (input.chips?.length ? input.chips : [input.label]).map((x) => x.trim()).filter(Boolean),
         ...(sort ? { sort } : {}), ...(input.columns?.length ? { columns: input.columns } : {}),
       })

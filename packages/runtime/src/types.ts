@@ -398,7 +398,8 @@ export interface Authoring {
   /** `project`: change that project's own copy of the playbook (Stage 4 with Stage 3, DraftMeta.project). */
   createDraft(input: { workflowId: string; title: string; kind?: DraftMeta['kind']; runId?: string; chatId?: string; domain?: string; project?: string }, by: Actor): Promise<DraftMeta>;
   /** Files of the live project (no draftId) or of a draft: without `path` the list, with it the content. */
-  read(input: { draftId?: string; workflowId?: string; path?: string }): Promise<{ files: string[] } | { path: string; content: string | null }>;
+  /** `project` (no draft): that project's own copy of the playbook's files (its overrides, else the template's at its version). */
+  read(input: { draftId?: string; workflowId?: string; path?: string; project?: string }): Promise<{ files: string[] } | { path: string; content: string | null }>;
   /** Write (or delete, content null) whole files in a draft; records one edit; returns the checks after it. */
   write(input: {
     draftId: string; files: { path: string; content: string | null }[]; summary: string; via: DraftEdit['via']; chatId?: string;

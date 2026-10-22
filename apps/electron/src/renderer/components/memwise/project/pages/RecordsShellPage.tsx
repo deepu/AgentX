@@ -34,7 +34,8 @@ function readLayout(entity: string): Layout {
   try { return localStorage.getItem(LAYOUT_KEY + entity) === 'cards' ? 'cards' : 'list' } catch { return 'list' }
 }
 
-export function RecordsShellPage({ projectId, entity }: { projectId: string; entity: string }) {
+/** `scope` (Stage 3): a stored project's id: the list, its counts and its chat filter are that project's records only. */
+export function RecordsShellPage({ projectId, entity, scope }: { projectId: string; entity: string; scope?: string }) {
   const { t, i18n } = useTranslation()
   const domains = useAtomValue(memwiseDomainsAtom)
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
@@ -42,7 +43,8 @@ export function RecordsShellPage({ projectId, entity }: { projectId: string; ent
   const type = domain?.entities.find(e => e.key === entity)
   const title = pluralTitle(type?.title ?? humanize(entity.split('.').pop() ?? entity))
   const [layout, setLayout] = React.useState<Layout>(() => readLayout(entity))
-  const { data: chatFilter } = useMemwiseRecordsChatFilter(entity)
+  const { data: chatFilter } = useMemwiseRecordsChatFilter(entity, scope)
+  const inScope = scope ? { project: scope } : {}
   // The type's saved views, a filter typed above the list and the chat's filter all apply.
   const { data: views } = useMemwiseViews(domain?.id ?? null, entity)
   const [viewId, setViewId] = React.useState<string | null>(null)
@@ -53,14 +55,15 @@ export function RecordsShellPage({ projectId, entity }: { projectId: string; ent
   const filter = combineFilters(view?.filter, applied, chatFilter?.filter)
   const sort = chatFilter?.sort?.length ? chatFilter.sort : view?.sort
   React.useEffect(() => setLimit(PAGE), [entity, filter])
-  const { data: result, error } = useMemwiseRecordQuery({ entity, ...(filter ? { filter } : {}), ...(sort?.length ? { sort } : {}), limit })
+  const { data: result, error } = useMemwiseRecordQuery({ entity, ...inScope, ...(filter ? { filter } : {}), ...(sort?.length ? { sort } : {}), limit })
   // What the person sees with no filter: the count in the header, and what the filters hide.
-  const { data: unfiltered } = useMemwiseRecordQuery(filter ? { entity, limit: 1 } : null)
+  const { data: unfiltered } = useMemwiseRecordQuery(filter ? { entity, ...inScope, limit: 1 } : null)
   const asked = chatFilter?.columns ?? view?.columns
   const calls = useMemwiseShellCalls()
   const shell = useProjectShell()
   const [saving, setSaving] = React.useState(false)
-  const total = (filter ? unfiltered?.total : result?.total) ?? type?.count ?? 0
+  // In a project, never the app's count across every project while its own is read.
+  const total = (filter ? unfiltered?.total : result?.total) ?? (scope ? 0 : type?.count ?? 0)
 
   const choose = (l: Layout) => {
     setLayout(l)
@@ -107,7 +110,7 @@ export function RecordsShellPage({ projectId, entity }: { projectId: string; ent
               label={c}
               from={i === 0 ? t('memwise.everyPage.fromChat') : undefined}
               clearLabel={t('memwise.everyPage.clearFilter')}
-              onClear={i === 0 ? () => void calls.clearChatFilter(entity) : undefined}
+              onClear={i === 0 ? () => void calls.clearChatFilter(entity, scope) : undefined}
             />
           ))}
           <ShellButton className="ml-auto" onClick={() => void saveAsPage(chatFilter)} busy={saving} data-action="save-as-page">{t('memwise.everyPage.saveAsPage')}</ShellButton>

@@ -1356,6 +1356,7 @@
   "memwise.everyPage.openReview": "Otwórz przegląd",
   "memwise.everyPage.passed": "zaliczony",
   "memwise.everyPage.pickRecord": "Wybierz rekord",
+  "memwise.everyPage.projectCopy": "Własna kopia {{project}}, wersja {{version}}",
   "memwise.everyPage.publishedBy": "Wersja {{version}}, opublikowana {{date}} przez: {{name}}",
   "memwise.everyPage.recordsExplain": "Rekordy prowadzą Twoje playbooki i ludzie. Każda zmiana jest w historii rekordu.",
   "memwise.everyPage.runTest": "Uruchom test",

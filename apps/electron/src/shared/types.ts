@@ -753,7 +753,7 @@ export interface ElectronAPI {
   memwiseSetOwnPassword(workspaceId: string, input: import('@memwise/shared/protocol').MwSetPasswordInput): Promise<import('@memwise/shared/protocol').MwSetPasswordResult>
   memwiseListRoles(workspaceId: string): Promise<import('@memwise/shared/protocol').MwRole[]>
   memwiseListPlaybooks(workspaceId: string): Promise<import('@memwise/shared/protocol').MwPlaybookSummary[]>
-  memwiseGetPlaybook(workspaceId: string, id: string): Promise<import('@memwise/shared/protocol').MwPlaybook>
+  memwiseGetPlaybook(workspaceId: string, id: string, project?: string): Promise<import('@memwise/shared/protocol').MwPlaybook>
   memwiseGetLiveCounts(workspaceId: string, id: string): Promise<import('@memwise/shared/protocol').MwLiveCounts>
   memwiseListCases(workspaceId: string, filter?: { workflowId?: string; status?: import('@memwise/shared/protocol').MwRunStatus }): Promise<import('@memwise/shared/protocol').MwCaseSummary[]>
   memwiseGetCase(workspaceId: string, caseId: string): Promise<import('@memwise/shared/protocol').MwCase>

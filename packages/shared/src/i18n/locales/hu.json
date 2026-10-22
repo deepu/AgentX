@@ -1312,6 +1312,7 @@
   "memwise.everyPage.openReview": "Ellenőrzés megnyitása",
   "memwise.everyPage.passed": "sikeres",
   "memwise.everyPage.pickRecord": "Válasszon rekordot",
+  "memwise.everyPage.projectCopy": "{{project}} saját példánya, {{version}}. verzió",
   "memwise.everyPage.publishedBy": "{{version}}. verzió, közzétette {{name}}, {{date}}",
   "memwise.everyPage.recordsExplain": "A rekordokat a playbookok és az emberek vezetik. Minden módosítás megjelenik a rekord előzményeiben.",
   "memwise.everyPage.runTest": "Teszt futtatása",

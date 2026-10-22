@@ -1,7 +1,8 @@
 /**
- * Projects and pages, Stage 4 (docs/memwise/26-projects-and-pages.md §11): the playbook page's
- * chat changes "Chase missing documents" in a draft, the draft runs on site DE-104 in a throwaway
- * database, and it goes for review; a list's chat filters the list.
+ * Projects and pages, Stage 4 (docs/memwise/26-projects-and-pages.md §11): in Study MW-301, the
+ * playbook page's chat changes MW-301's own copy of "Send document reminders" in a draft, the
+ * draft runs on MW-301's site DE-104 in a throwaway database, and it goes for review; a list's
+ * chat filters MW-301's list.
  *
  * Against a real Postgres with the eTMF example and scripted models. The chat is not run on a
  * model here: its tool calls are made through the session tools' handlers with the callbacks
@@ -16,7 +17,7 @@ import { createTestDatabase, postgresAvailable, type TestDatabase } from '@memwi
 import type { MwCase, MwDraft, MwDraftSummary, MwRecordsChatFilter, MwTestRunDraftResult } from '@memwise/shared/protocol'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import {
-  handlePlaybookFinish, handlePlaybookRead, handlePlaybookTestRun, handlePlaybookWrite, handleRecordsFilter,
+  handlePlaybookFinish, handlePlaybookRead, handlePlaybookTestRun, handlePlaybookWrite, handleRecordQuery, handleRecordsFilter,
   type SessionToolContext,
 } from '@memwise/session-tools-core'
 import type { RequestContext } from '../../transport/types'
@@ -46,11 +47,12 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
   let craCtx: RequestContext
   let ownerCtx: RequestContext
   let siteId = ''
+  let site207 = ''
   let chatId = ''
   let draftId = ''
 
-  const create = async (entity: string, values: Record<string, unknown>) => {
-    const r = await api.call(manager, ch.RECORDS_CREATE, { entity, values, reason: 'study set-up' })
+  const create = async (entity: string, values: Record<string, unknown>, project = 'mw301') => {
+    const r = await api.call(manager, ch.RECORDS_CREATE, { entity, values, project, reason: 'study set-up' })
     expect(r).toMatchObject({ applied: true })
     return r.id as string
   }
@@ -82,18 +84,19 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     manager = ctxFor('manager-client', anika.id)
     reviewer = ctxFor('reviewer-client', omar.id)
 
-    const sponsor = await create('etmf.Sponsor', { name: 'Aster Bio' })
+    const sponsor = await create('etmf.Sponsor', { name: 'Meridian Pharma' })
     const study = await create('etmf.Study', { code: 'MW-301', sponsor })
-    siteId = await create('etmf.Site', {
-      site_number: 'DE-104', study, coordinator_email: 'coordinator@charite-studien.example',
-      cra_name: 'Priya Shah', cra_email: 'priya.shah@northlight.example',
-    })
+    siteId = await create('etmf.Site', { site_number: 'DE-104', study, cra_name: 'Priya Shah', cra_email: 'priya.shah@northlight.example' })
     for (const artifact of ['Protocol signature page', 'Lab normal ranges', 'Sub-investigator CVs']) {
       await create('etmf.ExpectedDocument', { site: siteId, study, artifact, phase: 'start_up' })
     }
     await create('etmf.Reminder', { site: siteId, sent_to: 'coordinator@charite-studien.example', subject: 'MW-301: 3 documents needed' })
-    expect(await api.call(manager, ch.RECORDS_TRANSITION, { entity: 'etmf.Site', id: siteId, transition: 'picked', reason: 'Selected' }))
-      .toMatchObject({ applied: true })
+    // Study MW-207 has a site that owes a document too: nothing of it shows in MW-301.
+    const study207 = await create('etmf.Study', { code: 'MW-207', sponsor }, 'mw207')
+    site207 = await create('etmf.Site', { site_number: 'AT-005', study: study207 }, 'mw207')
+    await create('etmf.ExpectedDocument', { site: site207, study: study207, artifact: 'Lab normal ranges', phase: 'start_up' }, 'mw207')
+    // The study manager starts MW-301's reminders for DE-104.
+    expect(await api.call(manager, ch.CASES_START, { workflowId: 'remind-site', values: { site: siteId }, project: 'mw301' })).toMatchObject({ project: 'mw301' })
   }, 180_000)
 
   afterAll(async () => {
@@ -111,9 +114,10 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
   }, 90_000)
 
   it('the playbook\'s chat drafts the change: kept at once, in a draft of its own', async () => {
-    const opened = await api.call<{ sessionId: string }>(manager, ch.CHAT_OPEN, { anchor: { kind: 'workflow', id: 'remind-site' }, message: 'Also copy the CRA on the second reminder' })
+    const opened = await api.call<{ sessionId: string }>(manager, ch.CHAT_OPEN, { anchor: { kind: 'workflow', id: 'remind-site', project: 'mw301' }, message: 'Also copy the CRA on the second reminder' })
     chatId = opened.sessionId
-    expect(sessions.contexts.get(chatId)?.anchor).toEqual({ kind: 'workflow', id: 'remind-site' })
+    expect(sessions.contexts.get(chatId)?.anchor).toEqual({ kind: 'workflow', id: 'remind-site', project: 'mw301' })
+    expect(sessions.contexts.get(chatId)?.block).toContain("Study MW-301: a change made here changes that project's own copy")
     const ctx = { memwise: buildMemwiseToolCallbacks({ sessionId: chatId }) } as unknown as SessionToolContext
     const live = parse(await handlePlaybookRead(ctx, { path: SEND }))
     const changed = (live.content as string)
@@ -123,7 +127,13 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     expect(wrote).toMatchObject({ status: 'kept', errors: 0 })
     draftId = wrote.draftId
     const drafts = await api.call<MwDraftSummary[]>(manager, ch.DRAFTS_LIST, { workflowId: 'remind-site' })
-    expect(drafts.find((d) => d.id === draftId)).toMatchObject({ chatId, kind: 'change', pendingEdits: 0, stage: 'draft' })
+    // A draft of MW-301's own copy, not of the app's template.
+    expect(drafts.find((d) => d.id === draftId)).toMatchObject({ chatId, kind: 'change', pendingEdits: 0, stage: 'draft', project: 'mw301' })
+    const files = (await api.call<MwDraft>(manager, ch.DRAFTS_GET, draftId)).files
+    expect(files.map((f) => [f.path, f.writesTo])).toContainEqual([SEND, 'projects/mw301/overrides/workflows/remind-site/steps/send.md'])
+    // The same playbook's chat in MW-207 is another chat, with no draft yet.
+    const in207 = await api.call<{ sessionId: string }>(manager, ch.CHAT_FIND, { anchor: { kind: 'workflow', id: 'remind-site', project: 'mw207' } })
+    expect(in207.sessionId).toBeNull()
     // The chat never sends it for review: the page's button does.
     expect(parse(await handlePlaybookFinish(ctx, { summary: 'Copy the CRA' })).error).toContain('Send for review')
   }, 60_000)
@@ -170,6 +180,9 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     const refused = await api.call<MwTestRunDraftResult>(manager, ch.DRAFTS_TEST_RUN, { draftId, record: { entity: 'etmf.Study', id: study } })
     expect(refused).toMatchObject({ applied: false, code: 'draft.test_run_failed' })
     expect(refused.message).toContain("doesn't start from a Study")
+    // MW-301's copy runs on MW-301's records only.
+    const elsewhere = await api.call<MwTestRunDraftResult>(manager, ch.DRAFTS_TEST_RUN, { draftId, record: { entity: 'etmf.Site', id: site207 } })
+    expect(elsewhere).toMatchObject({ applied: false, code: 'draft.test_run_failed', message: expect.stringContaining('not found') })
   }, 180_000)
 
   it("someone else sees whether the test run passed, not what it saw, and can't change the draft", async () => {
@@ -214,19 +227,25 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
   }, 180_000)
 
   it('a list\'s chat filters the list: chips on the page, a bad filter refused, × clears it', async () => {
-    const opened = await api.call<{ sessionId: string }>(manager, ch.CHAT_OPEN, { anchor: { kind: 'records', id: 'etmf.Site' }, message: 'Which sites are missing documents?' })
+    const opened = await api.call<{ sessionId: string }>(manager, ch.CHAT_OPEN, { anchor: { kind: 'records', id: 'etmf.Site', project: 'mw301' }, message: 'Which sites are missing documents?' })
     const context = sessions.contexts.get(opened.sessionId)!
-    expect(context.anchor).toEqual({ kind: 'records', id: 'etmf.Site' })
+    expect(context.anchor).toEqual({ kind: 'records', id: 'etmf.Site', project: 'mw301' })
     expect(context.block).toContain('DE-104')
+    expect(context.block).not.toContain('AT-005')
     const ctx = { memwiseRecords: buildMemwiseRecordToolCallbacks({ sessionId: opened.sessionId }) } as unknown as SessionToolContext
     expect(parse(await handleRecordsFilter(ctx, { filter: 'missing_documentz > 0', label: 'Missing documents' })).error).toBeTruthy()
     const set = parse(await handleRecordsFilter(ctx, { filter: 'missing_documents > 0', label: 'Missing documents', chips: ['Missing documents'] }))
+    // MW-301's DE-104 only: MW-207's AT-005 owes a document too.
     expect(set).toMatchObject({ applied: true, total: 1, chips: ['Missing documents'] })
-    const shown = await api.call<MwRecordsChatFilter | null>(manager, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site' })
-    expect(shown).toMatchObject({ entity: 'etmf.Site', sessionId: opened.sessionId, filter: 'missing_documents > 0', label: 'Missing documents' })
-    // Only for the person whose chat it is.
-    expect(await api.call(reviewer, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site' })).toBeNull()
-    expect(await api.call<{ applied: boolean }>(manager, ch.RECORDS_CHAT_FILTER_CLEAR, { entity: 'etmf.Site' })).toEqual({ applied: true })
-    expect(await api.call(manager, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site' })).toBeNull()
+    const inRecords = (await handleRecordQuery(ctx, { entity: 'etmf.Site', filter: 'missing_documents > 0' })).content[0]!.text
+    expect(inRecords).toContain('DE-104')
+    expect(inRecords).not.toContain('AT-005')
+    const shown = await api.call<MwRecordsChatFilter | null>(manager, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site', project: 'mw301' })
+    expect(shown).toMatchObject({ entity: 'etmf.Site', sessionId: opened.sessionId, filter: 'missing_documents > 0', label: 'Missing documents', project: 'mw301' })
+    // Only on MW-301's list, and only for the person whose chat it is.
+    expect(await api.call(manager, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site', project: 'mw207' })).toBeNull()
+    expect(await api.call(reviewer, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site', project: 'mw301' })).toBeNull()
+    expect(await api.call<{ applied: boolean }>(manager, ch.RECORDS_CHAT_FILTER_CLEAR, { entity: 'etmf.Site', project: 'mw301' })).toEqual({ applied: true })
+    expect(await api.call(manager, ch.RECORDS_CHAT_FILTER_GET, { entity: 'etmf.Site', project: 'mw301' })).toBeNull()
   }, 60_000)
 })

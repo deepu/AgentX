@@ -1312,6 +1312,7 @@
   "memwise.everyPage.openReview": "打开审核",
   "memwise.everyPage.passed": "通过",
   "memwise.everyPage.pickRecord": "选择记录",
+  "memwise.everyPage.projectCopy": "{{project}} 自己的副本，版本 {{version}}",
   "memwise.everyPage.publishedBy": "版本 {{version}}，{{name}} 于 {{date}} 发布",
   "memwise.everyPage.recordsExplain": "记录由你的剧本和人员维护。每次更改都记录在记录的历史中。",
   "memwise.everyPage.runTest": "运行测试",

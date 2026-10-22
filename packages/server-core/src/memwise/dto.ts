@@ -823,6 +823,7 @@ export function toDraftSummary(f: DraftFacts): MwDraftSummary {
     ...(f.run ? { runId: f.run.runId, caseId: f.run.caseId } : m.runId ? { runId: m.runId } : {}),
     ...(m.status === 'open' && f.run?.status === 'active' && f.run.inChat ? { inChat: true } : {}),
     ...(m.chatId ? { chatId: m.chatId } : {}),
+    ...(m.project ? { project: m.project.id } : {}),
     ...(f.testRun && f.testRun.hash === f.contentHash ? { testRun: f.testRun.status } : {}),
     ...(f.mayChange !== undefined ? { mayChange: f.mayChange } : {}),
   }
@@ -868,6 +869,7 @@ export function toFileChange(f: FileChange, pending: Map<string, string>): MwFil
     path: f.path, status: f.status,
     hunks: f.hunks.map((h) => ({ oldStart: h.oldStart, oldLines: h.oldLines, newStart: h.newStart, newLines: h.newLines, lines: h.lines.map((l) => ({ kind: l.kind, text: l.text })) })),
     ...(f.conflict ? { conflict: true } : {}),
+    ...(f.writesTo ? { writesTo: f.writesTo } : {}),
     ...(editId ? { pendingEditId: editId } : {}),
     ...(typeof f.before === 'string' ? { before: f.before } : {}),
     ...(typeof f.after === 'string' ? { after: f.after } : {}),

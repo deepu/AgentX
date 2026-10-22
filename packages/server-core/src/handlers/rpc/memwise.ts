@@ -849,15 +849,19 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     const { title, digest } = await caseDigest(svc, actor, c, d, anchor)
     const session = await deps.sessionManager.createSession(workspaceId, { name: `About ${title}` })
     const { PgChatAnchorStore } = await import('@memwise/db')
-    // The anchors table names cases and steps; a playbook anchor is stored the same way.
+    // The anchors table names cases and steps; a playbook anchor is stored the same way. A
+    // playbook's chat in a study (Stage 3) belongs to that study and changes its own copy.
+    const scope = anchor.kind === 'workflow' ? ownCopyScope(c, anchor.project) : undefined
     await new PgChatAnchorStore().set(svc.kernel.pool, {
       chatId: session.id, anchorKind: anchor.kind as 'case' | 'step', anchorId: anchor.id, personId: actor.personId,
+      ...(scope ? { scope } : {}),
     })
     const kind = anchor.kind === 'workflow' ? 'playbook' : anchor.kind
     deps.sessionManager.setMemwiseContext(session.id, {
-      anchor: { kind: anchor.kind, id: anchor.id },
+      anchor: anchor.kind === 'workflow' && scope ? { kind: 'workflow', id: anchor.id, project: scope } : { kind: anchor.kind, id: anchor.id },
       block: [
         digest,
+        ...(scope ? ['', `This chat is in ${c.project.projects?.[scope]?.name ?? scope}: a change made here changes that project's own copy of the playbook, not the app's template or other projects.`] : []),
         '',
         `This chat is about the ${kind} above. Answer only from this record; say "not recorded" when it does not say.`,
         ...(message ? ['', SHELL_STYLE] : []),
@@ -906,15 +910,17 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
    * Stage 4 (26 §2): a chat about a record type's list. It may look records up and filter the
    * list beside it (`records_filter`); the list's first rows, as the person sees them, go into its context.
    */
-  async function openRecordsChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, entity: string, message?: string): Promise<string> {
+  async function openRecordsChat(svc: MemwiseService, actor: PersonActor, c: DtoContext, workspaceId: string, entity: string, message?: string, project?: string): Promise<string> {
     const def = c.project.entities[entity]
     if (!def) throw new Error('That record type was not found.')
     const title = def.title ?? def.entity
-    const rows = await recordsOf(svc).query({ entity, limit: 40 }, actor)
+    // A list in a project (Stage 3) is that project's records only.
+    const scope = project && c.project.projects?.[project] ? project : undefined
+    const rows = await recordsOf(svc).query({ entity, limit: 40, ...(scope ? { project: scope } : {}) }, actor)
     const fields = Object.entries(def.fields).map(([name, f]) => `${name}${f.description ? ` (${clipText(f.description, 80)})` : ''}`)
     const states = def.lifecycleChart ? Object.keys(def.lifecycleChart.states) : []
     const block = [
-      `The list of ${title} records (${entity}): ${rows.total} the person may see.`,
+      `The list of ${title} records (${entity})${scope ? ` in ${c.project.projects?.[scope]?.name ?? scope}` : ''}: ${rows.total} the person may see.`,
       `Fields: ${fields.join(', ')}.`,
       ...(states.length ? [`Lifecycle states: ${states.join(', ')}.`] : []),
       untrustedRecordData(rows.rows.map((r) => ({ id: r.id, title: r.title, ...(r.status ? { status: r.status } : {}) }))),
@@ -924,15 +930,21 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     ].join('\n')
     const session = await deps.sessionManager.createSession(workspaceId, { name: message ? shortQuestion(message) : title })
     const { PgChatAnchorStore } = await import('@memwise/db')
-    await new PgChatAnchorStore().set(svc.kernel.pool, { chatId: session.id, anchorKind: 'records', anchorId: entity, personId: actor.personId })
+    await new PgChatAnchorStore().set(svc.kernel.pool, { chatId: session.id, anchorKind: 'records', anchorId: entity, personId: actor.personId, ...(scope ? { scope } : {}) })
     deps.sessionManager.setMemwiseContext(session.id, {
-      anchor: { kind: 'records', id: entity },
+      anchor: { kind: 'records', id: entity, ...(scope ? { project: scope } : {}) },
       block,
       personName: (await personName(svc, actor.personId)) ?? undefined,
     })
     if (message) sendFirst(session.id, message)
     else kickoff(session.id, 'explain')
     return session.id
+  }
+
+  /** A study whose own copy of a playbook its chat changes: a project with its own folder (Stage 3). */
+  function ownCopyScope(c: DtoContext, project: string | undefined): string | undefined {
+    const p = project ? c.project.projects?.[project] : undefined
+    return p && p.dir && !p.implicit ? p.id : undefined
   }
 
   /** The anchors table's kind and id for an anchor. */
@@ -955,7 +967,9 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     const { PgChatAnchorStore } = await import('@memwise/db')
     const key = await anchorKey(anchor)
     const found: string[] = []
-    for (const a of await new PgChatAnchorStore().forAnchor(svc.kernel.pool, key.kind, key.id, actor.personId)) {
+    // A playbook's or a list's chat in a study is that study's (Stage 3): another study's isn't reused.
+    const scope = (anchor.kind === 'workflow' || anchor.kind === 'records') && anchor.project ? anchor.project : undefined
+    for (const a of await new PgChatAnchorStore().forAnchor(svc.kernel.pool, key.kind, key.id, actor.personId, scope)) {
       if (found.includes(a.chatId)) continue
       if (await deps.sessionManager.getSession(a.chatId).catch(() => null)) found.push(a.chatId)
       if (found.length >= limit) break
@@ -1454,14 +1468,16 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       }))
     },
 
-    async getPlaybook(ctx: RequestContext, id: string): Promise<MwPlaybook> {
+    /** `project` (Stage 3): that project's own copy (the template at its version plus its overrides). */
+    async getPlaybook(ctx: RequestContext, id: string, project?: string): Promise<MwPlaybook> {
       const { svc, c, d } = await begin(ctx)
-      const wf = c.project.workflows[id]
+      const copy = typeof project === 'string' && project ? c.project.projects?.[project]?.workflows[id] : undefined
+      const wf = copy ?? c.project.workflows[id]
       if (!wf) throw new Error('That playbook was not found.')
       const policies: Record<string, CompiledPolicy | undefined> = {}
       for (const stepId of Object.keys(wf.steps)) policies[stepId] = await policyFor(svc, wf.id, stepId)
       const { startFields } = await import('@memwise/runtime')
-      return { ...d.toPlaybook(c, wf, policies), startFields: startFields(wf) }
+      return { ...d.toPlaybook(c, wf, policies), startFields: startFields(wf), ...(copy?.overridden?.length ? { overridden: true } : {}) }
     },
 
     async getLiveCounts(ctx: RequestContext, id: string): Promise<MwLiveCounts> {
@@ -1512,7 +1528,10 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       if (!c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
       let caseId: string
       try {
-        ({ caseId } = await svc.kernel.startRun({ workflowId: input.workflowId, case: input.values ?? {}, by: actor.personId }))
+        ({ caseId } = await svc.kernel.startRun({
+          workflowId: input.workflowId, case: input.values ?? {}, by: actor.personId,
+          ...(typeof input.project === 'string' && input.project ? { project: input.project } : {}),
+        }))
       } catch (e) {
         // StartRunError: values that need fixing, reported per field like submitStep's
         const errors = (e as { status?: string; errors?: Record<string, string[]> })
@@ -1680,7 +1699,7 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
         return { sessionId: await openRecordChat(svc, actor, c, workspaceId, input.anchor, message) }
       }
       if (input?.anchor?.kind === 'records') {
-        return { sessionId: await openRecordsChat(svc, actor, c, workspaceId, input.anchor.id, message) }
+        return { sessionId: await openRecordsChat(svc, actor, c, workspaceId, input.anchor.id, message, input.anchor.project) }
       }
       if (input?.anchor?.kind === 'page') {
         return { sessionId: await openPageChat(svc, actor, c, workspaceId, input.anchor.id, message) }
@@ -1865,9 +1884,12 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const kind = input.kind ?? (c.project.workflows[input.workflowId] ? 'change' : 'create')
       if (kind === 'change' && !c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
       if (kind === 'create' && c.project.workflows[input.workflowId]) throw new Error('A playbook with that id already exists.')
-      await mayChangePlaybooks(svc, actor, input.workflowId, kind === 'create' ? 'create-playbook' : 'change-playbook')
+      // A study's own copy (Stage 3): only a change, by someone who may change it there.
+      const scope = kind === 'change' ? ownCopyScope(c, input.project) : undefined
+      await mayChangePlaybooks(svc, actor, input.workflowId, kind === 'create' ? 'create-playbook' : 'change-playbook', scope)
       const meta = await authoringOf(svc).createDraft({
         workflowId: input.workflowId.trim(), title: input.title?.trim() || c.project.workflows[input.workflowId]?.title || d.humanize(input.workflowId), kind,
+        ...(scope ? { project: scope } : {}),
       }, actor)
       emitMemwiseChange({ kind: 'drafts', id: meta.id })
       return d.toDraftSummary(await draftLookup(svc, actor, c).facts(meta))
@@ -2011,13 +2033,13 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     async recordsChatFilter(ctx: RequestContext, input: MwRecordsChatFilterInput): Promise<MwRecordsChatFilter | null> {
       const { actor } = await begin(ctx)
       if (!input?.entity) return null
-      return getRecordsChatFilter(actor.personId, input.entity)
+      return getRecordsChatFilter(actor.personId, input.entity, input.project)
     },
 
     /** × on the chips: the list shows every record again. */
     async clearRecordsChatFilter(ctx: RequestContext, input: MwRecordsChatFilterInput): Promise<{ applied: boolean }> {
       const { actor } = await begin(ctx)
-      const applied = !!input?.entity && clearRecordsChatFilter(actor.personId, input.entity)
+      const applied = !!input?.entity && clearRecordsChatFilter(actor.personId, input.entity, input.project)
       if (applied) emitMemwiseChange({ kind: 'records', entity: input.entity })
       return { applied }
     },
@@ -2709,7 +2731,7 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.PEOPLE_PASSWORD_SET, (ctx, _ws: string, input) => api.setOwnPassword(ctx, input))
   server.handle(ch.ROLES_LIST, (ctx) => api.listRoles(ctx))
   server.handle(ch.PLAYBOOKS_LIST, (ctx) => api.listPlaybooks(ctx))
-  server.handle(ch.PLAYBOOKS_GET, (ctx, _ws: string, id: string) => api.getPlaybook(ctx, id))
+  server.handle(ch.PLAYBOOKS_GET, (ctx, _ws: string, id: string, project?: string) => api.getPlaybook(ctx, id, project))
   server.handle(ch.PLAYBOOKS_LIVE, (ctx, _ws: string, id: string) => api.getLiveCounts(ctx, id))
   server.handle(ch.CASES_LIST, (ctx, _ws: string, filter) => api.listCases(ctx, filter ?? {}))
   server.handle(ch.CASES_GET, (ctx, _ws: string, caseId: string) => api.getCase(ctx, caseId))

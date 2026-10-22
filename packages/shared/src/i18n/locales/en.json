@@ -1312,6 +1312,7 @@
   "memwise.everyPage.openReview": "Open the review",
   "memwise.everyPage.passed": "passed",
   "memwise.everyPage.pickRecord": "Choose a record",
+  "memwise.everyPage.projectCopy": "{{project}}'s own copy of version {{version}}",
   "memwise.everyPage.publishedBy": "Version {{version}}, published {{date}} by {{name}}",
   "memwise.everyPage.recordsExplain": "Records are kept by your playbooks and by people. Every change is in the record's history.",
   "memwise.everyPage.runTest": "Run the test",

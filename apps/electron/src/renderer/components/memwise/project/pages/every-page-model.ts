@@ -10,9 +10,10 @@ import type {
 const WEEK = 7 * 86_400_000
 
 /** Runs of a playbook this week: those still going, and those finished in the last seven days. */
-export function runsThisWeek(cases: MwCaseSummary[] | null | undefined, workflowId: string, now: number): MwCaseSummary[] {
+/** `project` (Stage 3): that project's runs only. */
+export function runsThisWeek(cases: MwCaseSummary[] | null | undefined, workflowId: string, now: number, project?: string): MwCaseSummary[] {
   return (cases ?? [])
-    .filter(c => c.workflowId === workflowId && (c.status === 'active' || now - Date.parse(c.updatedAt) <= WEEK))
+    .filter(c => c.workflowId === workflowId && (!project || c.project === project) && (c.status === 'active' || now - Date.parse(c.updatedAt) <= WEEK))
     .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || b.updatedAt.localeCompare(a.updatedAt))
 }
 
@@ -90,8 +91,9 @@ export function draftChangeCount(draft: Pick<MwDraft, 'structure' | 'changedFile
  * The draft the playbook page shows: the open draft its chat started (newest), else the newest
  * open change draft of the playbook. Drafts sent for review show too, until they are published.
  */
-export function pageDraft(drafts: MwDraftSummary[] | null | undefined, workflowId: string): MwDraftSummary | undefined {
-  const open = (drafts ?? []).filter(d => d.workflowId === workflowId && d.kind === 'change' && d.stage !== 'published' && d.stage !== 'discarded')
+/** `project` (Stage 3): drafts of that project's own copy; without, drafts of the app's template. */
+export function pageDraft(drafts: MwDraftSummary[] | null | undefined, workflowId: string, project?: string): MwDraftSummary | undefined {
+  const open = (drafts ?? []).filter(d => d.workflowId === workflowId && (d.project ?? undefined) === project && d.kind === 'change' && d.stage !== 'published' && d.stage !== 'discarded')
   const byNewest = [...open].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   return byNewest.find(d => d.chatId) ?? byNewest[0]
 }

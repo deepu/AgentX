@@ -7,6 +7,8 @@ import * as React from 'react'
 
 export interface ProjectShellContextValue {
   projectId: string
+  /** The project's name ("Study MW-301"), for words like "MW-301's own copy". */
+  projectName?: string
   /** Show this chat in the chat column (until the person opens another page). */
   showChat: (sessionId: string) => void
 }

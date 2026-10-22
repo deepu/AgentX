@@ -392,6 +392,11 @@ describe.skipIf(!postgresAvailable())('Stage 6 exit: EDC from Medidata Rave, and
       .toEqual([{ project: 'edc-mw207', rave_ref: MW207 }, { project: 'edc-mw301', rave_ref: MW301 }])
     expect(await tableRows('edc.Query', (t) => `select project, count(*)::int as n from ${t} where study = 'MW-207' group by project`))
       .toEqual([{ project: 'edc-mw207', n: 1 }])
+    // The sidebar's RECORDS counts and the list behind them are the project's own (Stage 4).
+    const own = async (entity: string, project: string) =>
+      (await api.call<MwRecordQueryResult>(dana, ch.RECORDS_QUERY, { entity, domain: 'edc', project, limit: 1 })).total
+    expect([await own('edc.Site', 'edc-mw207'), await own('edc.Study', 'edc-mw207'), await own('edc.Subject', 'edc-mw207')]).toEqual([6, 1, 5])
+    expect([await own('edc.Site', 'edc-mw301'), await own('edc.Study', 'edc-mw301'), await own('edc.Subject', 'edc-mw301')]).toEqual([12, 1, 186])
     // A project's page tree has its own sites only.
     const tree = await api.call<MwTreeNode[]>(dana, ch.RECORDS_TREE, { domain: 'edc', project: 'edc-mw207' })
     expect(tree.filter((n) => n.kind === 'record' && n.entity === 'edc.Site').map((n) => (n as { title: string }).title.slice(0, 3)).sort())

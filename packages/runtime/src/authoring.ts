@@ -5,7 +5,7 @@
 import { actorLabel, PgVersionStore } from '@memwise/db';
 import {
   applyDraft, checkProject, createDraft, draftPlaybookFolder, findPlaybookFolder, readDraftTestRun, writeDraftTestRun, describeStructuralDiff, diffDraft, discardDraftEdit, DraftConflictError, draftContentHash,
-  draftDir, DraftStaleError, exampleToYaml, listDrafts, loadDraft, loadWorkflow, readDraft, SCALAR_TYPES, setDraftEditStatus,
+  draftDir, DraftStaleError, exampleToYaml, templateDir, listDrafts, loadDraft, loadWorkflow, readDraft, SCALAR_TYPES, setDraftEditStatus,
   updateDraftMeta, WORKFLOW_ID_PATTERN, writeDraftFiles, writeDraftReport,
   DEFAULT_DOMAIN, type CheckEnvironment, type Diagnostic, type DraftMeta, type DraftReport, type DraftTestRun, type EffectClass, type ExampleCase, type ExampleOutcome, type Impact,
   type DiffNameKind, type ImpactTool, type PastCaseOutcome, type ProjectDefs, type StructuralDiff, type WorkflowDef,
@@ -464,7 +464,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       return meta;
     },
 
-    async read({ draftId, workflowId, path }) {
+    async read({ draftId, workflowId, path, project }) {
       // The id becomes a folder path: a chat must not list folders outside the project with it.
       if (workflowId !== undefined && !WORKFLOW_ID_PATTERN.test(workflowId)) throw new Error(`\`${workflowId}\` is not a playbook id`);
       let base = root;
@@ -489,7 +489,17 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         return { files };
       }
       if (!readablePath(path)) throw new Error(`\`${path}\` is not a file of the project: use a path under domain/, domains/ or workflows/`);
-      const file = join(base, path);
+      let file = join(base, path);
+      // A project's own copy of the playbook (Stage 3): its override of the file, else the template's at its version.
+      const own = !draftId && project && workflow && folder && path.startsWith(`${folder}/`) ? (await deps.project()).project : undefined;
+      const p = own?.projects?.[project!];
+      if (own && p?.dir && !p.implicit) {
+        const rel = path.slice(folder!.length + 1);
+        const override = join(root, p.dir, 'overrides', 'workflows', workflow!, rel);
+        const app = own.apps?.[p.app];
+        const domain = own.domains?.[p.app];
+        file = existsSync(override) ? override : app && domain ? join(root, templateDir(app, domain, p.version), 'workflows', workflow!, rel) : file;
+      }
       return { path, content: existsSync(file) ? await readFile(file, 'utf8') : null };
     },
 

@@ -218,12 +218,12 @@ export function createPagesService(deps: PagesDeps): PagesCore {
         }
         return JSON.stringify({ ...spec, pages: cards, ...(spec.changes !== false ? { changes: recent } : {}), computedAt });
       }
-      // records: a live query, as this viewer may see it.
+      // records: a live query, as this viewer may see it, of the page's project's records (Stage 3).
       try {
         const entity = typeof spec.entity === 'string' ? spec.entity : '';
         if (!entity) return JSON.stringify({ ...spec, error: 'A records block needs an entity.', computedAt });
         const r = await deps.records().query({
-          entity, domain: p.domain,
+          entity, domain: p.domain, project: p.project,
           ...(typeof spec.filter === 'string' && spec.filter.trim() ? { filter: spec.filter } : {}),
           ...(Array.isArray(spec.columns) ? { columns: spec.columns.filter((c): c is string => typeof c === 'string') } : {}),
           ...(Array.isArray(spec.sort) ? { sort: (spec.sort as unknown[]).flatMap((s) => typeof s === 'string' ? [s.startsWith('-') ? { field: s.slice(1), desc: true } : { field: s }] : []) } : {}),

@@ -1312,6 +1312,7 @@
   "memwise.everyPage.openReview": "レビューを開く",
   "memwise.everyPage.passed": "合格",
   "memwise.everyPage.pickRecord": "レコードを選択",
+  "memwise.everyPage.projectCopy": "{{project}} 独自のコピー（バージョン {{version}}）",
   "memwise.everyPage.publishedBy": "バージョン {{version}}、{{date}} に {{name}} が公開",
   "memwise.everyPage.recordsExplain": "レコードはプレイブックと人が管理します。すべての変更はレコードの履歴に残ります。",
   "memwise.everyPage.runTest": "テストを実行",

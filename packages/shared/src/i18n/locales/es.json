@@ -1312,6 +1312,7 @@
   "memwise.everyPage.openReview": "Abrir la revisión",
   "memwise.everyPage.passed": "superada",
   "memwise.everyPage.pickRecord": "Elija un registro",
+  "memwise.everyPage.projectCopy": "Copia propia de {{project}}, versión {{version}}",
   "memwise.everyPage.publishedBy": "Versión {{version}}, publicada el {{date}} por {{name}}",
   "memwise.everyPage.recordsExplain": "Los registros los mantienen sus playbooks y las personas. Cada cambio queda en el historial del registro.",
   "memwise.everyPage.runTest": "Ejecutar la prueba",

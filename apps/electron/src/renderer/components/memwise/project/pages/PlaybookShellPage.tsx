@@ -24,9 +24,13 @@ import { ShellPageFrame, ShellSection } from '../WaitingPage'
 import { draftChangeCount, pageDraft, runsThisWeek, runWhere, stepRows, whoDoes, type StepRow, type Who } from './every-page-model'
 import { ShellButton, ShellTable, Tag, ToneText } from './shell-ui'
 
-export function PlaybookShellPage({ playbookId }: { playbookId: string }) {
+/**
+ * `scope` (Stage 3): a stored project's id. The page shows that project's own copy of the playbook,
+ * its runs and the drafts of its copy; its chat changes that copy.
+ */
+export function PlaybookShellPage({ playbookId, scope }: { playbookId: string; scope?: string }) {
   const { t } = useTranslation()
-  const { data: playbook, error } = useMemwisePlaybook(playbookId)
+  const { data: playbook, error } = useMemwisePlaybook(playbookId, scope)
   const { data: drafts } = useMemwiseDrafts(playbookId)
   const { data: versions } = useMemwiseVersions(playbookId)
   const { data: triggers } = useMemwiseTriggers()
@@ -36,7 +40,7 @@ export function PlaybookShellPage({ playbookId }: { playbookId: string }) {
   const me = useAtomValue(memwiseStatusAtom)?.me
   const shell = useProjectShell()
   const now = useNow()
-  const summary = pageDraft(drafts, playbookId)
+  const summary = pageDraft(drafts, playbookId, scope)
   const { data: draft, reload: reloadDraft } = useMemwiseDraft(summary?.id ?? null)
   const shown = draft && draft.id === summary?.id ? draft : null
 
@@ -44,9 +48,10 @@ export function PlaybookShellPage({ playbookId }: { playbookId: string }) {
     return <div className="flex h-full items-center justify-center p-8 text-label text-tertiary">{error ?? t('memwise.entities.loading')}</div>
   }
   const rows = stepRows(playbook, shown && shown.stage !== 'published' ? shown : null)
-  const runs = runsThisWeek(cases, playbookId, now)
+  const runs = runsThisWeek(cases, playbookId, now, scope)
   const starts = (triggers ?? []).filter(tr => tr.workflowId === playbookId)
-  const live = versions?.find(v => v.version === playbook.version)
+  // A project's own copy that changes the template has no published version of the template's.
+  const live = playbook.overridden ? undefined : versions?.find(v => v.version === playbook.version)
   const project = shell?.projectId ?? ''
 
   return (
@@ -106,6 +111,8 @@ export function PlaybookShellPage({ playbookId }: { playbookId: string }) {
       <p className="text-label-sm text-tertiary" data-testid="playbook-origin">
         {playbook.origin?.kind === 'plugin'
           ? t('memwise.everyPage.fromPlugin', { plugin: playbook.origin.plugin, version: playbook.version })
+          : playbook.overridden
+            ? t('memwise.everyPage.projectCopy', { project: shell?.projectName ?? scope ?? '', version: playbook.version })
           : live
             ? t('memwise.everyPage.publishedBy', { version: live.version, date: absoluteDate(live.publishedAt), name: live.publishedByName ?? t('memwise.everyPage.someone') })
             : t('memwise.everyPage.versionOnly', { version: playbook.version })}
@@ -249,7 +256,8 @@ function TestRunBox({ draft, playbook }: { draft: MwDraft; playbook: MwPlaybook 
   const domains = useAtomValue(memwiseDomainsAtom)
   const entities = React.useMemo(() => (domains ?? []).flatMap(d => d.entities), [domains])
   const entity = startEntity(playbook, entities)
-  const { data: options } = useMemwiseRecordQuery(entity ? { entity, limit: 200 } : null)
+  // A project's draft runs on that project's records only.
+  const { data: options } = useMemwiseRecordQuery(entity ? { entity, limit: 200, ...(draft.project ? { project: draft.project } : {}) } : null)
   const [record, setRecord] = React.useState<string>('')
   const [running, setRunning] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)

@@ -10,7 +10,7 @@ import {
   boardColumns, combineFilters, draftChangeCount, hiddenByFilters, dropDecision, listColumns, numberedSteps, pageDraft, recordsFence, runTimeline, runWhere,
   runsThisWeek, stepNumber, stepRows, whoDoes,
 } from '../project/pages/every-page-model'
-import { chatAnchorFor } from '../project/project-model'
+import { chatAnchorFor, sidebarRecordCounts } from '../project/project-model'
 
 const DAY = 86_400_000
 
@@ -150,5 +150,40 @@ describe('records list filters', () => {
     expect(hiddenByFilters(2, 2)).toBe(0)
     expect(hiddenByFilters(undefined, 2)).toBe(0)
     expect(hiddenByFilters(1, 4)).toBe(0)
+  })
+})
+
+describe('in a project (Stage 3)', () => {
+  test("a study's playbook page shows its runs and the drafts of its own copy", () => {
+    const now = Date.parse(sampleCaseSummaries[0]!.updatedAt) + DAY
+    const mine = { ...sampleCaseSummaries[0]!, caseId: 'case_301', project: 'mw301' }
+    const theirs = { ...sampleCaseSummaries[0]!, caseId: 'case_207', project: 'mw207' }
+    expect(runsThisWeek([mine, theirs], 'client-intake', now, 'mw301').map(r => r.caseId)).toEqual(['case_301'])
+    expect(runsThisWeek([mine, theirs], 'client-intake', now).map(r => r.caseId)).toEqual(['case_301', 'case_207'])
+    const d = (id: string, project?: string): MwDraftSummary => ({
+      id, kind: 'change', workflowId: 'client-intake', stage: 'editing', updatedAt: '2026-10-01T00:00:00Z', ...(project ? { project } : {}),
+    } as MwDraftSummary)
+    const drafts = [d('template'), d('d301', 'mw301'), d('d207', 'mw207')]
+    expect(pageDraft(drafts, 'client-intake', 'mw301')?.id).toBe('d301')
+    expect(pageDraft(drafts, 'client-intake')?.id).toBe('template')
+    expect(pageDraft([d('d207', 'mw207')], 'client-intake', 'mw301')).toBeUndefined()
+  })
+
+  test("a study's playbook and list chats are that study's", () => {
+    expect(chatAnchorFor('mw301', { type: 'playbook', workflowId: 'chase-missing' }, null, undefined, 'mw301')).toEqual({ kind: 'workflow', id: 'chase-missing', project: 'mw301' })
+    expect(chatAnchorFor('mw301', { type: 'records', entity: 'etmf.Site' }, null, undefined, 'mw301')).toEqual({ kind: 'records', id: 'etmf.Site', project: 'mw301' })
+    expect(chatAnchorFor('etmf', { type: 'records', entity: 'etmf.Site' })).toEqual({ kind: 'records', id: 'etmf.Site' })
+  })
+
+  test("the sidebar's RECORDS counts are the study's own, never the app's across studies", () => {
+    const types = [{ key: 'edc.Site', title: 'Sites', count: 18 }, { key: 'edc.Study', title: 'Studies', count: 2 }]
+    expect(sidebarRecordCounts({ stored: true }, types, { 'edc.Site': 6, 'edc.Study': 1 })).toEqual([
+      { key: 'edc.Site', title: 'Sites', count: 6 }, { key: 'edc.Study', title: 'Studies', count: 1 },
+    ])
+    // Still reading: no count rather than every study's.
+    expect(sidebarRecordCounts({ stored: true }, types, undefined)).toEqual([{ key: 'edc.Site', title: 'Sites' }, { key: 'edc.Study', title: 'Studies' }])
+    expect(sidebarRecordCounts({ stored: true }, types, { 'edc.Site': 6 })[1]).toEqual({ key: 'edc.Study', title: 'Studies' })
+    // One project per domain (no stored projects): the domain's counts are the project's.
+    expect(sidebarRecordCounts({ stored: false }, types, undefined)).toEqual(types)
   })
 })
