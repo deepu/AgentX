@@ -469,6 +469,12 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - chats anchored to `change`, `audit` and `tmf`, with the page's content in the chat's context;
   - CR sign-offs and inspector questions under Waiting for you;
   - Inspector access and Audit trail as Project settings tabs on regulated projects.
+- **With Stage 3's projects inside apps:**
+  - A study (`mw301`) is a project of the eTMF app. Its change requests, audit trail and inspector links are the app's: a playbook is the app's, and the database writes one trail per app. Its TMF index counts its own records, plus those every project of the app shares, and names its study.
+  - A change request or an inspector's question waits in every project that runs its app, and under its app in "Waiting for you, all projects".
+  - A study's run is in its app's trail, although it runs the study's own copy of the playbook.
+  - Record types added later (a new app's tables, as EDC's are) are audited with nothing of their own: every typed table writes `mw.record_versions` through its generated row trigger, and that is what the audit trigger watches.
+  - Still per app, not per study: the audit trail page (titled with the study) and an inspector link's documents. Scoping them to one study is open.
 - **Tests:**
   - `packages/server-core/src/memwise/__tests__/stage5-exit.test.ts`, the exit test: the CR fails 2 of 3, is fixed from its chat and passes 3 of 3; QA signs; old and new runs; trail, export and tamper; the inspector link; the TMF index. It also writes `EInspector-*` screenshots when `MEMWISE_WALKTHROUGH_DIR` is set.
   - `packages/runtime/tests/regulated.test.ts`.
