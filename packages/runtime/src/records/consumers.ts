@@ -51,7 +51,12 @@ export async function pairRecord(db: Queryable, entities: Record<string, EntityT
   if (!pairs.length || pairs.some(([mine]) => empty(row.values[mine]))) return 'none';
   const params: Record<string, unknown> = {};
   const filter = pairs.map(([, theirs], i) => { params[`k${i}`] = row.values[pairs[i]![0]]; return `${theirs} = params.k${i}`; }).join(' and ');
-  const matches = await entityStore.query(db, to, entities, { filter, params, limit: 20 });
+  // Stage 6 Part B: one study is linked across apps through its projects. A record of a project
+  // naming a study pairs only within the other app's projects of the same study (site 104 of
+  // MW-301, never 104 of another study); without such a project, anywhere, as before.
+  const projects = await sameStudyProjects(db, row.project, domainOfEntity(to));
+  if (projects && !projects.length) return 'none';
+  const matches = await entityStore.query(db, to, entities, { filter, params, limit: 20, ...(projects ? { projects } : {}) });
   const said = pairs.map(([mine]) => `${mine} ${JSON.stringify(row.values[mine])}`).join(', ');
   // The other side's records already paired with another of ours can't pair again (one to one).
   const free: typeof matches.rows = [];
@@ -77,6 +82,43 @@ export async function pairRecord(db: Queryable, entities: Record<string, EntityT
     return 'candidates';
   }
   return 'none';
+}
+
+/**
+ * The projects running `app` with the same study as `project`. Undefined only when `project` names
+ * no study (pair anywhere, as before projects); a study no project of `app` names gives none ([]):
+ * its records pair with nothing there rather than with another study's.
+ */
+export async function sameStudyProjects(db: Queryable, project: string | undefined, app: string): Promise<string[] | undefined> {
+  if (!project) return undefined;
+  const { rows } = await db.query<{ study: string | null; peers: string[] | null }>(
+    `select p.study, (select array_agg(o.id order by o.id) from mw.projects o
+                       where o.study = p.study and $2 = any(mw.project_apps(o.id))) as peers
+       from mw.projects p where p.id = $1`, [project, app]);
+  const r = rows[0];
+  if (!r?.study) return undefined;
+  return r.peers ?? [];
+}
+
+/**
+ * A `changed` event on each record of `from` paired with the record `event` is about, naming the
+ * followed fields that changed (`{ fields, via: 'link', cause }`). The cause makes it once only, so
+ * a replayed event announces nothing twice. True when it announced anything.
+ */
+export async function announceFollowed(db: Queryable, from: EntityTypeDef, to: EntityTypeDef, event: EntityEvent, fields: string[]): Promise<boolean> {
+  const { plugin, source } = linkPairing(keyOf(to));
+  const { rows } = await db.query<{ record_id: string }>(
+    `select record_id from mw.identity_links where plugin = $1 and source = $2 and external_id = $3 and entity = $4`,
+    [plugin, source, event.recordId, keyOf(from)]);
+  let any = false;
+  for (const r of rows) {
+    const ins = await db.query(
+      `insert into mw.entity_events (id, entity, record_id, kind, data, by) values ('evt_' || mw.ulid(), $1, $2, 'changed', $3, $4) on conflict do nothing`,
+      [keyOf(from), r.record_id, JSON.stringify({ fields, via: 'link', cause: event.id }), event.by ?? `source:domain:${domainOfEntity(to)}`]);
+    any ||= (ins.rowCount ?? 0) > 0;
+  }
+  if (any) await db.query(`select pg_notify('mw_changes', '{"kind":"entity"}')`);
+  return any;
 }
 
 /** Pairs every unpaired record of every linking entity (on index). Counts by outcome. */
@@ -138,6 +180,11 @@ export function recordConsumers(deps: Pick<RecordsDeps, 'pool' | 'entities' | 'e
             const r = await pairRecord(db, entities, from, link, to, event.recordId);
             changed ||= r === 'linked' || r === 'candidates';
           } else if (keyOf(to) === key) {
+            // Stage 6 (26 §9): a followed field changed over there, so it changed on the records
+            // following it here too. Announce it on them (once per cause), so their `changed:`
+            // triggers fire: "when Rave records a new coordinator, eTMF asks the site for a CV".
+            const followed = event.kind === 'changed' ? (event.fields ?? []).filter((f) => link.follow.includes(f)) : [];
+            if (followed.length) changed = (await announceFollowed(db, from, to, event, followed)) || changed;
             // A record of the linked side: the unpaired records of ours with its key.
             const row = await entityStore.get(db, to, event.recordId);
             if (!row) continue;

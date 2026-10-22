@@ -100,10 +100,14 @@ const SOURCE_ICON: Record<MwRecordFieldSource['kind'], React.ReactNode> = {
 }
 
 export function FieldSourceBadge({ source }: { source: MwRecordFieldSource }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   return (
     // In a narrow column the label is cut with an ellipsis rather than running past the card.
-    <Pill className={cn(SOURCE_TONE_CLASS[fieldSourceTone(source)], 'max-w-full min-w-0 shrink')} title={`${fieldSourceLabel(source, t)} · ${t('memwise.record.source.title')}`}>
+    <Pill
+      className={cn(SOURCE_TONE_CLASS[fieldSourceTone(source)], 'max-w-full min-w-0 shrink')}
+      // A synced connector's copy says when it was read (Stage 6, D110).
+      title={`${fieldSourceLabel(source, t)} · ${source.kind === 'plugin' && source.asOf ? `${t('memwise.record.source.asOf', { time: absoluteTime(source.asOf, i18n.language) })} · ` : ''}${t('memwise.record.source.title')}`}
+    >
       {SOURCE_ICON[source.kind]}
       <span className="truncate" data-source={source.kind}>{fieldSourceLabel(source, t)}</span>
     </Pill>

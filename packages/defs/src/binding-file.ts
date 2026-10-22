@@ -8,6 +8,7 @@ import { policyToRaw, toPolicyDoc } from './parse-policy.ts';
 import { BINDINGS_DIR, type BindingDef, type FieldMapping, type IdentityRules, type MappingDirection, type RecordBinding, type Transform } from './plugin-types.ts';
 import { asRecord, asString, asStrings, compact, isRecord, readYaml, rememberLocator, Reporter, sha256, type ParseResult } from './source.ts';
 import { EFFECT_CLASSES, type EffectClass } from './types.ts';
+import { parseDuration } from './value-types.ts';
 
 /** `memwise/client-intake` → `memwise__client-intake`: the plugin's folder and binding file name. */
 export const pluginSlug = (id: string): string => id.replace(/\//g, '__');
@@ -26,6 +27,7 @@ export function toTransform(raw: unknown): Transform | undefined {
   if (isRecord(raw.map)) return { map: raw.map };
   if (typeof raw.money === 'string' && /^[A-Z]{3}$/.test(raw.money)) return { money: raw.money };
   if (typeof raw.template === 'string') return { template: raw.template };
+  if (typeof raw.link === 'string' && raw.link) return { link: raw.link };
   return undefined;
 }
 
@@ -87,7 +89,7 @@ export function parseBindingFile(text: string, file: string): ParseResult<Bindin
       // Say which transform is wrong: the format check only says the mapping doesn't fit.
       const raw = isRecord(m) && Array.isArray(m.transform) ? m.transform : [];
       raw.forEach((t, i) => {
-        if (!toTransform(t)) report.error('invalid-transform', `\`${JSON.stringify(t)}\` is not a transform: use trim, lower, upper, digits, squash, { default: v }, { map: { a: b } }, { money: INR } or { template: "{first} {last}" }`, ['records', name, 'fields', field, 'transform', i]);
+        if (!toTransform(t)) report.error('invalid-transform', `\`${JSON.stringify(t)}\` is not a transform: use trim, lower, upper, digits, squash, { default: v }, { map: { a: b } }, { money: INR } { template: "{first} {last}" } or { link: <record source> }`, ['records', name, 'fields', field, 'transform', i]);
       });
       const mapping = fieldMapping(m);
       if (mapping) fields[field] = mapping;
@@ -101,6 +103,13 @@ export function parseBindingFile(text: string, file: string): ParseResult<Bindin
   const dryRun = typeof d.at === 'string' && typeof d.hash === 'string' && typeof d.passed === 'boolean' && typeof d.summary === 'string'
     ? { at: d.at, hash: d.hash, passed: d.passed, summary: d.summary }
     : undefined;
+  const syncRaw = asRecord(data.sync);
+  let sync: BindingDef['sync'];
+  if (typeof syncRaw.every === 'string') {
+    const everyMs = parseDuration(syncRaw.every);
+    if (everyMs === undefined || everyMs < 60_000) report.error('invalid-format', `sync every ${syncRaw.every}: write a duration of a minute or more, like 15m or 1h`, ['sync', 'every']);
+    else sync = { every: syncRaw.every, everyMs };
+  }
 
   const value: BindingDef = compact({
     plugin: asString(data.plugin) ?? '',
@@ -115,6 +124,7 @@ export function parseBindingFile(text: string, file: string): ParseResult<Bindin
     records,
     policy: isRecord(data.policy) ? toPolicyDoc(data.policy, file) : undefined,
     dryRun,
+    sync,
     file,
     hash: sha256(text),
   });
@@ -149,6 +159,7 @@ export function bindingToYaml(b: BindingDef): string {
     }])),
     policy: b.policy ? policyToRaw(b.policy) : undefined,
     dry_run: b.dryRun,
+    sync: b.sync ? { every: b.sync.every } : undefined,
   });
   return stringifyYaml(doc, { lineWidth: 0 });
 }

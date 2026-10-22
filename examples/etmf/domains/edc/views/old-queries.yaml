@@ -1,0 +1,5 @@
+title: Old queries
+entity: Query
+filter: "query_status = 'Open' and days_open > 14"
+sort: [{ field: days_open, desc: true }]
+columns: [site, subject_key, visit, text, days_open]

@@ -1,0 +1,27 @@
+workflow: new-coordinator
+version: 1
+title: Ask a new coordinator for their documents
+owner: study_manager
+# Starts when EDC (Medidata Rave) names a new study coordinator for a site: the eTMF Site follows
+# the coordinator through its link, so the change is a change here (26 §9). The new coordinator's
+# CV and GCP training certificate become expected documents of the site, and the site is asked for
+# them by email, approved first like every outgoing message. They come back to the eTMF address
+# and are filed by "File a TMF document".
+start: read_site
+starts_on:
+  - changed: { entity: Site, fields: [coordinator] }
+    with: { site: record }
+    as: tmf_specialist
+steps:
+  read_site: { on: { done: draft } }
+  draft:
+    on:
+      drafted:      send
+      no_change:    end
+      needs_person: needs_person
+      failed:       needs_person
+  send: { on: { sent: end, needs_person: needs_person } }
+  needs_person:
+    assignee: tmf_specialist
+    on: { retry: draft, closed: end }
+    wait: { timeout: 7d → end }

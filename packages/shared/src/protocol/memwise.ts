@@ -1495,7 +1495,8 @@ export interface MwAskResult {
 
 export type MwRecordFieldSource =
   | { kind: 'domain' }
-  | { kind: 'plugin'; plugin: string; title?: string }
+  /** `asOf` (Stage 6, D110): a read-only copy kept by a synced connector, as read at this time ("as of 09:15"). */
+  | { kind: 'plugin'; plugin: string; title?: string; asOf?: string; /** Not linked to a record in the connector yet: "not yet in Medidata Rave". */ unlinked?: true }
   | { kind: 'link'; domain: string; domainName?: string; entity: string; recordId?: string }
   | { kind: 'calculated' }
   | { kind: 'step'; stepRunId: string; workflowId?: string; label?: string }
@@ -1708,7 +1709,12 @@ export interface MwRecordQueryResult {
   groups?: { key: string | null; count: number; title?: string }[]
 }
 
-export interface MwTreeInput { domain: string; parent?: { entity: string; id: string } }
+export interface MwTreeInput {
+  domain: string
+  parent?: { entity: string; id: string }
+  /** Stage 3: the top of this project's tree only (absent: every project the person sees). */
+  project?: string
+}
 
 export type MwTreeNode =
   | { kind: 'record'; entity: string; id: string; title: string; status?: string; hasChildren: boolean }
@@ -1732,7 +1738,13 @@ export interface MwView {
 
 export interface MwSaveViewInput { domain: string; view: Omit<MwView, 'personal' | 'domain'> }
 
-export interface MwDashboardInput { domain: string; pageId: string; params?: Record<string, string> }
+export interface MwDashboardInput {
+  domain: string
+  pageId: string
+  params?: Record<string, string>
+  /** Stage 3: count this project's records only (absent: every project the person sees). */
+  project?: string
+}
 
 export type MwDashboardBlock =
   | { kind: 'kpi'; label: string; value: number | null; target?: number; format?: 'number' | 'percent'; detail?: string }

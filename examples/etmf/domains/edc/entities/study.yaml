@@ -1,0 +1,23 @@
+entity: Study
+title: "{protocol} · {name}"
+# A study as Medidata Rave has it: its enrolment target and plan, and how much of the entered data
+# is source-verified. Read from Rave by the connector's sync and owned by it (read only here).
+fields:
+  protocol:         { type: Text, required: true, description: "The protocol, like MW-301: the study key projects share across apps" }
+  name:             Text
+  environment:      { type: Text, description: "Prod, UAT…" }
+  enrolment_target: { type: Number, description: Subjects to randomise across all sites }
+  planned_by_now:   { type: Number, description: Subjects the plan expected randomised by today }
+  site_count:       { type: Number, description: Sites in Rave }
+  pages_verified:   { type: Percentage, description: "Entered pages that are source-verified, across sites" }
+  rave_ref:         { type: Text, description: "The study in Medidata Rave, like MW-301(Prod)" }
+ownership:
+  protocol: memwise/medidata-rave
+  name: memwise/medidata-rave
+  environment: memwise/medidata-rave
+  enrolment_target: memwise/medidata-rave
+  planned_by_now: memwise/medidata-rave
+  site_count: memwise/medidata-rave
+  pages_verified: memwise/medidata-rave
+  rave_ref: memwise/medidata-rave
+lifecycle: [active, locked]

@@ -107,7 +107,7 @@ export function toFieldSource(project: ProjectDefs, s: RecordFieldSource, names:
   switch (s.kind) {
     case 'domain': return { kind: 'domain' }
     case 'calculated': return { kind: 'calculated' }
-    case 'plugin': return { kind: 'plugin', plugin: s.plugin, title: pluginTitle(project, s.plugin) }
+    case 'plugin': return { kind: 'plugin', plugin: s.plugin, title: pluginTitle(project, s.plugin), ...(s.asOf ? { asOf: s.asOf } : {}), ...(s.unlinked ? { unlinked: true as const } : {}) }
     case 'link': return {
       kind: 'link', domain: s.domain, domainName: domainName(project, s.domain), entity: s.entity, ...(s.recordId ? { recordId: s.recordId } : {}),
     }

@@ -125,7 +125,7 @@ export type SourceTone = 'memwise' | 'plugin' | 'link' | 'calculated' | 'agent' 
 export function fieldSourceLabel(source: MwRecordFieldSource, t: TFunction): string {
   switch (source.kind) {
     case 'domain': return t('memwise.record.source.memwise')
-    case 'plugin': return source.title ?? humanize(source.plugin)
+    case 'plugin': return source.unlinked ? t('memwise.record.source.notYetIn', { source: source.title ?? humanize(source.plugin) }) : source.title ?? humanize(source.plugin)
     case 'link': return t('memwise.record.source.link', { domain: source.domainName ?? humanize(source.domain) })
     case 'calculated': return t('memwise.record.source.calculated')
     case 'step': return source.label ? t('memwise.record.source.step', { playbook: source.label }) : t('memwise.record.source.stepAny')

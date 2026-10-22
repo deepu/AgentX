@@ -23,6 +23,8 @@ import { projectToolInfo, toDiagnostic } from './dto'
 import { createPublicHandler, findFormAppDir, type PublicHandler } from './public'
 import { createPublicAddress, type PublicAddress, type PublicAddressOptions } from './relay'
 import { channelTools, pgSentStore } from './channels'
+import { raveTools } from './rave'
+import { builtinSecrets } from './secrets'
 
 export interface MemwiseLogger {
   info(...args: unknown[]): void
@@ -224,7 +226,8 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
     // Phase 5 (23 §6): the real channel plugins' builtins (email over SMTP, WhatsApp). Only plugin
     // routes reach them: the channel tools are bound by their fixed names (`email.send`) through a
     // binding, never under the builtins' own names.
-    const builtins = [...samples, ...channelTools({ sent: pgSentStore(() => kernel!.pool) })]
+    // Stage 6 (26 §9): the Medidata Rave connector's read-only tools, reached the same way.
+    const builtins = [...samples, ...channelTools({ sent: pgSentStore(() => kernel!.pool) }), ...raveTools()]
     const usesBindings = existsSync(join(projectDir, 'domain', 'bindings'))
     const tools: ToolDefinition[] = [...(opts.tools ?? []), ...(usesBindings ? [] : samples)]
     const connectors = createConnectorBridge({
@@ -281,6 +284,8 @@ export async function startMemwiseService(opts: MemwiseServiceOptions): Promise<
       projectDir,
       tools,
       builtins,
+      // The connections builtins declare (Rave's URL, user and password), injected per call.
+      secrets: builtinSecrets(builtins),
       resolveMcpSource: (slug) => connectors.resolveMcpSource(slug),
       modelRoles: models.modelRoles,
       providers: models.providers,

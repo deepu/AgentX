@@ -110,7 +110,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   if (DBOS.isInitialized()) throw new Error('a kernel is already running in this process (DBOS is process-wide)');
   const url = options.databaseUrl;
   const pool = createPool(url, { max: 10, applicationName: 'memwise-kernel' });
-  await migrateAll(url, pool, { sandbox: options.tools.some((t) => t.source?.plugin === SAMPLE_PLUGIN) });
+  // The sample tools' sandbox, whether they are bound directly or reached through a plugin's
+  // builtin route (a project with bindings, such as the eTMF example's sample email).
+  await migrateAll(url, pool, { sandbox: [...options.tools, ...(options.builtins ?? [])].some((t) => t.source?.plugin === SAMPLE_PLUGIN) });
 
   const reader = new PgStepRecordReader(pool);
   const approvals = new PgApprovalStore(pool);
@@ -333,6 +335,9 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   };
 
   // Phase 6 flow (24 §7, §8, §10): the dispatcher, triggers, hand-offs, incoming email, entity timers.
+  let syncTimer: ReturnType<typeof setInterval> | undefined;
+  let sweepSyncs: (() => void) | undefined;
+  const flowLog = (m: string) => { if ((options.logLevel ?? process.env.DBOS_LOG ?? 'warn') !== 'error') console.warn(`[memwise] ${m}`); };
   const flow = createFlow({
     pool, client,
     workflows: () => liveWorkflows(),
@@ -423,6 +428,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       const updaters = domainUpdaters(project.entities, project.workflows);
       const domains = project.domains ?? {};
       const schemaKey = JSON.stringify([project.entities, creators, updaters, Object.fromEntries(Object.entries(domains).map(([id, d]) => [id, !!d.regulated]))]);
+      const first = !appliedSchema;
       if (appliedSchema?.key !== schemaKey) {
         appliedSchema = { key: schemaKey, notes: await applyDomainSchema(pool, project.entities, { creators, updaters, domains }) };
       }
@@ -442,6 +448,8 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
       ];
       indexed = { project, diagnostics };
       feed.emit({ kind: 'definitions' });
+      // Connectors due a read get it as soon as their tables exist, not a minute later.
+      if (first) sweepSyncs?.();
       return diagnostics;
     },
 
@@ -621,6 +629,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
     get channels() { return channels; },
 
     async shutdown() {
+      if (syncTimer) clearInterval(syncTimer);
       stopFlow();
       await flow.stop();
       stopNotifier();
@@ -682,7 +691,7 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
   const refuse = async (): Promise<never> => { throw new Error('createKernel({ projectDir }) is needed for plugins'); };
   const withoutProject = {
     plugins: { list: refuse, get: refuse, install: refuse, startBind: refuse, binding: refuse },
-    identity: { resolve: refuse, candidates: refuse, decide: refuse, links: refuse },
+    identity: { resolve: refuse, candidates: refuse, decide: refuse, links: refuse, syncs: refuse, syncDue: refuse },
   };
   function needPlugins(): PluginServices {
     if (!pluginServices) throw new Error('createKernel({ projectDir }) is needed for plugins');
@@ -714,6 +723,23 @@ export async function createKernel(options: KernelOptions): Promise<Kernel> {
         return out;
       },
     });
+    // Stage 6 (26 §9): connectors whose binding says `sync:` are read again when due, on the minute.
+    if (options.sourceSyncs !== false) {
+      const services = pluginServices;
+      let syncing = false;
+      sweepSyncs = () => {
+        // Not before the first index: the domain tables a read writes into may not exist yet.
+        if (syncing || !appliedSchema) return;
+        syncing = true;
+        services.identity.syncDue()
+          .then((done) => { for (const d of done) if (d.error) flowLog(`reading ${d.plugin}: ${d.error}`); })
+          .catch((e) => flowLog(`reading connectors: ${e instanceof Error ? e.message : String(e)}`))
+          .finally(() => { syncing = false; });
+      };
+      syncTimer = setInterval(sweepSyncs, 60_000);
+      (syncTimer as { unref?: () => void }).unref?.();
+      sweepSyncs();
+    }
     authoring = createAuthoring({
       projectDir: options.projectDir,
       pool,

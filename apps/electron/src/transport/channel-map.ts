@@ -524,6 +524,10 @@ export const CHANNEL_MAP = {
   memwiseReleaseTrigger: invoke(RPC_CHANNELS.memwise.TRIGGERS_RELEASE),
   memwiseGetAuditTrail: invoke(RPC_CHANNELS.memwise.AUDIT_GET),
   memwiseExportAuditTrail: invoke(RPC_CHANNELS.memwise.AUDIT_EXPORT),
+  // Stage 6: EDC and a study across apps (docs/memwise/26-projects-and-pages.md §9)
+  memwiseGetEdcHome: invoke(RPC_CHANNELS.memwise.EDC_HOME),
+  memwiseGetStudyApps: invoke(RPC_CHANNELS.memwise.STUDY_APPS),
+  memwiseGetLinkedRecords: invoke(RPC_CHANNELS.memwise.RECORDS_LINKED),
   memwiseReadFile: invoke(RPC_CHANNELS.memwise.FILES_READ),
   // Stage 3: projects inside apps (docs/memwise/26-projects-and-pages.md §3)
   memwiseListApps: invoke(RPC_CHANNELS.memwise.APPS_LIST),

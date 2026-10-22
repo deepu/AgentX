@@ -109,8 +109,8 @@ describe.skipIf(!pgAvailable)('Stage 3: projects inside apps', () => {
     expect(await rows(`select count(*)::int as n from ${await table('etmf.Sponsor')}`)).toEqual([{ n: 1 }]);
     expect((await rows(`select column_name from information_schema.columns where table_schema = 'domain' and table_name = $1 and column_name = 'project'`,
       [entityTableName(await def('etmf.Sponsor'))]))).toEqual([]);
-    // EDC's sites went to EDC's own project; an open site with its whole pack raises no flag.
-    expect(await rows(`select distinct project from ${await table('edc.Site')}`)).toEqual([{ project: 'edc' }]);
+    // EDC's sites come from Rave (Stage 6), never from a seed; an open site with its whole pack raises no flag.
+    expect(await rows(`select count(*)::int as n from ${await table('edc.Site')}`)).toEqual([{ n: 0 }]);
     await kernel.triggers.settle(30_000);
     expect(await rows(`select count(*)::int as n from mw.record_flags where closed_at is null and entity = 'etmf.Site'`)).toEqual([{ n: 0 }]);
   }, 120_000);
@@ -121,8 +121,8 @@ describe.skipIf(!pgAvailable)('Stage 3: projects inside apps', () => {
 let hash301 = '';
 
   test('exit 2: a site activating in MW-301 runs MW-301\'s own Chase missing documents, which waits 5 days; MW-207 waits 3', async () => {
-    const jp = await siteIn('mw301', 'JP-009');
-    const at = await siteIn('mw207', 'AT-005');
+    const jp = await siteIn('mw301', '109');
+    const at = await siteIn('mw207', '205');
     expect(await kernel.records.transition({ entity: 'etmf.Site', id: jp, transition: 'picked' }, anika)).toMatchObject({ applied: true });
     expect(await kernel.records.transition({ entity: 'etmf.Site', id: at, transition: 'picked' }, anika)).toMatchObject({ applied: true });
     await kernel.triggers.settle(30_000);
@@ -262,7 +262,7 @@ let hash301 = '';
     // The test run: MW-207's own case replayed on v5 (and the playbook's example cases).
     expect(r207.test).toMatchObject({ workflowId: 'chase-missing', caseId: case207, status: 'same', examples: { passed: 2, total: 2 } });
     expect(runnerCalls.at(-1)!.workflowId).toBe('chase-missing');
-    expect(runnerCalls.at(-1)!.extra[0]!.case.site).toBe(await siteIn('mw207', 'AT-005'));
+    expect(runnerCalls.at(-1)!.extra[0]!.case.site).toBe(await siteIn('mw207', '205'));
 
     const r301 = (await kernel.projects.reviewUpdate('mw301', anika))!;
     expect(r301.nothingChanges).toBe(true);
@@ -293,7 +293,7 @@ let hash301 = '';
     const row = (id: string) => home.rows.find((r) => r.project === id)!;
     expect(row('mw301')).toMatchObject({ name: 'Study MW-301', status: 'active', study: 'MW-301', next: { label: 'Inspection', date: '2026-11-16' } });
     expect(row('mw207')).toMatchObject({ name: 'Study MW-207', status: 'active', next: { label: 'Lock', date: '2026-11-30' } });
-    // Phase 3, 12 sites, 63 of 72 expected documents filed (9 missing at UK-207, CA-118, JP-009), 8 waiting for QC.
+    // Phase 3, 12 sites, 63 of 72 expected documents filed (9 missing at 101, 110, 109), 8 waiting for QC.
     expect(row('mw301').values.slice(0, 2)).toEqual([3, 12]);
     expect(row('mw301').values[2]).toBeCloseTo(87.5, 0);
     expect(row('mw301').values.slice(3)).toEqual([9, 8]);
@@ -306,14 +306,14 @@ let hash301 = '';
     expect(home.headline!.label).toBe('Filed');
     expect(home.milestones.find((m) => m.project === 'mw207')).toEqual({ project: 'mw207', name: 'Study MW-207', label: 'Lock', date: '2026-11-30' });
     expect(home.milestones[0]!.date).toBe('2026-11-16');
-    // Tom sent JP-009's and AT-005's reminders; the chases of the sites seeded as activating wait on him.
+    // Tom sent 109's and 205's reminders; the chases of the sites seeded as activating wait on him.
     expect(home.bottlenecks.find((b) => b.name === 'Tom Okafor')).toMatchObject({
       roles: ['TMF specialist'], total: 4,
       waiting: [{ project: 'mw207', projectName: 'Study MW-207', count: 2 }, { project: 'mw301', projectName: 'Study MW-301', count: 2 }],
     });
 
     // One more chase in MW-207 waits on him there.
-    const { runId } = await kernel.startRun({ workflowId: 'chase-missing', case: { site: await siteIn('mw207', 'FR-114') }, project: 'mw207' });
+    const { runId } = await kernel.startRun({ workflowId: 'chase-missing', case: { site: await siteIn('mw207', '203') }, project: 'mw207' });
     await kernel.waitForRun(runId, { until: (r) => r.state === 'send_reminder', timeoutMs: 30_000 });
     await until('the reminder step', () => rows(`select id from mw.step_runs where run_id = $1 and status = 'waiting'`, [runId]), (x) => x.length > 0);
     const after = await kernel.projects.home('etmf', anika);

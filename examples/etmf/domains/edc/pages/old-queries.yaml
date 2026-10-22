@@ -1,0 +1,17 @@
+title: Old queries by site
+description: Queries open longer than 14 days, by site and oldest first, in this study (in every study, outside a study project). Read from Medidata Rave; sites answer them there.
+blocks:
+  - kpi:
+      label: Older than 14 days
+      value: { count: Query, where: "query_status = 'Open' and days_open > 14" }
+  - kpi:
+      label: Sites with old queries
+      value: { count: Site, where: "old_queries > 0" }
+  - table:
+      title: By site
+      view: sites-with-old-queries
+  - table:
+      title: Oldest
+      view: old-queries
+  - text: |
+      Sites answer queries in Rave. This page reads them; it never closes or edits one. "Chase old queries" emails each site's coordinator every Monday, once a person approves it.

@@ -1,0 +1,14 @@
+case: query_chase
+fields:
+  older_than: { type: Number, description: "Days a query is open before it is chased; 14 unless the case says otherwise" }
+  reminders:  { type: List<Reminder>, description: One reminder per site with old queries }
+  sites:      { type: Number, description: How many sites are chased }
+  queries:    { type: Number, description: How many old queries the reminders list }
+  summary:    { type: Text, description: "One line for the approval: which sites, how many queries" }
+types:
+  Reminder:
+    site:    Ref<Site>
+    to:      Email
+    subject: Text
+    body:    Text
+    queries: Number
