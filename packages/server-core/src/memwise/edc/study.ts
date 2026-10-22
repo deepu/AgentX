@@ -121,16 +121,32 @@ export async function resolveStudy(svc: MemwiseService, actor: Actor, project: P
   return at({ key: keyOfRow(project, domain, pick), study: { row: pick, entity } })
 }
 
-/** The plugin whose binding fills this domain's entities, and its last read. */
-async function sourceOf(svc: MemwiseService, project: ProjectDefs, domain: string): Promise<MwSourceSync | null> {
+/**
+ * A read's error as one project sees it: a read of several projects records one line per project
+ * that failed (`<project>: <why>`, Stage 6 Part B), and a project shows only its own. An error of
+ * the whole read (no project named) shows everywhere.
+ */
+export function errorFor(error: string | undefined, project: ProjectDefs, projectId?: string): string | undefined {
+  if (!error) return undefined
+  const ids = new Set(Object.keys(projectsOf(project)))
+  const lines = error.split('\n').map((l) => { const at = l.indexOf(': '); return at > 0 && ids.has(l.slice(0, at)) ? { project: l.slice(0, at), text: l.slice(at + 2) } : { text: l } })
+  if (lines.some((l) => !l.project)) return error
+  if (!projectId) return lines.map((l) => `${l.project}: ${l.text}`).join('\n')
+  const mine = lines.filter((l) => l.project === projectId).map((l) => l.text)
+  return mine.length ? mine.join('\n') : undefined
+}
+
+/** The plugin whose binding fills this domain's entities, and its last read (as `projectId` sees it). */
+async function sourceOf(svc: MemwiseService, project: ProjectDefs, domain: string, projectId?: string): Promise<MwSourceSync | null> {
   const binding = Object.values(project.bindings ?? {}).find((b) => Object.values(b.records ?? {}).some((r) => domainOf(r.entity) === domain))
   if (!binding) return null
   const identity = (svc.kernel as { identity?: { syncs?: () => Promise<{ plugin: string; at?: string; nextDue?: string; error?: string; errorAt?: string; counts: Record<string, number> }[]> } }).identity
   const sync = (await identity?.syncs?.().catch(() => []))?.find((s) => s.plugin === binding.plugin)
+  const error = errorFor(sync?.error, project, projectId)
   return {
     plugin: binding.plugin, title: pluginTitle(project, binding.plugin),
     ...(sync?.at ? { at: sync.at } : {}), ...(sync?.nextDue ? { nextDue: sync.nextDue } : {}),
-    ...(sync?.error ? { error: sync.error } : {}), ...(sync?.errorAt ? { errorAt: sync.errorAt } : {}),
+    ...(error ? { error } : {}), ...(error && sync?.errorAt ? { errorAt: sync.errorAt } : {}),
     ...(sync?.counts && Object.keys(sync.counts).length ? { counts: sync.counts } : {}),
   }
 }
@@ -185,7 +201,7 @@ export async function edcHome(svc: MemwiseService, actor: Actor, project: Projec
   return {
     domain,
     study: { key, ...(name ? { name } : {}), ...(study ? { record: refOf(study.entity, study.row) } : {}) },
-    source: await sourceOf(svc, project, domain),
+    source: await sourceOf(svc, project, domain, scope),
     randomised: { value: progress.reduce((n, s) => n + s.randomised, 0), ...(target !== undefined ? { target } : {}), ...(plannedByNow !== undefined ? { plannedByNow } : {}) },
     queries: { open: progress.reduce((n, s) => n + s.openQueries, 0), old: progress.reduce((n, s) => n + s.oldQueries, 0), olderThanDays: OLD_QUERY_DAYS },
     pagesVerified: pagesVerified ?? null,
