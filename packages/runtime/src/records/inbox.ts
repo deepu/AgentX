@@ -27,8 +27,11 @@ export async function flagInboxItems(deps: Pick<RecordsDeps, 'pool' | 'entities'
         const def = entityByName(entities, f.entity);
         const row = def ? await entityStore.get(db, def, f.recordId) : undefined;
         const name = def ? recordTitle(def, f.recordId, row ? { ...row.values, ...(row.lifecycle ? { status: row.lifecycle } : {}) } : {}) : f.recordId;
-        const { domain: _d, ...flag } = f;
-        out.push({ kind: 'flag', id: `flag:${f.id}`, flag, domain, title: `${def?.entity ?? f.entity} ${name}: ${f.invariant}`, since: f.raisedAt });
+        const { domain: _d, project: inProject, ...flag } = f;
+        out.push({
+          kind: 'flag', id: `flag:${f.id}`, flag, domain, title: `${def?.entity ?? f.entity} ${name}: ${f.invariant}`, since: f.raisedAt,
+          ...(inProject ? { project: inProject } : {}),
+        });
       }
     }
   });

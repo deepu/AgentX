@@ -47,6 +47,8 @@ export {
 } from './domain/tables.ts';
 // Literature (docs/memwise/25-literature-poc.md §3): keyed records.
 export { keyColumns, keyIndexName } from './domain/tables.ts';
+// Stage 3: the project column of app tables.
+export { PROJECT_COLUMN, projectScoped, projectIndexName } from './domain/tables.ts';
 export {
   withRecordContext, RecordWriteError, type RecordContext, type RecordWriteErrorCode, type EntityQuery, type EntityQueryResult,
   type EntityAggregate,
@@ -63,7 +65,9 @@ export {
   PgRecordVersions, PgSignatureStore, PgEntityEvents, contentHash, canonicalJson, type RecordVersionRow, type ChainCheck,
   type NewSignature, type SignatureRow,
 } from './stores/records.ts';
-export { PgGrantStore } from './stores/grants.ts';
+export { PgGrantStore, type GrantSource } from './stores/grants.ts';
+// Stage 3: projects inside apps (docs/memwise/26-projects-and-pages.md §3).
+export { PgProjectStore, type ProjectRow } from './stores/projects.ts';
 export {
   PgNoteStore, PgMentionStore, mentionTokens, type RecordNote, type NewMention, type MentionRow, type MentionSourceKind,
 } from './stores/notes.ts';

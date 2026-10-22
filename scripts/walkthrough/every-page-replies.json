@@ -7,7 +7,7 @@
     "input": {
      "files": [
       {
-       "path": "domains/etmf/workflows/chase-missing/steps/send.md",
+       "path": "domains/etmf/workflows/remind-site/steps/send.md",
        "content": "---\ntitle: Send, wait 5 days, remind again, and copy the CRA from the second reminder\nperformer: system\nstrictness: strict\nreads: [case.site, case.email_to, case.email_cc, case.email_subject, case.email_body]\ntools:\n  allowed:  [etmf.reminder.create]\n  required: [etmf.reminder.create]\nmap:\n  etmf.reminder.create:\n    site:    case.site\n    sent_to: case.email_to\n    copied:  case.email_cc\n    subject: case.email_subject\n    body:    case.email_body\n    sent_at: { now: true }\noutcomes: [sent]\n---\nSend the approved reminder to the site and keep it on the site's record, so the next round knows how\nmany reminders came before. Then the site has 5 days to upload; the next reminder goes out unless\nthe start-up pack is complete by then.\n"
       }
      ],

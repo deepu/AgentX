@@ -4,7 +4,7 @@
 // rules and field access apply. Pages, the tree and dashboards are in page.ts and browse.ts.
 import {
   ConditionCompileError, evaluateCondition, PgEntityEvents, PgEntityStore, PgFlagStore, PgNoteStore, PgViewStore,
-  RecordWriteError, withActor, withRecordContext, withTransaction,
+  projectScoped, RecordWriteError, withActor, withRecordContext, withTransaction,
 } from '@memwise/db';
 import { hasRole, keyOf, rolesIn, type EntityTypeDef, type ViewDef } from '@memwise/defs';
 import { fieldErrors } from '../domain-tools.ts';
@@ -89,9 +89,10 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
     if (missing.length) return { result: { applied: false, status: 'reason-required', message: `say why: ${missing.join(', ')} ${missing.length === 1 ? 'is a controlled field' : 'are controlled fields'} here` }, quotes: {} };
     try {
       const id = await withActor(deps.pool, actor, async (db) => {
-        await withRecordContext(db, { via: 'app', ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}) });
+        await withRecordContext(db, { via: 'app', ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}), ...(input.project ? { project: input.project } : {}) });
         return entityStore.create(db, def, input.values, {
           ...(input.status ? { lifecycle: input.status } : {}), ...(input.id ? { id: input.id } : {}),
+          ...(input.project && projectScoped(def) ? { project: input.project } : {}),
         });
       });
       const quotes = await checkQuotesOf(def, id);
@@ -181,12 +182,15 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
       if (!(await visible(actor, def, input.id))) return { applied: false, status: 'missing', message: `there is no ${def.entity} ${input.id}` };
       const by = actor.kind === 'person' ? actor.personId : 'system';
       const key = keyOf(def);
-      const { version, label } = await withActor(deps.pool, actor, async (db) => {
+      const { version, label, project } = await withActor(deps.pool, actor, async (db) => {
+        // Stage 3: the note belongs to the record's project.
+        const project = (await entityStore.get(db, def, input.id))?.project;
+        if (project) await withRecordContext(db, { project });
         const v = await notes.save(db, key, input.id, input.body, by, input.reason?.trim() ? { reason: input.reason.trim() } : {});
-        return { version: v, label: `Notes on ${recordTitle(def, input.id, (await entityStore.get(db, def, input.id))?.values ?? {})}` };
+        return { version: v, project, label: `Notes on ${recordTitle(def, input.id, (await entityStore.get(db, def, input.id))?.values ?? {})}` };
       });
       // `[[etmf.Site:site_…]]` tokens are mentions of those records, from this note.
-      await withTransaction(deps.pool, (db) => storeMentions(db, deps.entities(), { kind: 'note', id: `${key}:${input.id}`, label }, input.body));
+      await withTransaction(deps.pool, (db) => storeMentions(db, deps.entities(), { kind: 'note', id: `${key}:${input.id}`, label, ...(project ? { project } : {}) }, input.body));
       changed(def, input.id);
       return { applied: true, status: 'applied', id: input.id, version };
     },

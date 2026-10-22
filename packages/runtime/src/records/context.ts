@@ -125,11 +125,13 @@ export async function workflowOfToken(deps: Pick<RecordsDeps, 'pool' | 'defs'>, 
  * update mentions, which the store's upsert needs.
  */
 export async function storeMentions(db: Queryable, entities: Record<string, EntityTypeDef>,
-  source: { kind: MentionSourceKind; id: string; label: string; caseId?: string }, text: string): Promise<number> {
+  source: { kind: MentionSourceKind; id: string; label: string; caseId?: string; project?: string }, text: string): Promise<number> {
   const targets = mentionTokens(text).flatMap((t) => {
     const def = entityByName(entities, t.entity);
     return def ? [{ entity: keyOf(def), id: t.id, label: source.label, ...(source.caseId ? { caseId: source.caseId } : {}) }] : [];
   });
+  // Stage 3: the mentions belong to the source's project (the column default reads `mw.project`).
+  if (source.project) await db.query(`select set_config('mw.project', $1, true)`, [source.project]);
   await new PgMentionStore().replaceForSource(db, source.kind, source.id, targets);
   return targets.length;
 }

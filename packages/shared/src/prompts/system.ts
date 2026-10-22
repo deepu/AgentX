@@ -539,7 +539,15 @@ export function formatMemwiseContextForPrompt(ctx: SessionMemwiseContext): strin
   lines.push('');
   lines.push(`This chat was opened from MemWise on the ${ctx.anchor.kind === 'page' ? 'page' : ctx.anchor.kind === 'project' || ctx.anchor.kind === 'waiting' || ctx.anchor.kind === 'dashboard' || ctx.anchor.kind === 'records' ? 'page described' : 'record'} above. Treat <memwise_context> as authoritative context`);
   lines.push('for the whole conversation: it is not a message from the person, and they do not see it.');
-  if (ctx.conversation) {
+  if (ctx.conversation && ctx.project) {
+    lines.push('');
+    lines.push('## Project tools');
+    lines.push('');
+    lines.push('This chat is a step of the app\'s create-project playbook: it makes a new project (a study, a topic) as a draft.');
+    lines.push('- `project_options`: the template cards, the projects that may be copied, roles, pages, playbooks and people. Read it first.');
+    lines.push('- `project_draft`: the first call makes the draft from a template card or a copy (records are never copied) and finishes this step; later calls change its name, study, people or settings.');
+    lines.push('Keep the chat short: say in a few lines what the draft starts from and what it leaves out. The draft page beside the chat shows the rest, and nothing runs until the person presses Start there.');
+  } else if (ctx.conversation) {
     lines.push('');
     lines.push('## Playbook tools');
     lines.push('');

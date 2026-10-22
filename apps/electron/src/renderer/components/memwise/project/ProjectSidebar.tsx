@@ -12,12 +12,14 @@ import { BookOpen, ChevronDown, ChevronRight, Database, FileText, LayoutDashboar
 import type { MwDomain, MwPageSummary, MwTreeNode } from '@memwise/shared/protocol'
 import { cn } from '@/lib/utils'
 import { navigate, routes } from '@/lib/navigate'
-import { memwiseLastChangeAtom, memwiseNewPlaybookDialogAtom, memwisePeopleOnlyAtom, memwisePlaybooksAtom, memwiseStatusAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
+import { changesSince, memwiseInstallPluginDialogAtom, memwiseLastChangeAtom, memwiseNewPlaybookDialogAtom, memwisePeopleOnlyAtom, memwisePlaybooksAtom, memwiseStatusAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { getMemwiseApi } from '@/hooks/useMemwise'
 import { useMemwiseTriggers } from '@/hooks/useMemwiseRecords'
 import { useMemwisePages } from '@/hooks/useMemwisePages'
-import type { ProjectDetails } from '../../../../shared/project-route'
+import { ALL_PROJECTS, type ProjectDetails } from '../../../../shared/project-route'
+import { InstallPluginDialog } from '../plugins/PluginsList'
 import { nestTree, treeNodeKey } from '../records/record-model'
+import { useProjectRecordCounts } from '@/hooks/useMemwiseProjects'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { initials, playbookStartTag, projectPlaybooks, projectRecordTypes, writtenPagePlace, type ShellApp, type ShellProject } from './project-model'
 
@@ -45,18 +47,33 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
   const peopleOnly = useAtomValue(memwisePeopleOnlyAtom)
   const go = (d?: ProjectDetails) => navigate(routes.view.project(project.id, d))
 
-  const ownPlaybooks = projectPlaybooks(project.id, playbooks)
+  const ownPlaybooks = projectPlaybooks(project, playbooks)
   const shownPlaybooks = showAllPlaybooks ? ownPlaybooks : ownPlaybooks.slice(0, PLAYBOOKS_SHOWN)
-  const records = projectRecordTypes(domain)
+  const typeCounts = projectRecordTypes(domain)
+  // Stage 3: a study's own counts, not every study's.
+  const { data: own } = useProjectRecordCounts(project, typeCounts.map(r => r.key))
+  const records = own ? typeCounts.map(r => ({ ...r, count: own[r.key] ?? 0 })) : typeCounts
   // Written pages list above as pages (26 §4); one written under a record stays in the record tree.
   const pageList = useMemwisePages(project.id).data
   const written = React.useMemo(() => new Map((pageList ?? []).map(p => [p.id, p])), [pageList])
   const me = status?.me
+  // Stage 3: "+ New project" makes one in this project's app, else in the first app that allows it;
+  // "+ Add an app" installs a plugin (doc 26 §2: Plugins go to "+ Add an app").
+  const newProjectApp = apps.find(a => a.id === project.appId && a.canCreate) ?? apps.find(a => a.canCreate)
+  const openAddApp = useSetAtom(memwiseInstallPluginDialogAtom)
+  const canAddApp = !peopleOnly && typeof getMemwiseApi()?.memwiseListInstallChoices === 'function'
 
   return (
     <div className="flex h-full flex-col select-none font-sans" data-testid="project-sidebar">
       <div className="px-2 pt-1.5 pb-2 shrink-0">
-        <ProjectSwitcher apps={apps} current={project} totalWaiting={totalWaiting} />
+        <ProjectSwitcher
+          apps={apps}
+          current={project}
+          totalWaiting={totalWaiting}
+          {...(newProjectApp ? { onNewProject: () => navigate(routes.view.project(ALL_PROJECTS, { type: 'new', appId: newProjectApp.id })) } : {})}
+          {...(canAddApp ? { onAddApp: () => openAddApp(true) } : {})}
+        />
+        {canAddApp && <InstallPluginDialog />}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-4 scrollbar-hide mask-fade-bottom">
         <Row icon={MessageCircle} label={t('memwise.shell.home')} active={details.type === 'home'} onClick={() => go()} />
@@ -282,9 +299,10 @@ function PageTree({ domain, projectId, details, written }: { domain: MwDomain; p
   React.useEffect(() => { void load() }, [load])
   const seen = React.useRef<number | null>(null)
   React.useEffect(() => {
-    if (!lastChange || seen.current === lastChange.seq) return
-    seen.current = lastChange.seq
-    if (lastChange.change.kind !== 'records' && lastChange.change.kind !== 'definitions') return
+    const changes = changesSince(lastChange, seen.current)
+    if (!changes.length) return
+    seen.current = lastChange!.seq
+    if (!changes.some(c => c.kind === 'records' || c.kind === 'definitions')) return
     for (const key of Object.keys(cacheRef.current)) {
       if (!key) { void load(undefined, true); continue }
       const i = key.indexOf(':')

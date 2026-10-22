@@ -2,7 +2,7 @@
 // their parent at the top, then under each record its children grouped by entity type ("Sites ·
 // 7"; a group of more than 25 opens a view instead), and free pages where they hang. A dashboard
 // is computed now, in SQL, under the viewer's row rules.
-import { PgEntityStore, PgPageStore, withActor, type Queryable } from '@memwise/db';
+import { PgEntityStore, PgPageStore, projectScoped, withActor, type Queryable } from '@memwise/db';
 import { keyOf, type DashboardBlock, type DashboardValue, type EntityTypeDef, type FreePageDef, type ViewDef } from '@memwise/defs';
 import type { Actor, DashboardData, RecordQuery, RecordQueryResult, RecordRef, RecordsService, TreeNode } from '../types.ts';
 import { chartData } from './charts.ts';
@@ -34,6 +34,7 @@ export async function queryRecords(deps: RecordsDeps, def: EntityTypeDef, q: Omi
       ...(q.filter ? { filter: q.filter } : {}), ...(q.sort ? { sort: q.sort } : {}), ...(q.group ? { group: q.group } : {}),
       ...(q.columns ? { columns: withTitleFields(def, q.columns) } : {}), limit: Math.min(q.limit ?? 100, 1000), offset: q.offset ?? 0,
       ...(Object.keys(params).length ? { params } : {}),
+      ...(q.project && projectScoped(def) ? { projects: [q.project] } : {}),
     });
     // The records the rows (and the groups, when grouped by a reference) point at, by title.
     const titles = new Map<string, RecordRef | null>();

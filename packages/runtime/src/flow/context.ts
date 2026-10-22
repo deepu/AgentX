@@ -27,6 +27,11 @@ export interface FlowDeps {
   /** A lifecycle transition as the system actor (kernel.records.transition). */
   transition(input: { entity: string; id: string; transition: string; reason?: string }): Promise<RecordWriteResult>;
   emit(change: KernelChange): void;
+  /**
+   * Stage 3 (26 §3): whether a project runs this playbook (active, and not left out of it). A
+   * record's trigger fires only in a project that does; absent, every project does.
+   */
+  projectRuns?(project: string, workflowId: string): Promise<boolean>;
   log?: (message: string) => void;
   /** More that the minute sweep does after the triggers (pages due for a refresh, 26 §4). */
   extraSweep?(now: Date): Promise<unknown>;

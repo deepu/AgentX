@@ -14,7 +14,7 @@ import type { Authoring, Kernel, PersonActor } from '../src/types.ts';
 import { kernelDatabase, pgAvailable } from './helpers.ts';
 
 const REPO = resolve(import.meta.dir, '../../..');
-const CHASE = 'domains/etmf/workflows/chase-missing';
+const CHASE = 'domains/etmf/workflows/remind-site';
 
 let db: TestDatabase;
 let kernel: Kernel;
@@ -50,7 +50,7 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
       testDatabaseUrl: admin.toString(), logLevel: 'error',
     });
     const errors = (await kernel.index()).filter((d) => d.severity === 'error')
-    expect(errors.filter((d) => d.file?.includes('chase-missing'))).toEqual([]);
+    expect(errors.filter((d) => d.file?.includes('remind-site'))).toEqual([]);
     authoring = kernel.authoring!;
     manager = await kernel.people.actorFor((await kernel.people.create({
       name: 'Anika Rao', email: 'anika@northlight.example', roles: ['study_manager', 'tmf_specialist', 'manager', 'staff'],
@@ -80,7 +80,7 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
   afterAll(async () => { await kernel?.shutdown(); await db?.drop(); });
 
   test('the live chase drafts its email and waits for the study manager', async () => {
-    const { rows } = await db.pool.query(`select id from mw.runs where workflow_id = 'chase-missing'`);
+    const { rows } = await db.pool.query(`select id from mw.runs where workflow_id = 'remind-site'`);
     expect(rows).toHaveLength(1);
     const run = await kernel.waitForRun(rows[0].id, { until: (r) => r.state === 'approve_email' || r.status !== 'active', timeoutMs: 60_000 });
     expect(run.state).toBe('approve_email');
@@ -91,7 +91,7 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
   }, 90_000);
 
   test('a change draft of a playbook in a domain folder copies the domain and keeps to the playbook', async () => {
-    const meta = await authoring.createDraft({ workflowId: 'chase-missing', title: 'Copy the CRA', kind: 'change', chatId: 'chat-1' }, manager);
+    const meta = await authoring.createDraft({ workflowId: 'remind-site', title: 'Copy the CRA', kind: 'change', chatId: 'chat-1' }, manager);
     draftId = meta.id;
     expect(meta).toMatchObject({ folder: CHASE, chatId: 'chat-1', baseVersion: 2 });
     const listed = await authoring.read({ draftId });
@@ -131,7 +131,7 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
   test('what the run saw goes back only to who ran it, and never into the project folder', async () => {
     const file = readFileSync(join(root, 'drafts', draftId, 'test-run.json'), 'utf8');
     expect(JSON.parse(file)).toEqual({
-      draftId, workflowId: 'chase-missing', hash: expect.any(String), at: expect.any(String), by: manager.personId,
+      draftId, workflowId: 'remind-site', hash: expect.any(String), at: expect.any(String), by: manager.personId,
       record: { entity: 'etmf.Site', id: siteId }, status: 'pass',
     });
     expect(file).not.toContain('priya.shah@northlight.example');
@@ -145,7 +145,7 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
   });
 
   test("someone who can't see the whole last case gets no replay of it", async () => {
-    const other = await authoring.createDraft({ workflowId: 'chase-missing', title: 'Look at it', kind: 'change', chatId: 'chat-cra' }, cra);
+    const other = await authoring.createDraft({ workflowId: 'remind-site', title: 'Look at it', kind: 'change', chatId: 'chat-cra' }, cra);
     const run = await authoring.testRun(other.id, { entity: 'etmf.Site', id: siteId }, cra);
     expect(run.replayedCase).toBeUndefined();
     // No model turns to replay, and no live model in a test run: it can't get past the agent step.
@@ -154,7 +154,7 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
   }, 120_000);
 
   test('one test run per draft at a time, and a draft discarded mid-run keeps no result', async () => {
-    const other = await authoring.createDraft({ workflowId: 'chase-missing', title: 'Thrown away', kind: 'change', chatId: 'chat-3' }, manager);
+    const other = await authoring.createDraft({ workflowId: 'remind-site', title: 'Thrown away', kind: 'change', chatId: 'chat-3' }, manager);
     const first = authoring.testRun(other.id, { entity: 'etmf.Site', id: siteId }, manager);
     await expect(authoring.testRun(other.id, { entity: 'etmf.Site', id: siteId }, manager)).rejects.toThrow('already running');
     await Bun.sleep(1500); // the throwaway database is being made

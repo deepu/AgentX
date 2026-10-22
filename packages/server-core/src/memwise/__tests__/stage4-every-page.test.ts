@@ -30,7 +30,7 @@ import { startMemwiseService, type MemwiseService } from '../service'
 
 const REPO = join(import.meta.dir, '..', '..', '..', '..', '..')
 const ch = RPC_CHANNELS.memwise
-const SEND = 'domains/etmf/workflows/chase-missing/steps/send.md'
+const SEND = 'domains/etmf/workflows/remind-site/steps/send.md'
 
 type Result = { content: { text: string }[]; isError?: boolean }
 const parse = (r: Result): any => (r.isError ? { error: r.content[0]?.text ?? '' } : JSON.parse(r.content[0]?.text ?? 'null'))
@@ -104,16 +104,16 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
   }, 60_000)
 
   it('the site\'s chase drafts its reminder and waits for the study manager', async () => {
-    const cases = await until('the chase', () => api.call<any[]>(manager, ch.CASES_LIST, { workflowId: 'chase-missing' }), (xs) => xs.length > 0, 30_000)
+    const cases = await until('the chase', () => api.call<any[]>(manager, ch.CASES_LIST, { workflowId: 'remind-site' }), (xs) => xs.length > 0, 30_000)
     const c = await until('at approve_email', () => api.call<MwCase>(manager, ch.CASES_GET, cases[0].caseId), (x) => x.state === 'approve_email' || x.status !== 'active', 60_000)
     expect(c.state).toBe('approve_email')
     expect(c.values.email_to?.value).toBe('coordinator@charite-studien.example')
   }, 90_000)
 
   it('the playbook\'s chat drafts the change: kept at once, in a draft of its own', async () => {
-    const opened = await api.call<{ sessionId: string }>(manager, ch.CHAT_OPEN, { anchor: { kind: 'workflow', id: 'chase-missing' }, message: 'Also copy the CRA on the second reminder' })
+    const opened = await api.call<{ sessionId: string }>(manager, ch.CHAT_OPEN, { anchor: { kind: 'workflow', id: 'remind-site' }, message: 'Also copy the CRA on the second reminder' })
     chatId = opened.sessionId
-    expect(sessions.contexts.get(chatId)?.anchor).toEqual({ kind: 'workflow', id: 'chase-missing' })
+    expect(sessions.contexts.get(chatId)?.anchor).toEqual({ kind: 'workflow', id: 'remind-site' })
     const ctx = { memwise: buildMemwiseToolCallbacks({ sessionId: chatId }) } as unknown as SessionToolContext
     const live = parse(await handlePlaybookRead(ctx, { path: SEND }))
     const changed = (live.content as string)
@@ -122,7 +122,7 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     const wrote = parse(await handlePlaybookWrite(ctx, { files: [{ path: SEND, content: changed }], summary: 'Copy the CRA from the second reminder' }))
     expect(wrote).toMatchObject({ status: 'kept', errors: 0 })
     draftId = wrote.draftId
-    const drafts = await api.call<MwDraftSummary[]>(manager, ch.DRAFTS_LIST, { workflowId: 'chase-missing' })
+    const drafts = await api.call<MwDraftSummary[]>(manager, ch.DRAFTS_LIST, { workflowId: 'remind-site' })
     expect(drafts.find((d) => d.id === draftId)).toMatchObject({ chatId, kind: 'change', pendingEdits: 0, stage: 'draft' })
     // The chat never sends it for review: the page's button does.
     expect(parse(await handlePlaybookFinish(ctx, { summary: 'Copy the CRA' })).error).toContain('Send for review')
@@ -133,7 +133,7 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     const mia = await svc.kernel.people.create({ name: 'Mia Lund', email: 'mia@northlight.example', roles: ['study_manager'] })
     const cra = await svc.kernel.people.create({ name: 'Ola Berg', email: 'ola@northlight.example', roles: ['cra'] })
     const attempt = async (personId: string, client: string) => {
-      const opened = await api.call<{ sessionId: string }>(ctxFor(client, personId), ch.CHAT_OPEN, { anchor: { kind: 'workflow', id: 'chase-missing' }, message: 'Wait 6 days' })
+      const opened = await api.call<{ sessionId: string }>(ctxFor(client, personId), ch.CHAT_OPEN, { anchor: { kind: 'workflow', id: 'remind-site' }, message: 'Wait 6 days' })
       const ctx = { memwise: buildMemwiseToolCallbacks({ sessionId: opened.sessionId }) } as unknown as SessionToolContext
       const live = parse(await handlePlaybookRead(ctx, { path: SEND }))
       return parse(await handlePlaybookWrite(ctx, { files: [{ path: SEND, content: (live.content as string).replace('wait 5 days', 'wait 6 days') }], summary: 'Wait 6 days' }))
@@ -195,7 +195,7 @@ describe.skipIf(!postgresAvailable())('Stage 4: everything has a page', () => {
     ]
     for (const r of await refusals(craCtx)) expect(r).toMatchObject({ applied: false, code: 'draft.not_allowed', message: expect.stringContaining('study_manager') })
     for (const r of await refusals(ownerCtx)) expect(r).toMatchObject({ applied: false, code: 'draft.not_allowed', message: expect.stringContaining('someone else') })
-    await expect(api.call(craCtx, ch.DRAFTS_CREATE, { workflowId: 'chase-missing', title: 'Mine now' })).rejects.toThrow('study_manager')
+    await expect(api.call(craCtx, ch.DRAFTS_CREATE, { workflowId: 'remind-site', title: 'Mine now' })).rejects.toThrow('study_manager')
     expect((await api.call<MwDraft>(manager, ch.DRAFTS_GET, draftId)).stage).toBe('draft')
   }, 60_000)
 

@@ -11,8 +11,9 @@ export * from './draft-types.ts';
 export * from './plugin-types.ts';
 export type * from './external-types.ts';
 export * from './domain-types.ts';
+export * from './project-types.ts';
 export { parseCondition, conditionNames, CONDITION_FUNCTIONS } from './condition.ts';
-export { entityKey, keyOf, splitEntityKey, domainOf, scopedEntities, resolveEntity, domainEntities, hasRole, rolesIn } from './domains.ts';
+export { entityKey, keyOf, splitEntityKey, domainOf, scopedEntities, resolveEntity, domainEntities, hasRole, rolesIn, grantInProject, seesProject, seesProjectIn } from './domains.ts';
 export { crashPoint } from './testing.ts';
 // Literature (docs/memwise/25-literature-poc.md §4): the one quote normaliser.
 export { normalizeQuoteText, quoteIn, quoteInValue, textsOf, findQuote } from './quotes.ts';
@@ -30,12 +31,20 @@ export { relationshipInverse, handoffFields, callOutcomes, blockEvents, MESSAGE_
 export { entityToolNames, entityTools, ENTITY_TOOL_VERBS, ENTITY_TOOL_EFFECTS, type EntityToolVerb } from './entity-tools.ts';
 export { parsePolicyFile, policyToRaw, formatDuration } from './parse-policy.ts';
 export { sha256, type ParseResult } from './source.ts';
-export { loadProject, loadWorkflow } from './load.ts';
+export { loadProject, loadWorkflow, type WorkflowOverlayFile } from './load.ts';
 export { pinnedPlugin, type LoadProjectOptions } from './project-plugins.ts';
 export { checkWorkflow, checkProject, systemOutcome, isConversationStep, BUILTIN_OUTCOMES, ENGINE_TOOLS, type CheckOptions } from './check.ts';
 export { validateValue, valueTypeToJsonSchema, IDENTIFIER_PATTERNS, type RecordTypes } from './values.ts';
 export { jsonSchemas, formats, type FormatName } from './formats.ts';
-export { indexProject, DOMAIN_POLICY_ID, WORKSPACE_POLICY_ID, domainPolicyId } from './index-project.ts';
+export { indexProject, DOMAIN_POLICY_ID, WORKSPACE_POLICY_ID, domainPolicyId, projectPolicyId } from './index-project.ts';
+// Stage 3: apps and projects (docs/memwise/26-projects-and-pages.md §3).
+export { parseAppFile, parseProjectFile, defaultApp, projectSource, type ProjectFile } from './parse-projects.ts';
+export { implicitProject, projectWorkflowHash, templateDir } from './projects.ts';
+export { checkProjects } from './check-projects.ts';
+export {
+  templateUpdate, publishAppVersion, takeTemplateUpdate, createProjectFiles, updateProjectFile, saveAsTemplate, sameFileContent, projectIdFor,
+  type CreateProjectInput,
+} from './project-files.ts';
 export { lineDiff, structuralDiff, describeStructuralDiff, stepParts, splitLines, type DiffNameKind } from './diff.ts';
 export {
   createDraft, listDrafts, readDraft, updateDraftMeta, writeDraftFiles, setDraftEditStatus, discardDraftEdit,

@@ -145,8 +145,13 @@ export interface StepRecord {
 
 // ---------------------------------------------------------------- store interfaces (implemented by @memwise/db)
 
-/** Phase 6 adds `domain` (a domain.yaml), `page` and `view` (`<domain>/<id>`). */
-export type DefinitionKind = 'workflow' | 'step' | 'case_type' | 'entity_type' | 'policy' | 'domain' | 'page' | 'view';
+/**
+ * Phase 6 adds `domain` (a domain.yaml), `page` and `view` (`<domain>/<id>`). Stage 3 (26 §3) adds
+ * `app` (an app.yaml), `project` (a project with its resolved definitions' hashes) and
+ * `project_workflow` (a project's own copy of a playbook: the workflow id, a hash of its own, never
+ * the "latest" of that id, which stays the app template's).
+ */
+export type DefinitionKind = 'workflow' | 'step' | 'case_type' | 'entity_type' | 'policy' | 'domain' | 'page' | 'view' | 'app' | 'project' | 'project_workflow';
 
 export interface IndexedDefinition {
   kind: DefinitionKind;

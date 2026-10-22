@@ -12,6 +12,10 @@
 // "input": {...} }, ...], "reply" }. The turn then calls them one after another, as a model would
 // (the name matches the request's tool whose name ends with it, e.g. mcp__session__playbook_write),
 // and gives the reply once their results are back. The calls are written in advance too.
+//
+// Or one tool with words beside it: { "match", "tool": { "name": "project_draft", "input": {...} },
+// "reply" }; the turn after its result is answered by the entry { "afterTool": "project_draft",
+// "reply": "markdown" }.
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
 
@@ -51,11 +55,26 @@ function callsSinceUser(messages) {
   return n
 }
 
+/** The tool whose result the last message carries, if it does. */
+function answeredTool(messages) {
+  const last = messages[messages.length - 1]
+  if (!last || last.role !== 'user' || typeof last.content === 'string') return undefined
+  const result = last.content.find(b => b.type === 'tool_result')
+  if (!result) return undefined
+  for (let i = messages.length - 2; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role !== 'assistant' || typeof m.content === 'string') continue
+    const use = m.content.find(b => b.type === 'tool_use' && b.id === result.tool_use_id)
+    if (use) return use.name
+  }
+  return undefined
+}
+
 function systemText(system) {
   return typeof system === 'string' ? system : (system ?? []).map(b => b.text ?? '').join('\n')
 }
 
-/** The reply: { text } or { tool: { name, input } } for the next scripted tool call. */
+/** The reply: { text }, or { tool: { name, input }, text? } for the next scripted tool call. */
 function replyFor(body) {
   const messages = body.messages ?? []
   const user = lastUserText(messages)
@@ -67,6 +86,9 @@ function replyFor(body) {
     const words = user.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ')
     return { text: words.replace(/[?.!]+$/, '') || 'Chat' }
   }
+  const answered = answeredTool(messages)
+  const after = answered && script.find(x => x.afterTool && answered.endsWith(x.afterTool))
+  if (after) return { text: after.reply ?? 'Done.' }
   // The person's own words come last in the turn; system reminders may be wrapped around them.
   const plain = user.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim()
   // Context the app puts before the person's words (a page, a record) may hold any text, so their
@@ -74,14 +96,15 @@ function replyFor(body) {
   const last = plain.replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, ' ').trim().split(/\n\s*\n/).filter(Boolean).pop() ?? plain
   for (const text of [last, plain]) {
     for (const s of script) {
-      if (!new RegExp(s.match, 'i').test(text)) continue
-      const next = (s.tools ?? [])[callsSinceUser(messages)]
+      if (!s.match || !new RegExp(s.match, 'i').test(text)) continue
+      const next = (s.tools ?? (s.tool ? [s.tool] : []))[callsSinceUser(messages)]
       if (next) {
-        const tool = (body.tools ?? []).find(t => t.name === next.name || t.name.endsWith(`__${next.name}`))
-        if (tool) return { tool: { name: tool.name, input: next.input ?? {} } }
+        const tool = (body.tools ?? []).find(t => t.name === next.name || t.name.endsWith(`__${next.name}`) || t.name.endsWith(next.name))
+        if (tool) return { tool: { name: tool.name, input: next.input ?? {} }, ...(s.tool ? { text: s.reply ?? '' } : {}) }
+        if (s.tool) continue
         console.log(`[fake-anthropic] no tool ${next.name} offered; answering instead`)
       }
-      return { text: s.reply }
+      return { text: s.reply ?? 'Done.' }
     }
   }
   return { text: FALLBACK }
@@ -120,7 +143,7 @@ const server = createServer((req, res) => {
     const toolId = `toolu_fake_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
     console.log(`[fake-anthropic] ${body.stream ? 'stream' : 'json'} ${model}: ${JSON.stringify(lastUserText(body.messages ?? []).slice(-80))} -> ${answer.tool ? `tool ${answer.tool.name}` : JSON.stringify(text.slice(0, 60))}`)
     if (!body.stream) {
-      const content = answer.tool ? [{ type: 'tool_use', id: toolId, name: answer.tool.name, input: answer.tool.input }] : [{ type: 'text', text }]
+      const content = [...(text || !answer.tool ? [{ type: 'text', text }] : []), ...(answer.tool ? [{ type: 'tool_use', id: toolId, name: answer.tool.name, input: answer.tool.input }] : [])]
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ id, type: 'message', role: 'assistant', model, content, stop_reason: answer.tool ? 'tool_use' : 'end_turn', stop_sequence: null, usage: usage(text || JSON.stringify(answer.tool?.input ?? '')) }))
       return
@@ -129,9 +152,15 @@ const server = createServer((req, res) => {
     const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
     send('message_start', { type: 'message_start', message: { id, type: 'message', role: 'assistant', model, content: [], stop_reason: null, stop_sequence: null, usage: { ...usage(''), output_tokens: 1 } } })
     if (answer.tool) {
-      send('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: toolId, name: answer.tool.name, input: {} } })
-      send('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(answer.tool.input) } })
-      send('content_block_stop', { type: 'content_block_stop', index: 0 })
+      const at = text ? 1 : 0
+      if (text) {
+        send('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } })
+        send('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } })
+        send('content_block_stop', { type: 'content_block_stop', index: 0 })
+      }
+      send('content_block_start', { type: 'content_block_start', index: at, content_block: { type: 'tool_use', id: toolId, name: answer.tool.name, input: {} } })
+      send('content_block_delta', { type: 'content_block_delta', index: at, delta: { type: 'input_json_delta', partial_json: JSON.stringify(answer.tool.input) } })
+      send('content_block_stop', { type: 'content_block_stop', index: at })
       send('message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 40 } })
       send('message_stop', { type: 'message_stop' })
       res.end()

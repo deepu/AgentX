@@ -29,7 +29,8 @@ import { runExample, type ExampleResult } from './examples.ts';
 import { DEFAULT_ENGINE_VERSION } from './kernel.ts';
 import { renderValidationReport } from './regulated/validation-report.ts';
 import { sampleTools } from './sample-tools.ts';
-import { projectPolicyLayers } from './runs.ts';
+import { projectTools } from './projects/tools.ts';
+import { policySourcesOf, projectPolicyLayers } from './runs.ts';
 
 const USAGE = `usage:
   memwise check <project>
@@ -53,7 +54,7 @@ const USAGE = `usage:
  */
 function boundTools(project?: ProjectDefs): Record<string, { effect?: import('@memwise/defs').EffectClass; inputSchema?: Record<string, unknown> }> {
   const noReader = {} as StepRecordReader; // only names, classes and schemas are read, never executed
-  const defs: ToolDefinition[] = [...sampleTools(), ...recallTools(noReader), ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...externalToolDefinitions(), ...pageToolDefinitions(), ...domainTools(project?.entities ?? {})];
+  const defs: ToolDefinition[] = [...sampleTools(), ...recallTools(noReader), ...authoringToolDefinitions(), ...bindingToolDefinitions(), ...externalToolDefinitions(), ...projectTools(), ...pageToolDefinitions(), ...domainTools(project?.entities ?? {})];
   const out: ReturnType<typeof boundTools> = Object.fromEntries(defs.map((t) => [t.name, { effect: typeof t.effect === 'string' ? t.effect : undefined, inputSchema: t.inputSchema }]));
   if (project) for (const [name, t] of Object.entries(pluginToolEnvironment(boundPlugins(project)))) out[name] ??= t;
   return out;
@@ -74,7 +75,11 @@ async function diagnose(dir: string): Promise<{ project: ProjectDefs; all: Diagn
   // Policy tightening, per step (the workflow layer is checked as part of each step's stack).
   const seen = new Set<string>();
   const policies = pluginPolicies(boundPlugins(project));
-  for (const workflow of Object.values(project.workflows)) {
+  // Stage 3: a project's own copies too, where its files or its policy differ from the app's.
+  const own = policySourcesOf(project).projects ?? {};
+  const copies = Object.values(project.projects ?? {}).filter((p) => !p.implicit)
+    .flatMap((p) => Object.values(p.workflows).filter((w) => w.overridden?.length || own[p.id]));
+  for (const workflow of [...Object.values(project.workflows), ...copies]) {
     for (const step of [undefined, ...Object.values(workflow.steps)]) {
       const plugins = pluginLayers(policies, workflow, step);
       const { effective, violations } = compilePolicy(layersFor({ ...projectPolicyLayers(project, workflow), plugins, workflow, step }));

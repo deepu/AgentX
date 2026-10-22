@@ -6,7 +6,7 @@ import type { DefinitionRef, DefinitionStore, IndexedDefinition } from './contra
 import { DEFAULT_DOMAIN } from './domain-types.ts';
 import { domainOf, keyOf, resolveEntity } from './domains.ts';
 import { sha256 } from './source.ts';
-import type { PolicyDoc, ProjectDefs, ValueType } from './types.ts';
+import type { PolicyDoc, ProjectDefs, ValueType, WorkflowDef } from './types.ts';
 
 /** Policy rows: the default domain's layer is `domain`; a workflow's layer has the workflow's id. */
 export const DOMAIN_POLICY_ID = 'domain';
@@ -14,6 +14,8 @@ export const DOMAIN_POLICY_ID = 'domain';
 export const WORKSPACE_POLICY_ID = 'workspace';
 /** Phase 6: another domain's policy row, `domain:<id>` (the default domain keeps `domain`). */
 export const domainPolicyId = (domain: string): string => (domain === DEFAULT_DOMAIN ? DOMAIN_POLICY_ID : `domain:${domain}`);
+/** Stage 3: a project's own app policy layer (its `overrides/policy.yaml`), `project:<id>`. */
+export const projectPolicyId = (projectId: string): string => `project:${projectId}`;
 
 /** Stable JSON (sorted keys), so the same policy always hashes the same. */
 function stableJson(v: unknown): string {
@@ -93,11 +95,12 @@ export async function indexProject(project: ProjectDefs, store: DefinitionStore)
     for (const key of Object.keys(entity.links ?? {})) addRef({ ...from, toKind: 'entity_type', toId: key });
   }
 
-  for (const wf of Object.values(project.workflows)) {
-    const fromWf = { fromKind: 'workflow', fromId: wf.id, fromHash: wf.hash } as const;
+  /** A workflow, its case type, policy and steps; `kind` is `project_workflow` for a project's own copy. */
+  const indexWorkflow = (wf: WorkflowDef, kind: 'workflow' | 'project_workflow') => {
+    const fromWf = { fromKind: kind, fromId: wf.id, fromHash: wf.hash } as const;
     const domain = domainOf(wf);
     const entityKey = (name: string) => { const def = resolveEntity(project.entities, domain, name); return def ? keyOf(def) : name; };
-    addDef({ kind: 'workflow', id: wf.id, version: wf.version, hash: wf.hash, path: wf.dir, body: wf });
+    addDef({ kind, id: wf.id, version: wf.version, hash: wf.hash, path: wf.dir, body: wf });
 
     const ct = wf.caseType;
     if (ct.id) {
@@ -138,6 +141,33 @@ export async function indexProject(project: ProjectDefs, store: DefinitionStore)
       // Case fields as `<case type>.<field>`; a read of `case.customer.name` uses the field `customer`.
       const fields = new Set([...step.reads.filter((r) => r.startsWith('case.')).map((r) => r.split('.')[1]!), ...Object.keys(step.writes)]);
       for (const f of fields) addRef({ ...fromStep, toKind: 'case_field', toId: `${ct.id}.${f}` });
+    }
+  };
+  for (const wf of Object.values(project.workflows)) indexWorkflow(wf, 'workflow');
+
+  // Stage 3 (26 §3): apps, projects, each project's own playbooks and its own policy layer.
+  for (const app of Object.values(project.apps ?? {})) {
+    addDef({ kind: 'app', id: app.id, version: app.version, hash: sha256(stableJson(app)), path: app.file ?? project.domains?.[app.id]?.dir ?? app.id, body: app });
+  }
+  for (const p of Object.values(project.projects ?? {})) {
+    const { workflows, policy, pages, views, ...rest } = p;
+    const body = {
+      ...rest,
+      workflows: Object.fromEntries(Object.values(workflows).map((w) => [w.id, w.hash])),
+      ...(policy ? { policyHash: policyHash(policy) } : {}),
+      pages: Object.keys(pages).sort(),
+      views: Object.keys(views).sort(),
+    };
+    const hash = sha256(stableJson(body));
+    addDef({ kind: 'project', id: p.id, version: p.version, hash, path: p.file ?? p.app, body });
+    if (p.implicit) continue;
+    for (const wf of Object.values(workflows)) {
+      indexWorkflow(wf, 'project_workflow');
+      addRef({ fromKind: 'project', fromId: p.id, fromHash: hash, toKind: 'project_workflow', toId: wf.id });
+    }
+    if (policy && p.overrides.some((o) => /^policy\.ya?ml$/.test(o))) {
+      addDef({ kind: 'policy', id: projectPolicyId(p.id), hash: policyHash(policy), path: policy.file ?? `${p.dir}/policy.yaml`, body: policy });
+      addRef({ fromKind: 'project', fromId: p.id, fromHash: hash, toKind: 'policy', toId: projectPolicyId(p.id) });
     }
   }
 

@@ -132,6 +132,13 @@ export interface EntityTypeDef {
    * fields, calculated fields or `status`. Absent: short fields chosen from the records.
    */
   list?: string[];
+
+  // ---- Stage 3 (docs/memwise/26-projects-and-pages.md §3, D92)
+  /**
+   * `scope: app`: records shared by every project of the app (a Sponsor, a Person who is PI on
+   * several studies); their table has no project column. Absent: `project` (the default).
+   */
+  scope?: import('./project-types.ts').EntityScope;
 }
 
 // ---------------------------------------------------------------- policy files (08 §2)
@@ -316,6 +323,13 @@ export interface WorkflowDef {
   domain?: string;
   /** Phase 6: what starts it (`starts_on:`, 24 §7). */
   startsOn?: import('./domain-types.ts').TriggerDef[];
+  /**
+   * Stage 3 (26 §3): set on a project's own copy of an app playbook (the template at the version
+   * the project took, plus its overrides). Runs pin it; its policy is the project's app layer.
+   */
+  project?: string;
+  /** Stage 3: files of the folder that come from the project's `overrides/` (relative to the folder). */
+  overridden?: string[];
 }
 
 /** The final pseudo-state every workflow may transition to. */
@@ -407,6 +421,13 @@ export interface ProjectDefs {
    * has `domain/` or `workflows/`. `entities` is keyed by entity key (24 §2).
    */
   domains?: Record<string, import('./domain-types.ts').DomainDef>;
+  /** Stage 3 (26 §3): every domain as an app, by domain id (`app.yaml`, or version 1 without one). */
+  apps?: Record<string, import('./project-types.ts').AppDef>;
+  /**
+   * Stage 3: every project, by id: `projects/<id>/project.yaml`, plus one implicit project (id =
+   * the domain id) for each app that has none. Each carries its effective definitions.
+   */
+  projects?: Record<string, import('./project-types.ts').MwProjectDef>;
 }
 
 // ---------------------------------------------------------------- checks (05 §8)

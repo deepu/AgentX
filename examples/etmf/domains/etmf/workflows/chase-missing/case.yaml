@@ -1,13 +1,3 @@
-case: document_chase
+case: chase_missing
 fields:
-  site:              { type: Ref<Site>, required: true, description: The site being chased }
-  missing_documents: { type: Number, description: Expected documents the site still owes }
-  reminders_sent:    { type: Number, description: Reminders sent before this one }
-  coordinator_email: Email
-  cra_name:          PersonName
-  cra_email:         Email
-  email_to:          Email
-  email_cc:          Email
-  email_subject:     Text
-  email_body:        Text
-  escalation:        { type: Text, description: The note to the CRA when the site still hasn't sent them }
+  site: { type: Ref<Site>, required: true, description: The site that owes documents }

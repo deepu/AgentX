@@ -364,7 +364,7 @@ describe('the eTMF example (examples/etmf)', () => {
     expect(project.domains!.etmf).toMatchObject({ name: 'eTMF', regulated: true, retentionMs: 25 * 365 * 86_400_000, owner: 'study_manager', intake: { address: 'etmf' } });
     expect(project.domains!.etmf!.policy!.modelRoles).toEqual(expect.arrayContaining(['router', 'classifier', 'verifier']));
     expect(Object.keys(project.entities).sort()).toEqual(['edc.Site', 'etmf.Document', 'etmf.ExpectedDocument', 'etmf.Person', 'etmf.Reminder', 'etmf.Site', 'etmf.Sponsor', 'etmf.Study']);
-    expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'file-document', 'fix-rejected-document', 'route-message', 'watch-expiries']);
+    expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'create-project', 'file-document', 'fix-rejected-document', 'remind-site', 'route-message', 'watch-expiries']);
     expect(Object.keys(project.domains!.etmf!.views).sort()).toEqual(['documents-in-qc', 'missing-documents', 'sites', 'sites-board']);
     expect(Object.keys(project.domains!.etmf!.pages)).toEqual(['tmf-health']);
 
@@ -410,7 +410,8 @@ describe('the eTMF example (examples/etmf)', () => {
     const defs: IndexedDefinition[] = [];
     const refs: DefinitionRef[] = [];
     await indexProject(project, { upsert: async (d, r) => { defs.push(...d); refs.push(...r); }, getWorkflow: async () => undefined, latestWorkflow: async () => undefined });
-    const rows = defs.filter((d) => d.kind !== 'step' && d.kind !== 'case_type' && d.kind !== 'workflow').map((d) => `${d.kind} ${d.id}`).sort();
+    // Apps, projects and their own playbooks: projects.test.ts.
+    const rows = defs.filter((d) => !['step', 'case_type', 'workflow', 'app', 'project', 'project_workflow'].includes(d.kind)).map((d) => `${d.kind} ${d.id}`).sort();
     expect(rows).toEqual([
       'domain edc', 'domain etmf',
       'entity_type edc.Site', 'entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person',

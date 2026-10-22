@@ -52,7 +52,7 @@ export default async ({ win, shot }) => {
   // The chase reaches "Approve the email" for DE-104.
   const chase = await poll(win, 'chase at approve_email', async () => {
     const ws = new URLSearchParams(location.search).get('workspaceId')
-    const cs = await window.electronAPI.memwiseListCases(ws, { workflowId: 'chase-missing' })
+    const cs = await window.electronAPI.memwiseListCases(ws, { workflowId: 'remind-site' })
     return cs.find((c) => c.state === 'approve_email') ?? false
   })
   console.log('CHASE', JSON.stringify(chase && { caseId: chase.caseId, state: chase.state }))
@@ -66,7 +66,7 @@ export default async ({ win, shot }) => {
   const draft = await poll(win, 'the chat\'s draft with its test run', async () => {
     const ws = new URLSearchParams(location.search).get('workspaceId')
     const ds = await window.electronAPI.memwiseListDrafts(ws)
-    return ds.find((d) => d.workflowId === 'chase-missing' && d.chatId && d.testRun) ?? false
+    return ds.find((d) => d.workflowId === 'remind-site' && d.chatId && d.testRun) ?? false
   }, undefined, 240000)
   console.log('DRAFT', JSON.stringify(draft && { id: draft.id, chatId: draft.chatId, testRun: draft.testRun, stage: draft.stage }))
   await wait(win, 6000)
