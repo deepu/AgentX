@@ -211,6 +211,11 @@ export interface AuditFilter {
   caseIds?: string[];
   actorKinds?: AuditActorKind[];
   actions?: string[];
+  /**
+   * Stage 3: only the entries of these projects of the app (a study's, `data.inProject`), and
+   * those of none (the app's own: change requests). Absent: the whole app's trail.
+   */
+  inProjects?: string[];
   /** Only entries with seq greater than this (paging, newest last). */
   afterSeq?: number;
   limit?: number;
@@ -292,9 +297,10 @@ export class PgAuditLog {
           and ($6::text[] is null or actor_kind = any($6))
           and ($7::text[] is null or action = any($7))
           and seq > $8
+          and ($10::text[] is null or data ->> 'inProject' is null or data ->> 'inProject' = any($10))
         order by seq limit $9`,
       [f.project, f.entity ?? null, f.recordId ?? null, f.caseIds ?? [], f.caseId ?? null, f.actorKinds ?? null, f.actions ?? null,
-        f.afterSeq ?? 0, f.limit ?? 1000]);
+        f.afterSeq ?? 0, f.limit ?? 1000, f.inProjects ?? null]);
     return rows.map(toAudit);
   }
 
@@ -393,8 +399,9 @@ export class PgInspectorStore {
   }
 
   /** Newest first. */
-  async list(db: Queryable, project: string): Promise<InspectorLinkRow[]> {
-    const { rows } = await db.query<LinkDbRow>(`select ${LINK_COLS} from mw.inspector_links where project = $1 order by created_at desc`, [project]);
+  async list(db: Queryable, project: string | string[]): Promise<InspectorLinkRow[]> {
+    const { rows } = await db.query<LinkDbRow>(`select ${LINK_COLS} from mw.inspector_links where project = any($1::text[]) order by created_at desc`,
+      [Array.isArray(project) ? project : [project]]);
     return rows.map(toLink);
   }
 
@@ -430,11 +437,12 @@ export class PgInspectorStore {
   }
 
   /** Oldest first. */
-  async questions(db: Queryable, filter: { linkId?: string; project?: string; open?: boolean }): Promise<InspectorQuestionRow[]> {
+  async questions(db: Queryable, filter: { linkId?: string; project?: string | string[]; open?: boolean }): Promise<InspectorQuestionRow[]> {
+    const projects = filter.project === undefined ? null : Array.isArray(filter.project) ? filter.project : [filter.project];
     const { rows } = await db.query<QuestionDbRow>(
       `select * from mw.inspector_questions
-        where ($1::text is null or link_id = $1) and ($2::text is null or project = $2) and (not $3 or answered_at is null)
-        order by asked_at, id`, [filter.linkId ?? null, filter.project ?? null, filter.open ?? false]);
+        where ($1::text is null or link_id = $1) and ($2::text[] is null or project = any($2)) and (not $3 or answered_at is null)
+        order by asked_at, id`, [filter.linkId ?? null, projects, filter.open ?? false]);
     return rows.map(toQuestion);
   }
 

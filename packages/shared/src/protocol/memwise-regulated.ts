@@ -243,7 +243,10 @@ export interface MwInspectorPerson { name: string; email?: string; organisation?
 
 export interface MwInspectorLink {
   id: string
+  /** The regulated app (`etmf`). */
   project: string
+  /** The study (project of the app) it was given for: it reaches only that study's records. */
+  inProject?: string
   name: string
   inspectors: MwInspectorPerson[]
   expiresAt: string
@@ -267,7 +270,10 @@ export interface MwInspectorQuestion {
   id: string
   linkId: string
   linkName: string
+  /** The regulated app (`etmf`). */
   project: string
+  /** The study its link was given for. */
+  inProject?: string
   askedBy?: string
   record?: { entity: string; id: string; title: string }
   question: string

@@ -18,6 +18,8 @@
  *    drafts, chats or change requests; every view and download is logged; a question reaches the
  *    study manager's inbox and the answer comes back; an expired link opens nothing.
  * 6. The TMF index counts the zone and site documents.
+ * 7. Stage 3 (one project per study): MW-301's trail page has no MW-207 entries, a MW-301
+ *    inspector link can't open a MW-207 document, and the export names the study it was asked for.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -418,24 +420,97 @@ describe.skipIf(!postgresAvailable())('Stage 5 exit: a regulated project on the 
     expect(sessions.contexts.get(sessionId)!.block).toContain('05 · Site Management · 5 · 4 · 1')
   })
 
-  it('Stage 3: a study of the app (mw301) has the app\'s change requests, trail and inspector links, and its own TMF index', async () => {
+  it('Stage 3: a study (mw301) has the app\'s change requests, and its own trail page, inspector links and TMF index', async () => {
     const cr = await api.call<MwChangeRequest>(anikaCtx, ch.CHANGES_GET, { crId: 'CR-014', project: 'etmf' })
     expect(await api.call<MwChangeRequest>(anikaCtx, ch.CHANGES_GET, { crId: 'CR-014', project: 'mw301' })).toMatchObject({ id: cr.id, project: 'etmf' })
     expect((await api.call<MwChangeRequestSummary[]>(anikaCtx, ch.CHANGES_LIST, { project: 'mw301' })).map((c) => c.id)).toContain(cr.id)
-    const trail = await api.call<{ entries: unknown[] }>(anikaCtx, ch.AUDIT_LOG, { project: 'etmf' })
-    expect((await api.call<{ entries: unknown[] }>(anikaCtx, ch.AUDIT_LOG, { project: 'mw301' })).entries).toHaveLength(trail.entries.length)
-    expect(await api.call<unknown[]>(anikaCtx, ch.INSPECTORS_LIST, { project: 'mw301' })).toEqual(await api.call<unknown[]>(anikaCtx, ch.INSPECTORS_LIST, { project: 'etmf' }))
 
-    // The study's own plan: one expected document in MW-301; the records above are the app's own project's.
-    const r = await kernel().records.create({ entity: 'etmf.Study', values: { code: 'MW-301', title: 'Aster-1, study project', sponsor: ids.sponsor }, project: 'mw301', reason: 'study set-up' }, { kind: 'system' })
-    const site = await kernel().records.create({ entity: 'etmf.Site', values: { site_number: '201', study: r.id }, project: 'mw301', reason: 'study set-up' }, { kind: 'system' })
-    const e = await kernel().records.create({ entity: 'etmf.ExpectedDocument', values: { site: site.id, study: r.id, artifact: 'Protocol', phase: 'start_up' }, project: 'mw301', reason: 'study set-up' }, { kind: 'system' })
-    expect([r.message, site.message, e.message]).toEqual([undefined, undefined, undefined])
+    // The two studies' walkthrough records (their sites numbered as in Rave: 101–112, 201–206).
+    for (const p of ['mw301', 'mw207']) expect((await kernel().projects.seed(p, { kind: 'system' })).created).toBeGreaterThan(0)
+    const filedIn = async (project: string) => (await db.pool.query<{ record_id: string }>(
+      `select distinct record_id from mw.record_versions where entity = 'etmf.Document' and project = $1 and "values" ->> 'status' = 'filed'`, [project])).rows.map((r) => r.record_id)
+    const docs301 = await filedIn('mw301')
+    const docs207 = await filedIn('mw207')
+    expect(docs301.length).toBeGreaterThan(0)
+    expect(docs207.length).toBeGreaterThan(0)
+    const doc207 = docs207[0]!
+    const doc301 = docs301[0]!
+
+    // The trail page: the app's whole trail at the app; a study's own entries (its records, runs and
+    // inspector activity) and the app's change requests in the study, with the app's one chain.
+    const trailOf = (project: string, extra: Record<string, unknown> = {}) => api.call<MwAuditLog>(anikaCtx, ch.AUDIT_LOG, { project, limit: 5000, ...extra })
+    const whole = await trailOf('etmf')
+    const t301 = await trailOf('mw301')
+    const t207 = await trailOf('mw207')
+    const inProject = (e: { data: Record<string, unknown> }) => e.data.inProject
+    expect(whole.entries.some((e) => inProject(e) === 'mw301') && whole.entries.some((e) => inProject(e) === 'mw207')).toBe(true)
+    expect(t301.chain.ok && t207.chain.ok).toBe(true)
+    expect(t301.entries.some((e) => inProject(e) === 'mw207' || docs207.includes(e.recordId ?? ''))).toBe(false)
+    expect(t301.entries.every((e) => inProject(e) === undefined || inProject(e) === 'mw301')).toBe(true)
+    expect(t301.entries.some((e) => e.recordId === doc301)).toBe(true)
+    expect(t301.entries.some((e) => e.action.startsWith('change.') && e.recordId === cr.id)).toBe(true)
+    expect(t207.entries.some((e) => inProject(e) === 'mw301' || docs301.includes(e.recordId ?? ''))).toBe(false)
+    expect(t207.entries.some((e) => e.recordId === doc207)).toBe(true)
+    // The app's own records (made above without a study) aren't a study's either.
+    expect(t301.entries.some((e) => e.recordId === ids.site101)).toBe(false)
+    expect((await trailOf('mw301', { entity: 'etmf.Document', recordId: doc207 })).entries).toEqual([])
+    // A study's run lands in the study (Start passes it): its steps are in its trail only.
+    const started = await api.call<{ caseId: string }>(anikaCtx, ch.CASES_START, { workflowId: 'chase-missing', project: 'mw301' })
+    await until('the MW-301 run\'s first settled step', () => trailOf('mw301', { caseId: started.caseId }), (t) => t.entries.length > 0).catch(() => undefined)
+    expect((await trailOf('mw207', { caseId: started.caseId })).entries).toEqual([])
+
+    // The export stays the app's chain, and says which project it was asked for.
+    const exported = await api.call<{ name: string; dataBase64: string }>(anikaCtx, ch.AUDIT_LOG_EXPORT, { project: 'mw301' })
+    const doc = JSON.parse(Buffer.from(exported.dataBase64, 'base64').toString('utf8'))
+    expect(exported.name).toContain('audit-trail-mw301-')
+    expect(doc).toMatchObject({ project: 'etmf', askedFor: { project: 'mw301', name: 'Study MW-301' }, complete: true })
+    expect(doc.entries.length).toBeGreaterThanOrEqual(whole.entries.length)
+    expect(await api.call<MwAuditVerifyResult>(anikaCtx, ch.AUDIT_VERIFY, { exportJson: JSON.stringify(doc) })).toMatchObject({ ok: true })
+
+    // An inspector invited for MW-301 sees MW-301's documents only, never MW-207's.
+    const made = await api.call<{ link: MwInspectorLink; token: string }>(anikaCtx, ch.INSPECTORS_CREATE, {
+      project: 'mw301', name: 'MW-301 inspection', inspectors: [{ name: 'GCP inspector', organisation: 'MHRA' }],
+      expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+    })
+    expect(made.link).toMatchObject({ project: 'etmf', inProject: 'mw301' })
+    const linksOf = async (project: string) => (await api.call<MwInspectorLink[]>(anikaCtx, ch.INSPECTORS_LIST, { project })).map((l) => l.id)
+    expect(await linksOf('mw301')).toEqual([made.link.id])
+    expect(await linksOf('mw207')).toEqual([])
+    expect(await linksOf('etmf')).toContain(made.link.id)
+    const t = made.token
+    expect((await publicJson(`/v/${t}/api/index`)).session).toMatchObject({ project: 'mw301', projectName: 'Study MW-301' })
+    const listed = await publicJson<{ documents: { id: string }[] }>(`/v/${t}/api/documents`)
+    expect(listed.documents.length).toBeGreaterThan(0)
+    expect(listed.documents.some((d) => docs207.includes(d.id))).toBe(false)
+    expect(listed.documents.every((d) => docs301.includes(d.id))).toBe(true)
+    const q207 = `entity=etmf.Document&id=${encodeURIComponent(doc207)}`
+    expect((await publicGet(`/v/${t}/api/document?${q207}`)).status).toBe(404)
+    expect((await publicGet(`/v/${t}/api/trail?${q207}`)).status).toBe(404)
+    expect((await publicGet(`/v/${t}/api/download?${q207}`)).status).toBe(404)
+    const q301 = `entity=etmf.Document&id=${encodeURIComponent(doc301)}`
+    expect((await publicGet(`/v/${t}/api/document?${q301}`)).status).toBe(200)
+    const trail301 = await publicJson<{ entries: { recordId: string | null; data: Record<string, unknown> }[] }>(`/v/${t}/api/trail?${q301}`)
+    expect(trail301.entries.length).toBeGreaterThan(0)
+    expect(trail301.entries.some((e) => e.data.inProject === 'mw207')).toBe(false)
+    // Its views are in MW-301's trail, not MW-207's.
+    const views = (project: string) => trailOf(project, { actorKinds: ['inspector'] }).then((x) => x.entries.filter((e) => e.actor === made.link.id))
+    expect((await views('mw301')).map((e) => e.action)).toEqual(['inspector.opened', 'inspector.listed', 'inspector.viewed', 'inspector.viewed'])
+    expect(await views('mw207')).toEqual([])
+    // Its question waits in MW-301, and is MW-301's.
+    await publicJson(`/v/${t}/api/ask`, { method: 'POST', body: JSON.stringify({ question: 'Where is the site 104 delegation log?' }) })
+    const item = (await until('the MW-301 question', () => inbox(anikaCtx), (xs) => xs.some((i) => i.kind === 'inspector-question' && i.project === 'mw301')))
+      .find((i) => i.kind === 'inspector-question' && i.project === 'mw301')!
+    expect(item).toMatchObject({ stepTitle: 'MW-301 inspection', domain: 'etmf' })
+    expect((await api.call<MwInspectorQuestion[]>(anikaCtx, ch.INSPECTORS_QUESTIONS, { project: 'mw301', open: true })).map((x) => x.inProject)).toEqual(['mw301'])
+    expect(await api.call<MwInspectorQuestion[]>(anikaCtx, ch.INSPECTORS_QUESTIONS, { project: 'mw207', open: true })).toEqual([])
+    await api.call(anikaCtx, ch.INSPECTORS_REVOKE, { linkId: made.link.id })
+
+    // The study's own TMF index: its records, and it names its study.
     const tmf = await api.call<MwTmfIndex>(anikaCtx, ch.TMF_INDEX, { project: 'mw301' })
-    expect(tmf.kpis).toMatchObject({ expected: 1, filed: 0, missing: 1 })
-    expect(tmf.study).toMatchObject({ id: r.id })
-    expect((await api.call<MwTmfIndex>(anikaCtx, ch.TMF_INDEX, { project: 'etmf' })).kpis.expected).toBeGreaterThan(1)
-  })
+    expect(tmf.study).toMatchObject({ label: expect.stringContaining('MW-301') })
+    expect(tmf.kpis.filed).toBe(docs301.length)
+    expect((await api.call<MwTmfIndex>(anikaCtx, ch.TMF_INDEX, { project: 'mw207' })).kpis.filed).toBe(docs207.length)
+  }, 120_000)
 
   it('a change log that continues a paper one starts at the paper number, never below a used one', async () => {
     const low = await api.call<MwOpenChangeResult>(anikaCtx, ch.CHANGES_OPEN, { workflowId: 'file-document', title: 'Below the log', number: 3 })

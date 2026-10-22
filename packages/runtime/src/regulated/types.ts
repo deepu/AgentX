@@ -201,7 +201,16 @@ export interface AuditEntryView extends AuditEntry {
 }
 
 export interface AuditQuery {
+  /** The app whose trail it is (`etmf`): one hash chain per app. */
   project: string;
+  /**
+   * Stage 3: only the entries of these projects of the app (a study's records, runs and
+   * inspector activity) and the app's own (change requests). Absent: the whole app's trail.
+   * An export ignores it (the export is the app's chain) and names `askedFor` instead.
+   */
+  projects?: string[];
+  /** The project the trail was asked for (a study of the app, or the app), named in an export's header. */
+  askedFor?: { project: string; name: string };
   entity?: string;
   recordId?: string;
   caseId?: string;
@@ -215,7 +224,9 @@ export interface AuditQuery {
 export interface AuditExport {
   format: 'memwise-audit/1';
   project: string;
-  filter: Omit<AuditQuery, 'project' | 'limit' | 'afterSeq'>;
+  filter: Omit<AuditQuery, 'project' | 'limit' | 'afterSeq' | 'projects' | 'askedFor'>;
+  /** The project it was asked for (a study of the app): the entries are still the whole app's chain. */
+  askedFor?: { project: string; name: string };
   /** The whole log from its first entry (so the first entry must start the chain). */
   complete: boolean;
   exportedAt: string;
@@ -251,7 +262,10 @@ export interface AuditLogService {
 
 export interface InspectorLinkView {
   id: string;
+  /** The regulated app (`etmf`). */
   project: string;
+  /** Stage 3: the study (project of the app) it was given for; it reaches only that study's records. */
+  inProject?: string;
   name: string;
   inspectors: InspectorPerson[];
   expiresAt: string;
@@ -270,7 +284,10 @@ export interface InspectorQuestionView {
   id: string;
   linkId: string;
   linkName: string;
+  /** The regulated app (`etmf`). */
   project: string;
+  /** Stage 3: the study its link was given for. */
+  inProject?: string;
   askedBy?: string;
   record?: { entity: string; id: string; title: string };
   question: string;
@@ -283,6 +300,7 @@ export interface InspectorQuestionView {
 /** What an inspector's link is and lets them see. */
 export interface InspectorSession {
   linkId: string;
+  /** The project the link was given for: a study of the app (Stage 3), or the app. */
   project: string;
   projectName: string;
   name: string;

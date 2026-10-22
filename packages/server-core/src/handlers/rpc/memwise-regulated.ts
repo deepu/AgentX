@@ -11,7 +11,7 @@ import type {
   MwChangeSignResult, MwChangeValidation, MwInspectorLink, MwInspectorLinkCreated, MwInspectorLinkInput, MwInspectorQuestion,
   MwChatAnchor, MwFindChatResult, MwOpenChangeInput, MwOpenChangeResult, MwTmfIndex, MwValidationSet,
 } from '@memwise/shared/protocol'
-import type { ChangeRequestView } from '@memwise/runtime'
+import type { AuditQuery, ChangeRequestView } from '@memwise/runtime'
 import type { RequestContext, RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 import { emitMemwiseChange } from '../../memwise/host'
@@ -104,10 +104,11 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
   }
 
   /**
-   * Stage 3 (26 §3): the project shell names a project of an app (a study, `mw301`). Its change
-   * requests, audit trail and inspector links are its app's (`etmf`): a playbook is the app's, and
-   * so is the trail the database writes. Its TMF index is its own records'. An app's own project
-   * (the app id) is the app.
+   * Stage 3 (26 §2, §3): the project shell names a project of an app (a study, `mw301`). Its change
+   * requests are its app's (`etmf`): a playbook is the app's. Its audit trail page, its inspector
+   * links and its TMF index are its own: the study's records, runs and inspector activity, plus the
+   * app's change requests (the hash chain stays the app's, and so does an export, which names the
+   * study it was asked for). An app's own project (the app id) is the whole app.
    */
   async function scopeOf(svc: MemwiseService, actor: PersonActor, project: string): Promise<{ app: string; name: string; projects?: string[] }> {
     const domains = (await svc.kernel.project().catch(() => undefined))?.project.domains ?? {}
@@ -117,8 +118,16 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
   }
   const appOf = async (svc: MemwiseService, actor: PersonActor, project: string | undefined): Promise<string | undefined> =>
     project ? (await scopeOf(svc, actor, project)).app : undefined
-  const appQuery = async (svc: MemwiseService, actor: PersonActor, q: MwAuditQuery): Promise<MwAuditQuery> =>
-    ({ ...q, project: (await appOf(svc, actor, q.project))! })
+  /** The audit query of a shell project: its app's chain, filtered to the study's entries. */
+  const auditScope = async (svc: MemwiseService, actor: PersonActor, q: MwAuditQuery): Promise<AuditQuery> => {
+    const scope = await scopeOf(svc, actor, q.project)
+    return { ...q, project: scope.app, ...(scope.projects ? { projects: scope.projects } : {}), askedFor: { project: q.project, name: scope.name } }
+  }
+  /** The project an inspector link is given for: the study, or the app's own. */
+  const linkProjectOf = async (svc: MemwiseService, actor: PersonActor, project: string): Promise<string> => {
+    const scope = await scopeOf(svc, actor, project)
+    return scope.projects?.[0] ?? scope.app
+  }
 
   async function requireView(svc: MemwiseService, actor: PersonActor, crId: unknown, project?: string): Promise<ChangeRequestView> {
     const v = await regulatedOf(svc).changes.get(requireId(crId, 'change request'), actor, await appOf(svc, actor, project))
@@ -190,7 +199,7 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     const name = scope.name
     const lines: string[] = []
     if (kind === 'audit') {
-      const out = await r.auditLog.list({ project: scope.app, limit: 5000 }, actor)
+      const out = await r.auditLog.list({ project: scope.app, ...(scope.projects ? { projects: scope.projects } : {}), limit: 5000 }, actor)
       const entries = out.entries.map(toAuditEntry).slice(-PAGE_CHAT_ENTRIES)
       lines.push(`The audit trail of the project ${name}: every change by people and AI, append-only, each entry chained to the one before (chain ${out.chain.ok ? 'intact' : `broken: ${out.chain.message ?? 'an entry changed'}`}).`)
       lines.push(out.entries.length > entries.length ? `The latest ${entries.length} of ${out.entries.length} entries, oldest first:` : `All ${entries.length} entries, oldest first:`)
@@ -351,18 +360,18 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
 
     async auditLog(ctx: RequestContext, query: MwAuditQuery): Promise<MwAuditLog> {
       const { svc, actor, r } = await begin(ctx)
-      const out = await r.auditLog.list(await appQuery(svc, actor, auditQuery(query)), actor)
+      const out = await r.auditLog.list(await auditScope(svc, actor, auditQuery(query)), actor)
       return { entries: out.entries.map(toAuditEntry), chain: { ...out.chain } }
     },
 
     async auditLogExport(ctx: RequestContext, query: MwAuditQuery): Promise<MwAuditExport> {
       const { svc, actor, r } = await begin(ctx)
-      const q = await appQuery(svc, actor, auditQuery(query))
+      const q = await auditScope(svc, actor, auditQuery(query))
       const doc = await r.auditLog.export(q, actor)
       const day = doc.exportedAt.slice(0, 10)
       const scope = q.recordId ? `-${q.recordId}` : q.caseId ? `-${q.caseId}` : ''
       return {
-        name: `audit-trail-${q.project}${scope}-${day}.json`,
+        name: `audit-trail-${q.askedFor?.project ?? q.project}${scope}-${day}.json`,
         mime: 'application/json',
         dataBase64: Buffer.from(JSON.stringify(doc, null, 2)).toString('base64'),
       }
@@ -386,7 +395,7 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
 
     async listInspectors(ctx: RequestContext, input: { project: string }): Promise<MwInspectorLink[]> {
       const { svc, actor, r } = await begin(ctx)
-      return (await r.inspectors.list((await appOf(svc, actor, requireId(input?.project, 'project')))!, actor)).map(toInspectorLink)
+      return (await r.inspectors.list(await linkProjectOf(svc, actor, requireId(input?.project, 'project')), actor)).map(toInspectorLink)
     },
 
     async createInspector(ctx: RequestContext, input: MwInspectorLinkInput): Promise<MwInspectorLinkCreated> {
@@ -397,7 +406,7 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
         }))
         : []
       const made = await r.inspectors.create({
-        project: (await appOf(svc, actor, requireId(input?.project, 'project')))!, name: requireId(input.name, 'name for the inspection'),
+        project: await linkProjectOf(svc, actor, requireId(input?.project, 'project')), name: requireId(input.name, 'name for the inspection'),
         inspectors, expiresAt: requireId(input.expiresAt, 'end date'),
       }, actor)
       return { link: toInspectorLink(made.link), token: made.token, ...(made.url ? { url: made.url } : {}) }
@@ -416,7 +425,7 @@ export function createRegulatedApi(deps: Pick<HandlerDeps, 'sessionManager' | 'p
     async inspectorQuestions(ctx: RequestContext, filter: { project?: string; linkId?: string; open?: boolean }): Promise<MwInspectorQuestion[]> {
       const { svc, actor, r } = await begin(ctx)
       const list = await r.inspectors.questions({
-        ...(str(filter?.project) ? { project: (await appOf(svc, actor, str(filter.project)))! } : {}),
+        ...(str(filter?.project) ? { project: await linkProjectOf(svc, actor, str(filter.project)!) } : {}),
         ...(str(filter?.linkId) ? { linkId: str(filter.linkId)! } : {}),
         ...(typeof filter?.open === 'boolean' ? { open: filter.open } : {}),
       }, actor)

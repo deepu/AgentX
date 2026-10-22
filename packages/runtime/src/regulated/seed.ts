@@ -10,6 +10,8 @@ import type { ChangeRequestView, InspectorLinkView } from './types.ts';
 export interface RegulatedSeedOptions {
   /** The regulated domain (the project for now). Default `etmf`. */
   project?: string;
+  /** Stage 3: the study the inspector link is for (it reaches only that study). Default: `project`. */
+  inspectionProject?: string;
   /** The playbook CR-014 changes. Default `file-document`. */
   workflowId?: string;
   /** Raises the change request (a study manager). */
@@ -47,13 +49,14 @@ export async function seedRegulatedWalkthrough(kernel: Kernel, opts: RegulatedSe
   }
 
   const name = opts.inspection?.name ?? SEED_INSPECTION;
-  const links = await kernel.inspectors.list(project, owner);
+  const inspectionProject = opts.inspectionProject ?? project;
+  const links = await kernel.inspectors.list(inspectionProject, owner);
   const active = links.find((l) => l.name === name && l.status === 'active');
   let inspector: RegulatedSeed['inspector'];
   if (active) inspector = { link: active };
   else {
     const made = await kernel.inspectors.create({
-      project, name,
+      project: inspectionProject, name,
       inspectors: opts.inspection?.inspectors ?? [{ name: 'GCP inspector', organisation: 'MHRA' }],
       expiresAt: new Date(Date.now() + (opts.inspection?.days ?? 30) * 86_400_000).toISOString(),
     }, owner);

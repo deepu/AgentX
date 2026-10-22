@@ -157,7 +157,8 @@ export function createAuditLogService(deps: AuditLogDeps): AuditLogService {
     return log.list(deps.pool, {
       project: q.project, ...(q.entity ? { entity: def ? keyOf(def) : q.entity } : {}), ...(q.recordId ? { recordId: q.recordId } : {}),
       ...(caseIds ? { caseIds } : {}), ...(q.caseId ? { caseId: q.caseId } : {}), ...(q.actorKinds?.length ? { actorKinds: q.actorKinds } : {}),
-      ...(q.actions?.length ? { actions: q.actions } : {}), ...(q.afterSeq ? { afterSeq: q.afterSeq } : {}), limit,
+      ...(q.actions?.length ? { actions: q.actions } : {}), ...(q.afterSeq ? { afterSeq: q.afterSeq } : {}),
+      ...(q.projects ? { inProjects: q.projects } : {}), limit,
     });
   }
 
@@ -174,14 +175,16 @@ export function createAuditLogService(deps: AuditLogDeps): AuditLogService {
     async export(q, actor) {
       // One more than fits says whether the log was cut short: a cut export isn't the complete log.
       const max = deps.maxExport ?? MAX_EXPORT;
-      const fetched = await rows({ ...q, afterSeq: 0 }, max + 1);
+      // The app's chain, whichever of its projects asked (a study's entries alone wouldn't chain).
+      const { projects: _projects, ...whole } = q;
+      const fetched = await rows({ ...whole, afterSeq: 0 }, max + 1);
       const truncated = fetched.length > max;
       const entries = truncated ? fetched.slice(0, max) : fetched;
       const filtered = !!(q.entity || q.recordId || q.caseId || q.actorKinds?.length || q.actions?.length);
       const { privateKey, publicKey } = await auditSigningKey(deps.pool);
       const by = actor.kind === 'person' ? actor.personId : 'system';
       const doc: Omit<AuditExport, 'signature'> = {
-        format: AUDIT_EXPORT_FORMAT, project: q.project,
+        format: AUDIT_EXPORT_FORMAT, project: q.project, ...(q.askedFor ? { askedFor: { project: q.askedFor.project, name: q.askedFor.name } } : {}),
         filter: {
           ...(q.entity ? { entity: q.entity } : {}), ...(q.recordId ? { recordId: q.recordId } : {}), ...(q.caseId ? { caseId: q.caseId } : {}),
           ...(q.actorKinds?.length ? { actorKinds: q.actorKinds } : {}), ...(q.actions?.length ? { actions: q.actions } : {}),
@@ -195,7 +198,10 @@ export function createAuditLogService(deps: AuditLogDeps): AuditLogService {
         project: q.project, actorKind: actor.kind === 'person' ? 'person' : 'system', actor: by,
         ...(actor.kind === 'person' ? { actorLabel: doc.exportedBy } : {}), action: 'audit.exported',
         ...(q.entity ? { entity: q.entity } : {}), ...(q.recordId ? { recordId: q.recordId } : {}),
-        data: { entries: entries.length, complete: doc.complete, lastSeq: entries.at(-1)?.seq ?? 0 },
+        data: {
+          entries: entries.length, complete: doc.complete, lastSeq: entries.at(-1)?.seq ?? 0,
+          ...(q.askedFor && q.askedFor.project !== q.project ? { inProject: q.askedFor.project } : {}),
+        },
       });
       return { ...doc, signature };
     },

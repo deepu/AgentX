@@ -433,7 +433,9 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - a CR fails validation once, is fixed from chat and passes;
   - QA signs, and the new version runs while old runs finish on the old one;
   - an inspector link shows no drafts or chats;
-  - the export verifies its chain.
+  - the export verifies its chain;
+  - a MW-301 inspector link can't open a MW-207 document;
+  - MW-301's audit trail page has no MW-207 entries.
 
 #### Stage 5 as built (D115–D119)
 
@@ -470,13 +472,13 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - CR sign-offs and inspector questions under Waiting for you;
   - Inspector access and Audit trail as Project settings tabs on regulated projects.
 - **With Stage 3's projects inside apps:**
-  - A study (`mw301`) is a project of the eTMF app. Its change requests, audit trail and inspector links are the app's: a playbook is the app's, and the database writes one trail per app. Its TMF index counts its own records, plus those every project of the app shares, and names its study.
-  - A change request or an inspector's question waits in every project that runs its app, and under its app in "Waiting for you, all projects".
-  - A study's run is in its app's trail, although it runs the study's own copy of the playbook.
+  - A study (`mw301`) is a project of the eTMF app. Its change requests are the app's: a playbook is the app's. Its TMF index counts its own records, plus those every project of the app shares, and names its study.
+  - **Decision: the audit trail page and inspector links are per study** (one project per study, read-only inspector view). The database still writes one hash chain per app, and each entry carries the study it belongs to (`data.inProject`: a record version's or step's project, a signed record's or its case's, an inspector link's). A study's trail page shows its own entries and the app's change requests (entries with no study); an app's own project shows the whole app. An inspector link is given for a study: it lists, opens, downloads and shows the trail of that study's filed documents only (and those every project shares), and its views, downloads and questions go in that study's trail; a MW-301 link can't open a MW-207 document. The export stays the app's whole chain (a study's entries alone wouldn't chain), and its header says which project it was asked for (`askedFor`).
+  - A change request waits in every project that runs its app, and under its app in "Waiting for you, all projects". An inspector's question waits in the study whose link asked it.
+  - A study's run is in its study's trail (and the app's chain), although it runs the study's own copy of the playbook. Start case starts a case in the project the shell is showing.
   - Record types added later (a new app's tables, as EDC's are) are audited with nothing of their own: every typed table writes `mw.record_versions` through its generated row trigger, and that is what the audit trigger watches.
-  - Still per app, not per study: the audit trail page (titled with the study) and an inspector link's documents. Scoping them to one study is open.
 - **Tests:**
-  - `packages/server-core/src/memwise/__tests__/stage5-exit.test.ts`, the exit test: the CR fails 2 of 3, is fixed from its chat and passes 3 of 3; QA signs; old and new runs; trail, export and tamper; the inspector link; the TMF index. It also writes `EInspector-*` screenshots when `MEMWISE_WALKTHROUGH_DIR` is set.
+  - `packages/server-core/src/memwise/__tests__/stage5-exit.test.ts`, the exit test: the CR fails 2 of 3, is fixed from its chat and passes 3 of 3; QA signs; old and new runs; trail, export and tamper; the inspector link; the TMF index. On Stage 3's studies: MW-301's trail page has no MW-207 entries, a MW-301 inspector link can't open, download or show the trail of a MW-207 document, its question waits in MW-301, and the export names the study it was asked for. It also writes `EInspector-*` screenshots when `MEMWISE_WALKTHROUGH_DIR` is set.
   - `packages/runtime/tests/regulated.test.ts`.
   - `apps/electron/.../__tests__/regulated-render.test.tsx` and `apps/external-form/src/__tests__/inspector.test.tsx`, the render tests.
   - `scripts/walkthrough/regulated-etmf.mjs`, the desktop walkthrough with scripted classifier and verifier tool calls (`regulated-tools.mjs`).

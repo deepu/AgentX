@@ -59,6 +59,9 @@ create trigger change_request_validations_append_only before update or delete on
 
 -- ------------------------------------------------------------------ the audit log (26 §8, D77)
 
+-- One trail per app (Stage 3: a study is a project of the app; its entries carry it as
+-- data.inProject, and the trail page and an inspector link show only theirs; entries with none,
+-- such as change requests, are the app's and show in each of its projects).
 -- One trail per project: record versions, signatures and step records as they happen (written by
 -- the triggers below, so no write path skips them), and what the kernel adds (change requests,
 -- inspector views and downloads, exports). Each entry's hash covers the previous entry's hash, so
@@ -82,6 +85,7 @@ create table mw.audit_log (
 create index audit_log_project on mw.audit_log (project, seq);
 create index audit_log_record on mw.audit_log (entity, record_id, seq);
 create index audit_log_case on mw.audit_log (case_id, seq) where case_id is not null;
+create index audit_log_in_project on mw.audit_log (project, (data ->> 'inProject'), seq);
 
 create trigger audit_log_append_only before update or delete on mw.audit_log
   for each row execute function mw.refuse_history_change();
@@ -200,7 +204,7 @@ begin
   perform mw.audit_append(case when new.entity like '%.%' then split_part(new.entity, '.', 1) else 'domain' end, who.kind, who.actor, who.label,
     case when new.version = 1 then 'record.created' else 'record.changed' end, new.entity, new.record_id, case_id,
     jsonb_strip_nulls(jsonb_build_object('version', new.version, 'changed', to_jsonb(new.changed), 'reason', new.reason,
-      'via', new.via, 'status', new."values" ->> 'status', 'versionHash', new.hash)));
+      'via', new.via, 'status', new."values" ->> 'status', 'versionHash', new.hash, 'inProject', new.project)));
   return null;
 end $$;
 
@@ -209,11 +213,21 @@ create trigger record_versions_audit after insert on mw.record_versions
 
 create or replace function mw.audit_signature() returns trigger
   language plpgsql security definer set search_path = mw, pg_temp as $$
+declare
+  in_project text;
 begin
+  -- The signed record's project (a study's), else its case's; a change request's is none (the app's).
+  if new.entity <> 'change_request' then
+    select v.project into in_project from mw.record_versions v
+     where v.entity = new.entity and v.record_id = new.record_id order by v.version desc limit 1;
+    if in_project is null and new.case_id is not null then
+      select c.project into in_project from mw.cases c where c.id = new.case_id;
+    end if;
+  end if;
   perform mw.audit_append(mw.audit_project_of(new.entity, new.record_id, new.case_id), 'person', new.person_id, new.name,
     'signature.signed', new.entity, new.record_id, new.case_id,
     jsonb_strip_nulls(jsonb_build_object('signatureId', new.id, 'meaning', new.meaning, 'contentHash', new.content_hash,
-      'stepRunId', new.step_run_id, 'role', new.manifest ->> 'role')));
+      'stepRunId', new.step_run_id, 'role', new.manifest ->> 'role', 'inProject', in_project)));
   return null;
 end $$;
 
@@ -261,7 +275,8 @@ begin
       'rationale', left(coalesce(new.rationale, new.comment), 600), 'quote', left(quote, 600), 'quotedField', quoted_field,
       'checkpoint', case when jsonb_typeof(new.checkpoint) = 'array' and jsonb_array_length(new.checkpoint) > 0 then
         jsonb_build_object('rules', jsonb_array_length(new.checkpoint),
-          'failed', (select count(*) from jsonb_array_elements(new.checkpoint) c where (c ->> 'passed')::boolean is false)) end)));
+          'failed', (select count(*) from jsonb_array_elements(new.checkpoint) c where (c ->> 'passed')::boolean is false)) end,
+      'inProject', new.project)));
   return null;
 end $$;
 

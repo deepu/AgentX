@@ -108,6 +108,8 @@ export function toRegulatedInboxItem(item: Extract<InboxItem, { kind: 'change-re
   return {
     kind: 'inspector-question', id: item.id, domain: q.project, caseTitle: clip(q.question.replace(/\s+/g, ' ').trim(), 140), stepTitle: q.linkName,
     question: toInspectorQuestion(q), since: item.since,
+    // A study's inspector asked it: it waits in that study only.
+    ...(item.project ? { project: item.project } : {}),
   }
 }
 
