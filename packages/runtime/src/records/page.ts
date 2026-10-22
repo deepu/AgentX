@@ -161,6 +161,22 @@ export async function buildPage(deps: RecordsDeps, def: EntityTypeDef, id: strin
       editable: false, followed: true, ...(hidden.has(name) ? { hidden: true } : {}),
     });
   }
+  // A connector's copy says when it was read (D110): "as of <sync time>", but only on a record the
+  // connector has linked. One it never read (made here, not matched yet) is "not yet in" it.
+  const owners = [...new Set(fields.flatMap((f) => (f.source.kind === 'plugin' ? [f.source.plugin] : [])))];
+  if (owners.length) {
+    const [syncs, links] = await Promise.all([
+      deps.pool.query(`select plugin, at from mw.source_syncs where plugin = any($1::text[]) and at is not null`, [owners]),
+      deps.pool.query(`select distinct plugin from mw.identity_links where entity = any($1::text[]) and record_id = $2 and plugin = any($3::text[])`, [[key, def.entity], id, owners]),
+    ]);
+    const at = new Map(syncs.rows.map((r) => [r.plugin as string, (r.at as Date).toISOString()]));
+    const linked = new Set(links.rows.map((r) => r.plugin as string));
+    for (const f of fields) {
+      if (f.source.kind !== 'plugin') continue;
+      if (!linked.has(f.source.plugin)) f.source = { kind: 'plugin', plugin: f.source.plugin, unlinked: true };
+      else if (at.has(f.source.plugin)) f.source = { ...f.source, asOf: at.get(f.source.plugin)! };
+    }
+  }
   for (const r of refs) {
     const t = await titleOf(deps, actor, r.target, r.id);
     if (t) r.field.ref = { entity: keyOf(r.target), id: r.id, title: t.title };

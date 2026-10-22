@@ -1,0 +1,17 @@
+title: Enrolment
+description: How many subjects each site has randomised against its target, and the open queries.
+blocks:
+  - kpi:
+      label: Randomised
+      value: { count: Subject, where: "subject_status = 'Randomised'" }
+  - kpi:
+      label: Open queries
+      value: { count: Query, where: "query_status = 'Open'" }
+  - kpi:
+      label: Older than 14 days
+      value: { count: Query, where: "query_status = 'Open' and days_since(opened_on) > 14" }
+  - table:
+      title: Sites
+      view: sites
+  - text: |
+      Read from Medidata Rave, which stays the place where data is entered and queries are answered.

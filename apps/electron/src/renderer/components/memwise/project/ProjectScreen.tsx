@@ -273,7 +273,7 @@ function PageColumn({ view, project, projects, stored }: { view: ProjectView; pr
         )
       }
       return d.itemId ? <WaitingItemShellPage key={d.itemId} itemId={d.itemId} /> : <WaitingPage projectId={project.id} projects={projects} />
-    case 'dashboard': return <DashboardPage key={`${d.domain}:${d.pageId}`} domainId={d.domain} pageId={d.pageId} {...(d.params ? { params: d.params } : {})} />
+    case 'dashboard': return <DashboardPage key={`${project.id}:${d.domain}:${d.pageId}`} domainId={d.domain} pageId={d.pageId} {...(d.params ? { params: d.params } : {})} {...(project.stored ? { projectId: project.id } : {})} />
     case 'playbook': return <PlaybookShellPage key={d.workflowId} playbookId={d.workflowId} {...(project.stored ? { scope: project.id } : {})} />
     case 'run': return <RunShellPage key={d.caseId} caseId={d.caseId} />
     case 'record': return <RecordShellPage key={`${d.entity}:${d.recordId}`} entity={d.entity} recordId={d.recordId} />

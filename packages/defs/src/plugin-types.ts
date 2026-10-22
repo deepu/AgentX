@@ -163,7 +163,13 @@ export type Transform =
   /** A number (or numeric text) as Money in this currency. */
   | { money: string }
   /** Text from several source fields: `"{first} {last}"`. Replaces `from`. */
-  | { template: string };
+  | { template: string }
+  /**
+   * Stage 6 (26 §9): the value is the id of another record of the same plugin's source `link`;
+   * the kernel turns it into the domain record linked to it (a `Ref` field), or leaves the field
+   * empty when that record isn't linked yet. Pure mappings leave the outside id as it is.
+   */
+  | { link: string };
 
 export type MappingDirection = 'read' | 'write' | 'both';
 
@@ -216,6 +222,11 @@ export interface BindingDef {
   policy?: PolicyDoc;
   /** The last dry run of this content. */
   dryRun?: { at: string; hash: string; passed: boolean; summary: string };
+  /**
+   * Stage 6 (26 §9): read the mapped record sources again this often (`sync: 15m`), refreshing the
+   * fields the plugin owns on linked records, so a change outside becomes an entity event here.
+   */
+  sync?: { every: string; everyMs: number };
   file: string;
   hash: string;
 }

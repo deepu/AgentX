@@ -505,6 +505,10 @@ export const RPC_CHANNELS = {
     TRIGGERS_RELEASE: 'memwise:triggers:release',
     AUDIT_GET: 'memwise:audit:get',
     AUDIT_EXPORT: 'memwise:audit:export',
+    // Stage 6 (docs/memwise/26-projects-and-pages.md §9): EDC and a study across apps
+    EDC_HOME: 'memwise:edc:home',
+    STUDY_APPS: 'memwise:study:apps',
+    RECORDS_LINKED: 'memwise:records:linked',
     FILES_READ: 'memwise:files:read',
     // Literature (docs/memwise/25-literature-poc.md §6): rows kept from a record chat
     RECORDS_KEEP: 'memwise:records:keep',

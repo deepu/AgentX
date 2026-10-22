@@ -498,7 +498,8 @@ const transform = z.union([
   z.strictObject({ map: z.record(z.string(), z.unknown()) }),
   z.strictObject({ money: z.string().regex(/^[A-Z]{3}$/, { error: 'expected a 3-letter ISO currency code' }) }),
   z.strictObject({ template: z.string().meta({ description: 'Text from several source fields: "{first} {last}".' }) }),
-], { error: 'expected trim, lower, upper, digits, squash, { default }, { map }, { money: INR } or { template }' });
+  z.strictObject({ link: z.string().meta({ description: 'The value is the id of a record of this record source; it becomes the domain record linked to it (for Ref fields).' }) }),
+], { error: 'expected trim, lower, upper, digits, squash, { default }, { map }, { money: INR }, { template } or { link: <record source> }' });
 
 export const bindingFormat = z.strictObject({
   plugin: z.string(),
@@ -528,6 +529,8 @@ export const bindingFormat = z.strictObject({
   })).optional(),
   policy: policyFormat.optional(),
   dry_run: z.strictObject({ at: z.string(), hash: z.string(), passed: z.boolean(), summary: z.string() }).optional(),
+  sync: z.strictObject({ every: z.string().meta({ description: 'How often, e.g. 15m or 1h.' }) }).optional()
+    .meta({ description: 'Read the mapped record sources again this often, refreshing the fields the plugin owns.' }),
 }).meta({ title: 'MemWise binding', description: 'domain/bindings/<slug>.yaml: how one plugin is bound into this domain.' });
 
 // ---------------------------------------------------------------- apps and projects (26 §3)

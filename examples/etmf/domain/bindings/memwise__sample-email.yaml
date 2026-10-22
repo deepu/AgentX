@@ -1,0 +1,15 @@
+# The sample email plugin provides `email.send` (a sandbox outbox: nothing leaves the machine), for
+# "Chase old queries" and the eTMF's requests to sites. Swap in memwise/email-smtp to send for real.
+plugin: memwise/sample-email
+plugin_version: 1.0.0
+plugin_hash: 85d1f354f2e629e06ea9185625b70fcd347a41a65765461e97830a6eb298e800
+version: 1
+frozen:
+  by: example
+  at: 2026-10-21T09:00:00Z
+tools:
+  email.send: { effect: outbound }
+capabilities: {}
+entities: {}
+roles: {}
+records: {}

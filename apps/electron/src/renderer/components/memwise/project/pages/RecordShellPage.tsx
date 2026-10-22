@@ -22,6 +22,7 @@ import { RecordPageView } from '../../records/RecordPageView'
 import { pluralTitle } from '../project-model'
 import { useProjectShell } from '../shell-context'
 import { stepNumber } from './every-page-model'
+import { RecordOwnedFacts } from '../../edc/EdcScreens'
 
 function Crumb({ parts }: { parts: { label: React.ReactNode; onClick?: () => void }[] }) {
   return (
@@ -71,7 +72,7 @@ export function RecordShellPage({ entity, recordId }: { entity: string; recordId
   )
   return (
     <div className="h-full overflow-y-auto" data-testid="shell-page">
-      <RecordPageView key={`${page.entity}:${page.id}`} page={page} actions={actions} files={files} shell={{ crumb }} />
+      <RecordPageView key={`${page.entity}:${page.id}`} page={page} actions={actions} files={files} shell={{ crumb }} extra={<RecordOwnedFacts page={page} />} />
     </div>
   )
 }

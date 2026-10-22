@@ -102,7 +102,7 @@ function boundParams(entities: Record<string, EntityTypeDef>, page: FreePageDef,
 }
 
 export async function buildTree(deps: RecordsDeps, _service: RecordsService, domain: string, actor: Actor,
-  opts: { parent?: { entity: string; id: string } } = {}): Promise<TreeNode[]> {
+  opts: { parent?: { entity: string; id: string }; project?: string } = {}): Promise<TreeNode[]> {
   const entities = deps.entities();
   const d = domainDef(deps.project(), domain);
   const mine = Object.values(entities).filter((e) => domainOfEntity(e) === domain);
@@ -124,12 +124,13 @@ export async function buildTree(deps: RecordsDeps, _service: RecordsService, dom
       const roots = mine.filter((e) => !parentOf(entities, e) && childrenOf(e).length > 0);
       const loose = mine.filter((e) => !parentOf(entities, e) && childrenOf(e).length === 0);
       for (const def of roots) {
-        const r = await queryRecords(deps, def, { limit: TREE_GROUP_LIMIT + 1 }, actor, {}, db);
+        // A project's tree has its own records (Stage 3); below a record, its children are its own.
+        const r = await queryRecords(deps, def, { limit: TREE_GROUP_LIMIT + 1, ...(opts.project ? { project: opts.project } : {}) }, actor, {}, db);
         if (r.total > TREE_GROUP_LIMIT) out.push({ kind: 'group', entity: keyOf(def), title: groupLabel(def), count: r.total, viewFilter: '' });
         else out.push(...recordNodes(def, r));
       }
       for (const def of loose) {
-        const r = await queryRecords(deps, def, { limit: 1 }, actor, {}, db);
+        const r = await queryRecords(deps, def, { limit: 1, ...(opts.project ? { project: opts.project } : {}) }, actor, {}, db);
         if (r.total) out.push({ kind: 'group', entity: keyOf(def), title: groupLabel(def), count: r.total, viewFilter: '' });
       }
       for (const p of freePages) if (!p.under) out.push({ kind: 'page', pageId: p.id, title: p.title, params: {} });
@@ -192,7 +193,10 @@ function scopedFilter(def: EntityTypeDef, filter: string | undefined, params: Re
 }
 
 export async function buildDashboard(deps: RecordsDeps, _service: RecordsService, domain: string, pageId: string, params: Record<string, string>,
-  actor: Actor): Promise<DashboardData> {
+  actor: Actor, opts: { project?: string } = {}): Promise<DashboardData> {
+  // Stage 3: a project's page counts its own records (app-scoped types are everyone's).
+  const inProject = opts.project ? { project: opts.project } : {};
+  const projectsOf = (def: EntityTypeDef) => (opts.project && projectScoped(def) ? { projects: [opts.project] } : {});
   const entities = deps.entities();
   const d = domainDef(deps.project(), domain);
   const page = d.pages[pageId];
@@ -221,6 +225,7 @@ export async function buildDashboard(deps: RecordsDeps, _service: RecordsService
         const a = aggregateOf(block.value);
         const value = await entityStore.aggregate(db, defOf(a.entity), entities, {
           kind: a.kind, ...(a.field ? { field: a.field } : {}), ...(a.where ? { where: a.where } : {}), ...(a.of ? { of: a.of } : {}), params: bound,
+          ...projectsOf(defOf(a.entity)),
         });
         const format = block.format ?? (a.kind === 'percent' ? 'percent' : 'number');
         out.push({ kind: 'kpi', label: block.label, value, ...(block.target !== undefined ? { target: block.target } : {}), format });
@@ -230,17 +235,17 @@ export async function buildDashboard(deps: RecordsDeps, _service: RecordsService
         const filter = scopedFilter(def, view.filter, bound);
         const result = await queryRecords(deps, def, {
           ...(filter ? { filter } : {}), ...(view.sort ? { sort: view.sort } : {}), ...(view.group ? { group: view.group } : {}),
-          ...(view.columns ? { columns: view.columns } : {}), limit: block.kind === 'list' ? 20 : 100,
+          ...(view.columns ? { columns: view.columns } : {}), limit: block.kind === 'list' ? 20 : 100, ...inProject,
         }, actor, bound, db);
         out.push({ kind: block.kind, ...(block.title ? { title: block.title } : {}), result });
       } else if (block.kind === 'chart') {
         // Literature (25 §5): counts per `by`, or an interval per record, narrowed by the page's params.
         const def = defOf(block.entity);
-        const chart = await chartData(deps, actor, db, def, block, scopedFilter(def, block.where, bound), bound);
+        const chart = await chartData(deps, actor, db, def, block, scopedFilter(def, block.where, bound), bound, opts);
         out.push({ kind: 'chart', chart });
       } else if (block.kind === 'heatmap') {
         const def = defOf(block.rows.entity);
-        const r = await queryRecords(deps, def, { ...(block.rows.where ? { filter: block.rows.where } : {}), limit: 200 }, actor, bound, db);
+        const r = await queryRecords(deps, def, { ...(block.rows.where ? { filter: block.rows.where } : {}), limit: 200, ...inProject }, actor, bound, db);
         out.push({
           kind: 'heatmap', ...(block.title ? { title: block.title } : {}),
           columns: block.columns.map((c) => c.label),

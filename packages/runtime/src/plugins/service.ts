@@ -3,7 +3,8 @@
 // Files are `@memwise/defs`'s (plugins/, domain/bindings/, binding drafts); the kernel adds the
 // database (installs, freezes, identity links), the gateway (reads through plugin tools) and runs.
 import {
-  actorLabel, PgBindingVersionStore, PgEntityStore, PgIdentityStore, PgPluginStore, ulid, withActor, withTransaction,
+  actorLabel, PgBindingVersionStore, PgEntityStore, PgIdentityStore, PgPluginStore, PROJECT_COLUMN, projectScoped, tableOf, ulid, withActor,
+  withRecordContext, withTransaction,
 } from '@memwise/db';
 import {
   applyDraft, BINDINGS_DIR, keyOf, bindingPath, DEFAULT_DOMAIN, hasRole, bindingToYaml, checkProject, compileRecordMapping, createBindingDraft, DraftConflictError,
@@ -12,7 +13,7 @@ import {
   writeDraftFiles, writeDraftReport,
   type BindingDef, type BindingGap, type BindingReport, type Diagnostic, type DraftReport, type EffectClass, type EntityTypeDef,
   type ExampleOutcome, type IdentityCandidate, type InstalledPlugin, type MappedRecord, type PluginManifest, type ProjectDefs,
-  type RecordBinding, type RecordSourceDef, type StepToken, type StructuralDiff, type WorkflowDef,
+  type RecordBinding, type RecordSourceDef, type StepToken, type StructuralDiff, type ValueType, type WorkflowDef,
 } from '@memwise/defs';
 import { createToolGateway, type ToolContext, type ToolDefinition, type ToolGateway } from '@memwise/gateway';
 import { PgEffectLedger, PgRateCounter } from '@memwise/db';
@@ -24,7 +25,7 @@ import type pg from 'pg';
 import { domainTools } from '../domain-tools.ts';
 import { loadDomainPolicy, projectPolicyLayers } from '../runs.ts';
 import {
-  BIND_PLUGIN, type Actor, type BindingView, type EntityRecordView, type IdentityService, type KernelChange, type PersonActor,
+  BIND_PLUGIN, type Actor, type BindingView, type EntityRecordView, type IdentityService, type KernelChange, type PersonActor, type ResolveCounts, type SourceSync,
   type PluginDetail, type PluginsService, type PluginSummary, type RunRecord, type StartRunInput, type TestRunner,
 } from '../types.ts';
 import type {
@@ -34,6 +35,9 @@ import { discoverMcpTools, type McpConnections } from './routes.ts';
 import {
   boundPlugins, isReservedToolName, pluginPolicies, pluginTool, pluginToolEnvironment, toolClass, type BoundPlugin,
 } from './tools.ts';
+
+/** How soon a connector whose read failed is read again (Stage 6), when its interval is longer. */
+const RETRY_FAILED_MS = 5 * 60_000;
 
 export interface PluginServiceDeps {
   /** Absolute project folder. */
@@ -99,6 +103,49 @@ function recordIn(result: unknown, source: RecordSourceDef): Record<string, unkn
   if (source.get?.item || valueAt(obj, source.key) !== undefined) return obj;
   const inner = Object.values(obj).filter((v): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) && valueAt(v, source.key) !== undefined);
   return inner.length === 1 ? inner[0] : obj;
+}
+
+const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
+const blank = (v: unknown) => v === undefined || v === null || v === '';
+/**
+ * A project connection's settings as a tool's arguments: only the names the tool's input takes
+ * (`study` for Rave), never anything else. Connection settings hold no credentials (26 §3).
+ */
+export function argsFrom(settings: Record<string, unknown> | undefined, inputSchema: Record<string, unknown> | undefined): Record<string, unknown> {
+  const props = (inputSchema?.properties ?? {}) as Record<string, unknown>;
+  return Object.fromEntries(Object.entries(settings ?? {}).filter(([k, v]) => k in props && v !== undefined && v !== null && v !== ''));
+}
+
+/** A mapped record whose `{ link }` references found no linked record: those fields are kept as they are. */
+type LinkedMappedRecord = MappedRecord & { keep?: string[] };
+
+/**
+ * Whether the value stored and the value a source gives now are the same for a field of this type,
+ * so a sweep writes a version only when something changed: "104" and 104 in a Text field, 7 and
+ * "7" in a Number one, a Date as a day however it is written.
+ */
+export function sameValue(a: unknown, b: unknown, type?: ValueType): boolean {
+  if (blank(a) || blank(b)) return blank(a) && blank(b);
+  return normalFor(a, type) === normalFor(b, type);
+}
+
+function normalFor(v: unknown, type?: ValueType): unknown {
+  const name = type?.kind === 'scalar' ? type.name : type?.kind === 'quantity' ? 'Number' : undefined;
+  const asNumber = (x: unknown) => (typeof x === 'number' ? x : typeof x === 'string' && x.trim() !== '' && !Number.isNaN(Number(x)) ? Number(x) : x);
+  const toIso = (x: unknown) => (x instanceof Date ? x.toISOString() : typeof x === 'string' && !Number.isNaN(Date.parse(x)) ? new Date(x).toISOString() : x);
+  switch (name) {
+    case 'Number': case 'Percentage': case 'Duration': return asNumber(v);
+    case 'Date': { const d = toIso(v); return typeof d === 'string' ? d.slice(0, 10) : typeof v === 'string' ? v.slice(0, 10) : v; }
+    case 'DateTime': return toIso(v);
+    case 'Boolean': return v === true || v === 'true' ? true : v === false || v === 'false' ? false : v;
+  }
+  if (type && (type.kind === 'scalar' || type.kind === 'identifier' || type.kind === 'enum' || type.kind === 'ref')) {
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+  }
+  // Without a type (or a structured one): dates as days, the rest as written.
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T00:00:00(\.000)?Z$/.test(v)) return v.slice(0, 10);
+  return typeof v === 'object' ? JSON.stringify(v) : v;
 }
 
 /** A plugin's namespace: the first segment its tool names share (`crm` for `crm.list_contacts`). */
@@ -694,29 +741,175 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
     return out;
   }
 
-  const identity: IdentityService = {
-    async resolve({ plugin: pluginId, source }) {
+  async function resolveNow({ plugin: pluginId, source }: { plugin: string; source?: string }): Promise<ResolveCounts> {
+    const totals = { linked: 0, candidates: 0, unmatched: 0, created: 0, refreshed: 0 };
+    let everyMs: number | undefined;
+    let failed = false;
+    // Stage 6 Part B: a project whose read fails (a study the account can't see), or that clashes
+    // with another over a study, is recorded against that project; the others are still read.
+    const failures = new Map<string, string>();
+    const read = new Set<string>();
+    try {
+      // Everything that can fail is in here, so every failure is recorded with its next try (not
+      // retried on each minute's sweep).
       const project = await live();
       const bp = boundPlugins(project).find((b) => b.manifest.id === pluginId);
       if (!bp) throw new Error(`${pluginId} is not bound`);
+      everyMs = bp.binding.sync?.everyMs;
       const policies = pluginPolicies(boundPlugins(project));
       const ns = pluginNamespace(bp.manifest);
-      const totals = { linked: 0, candidates: 0, unmatched: 0, created: 0 };
       const sources = Object.entries(bp.binding.records).filter(([name]) => !source || name === source);
       if (source && !sources.length) throw new Error(`the binding of ${pluginId} maps no record source ${source}`);
+      // In the binding's order, so a source others link to (sites, for subjects) is read first.
       for (const [name, rb] of sources) {
         const def = bp.manifest.records[name];
         const entity = entityDef(rb.entity);
         if (!def || !entity) continue;
-        const result = await readThrough(deps.tools(), def.list.tool, def.list.args ?? {}, `identity.${name}`, policies);
-        const items = valueAt(result, def.list.items);
-        if (!Array.isArray(items)) throw new Error(`${def.list.tool} returned no list${def.list.items ? ` at ${def.list.items}` : ''}`);
-        const map = compileRecordMapping(rb, def, ns, entity);
-        const counts = await resolveSource(pluginId, name, rb, entity, items.map((i) => map((i ?? {}) as Record<string, unknown>)));
-        for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += counts[k];
+        // Stage 6 Part B: read once for each project whose connection goes through this plugin (its
+        // settings, like the study, fill the tool's arguments of the same name), into that project.
+        // No such project: once for the workspace, as before projects.
+        const { targets, clashes } = await connectedProjects(project, pluginId, entity, bp.manifest.title ?? pluginId);
+        for (const [p, why] of clashes) if (!failures.has(p)) failures.set(p, why);
+        for (const target of targets) {
+          // A project that failed on an earlier source (its study) isn't read for the later ones.
+          if (target && failures.has(target.project)) continue;
+          try {
+            const args = { ...(def.list.args ?? {}), ...argsFrom(target?.settings, deps.tools().get(def.list.tool)?.inputSchema) };
+            const result = await readThrough(deps.tools(), def.list.tool, args, `identity.${name}${target ? `@${target.project}` : ''}`, policies);
+            const items = valueAt(result, def.list.items);
+            if (!Array.isArray(items)) throw new Error(`${def.list.tool} returned no list${def.list.items ? ` at ${def.list.items}` : ''}`);
+            const map = compileRecordMapping(rb, def, ns, entity);
+            const mapped = await resolveLinkedRefs(pluginId, rb, items.map((i) => map((i ?? {}) as Record<string, unknown>)));
+            // Only a binding with `sync:` keeps a copy of what the plugin owns (D110); others read it through.
+            const owned = everyMs ? ownedFields(entity, bp.manifest, ns, name, rb) : [];
+            const counts = await resolveSource(pluginId, name, rb, entity, mapped, { owned, title: bp.manifest.title, ...(target ? { project: target.project } : {}) });
+            for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += counts[k];
+            if (target) read.add(target.project);
+          } catch (e) {
+            // The workspace's own read fails as a whole, as before projects.
+            if (!target) throw e;
+            failures.set(target.project, (e as Error).message);
+          }
+        }
       }
+    } catch (e) {
+      failed = true;
+      // Recording the failure must not hide it: the read's own error is the one that matters.
+      await recordSync(pluginId, { error: (e as Error).message, everyMs: everyMs ?? (await syncInterval(pluginId)) }).catch(() => undefined);
+      throw e;
+    } finally {
+      // A failed read changes what screens show too: what it linked, made or refreshed before it
+      // failed (a source part way through), and the error itself on the source's "last read".
+      if (failed) changed();
+    }
+    const { refreshed, ...rest } = totals;
+    const result: ResolveCounts = { ...rest, ...(refreshed ? { refreshed } : {}) };
+    if (failures.size) {
+      // One line per project (`<project>: <why>`), so each project's screens show their own; the
+      // projects read fine are refreshed, and the read is tried again within minutes.
+      const error = [...failures].sort(([a], [b]) => a.localeCompare(b)).map(([p, why]) => `${p}: ${why}`).join('\n');
+      await recordSync(pluginId, { error, counts: result, everyMs, read: [...read].some((p) => !failures.has(p)) }).catch(() => undefined);
       changed();
-      return totals;
+      throw new Error(error);
+    }
+    if (!source) await recordSync(pluginId, { counts: result, everyMs });
+    changed();
+    return result;
+  }
+
+  /**
+   * The projects a plugin's record source is read for (Stage 6 Part B): each active project running
+   * the entity's app with a connection through the plugin, with its study and that connection's
+   * settings. None connects: one read for the workspace (`[undefined]`), as before projects.
+   *
+   * One study is read into one project (D114): identity links are one per outside record, so a
+   * second project reading the same study would find every record linked already and stay empty.
+   * The first by id reads it; the others are clashes, reported against them.
+   */
+  async function connectedProjects(project: ProjectDefs, pluginId: string, entity: EntityTypeDef, title: string): Promise<{
+    targets: ({ project: string; settings: Record<string, unknown> } | undefined)[]; clashes: Map<string, string>;
+  }> {
+    const app = entity.domain ?? DEFAULT_DOMAIN;
+    const candidates = Object.values(project.projects ?? {}).filter((p) => !p.implicit && p.apps.includes(app) && p.connections.some((x) => x.plugin === pluginId));
+    // No project connects through it: one read for the workspace. Some do but none runs: none.
+    if (!candidates.length) return { targets: [undefined], clashes: new Map() };
+    // The live status is the database's (the file's is where a project started).
+    const live = new Map((await deps.pool.query<{ id: string; status: string }>(`select id, status from mw.projects where id = any($1::text[])`, [candidates.map((p) => p.id)])).rows.map((r) => [r.id, r.status]));
+    const active = candidates.filter((p) => (live.get(p.id) ?? p.status) === 'active').sort((a, b) => a.id.localeCompare(b.id));
+    const targets: { project: string; settings: Record<string, unknown> }[] = [];
+    const clashes = new Map<string, string>();
+    const claimed = new Map<string, string>(); // study (lower case; '' = every study) → project
+    for (const p of active) {
+      const c = p.connections.find((x) => x.plugin === pluginId)!;
+      // The project's own study (`study:` in project.yaml) is the connection's study unless the
+      // connection names another: one study, named once, for every app the project runs.
+      const settings = { ...(p.study ? { study: p.study } : {}), ...(c.settings ?? {}) };
+      const study = typeof settings.study === 'string' ? settings.study.trim().toLowerCase() : '';
+      const owner = claimed.get(study) ?? (study === '' ? claimed.values().next().value : claimed.get(''));
+      if (owner) {
+        clashes.set(p.id, `${study ? `study ${String(settings.study)}` : 'every study'} is read from ${title} into ${owner} already; one study is read into one project. Name another study for ${p.id}, or remove its ${title} connection.`);
+        continue;
+      }
+      claimed.set(study, p.id);
+      targets.push({ project: p.id, settings });
+    }
+    return { targets, clashes };
+  }
+
+  /** The binding's `sync:` interval, for recording a failure that came before the binding was read. */
+  async function syncInterval(pluginId: string): Promise<number | undefined> {
+    try {
+      return boundPlugins(await live()).find((b) => b.manifest.id === pluginId)?.binding.sync?.everyMs;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** One read of a plugin's sources at a time (the sweep and a person's "Read now" may meet). */
+  const reading = new Map<string, Promise<unknown>>();
+  function oneAtATime<T>(pluginId: string, fn: () => Promise<T>): Promise<T> {
+    const before = reading.get(pluginId) ?? Promise.resolve();
+    const next = before.catch(() => undefined).then(fn);
+    reading.set(pluginId, next);
+    void next.finally(() => { if (reading.get(pluginId) === next) reading.delete(pluginId); }).catch(() => undefined);
+    return next;
+  }
+
+  const identity: IdentityService = {
+    resolve(input) {
+      return oneAtATime(input.plugin, () => resolveNow(input));
+    },
+
+    async syncs() {
+      const project = await live();
+      const withSources = boundPlugins(project).filter((b) => Object.keys(b.binding.records).length);
+      const { rows } = await deps.pool.query(`select * from mw.source_syncs where plugin = any($1::text[])`, [withSources.map((b) => b.manifest.id)]);
+      const byId = new Map(rows.map((r) => [r.plugin as string, r]));
+      return withSources.map((b): SourceSync => {
+        const r = byId.get(b.manifest.id);
+        return {
+          plugin: b.manifest.id, counts: r?.counts ?? {},
+          ...(r?.at ? { at: iso(r.at) } : {}), ...(r?.next_due ? { nextDue: iso(r.next_due) } : {}),
+          ...(r?.error ? { error: r.error, errorAt: iso(r.error_at) } : {}),
+        };
+      });
+    },
+
+    async syncDue(now = new Date()) {
+      const out: { plugin: string; counts?: ResolveCounts; error?: string }[] = [];
+      const project = await live();
+      for (const b of boundPlugins(project)) {
+        if (!b.binding.sync || !Object.keys(b.binding.records).length) continue;
+        const { rows } = await deps.pool.query(`select next_due from mw.source_syncs where plugin = $1`, [b.manifest.id]);
+        const due = rows[0]?.next_due as Date | null | undefined;
+        if (due && due.getTime() > now.getTime()) continue;
+        try {
+          out.push({ plugin: b.manifest.id, counts: await identity.resolve({ plugin: b.manifest.id }) });
+        } catch (e) {
+          out.push({ plugin: b.manifest.id, error: (e as Error).message });
+        }
+      }
+      return out;
     },
 
     async candidates(filter = {}) {
@@ -769,19 +962,112 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
     },
   };
 
+  /** Records a plugin's read: when, what it found or why it failed, and when it is due again. */
+  async function recordSync(pluginId: string, r: { counts?: ResolveCounts; error?: string; everyMs?: number; read?: boolean }) {
+    // A failed read is tried again sooner (at most five minutes on), not a whole interval later.
+    const next = r.everyMs ? new Date(Date.now() + (r.error !== undefined ? Math.min(r.everyMs, RETRY_FAILED_MS) : r.everyMs)) : null;
+    if (r.error !== undefined && r.read) {
+      // Some projects were read, some failed: when they were read, and why the others weren't.
+      await deps.pool.query(
+        `insert into mw.source_syncs (plugin, at, next_due, counts, error, error_at) values ($1, now(), $2, $3, $4, now())
+         on conflict (plugin) do update set at = excluded.at, next_due = excluded.next_due, counts = excluded.counts, error = excluded.error, error_at = excluded.error_at`,
+        [pluginId, next, JSON.stringify(r.counts ?? {}), r.error]);
+    } else if (r.error !== undefined) {
+      await deps.pool.query(
+        `insert into mw.source_syncs (plugin, next_due, error, error_at) values ($1, $2, $3, now())
+         on conflict (plugin) do update set next_due = excluded.next_due, error = excluded.error, error_at = excluded.error_at`, [pluginId, next, r.error]);
+    } else {
+      await deps.pool.query(
+        `insert into mw.source_syncs (plugin, at, next_due, counts) values ($1, now(), $2, $3)
+         on conflict (plugin) do update set at = excluded.at, next_due = excluded.next_due, counts = excluded.counts, error = null, error_at = null`,
+        [pluginId, next, JSON.stringify(r.counts ?? {})]);
+    }
+  }
+
+  /**
+   * Stage 6: fields mapped with `{ link: <source> }` hold another source's outside id; each becomes
+   * the domain record linked to it, or is left out when that record isn't linked (yet).
+   */
+  async function resolveLinkedRefs(pluginId: string, rb: RecordBinding, mapped: MappedRecord[]): Promise<LinkedMappedRecord[]> {
+    const linkFields = Object.entries(rb.fields).flatMap(([field, m]) => {
+      const t = m.transform?.find((x): x is { link: string } => typeof x === 'object' && 'link' in x);
+      return t ? [[field, t.link] as const] : [];
+    });
+    if (!linkFields.length) return mapped;
+    const bySource = new Map<string, Map<string, string>>();
+    for (const [, src] of linkFields) {
+      if (bySource.has(src)) continue;
+      bySource.set(src, new Map((await identityStore.linksOf(deps.pool, pluginId, src)).map((l) => [l.externalId, l.recordId])));
+    }
+    return mapped.map((rec) => {
+      const values = { ...rec.values };
+      const keep: string[] = [];
+      for (const [field, src] of linkFields) {
+        const outside = values[field];
+        if (outside === undefined) continue;
+        const id = bySource.get(src)!.get(String(outside));
+        if (id) values[field] = id;
+        else { delete values[field]; keep.push(field); }
+      }
+      return { ...rec, values, ...(keep.length ? { keep } : {}) };
+    });
+  }
+
+  /** The entity's fields this plugin owns (its `ownership:` names the plugin, its namespace or the source) that this mapping fills. */
+  function ownedFields(entity: EntityTypeDef, manifest: PluginManifest, ns: string, source: string, rb: RecordBinding): string[] {
+    return Object.entries(entity.ownership ?? {})
+      .filter(([field, owner]) => (owner === manifest.id || owner === ns || owner === source) && field in rb.fields && field in entity.fields)
+      .map(([field]) => field);
+  }
+
   /** Links, proposes or creates for one source's mapped records; counts where each record stands now. */
-  async function resolveSource(pluginId: string, source: string, rb: RecordBinding, entity: EntityTypeDef, mapped: MappedRecord[]) {
-    const counts = { linked: 0, candidates: 0, unmatched: 0, created: 0 };
+  async function resolveSource(pluginId: string, source: string, rb: RecordBinding, entity: EntityTypeDef, mapped: LinkedMappedRecord[],
+    opts: { owned?: string[]; title?: string; project?: string } = {}) {
+    const counts = { linked: 0, candidates: 0, unmatched: 0, created: 0, refreshed: 0 };
     const existing = new Map((await identityStore.linksOf(deps.pool, pluginId, source)).map((l) => [l.externalId, l]));
     const decided = await identityStore.candidates(deps.pool, { plugin: pluginId, source });
     const rejected = new Set(decided.filter((c) => c.status === 'rejected').map((c) => `${c.externalId}\0${c.recordId}`));
-    // The entity's rows as the system sees them (every field), for matching.
-    const rows = (await entityStore.list(deps.pool, entity, { limit: 10_000, unrestricted: true })).map((r) => ({ id: r.id, values: r.values }));
+    // Rows as the system sees them (every field): those already linked, looked up by id for the
+    // refresh below; those not linked yet, for matching new records against.
     const linkedRecords = new Set((await deps.pool.query(`select record_id from mw.identity_links where plugin = $1 and source = $2`, [pluginId, source])).rows.map((r) => r.record_id as string));
+    const wanted = [...new Set(mapped.flatMap((m) => { const l = m.externalId ? existing.get(m.externalId) : undefined; return l ? [l.recordId] : []; }))];
+    // One study is read into one project (D114): records this read already links but that sit in
+    // another project (read before the project connected, or before its `study:` changed) move
+    // into it, so the project never reads its study and stays empty.
+    if (opts.project && projectScoped(entity) && wanted.length) {
+      await withTransaction(deps.pool, async (db) => {
+        await withRecordContext(db, { by: `source:${pluginId}`, via: `sync:${source}`, reason: `Read from ${opts.title ?? pluginId} for project ${opts.project}` });
+        await db.query(`update ${tableOf(entity)} set ${PROJECT_COLUMN} = $1 where id = any($2::text[]) and ${PROJECT_COLUMN} is distinct from $1`, [opts.project, wanted]);
+      });
+    }
+    const rowById = new Map((opts.owned?.length ? await entityStore.getMany(deps.pool, entity, wanted, { unrestricted: true }) : []).map((r) => [r.id, { id: r.id, values: r.values }]));
+    const rows = (await entityStore.unlinked(deps.pool, entity, { plugin: pluginId, source }, opts.project ? { project: opts.project } : {})).map((r) => ({ id: r.id, values: r.values }));
+    const owned = opts.owned ?? [];
     for (const rec of mapped) {
       if (!rec.externalId) { counts.unmatched++; continue; }
       const link = existing.get(rec.externalId);
-      if (link) { if (link.method === 'created') counts.created++; else counts.linked++; continue; }
+      if (link) {
+        if (link.method === 'created') counts.created++; else counts.linked++;
+        // Stage 6: the fields the plugin owns follow what it says now. Rave is their only source:
+        // nothing here edits them, so a difference is a change made there (a new coordinator).
+        const row = rowById.get(link.recordId);
+        if (row && owned.length) {
+          const changes: Record<string, unknown> = {};
+          for (const f of owned) {
+            // A reference whose record isn't linked yet keeps what it had (not nulled, then put back).
+            if (rec.keep?.includes(f)) continue;
+            if (!sameValue(row.values[f], rec.values[f], entity.fields[f]?.type)) changes[f] = rec.values[f] ?? null;
+          }
+          if (Object.keys(changes).length) {
+            await withTransaction(deps.pool, async (db) => {
+              await withRecordContext(db, { by: `source:${pluginId}`, via: `sync:${source}`, reason: `Read from ${opts.title ?? pluginId}` });
+              await entityStore.update(db, entity, link.recordId, changes);
+            });
+            counts.refreshed++;
+          }
+        }
+        continue;
+      }
       // A domain record already linked to another record of this source is not offered again.
       const candidates = rows.filter((r) => !linkedRecords.has(r.id) && !rejected.has(`${rec.externalId}\0${r.id}`));
       const match = matchRecord(rec.values, candidates, rb.identity);
@@ -797,7 +1083,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
         counts.candidates++;
       } else if (rb.identity.createMissing) {
         const values = Object.fromEntries(Object.entries(rec.values).filter(([k]) => k in entity.fields));
-        const id = await entityStore.create(deps.pool, entity, values, { idempotencyKey: `identity:${pluginId}:${source}:${rec.externalId}` });
+        const id = await entityStore.create(deps.pool, entity, values, { idempotencyKey: `identity:${pluginId}:${source}:${rec.externalId}`, ...(opts.project ? { project: opts.project } : {}) });
         await identityStore.link(deps.pool, { ...base, recordId: id, method: 'created', score: 0, reasons: ['nothing matched, so it was created'] });
         linkedRecords.add(id);
         counts.created++;

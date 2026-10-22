@@ -19,6 +19,7 @@ import type { RecordPageActions } from './RecordBlocks'
 import type { ReviewQueue, ReviewSubmit } from './DocumentReview'
 import { RecordPageView, type RecordPageViewProps, type ViewerFile } from './RecordPageView'
 import { useProjectShell } from '../project/shell-context'
+import { RecordOwnedFacts } from '../edc/EdcScreens'
 
 /** The bytes of the page's first document viewer. */
 export function useViewerFiles(page: MwRecordPage | null): Record<string, ViewerFile> {
@@ -95,7 +96,7 @@ export function RecordPage({ entity, recordId }: { entity: string; recordId: str
   return (
     <Info_Page loading={!page && !error && !loaded} error={!page && error ? error : undefined} empty={loaded && !error && !page ? t('memwise.record.missing') : undefined}>
       <Info_Page.Header title={page?.title ?? t('memwise.record.title')} />
-      {page && <RecordPageView key={`${page.entity}:${page.id}`} page={page} actions={actions} files={files} />}
+      {page && <RecordPageView key={`${page.entity}:${page.id}`} page={page} actions={actions} files={files} extra={<RecordOwnedFacts page={page} />} />}
     </Info_Page>
   )
 }

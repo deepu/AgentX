@@ -1,0 +1,96 @@
+# Medidata Rave, bound for the workspace (bindings are workspace-wide until Stage 3 makes them per
+# project). Every tool only reads. Rave's studies, sites, subjects and queries map onto EDC's
+# Study, Site, Subject and Query, keyed by their Rave reference; the fields they fill are owned by
+# the plugin (read only here) and read again every 15 minutes (`sync:`), so a change in Rave (a new
+# coordinator) is a change event in MemWise (26 §9, D110).
+plugin: memwise/medidata-rave
+plugin_version: 1.0.0
+plugin_hash: f621d9efe25b051f3cccc0c6832c3da9e30d5ff7b3566ce4fd9e5b68a7550407
+version: 1
+frozen:
+  by: example
+  at: 2026-10-21T09:00:00Z
+tools:
+  rave.list_studies: { effect: read }
+  rave.list_sites: { effect: read }
+  rave.get_site: { effect: read }
+  rave.site_staff: { effect: read }
+  rave.list_subjects: { effect: read }
+  rave.get_subject: { effect: read }
+  rave.list_queries: { effect: read }
+  rave.get_query: { effect: read }
+  rave.form_status: { effect: read }
+capabilities: {}
+entities: {}
+roles: {}
+records:
+  study:
+    entity: edc.Study
+    fields:
+      rave_ref: Ref
+      protocol: Study
+      name: StudyName
+      environment: Environment
+      enrolment_target: EnrollmentTarget
+      planned_by_now: PlannedByNow
+      site_count: Sites
+      pages_verified: PagesVerifiedPercent
+    identity:
+      keys: [rave_ref]
+      create_missing: true
+  site:                                    # before subjects and queries, which link to sites
+    entity: edc.Site
+    fields:
+      rave_ref: Ref
+      site_number: SiteNumber
+      name: { from: SiteName, transform: [trim, squash] }
+      study: Study
+      city: City
+      country: Country
+      principal_investigator: Investigator
+      pi_email: { from: InvestigatorEmail, transform: [trim, lower] }
+      coordinator: Coordinator
+      coordinator_email: { from: CoordinatorEmail, transform: [trim, lower] }
+      coordinator_since: CoordinatorSince
+      enrolment_target: EnrollmentTarget
+      pages_verified: PagesVerifiedPercent
+      pages_overdue: PagesOverdue
+    identity:
+      keys: [rave_ref]
+      create_missing: true
+  subject:
+    entity: edc.Subject
+    fields:
+      rave_ref: Ref
+      subject_key: SubjectKey
+      site: { from: SiteRef, transform: [{ link: site }] }
+      study: Study
+      subject_status: Status
+      randomised_on: RandomisedDate
+      last_visit: LastVisit
+      last_visit_on: LastVisitDate
+    identity:
+      keys: [rave_ref]
+      create_missing: true
+  query:
+    entity: edc.Query
+    fields:
+      rave_ref: Ref
+      subject_key: SubjectKey
+      site_number: SiteNumber
+      site: { from: SiteRef, transform: [{ link: site }] }
+      subject: { from: SubjectRef, transform: [{ link: subject }] }
+      study: Study
+      visit: Folder
+      form: Form
+      field: Field
+      text: QueryText
+      marking_group: MarkingGroup
+      query_status: Status
+      opened_on: OpenedDate
+      closed_on: ClosedDate
+    identity:
+      keys: [rave_ref]
+      create_missing: true
+sync:
+  every: 15m

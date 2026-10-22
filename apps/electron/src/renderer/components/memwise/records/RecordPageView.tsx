@@ -67,6 +67,8 @@ export interface RecordPageViewProps {
    * layout's columns side by side at the narrower width of the shell's page column.
    */
   shell?: { crumb: React.ReactNode; /** Facts after the record's own (the step a review comes from). */ subtitle?: React.ReactNode }
+  /** Stage 6: blocks the container adds below the columns (the same record in other apps). */
+  extra?: React.ReactNode
 }
 
 const LAYOUT_GRID: Record<MwRecordPage['layout']['layout'], string> = {
@@ -86,7 +88,7 @@ function ShellFrame({ children }: { children: React.ReactNode; wide?: boolean })
   return <div className="mx-auto max-w-[1080px] px-7 pb-16 pt-6">{children}</div>
 }
 
-export function RecordPageView({ page, actions, files = {}, review, missingQuotes, now, shell }: RecordPageViewProps) {
+export function RecordPageView({ page, actions, files = {}, review, missingQuotes, now, shell, extra }: RecordPageViewProps) {
   const { t, i18n } = useTranslation()
   const [activeField, setActiveField] = React.useState<string | null>(null)
   const move = useReasonedWrite(page.regulated)
@@ -304,6 +306,7 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
             <div className={cn('grid items-start gap-6', (shell ? SHELL_LAYOUT_GRID : LAYOUT_GRID)[page.layout.layout])} data-columns={columns.join(' ')}>
               {columns.map(c => <div key={c} className="min-w-0 space-y-6" data-area={c}>{area(c)}</div>)}
             </div>
+            {extra}
             {below && <div className="space-y-6" data-area="below">{area('below')}</div>}
           </>
         )}

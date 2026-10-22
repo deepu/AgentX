@@ -1,0 +1,10 @@
+case: new_coordinator
+fields:
+  site:              { type: Ref<Site>, required: true, description: The site with a new coordinator }
+  site_number:       Text
+  study:             Ref<Study>
+  coordinator:       { type: PersonName, description: "The new coordinator, as EDC names them" }
+  coordinator_email: Email
+  coordinator_since: Date
+  subject:           { type: Text, description: The email's subject }
+  body:              { type: Text, description: The email to the coordinator }

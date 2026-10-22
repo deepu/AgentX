@@ -1,0 +1,10 @@
+# Study MW-207 in EDC, linked to the eTMF project mw207 by `study:`. Its Rave connection reads
+# MW-207 only, into this project.
+app: edc
+name: Study MW-207
+study: MW-207
+people:
+  - { email: anika.rao@northlight.example, name: Anika Rao, roles: [study_manager], note: owner }
+  - { email: dana@northlight.example, name: Dana Brooks, roles: [data_manager] }
+connections:
+  rave: { title: Medidata Rave, plugin: memwise/medidata-rave, access: read }

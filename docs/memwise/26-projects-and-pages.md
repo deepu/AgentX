@@ -466,6 +466,82 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - a new coordinator in the Rave fixture makes eTMF ask the site for a CV.
 - **Needs Sandeep:** a Rave (or Veeva CDMS) sandbox for a real check.
 
+**As built (Part A, before Stage 3's projects).**
+- **Where:** EDC lives in the eTMF example (`examples/etmf/domains/edc`), not a new example: a study across apps needs both apps in one workspace, and the `edc` domain and eTMF's link to its Site were already there (D114).
+- **The fake Rave** (`packages/runtime/tests/fixtures/fake-rave-http.ts`) serves RWS paths with Basic sign-in, GET only. Study MW-301 has 12 sites, 186 subjects and 142 open queries, 23 of them older than 14 days (104: 9, 109: 8, 102: 3, 106: 2, 111: 1); 91% of pages are verified; site 104's coordinator has been Lena Hoffmann since 2 Sep. MW-207 sits beside it. `setCoordinator` (or `POST /__fake/coordinator`) changes a site's coordinator during a test, and `bun packages/runtime/tests/fixtures/fake-rave-http.ts --port 4790` runs it on its own.
+- **The plugin** `examples/plugins/medidata-rave` (`memwise/medidata-rave`) has nine `read` tools on builtin routes `rave.rws.*` (`packages/server-core/src/memwise/rave`) and record sources for study, site, subject and query. Settings `RAVE_URL`, `RAVE_USER`, `RAVE_PASSWORD` and `RAVE_STUDY` (optional) come from the connection: the secret store, else the environment. No tool takes them as arguments, so nobody types them again (D111).
+- **Records:** the binding maps Rave onto `edc.Study`, `edc.Site`, `edc.Subject` and `edc.Query`, all owned by the plugin. Subjects and queries hang off their site through `transform: [{ link: site }]` (D112). Sites roll up randomised, open queries and queries older than 14 days. Views: Old queries, Open queries, Sites; page: Enrolment.
+- **Read through, as a read-only copy (D110, a deliberate deviation from "never copied"):** the binding's `sync: { every: 15m }` reads Rave again on a kernel sweep and refreshes only the plugin-owned fields. Every such field shows Rave as its source with "as of <time>" (`source.asOf`), and no person or step can edit it. The copy's real job is to turn Rave changes into change events.
+- **Changes flow into playbooks (D113):** a refreshed coordinator is a `changed` event on `edc.Site`. eTMF's Site follows `coordinator`, so the link consumer announces the change on the paired eTMF Site, and eTMF's **Ask a new coordinator for their documents** (`starts_on: changed: { entity: Site, fields: [coordinator] }`) adds her to the site's staff, expects her CV and GCP training, and emails her once approved.
+- **Chase old queries** (`edc`, every Monday 08:00): an agent drafts one reminder per site with old queries; a system step sends them with `each:`, and each email waits for its own approval.
+- **Screens** (`components/memwise/edc`):
+  - `EdcHomeScreen({ projectId })` is XEdcHome: Rave read only and when it was synced; randomised against target and plan; open and old queries; pages verified; what waits; randomised by site; Also in other apps.
+  - `AlsoInOtherApps({ projectId })`.
+  - `OwnerTag`, `OpenInAppButton` and `RecordFactsByAppView`. On a record page in more than one app, they show "One record, each fact owned by one app", with "Open in eTMF" / "Open in EDC".
+  - RPC: `memwise:edc:home`, `memwise:study:apps`, `memwise:records:linked`.
+  - Until projects land, a project id is read as the study key ("MW-301"). In the Stage 1 shell a project's id is its app's ("edc"), which names no study: the app's only study is used, or with several the one with the most sites (`resolveStudy`).
+- **In the project shell (Stage 1):**
+  - An EDC app's Home (one with a Study, Sites and Queries) pins `EdcProjectHome` instead of the plain pinned page. It shows the study and when Rave was last read, the three tiles, the shell's own Waiting for you, randomised by site, the sites with old queries with a link to the queries page, the app's pages, Also in other apps, and what is running. Record links stay in the project.
+  - XQueries is the page `edc/old-queries` ("Old queries by site"): two KPIs, the sites with old queries (view `sites-with-old-queries`) and the oldest queries. In a study project it counts that study's queries; outside one, every study's.
+  - Record pages (XSite) carry "One record, each fact owned by one app" with "Open in eTMF" / "Open in EDC". A fact one app follows from the other is shown once, as the owner's.
+  - `scripts/walkthrough/shell-edc.mjs` runs it in Electron against the fake Rave. Screenshots are in `projects-and-pages-walkthrough/stage-6-edc/`.
+- **Connector reads:** the first read waits for the first index, so the domain tables exist; it used to race them on a fresh workspace. A failed read is tried again within five minutes, not a whole interval later.
+- **After review:**
+  - One owner per fact: a synced connector's fields are refused on create too (only the identity keys may be given). A record the connector hasn't linked shows them as "Not yet in Medidata Rave".
+  - The Rave connection is declared as gateway secrets (injected, redacted), served by the host to builtins only. `RAVE_URL` must be https except to loopback.
+  - Reads scale: linked rows are looked up by id, and only unlinked rows are matched; `list_sites` makes three calls per study; `list_studies` honours `RAVE_STUDY` and caps form-status reads at 25 studies; an age filter asks Rave for open queries only.
+  - A failure anywhere in a read is recorded and doesn't hide its own error, and the screens are told what it wrote before failing. A `{ link }` reference not linked yet keeps its value; a site mid-handover keeps its last coordinator. Values compare by field type, so a sweep writes only real changes.
+  - Example runs don't sweep connectors. `memwise:records:linked` answers only for a record the viewer may see.
+  - The eTMF walkthroughs take EDC's sites from the fake Rave (site numbers 104, 109, 102).
+- **Tests:**
+  - `rave-tools.test.ts` covers the fake and the tools.
+  - `edc-exit.test.ts` runs end to end against Postgres and the fake: the sync, read-only Rave facts, the study home, site 104 in both apps, a new coordinator asking for a CV, and Chase old queries with five approvals.
+  - `edc-render.test.tsx` covers the screens.
+  - `memwise test examples/etmf` runs the playbooks' examples, including `two-sites-behind`, `nothing-old` and `asks-for-cv`.
+
+**As built (Part B, with Stage 3's projects).**
+- **EDC's study projects:** `examples/etmf/projects/edc-mw301` and `edc-mw207` (`app: edc`) each name their study with `study:` and have a read-only connection `rave: { plugin: memwise/medidata-rave }`. They sit beside eTMF's `mw301` and `mw207` in the switcher. Since projects run EDC, it has no implicit `edc` project any more.
+- **Rave per project:** the binding is still the app's, but its sync reads Rave once for each project running the app whose connection goes through the plugin, into that project. The project's `study:` (or the connection's `settings`) fills the tools' `study` argument (`argsFrom`: only names a tool's input takes; never credentials). `list_studies` now takes `study`, like the other list tools. Rows are matched only against unlinked rows of the same project, and new ones are created in it. With no such project, the read is once for the workspace, as before. So MW-301's 12 sites land in `edc-mw301` and MW-207's 6 in `edc-mw207`.
+- **`resolveStudy`** reads, in order:
+  1. the project's own `study:`. This is the answer even before the first read, so a project never shows another study;
+  2. before projects, the id as a study key;
+  3. `RAVE_STUDY`;
+  4. the app's default: its only study, or the one with the most sites.
+
+  The home's rows are read within the project when it is a real project running the app.
+- **One study across apps, through the project:**
+  - "Also in other apps" lists each other app's projects naming the same `study:`, and the study's record in that project. It names the project ("Linked through Study MW-301") and opens the record there. It falls back to a record of the same key anywhere only when no such project has one.
+  - Link pairing (D71) does the same for records: a record of a project with a study pairs only within the other app's projects of that study. Site 201 of eTMF's MW-301 is not MW-207's 201 in EDC.
+- **After the Part B review:**
+  - **One study, one project.** Identity links are one per Rave record, so a second project reading the same study would find everything linked already and stay empty. The smaller sound fix was chosen over scoping links by project:
+    - Only the first active project by id reads a study. Any other project naming it (or one with no study, which reads every study) is reported as a clash against that project, as a sync error.
+    - Records a project's read already links but that sit in another project are moved into it, with a version recorded. These are records read for the workspace before the project connected, or under an earlier `study:`.
+  - **One project's failure is its own.** A project whose read fails, such as a study the account can't see, is skipped for the rest of the read, and the other projects are still read. The sync records:
+    - when the read happened;
+    - one error line per failed project (`<project>: <why>`), with a retry within five minutes.
+    
+    The error thrown is the combined one. Each project's EDC home shows only its own line.
+  - **Pairing:** a record of a project whose study no project of the other app names pairs with nothing there. It no longer falls back to anywhere.
+  - **Charts** on a project's page count that project's records, like its KPIs and tables.
+- **A project's pages and tree are its own:** in a stored project, the sidebar's record tree and a defined page's KPIs, tables and heatmaps read that project's records (`project` on `memwise:records:tree` and `memwise:pages:dashboard`). EDC's Study MW-301 lists MW-301's sites, and its old queries page counts MW-301's queries only.
+- **Seeds:** Stage 3's eTMF seeds no longer make `edc.Site` rows, since EDC's sites come only from Rave. Their sites are numbered as Rave numbers them: MW-301 101–112, MW-207 201–206, with Rave's staff. Each pairs with its EDC site and shows Rave's name, investigator and coordinator. The fake Rave's MW-207 has the eTMF example's six sites and staff.
+- **Tests:** `edc-exit.test.ts` covers Part B in three more cases:
+  - each project reads only its study, into itself;
+  - the project's study comes before `RAVE_STUDY` and the default;
+  - Also in other apps and site pairing go through the projects.
+
+  `stage6-review.test.ts` covers `argsFrom`. The Stage 3 tests use the Rave site numbers.
+- **The walkthrough** (`shell-edc.mjs`, on the Stage 3 seeds) shows:
+  - the switcher with EDC's study projects;
+  - EDC's Study MW-301 and its link to eTMF's Study MW-301;
+  - the old queries;
+  - site 104 in both apps;
+  - the study opened in eTMF's project;
+  - EDC's Study MW-207.
+- **Not yet:**
+  - XQueries as a page made from a question. It is still a defined page (`edc/old-queries`).
+- **Needs Sandeep: a Rave (or Veeva CDMS) sandbox.** The client speaks RWS paths with the fake's JSON bodies; a real Rave answers ODM XML and clinical views. `packages/server-core/src/memwise/rave/client.ts` is the one file to check against it.
+
 ## 12. Risks
 
 | Risk | Where it shows | If it goes wrong |

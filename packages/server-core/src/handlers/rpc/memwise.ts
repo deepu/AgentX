@@ -40,6 +40,7 @@ import { getWorkspaceByNameOrId } from '@memwise/shared/config'
 import { loadSourceConfig, saveSourceConfig } from '@memwise/shared/sources'
 import { pushTyped, type RequestContext, type RpcServer } from '@memwise/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
+import { EDC_CHANNELS, registerEdcHandlers } from './memwise-edc'
 import { emitMemwiseChange, getMemwiseHostStatus, getMemwiseService, onMemwiseChange } from '../../memwise/host'
 import type { ClientIdentity, Kernel, MemwiseService, PersonActor } from '../../memwise/service'
 import type { DraftFacts, DtoContext } from '../../memwise/dto'
@@ -163,6 +164,8 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.memwise.PAGE_CHANGES_GET,
   RPC_CHANNELS.memwise.PAGE_CHANGES_DECIDE,
   RPC_CHANNELS.memwise.PROJECT_ASK,
+  // Stage 6 (memwise-edc.ts)
+  ...EDC_CHANNELS,
 ] as const
 
 /** Largest upload accepted through the API (base64 travels inside one WS message). */
@@ -2406,7 +2409,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const { svc, actor, d } = await begin(ctx)
       if (!input?.domain) throw new Error('Choose a domain.')
       const parent = input.parent?.entity && input.parent.id ? { parent: { entity: input.parent.entity, id: input.parent.id } } : undefined
-      return (await recordsOf(svc).tree(input.domain, actor, parent)).map(d.toTreeNode)
+      const project = typeof input.project === 'string' && input.project ? { project: input.project } : undefined
+      return (await recordsOf(svc).tree(input.domain, actor, parent || project ? { ...parent, ...project } : undefined)).map(d.toTreeNode)
     },
 
     async saveNote(ctx: RequestContext, input: MwSaveNoteInput): Promise<MwRecordWriteResult> {
@@ -2423,7 +2427,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const { svc, actor, d } = await begin(ctx)
       if (!input?.domain || !input.pageId) throw new Error('That page was not found.')
       const params = Object.fromEntries(Object.entries(input.params ?? {}).filter(([, v]) => typeof v === 'string')) as Record<string, string>
-      return d.toDashboard(input.domain, await recordsOf(svc).dashboard(input.domain, input.pageId, params, actor))
+      const project = typeof input.project === 'string' && input.project ? { project: input.project } : undefined
+      return d.toDashboard(input.domain, await recordsOf(svc).dashboard(input.domain, input.pageId, params, actor, project))
     },
 
     async listViews(ctx: RequestContext, input: { domain: string; entity?: string }): Promise<MwView[]> {
@@ -2807,6 +2812,8 @@ export function registerMemwiseHandlers(server: RpcServer, deps: HandlerDeps): v
   server.handle(ch.TEMPLATE_UPDATE_TAKE, (ctx, _ws: string, input) => api.takeTemplateUpdate(ctx, input))
   server.handle(ch.TEMPLATE_UPDATE_SKIP, (ctx, _ws: string, input) => api.skipTemplateUpdate(ctx, input))
   server.handle(ch.WAITING_ALL, (ctx) => api.waitingAll(ctx))
+  // Stage 6: EDC and a study across apps
+  registerEdcHandlers(server)
 
   onMemwiseChange((change) => {
     pushTyped(server, RPC_CHANNELS.memwise.CHANGED, { to: 'all' }, change)

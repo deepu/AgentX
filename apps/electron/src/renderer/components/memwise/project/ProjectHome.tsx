@@ -18,6 +18,7 @@ import { useMemwisePages } from '@/hooks/useMemwisePages'
 import { PagesKeptTable, WhatChangedThisWeek } from '../pages'
 import { getSessionTitle } from '@/utils/session'
 import { DashboardView } from '../domains/DashboardView'
+import { EdcProjectHome, isEdcApp } from '../edc/EdcProjectHome'
 import { humanize, relativeTime } from '../format'
 import { useNow } from '../use-now'
 import { Composer } from './AnchoredChat'
@@ -130,7 +131,7 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
   const now = useNow()
   const waiting = sortWaiting(waitingIn(project.id, inbox, { playbooks, domains }))
   const board = domain?.pages[0]
-  const dashboard = useMemwiseDashboard(board ? domain.id : null, board?.id ?? null)
+  const dashboard = useMemwiseDashboard(board && !isEdcApp(domain) ? domain.id : null, board?.id ?? null)
   const home = domain?.home
   const ends = home ? [home.draftState, ...home.endStates].map(s => `'${s}'`).join(', ') : ''
   const kept = useMemwiseRecordQuery(home?.entity ? { entity: home.entity, ...projectRecordScope(project), filter: `not (status in (${ends}))`, limit: 8 } : null)
@@ -144,6 +145,50 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
   const own = new Set(projectPlaybooks(project, playbooks).map(p => p.id))
   const running = (cases ?? []).filter(c => c.status === 'active' && own.has(c.workflowId) && (!project.stored || caseProject(c) === project.id)).slice(0, 4)
   const subtitle = [project.description, project.appName !== project.name ? t('memwise.shell.fromTemplate', { app: project.appName }) : undefined].filter(Boolean).join(' · ')
+  const edc = isEdcApp(domain)
+
+  const waitingSection = (
+    <ShellSection title={t('memwise.shell.waiting')} count={waiting.length + (project.update ? 1 : 0)}>
+      {waiting.length === 0 && !project.update ? (
+        <p className="text-label text-tertiary">{t('memwise.shell.nothingWaiting')}</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {project.update && <UpdateCard project={project} primary={waiting.length === 0} />}
+          {waiting.slice(0, 3).map((item, i) => (
+            <WaitingCard key={item.id} item={item} playbooks={playbooks} primary={i === 0 && waiting.length === 1} now={now} compact onOpen={() => navigate(routes.view.project(project.id, { type: 'waiting', itemId: item.id }))} />
+          ))}
+          {waiting.length > 3 && (
+            <button type="button" className="self-start text-label-sm text-accent hover:underline" onClick={() => navigate(routes.view.project(project.id, { type: 'waiting' }))}>
+              {t('memwise.shell.seeAllWaiting', { count: waiting.length })}
+            </button>
+          )}
+        </div>
+      )}
+    </ShellSection>
+  )
+  const runningSection = running.length > 0 && (
+      <ShellSection title={t('memwise.shell.runningNow')}>
+        <div className="flex flex-col gap-2">
+          {running.map(c => (
+            <button
+              key={c.caseId}
+              type="button"
+              onClick={() => navigate(routes.view.project(project.id, { type: 'run', caseId: c.caseId }))}
+              className="flex items-center gap-3 rounded-[10px] border border-foreground/10 bg-background px-4 py-2.5 text-left text-label shadow-minimal hover:bg-fill-hover"
+            >
+              <span className="min-w-0 flex-1 truncate">
+                <span className="underline underline-offset-2">{playbookTitle(c.workflowId, playbooks)}</span>
+                <span className="text-secondary"> · {c.title}</span>
+              </span>
+              <span className="shrink-0 text-label-sm text-secondary">{c.stateTitle}</span>
+            </button>
+          ))}
+        </div>
+      </ShellSection>
+  )
+
+  // An EDC app's home is its study (Stage 6, XEdcHome): Rave's numbers, sites, queries, other apps.
+  if (edc && domain) return <EdcProjectHome project={project} domain={domain} waiting={waitingSection} running={runningSection} />
 
   return (
     <ShellPageFrame crumb={t('memwise.shell.homeCrumb')} title={project.name} subtitle={subtitle || undefined}>
@@ -151,23 +196,7 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
         <div className="mb-6 empty:hidden">
           <WhatChangedThisWeek projectId={project.id} onOpenChange={openChange} onOpenPage={openPage} />
         </div>
-        <ShellSection title={t('memwise.shell.waiting')} count={waiting.length + (project.update ? 1 : 0)}>
-          {waiting.length === 0 && !project.update ? (
-            <p className="text-label text-tertiary">{t('memwise.shell.nothingWaiting')}</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {project.update && <UpdateCard project={project} primary={waiting.length === 0} />}
-              {waiting.slice(0, 3).map((item, i) => (
-                <WaitingCard key={item.id} item={item} playbooks={playbooks} primary={i === 0 && waiting.length === 1} now={now} compact onOpen={() => navigate(routes.view.project(project.id, { type: 'waiting', itemId: item.id }))} />
-              ))}
-              {waiting.length > 3 && (
-                <button type="button" className="self-start text-label-sm text-accent hover:underline" onClick={() => navigate(routes.view.project(project.id, { type: 'waiting' }))}>
-                  {t('memwise.shell.seeAllWaiting', { count: waiting.length })}
-                </button>
-              )}
-            </div>
-          )}
-        </ShellSection>
+        {waitingSection}
 
         {home?.entity && <KeptPages project={project} rows={kept.data} />}
         {(pages.data ?? []).some(p => p.status === 'kept') && (
@@ -192,26 +221,7 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
           </ShellSection>
         )}
 
-        {running.length > 0 && (
-          <ShellSection title={t('memwise.shell.runningNow')}>
-            <div className="flex flex-col gap-2">
-              {running.map(c => (
-                <button
-                  key={c.caseId}
-                  type="button"
-                  onClick={() => navigate(routes.view.project(project.id, { type: 'run', caseId: c.caseId }))}
-                  className="flex items-center gap-3 rounded-[10px] border border-foreground/10 bg-background px-4 py-2.5 text-left text-label shadow-minimal hover:bg-fill-hover"
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="underline underline-offset-2">{playbookTitle(c.workflowId, playbooks)}</span>
-                    <span className="text-secondary"> · {c.title}</span>
-                  </span>
-                  <span className="shrink-0 text-label-sm text-secondary">{c.stateTitle}</span>
-                </button>
-              ))}
-            </div>
-          </ShellSection>
-        )}
+        {runningSection}
       </div>
     </ShellPageFrame>
   )

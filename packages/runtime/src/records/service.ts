@@ -7,7 +7,7 @@ import {
   projectScoped, RecordWriteError, withActor, withRecordContext, withTransaction,
 } from '@memwise/db';
 import { hasRole, keyOf, rolesIn, type EntityTypeDef, type ViewDef } from '@memwise/defs';
-import { fieldErrors } from '../domain-tools.ts';
+import { fieldErrors, syncedOwners } from '../domain-tools.ts';
 import type { Actor, RecordFlag, RecordKeepResult, RecordQueryResult, RecordsService, RecordWriteResult } from '../types.ts';
 import { buildDashboard, buildTree, columnsOf, queryRecords } from './browse.ts';
 import { domainOfEntity, entityByName, isControlled, recordTitle, storeMentions, type RecordsDeps } from './context.ts';
@@ -78,7 +78,9 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
   async function createRecord(input: Parameters<RecordsService['create']>[0], actor: Actor): Promise<{ result: RecordWriteResult; quotes: Record<string, boolean> }> {
     const def = defOf(input.entity);
     if (!mayWrite(deps, actor, domainOfEntity(def))) return { result: forbidden(def), quotes: {} };
-    const errors = fieldErrors(def, deps.entities(), input.values, { creating: true });
+    // One owner per fact: a person can't give a synced connector's fields. The system can: an
+    // example's records stand in for what the connector read.
+    const errors = fieldErrors(def, deps.entities(), input.values, { creating: true, ...(actor.kind === 'system' ? {} : { synced: syncedOwners(deps.project(), keyOf(def)) }) });
     for (const f of hiddenFrom(def, input.values, actor)) (errors[f] ??= []).push('only some roles may see or change this field');
     for (const [f, field] of Object.entries(def.fields)) {
       const v = input.values[f];
@@ -152,7 +154,7 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
     query: (q, actor): Promise<RecordQueryResult> => queryRecords(deps, defOf(q.entity, q.domain), q, actor),
 
     tree: (domain, actor, opts) => buildTree(deps, service, domain, actor, opts),
-    dashboard: (domain, pageId, params, actor) => buildDashboard(deps, service, domain, pageId, params, actor),
+    dashboard: (domain, pageId, params, actor, opts) => buildDashboard(deps, service, domain, pageId, params, actor, opts),
 
     async views(domain, actor, opts = {}) {
       const d = deps.project()?.domains?.[domain];

@@ -852,6 +852,13 @@ export interface ElectronAPI {
   memwiseReleaseTrigger(workspaceId: string, input: import('@memwise/shared/protocol').MwReleaseTriggerInput): Promise<import('@memwise/shared/protocol').MwSubmitResult & { started?: number }>
   memwiseGetAuditTrail(workspaceId: string, input: { entity: string; id: string }): Promise<import('@memwise/shared/protocol').MwAuditTrail | null>
   memwiseExportAuditTrail(workspaceId: string, input: import('@memwise/shared/protocol').MwAuditExportInput): Promise<import('@memwise/shared/protocol').MwAuditExport>
+  // Stage 6: EDC and a study across apps (docs/memwise/26-projects-and-pages.md §9)
+  /** The EDC study home: Rave's numbers for the study, when they were read, what waits, randomised by site. */
+  memwiseGetEdcHome(workspaceId: string, input: import('@memwise/shared/protocol').MwEdcHomeInput): Promise<import('@memwise/shared/protocol').MwEdcHome>
+  /** "Also in other apps": the same study in the other apps. */
+  memwiseGetStudyApps(workspaceId: string, input: import('@memwise/shared/protocol').MwStudyAppsInput): Promise<import('@memwise/shared/protocol').MwStudyApps>
+  /** The same record in the other apps (paired by key, D71), with the facts each owns. */
+  memwiseGetLinkedRecords(workspaceId: string, input: import('@memwise/shared/protocol').MwLinkedRecordsInput): Promise<import('@memwise/shared/protocol').MwLinkedRecord[]>
   memwiseReadFile(workspaceId: string, fileId: string): Promise<import('@memwise/shared/protocol').MwFileData>
   // Stage 3: projects inside apps (docs/memwise/26-projects-and-pages.md §3)
   memwiseListApps(workspaceId: string): Promise<import('@memwise/shared/protocol').MwApp[]>
