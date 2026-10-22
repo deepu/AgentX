@@ -68,25 +68,34 @@ export async function checkSignature(deps: SigningDeps, step: StepDef, by: Perso
   if (step.performer !== 'person') {
     return { applied: false, status: 'forbidden', message: 'only a person can sign; this step is answered another way' };
   }
-  if (!(await deps.people.hasPassword(by.personId))) {
+  return checkSigningPassword(deps.people, by, signature, step.sign, { stepRunId });
+}
+
+/**
+ * Checks a signing password (any signature: a step's, a change request's): undefined when it is
+ * right, else the refusal. Every wrong one is logged; too many lock signing (24 §9).
+ */
+export async function checkSigningPassword(people: PgPeopleStore, by: PersonActor, signature: SignatureInput | undefined, meaning: string,
+  detail: Record<string, unknown>): Promise<SubmitResult | undefined> {
+  if (!(await people.hasPassword(by.personId))) {
     return { applied: false, status: 'password-not-set', message: 'you have no password to sign with yet: choose one, then sign' };
   }
   if (!signature?.password) {
-    return { applied: false, status: 'signature-required', message: `this step needs your signature ("${step.sign}"): enter your password to sign` };
+    return { applied: false, status: 'signature-required', message: `this needs your signature ("${meaning}"): enter your password to sign` };
   }
   const now = Date.now();
-  const lock = await deps.people.lockState(by.personId);
+  const lock = await people.lockState(by.personId);
   if (lock.lockedUntil && new Date(lock.lockedUntil).getTime() > now) {
     return { applied: false, status: 'locked', message: `signing is locked after too many wrong passwords; try again after ${time(lock.lockedUntil)} (server time, UTC)` };
   }
-  const person = await deps.people.get(by.personId);
-  const ok = person ? await deps.people.verifyPassword(person.email, signature.password) : undefined;
+  const person = await people.get(by.personId);
+  const ok = person ? await people.verifyPassword(person.email, signature.password) : undefined;
   if (!ok || ok.id !== by.personId) {
-    await deps.people.recordAuthEvent(by.personId, 'signature-failed', { stepRunId });
-    const after = await deps.people.lockState(by.personId);
+    await people.recordAuthEvent(by.personId, 'signature-failed', detail);
+    const after = await people.lockState(by.personId);
     if (after.recentFailures >= SIGN_FAILURES_BEFORE_LOCK) {
       const until = new Date(now + SIGN_LOCK_MS).toISOString();
-      await deps.people.recordAuthEvent(by.personId, 'locked', { stepRunId, until, failures: after.recentFailures });
+      await people.recordAuthEvent(by.personId, 'locked', { ...detail, until, failures: after.recentFailures });
       return { applied: false, status: 'signature-failed', message: `that password is not right; after ${after.recentFailures} wrong passwords signing is locked until ${time(until)} (server time, UTC)` };
     }
     return { applied: false, status: 'signature-failed', message: `that password is not right (${after.recentFailures} of ${SIGN_FAILURES_BEFORE_LOCK} tries before signing locks)` };

@@ -28,6 +28,7 @@ import { registerTransferHandlers } from './transfer'
 import { registerWorkspaceCoreHandlers } from './workspace'
 import { registerMessagingHandlers } from './messaging'
 import { registerMemwiseHandlers } from './memwise'
+import { registerMemwiseRegulatedHandlers } from './memwise-regulated'
 
 export function registerCoreRpcHandlers(
   server: RpcServer,
@@ -57,4 +58,5 @@ export function registerCoreRpcHandlers(
   registerWorkspaceCoreHandlers(server, deps)
   registerMessagingHandlers(server, deps)
   registerMemwiseHandlers(server, deps)
+  registerMemwiseRegulatedHandlers(server, deps)
 }

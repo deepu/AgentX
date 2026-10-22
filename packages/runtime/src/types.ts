@@ -130,7 +130,7 @@ export interface StartRunInput {
   project?: string;
 }
 
-export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4, KernelPhase5, KernelPhase6, KernelStage3, KernelPages {
+export interface Kernel extends KernelPhase2, KernelPhase3, KernelPhase4, KernelPhase5, KernelPhase6, KernelStage3, KernelPages, KernelRegulated {
   /** Load the project folder and index it; returns the loader's diagnostics. */
   index(): Promise<Diagnostic[]>;
   startRun(input: StartRunInput): Promise<{ runId: string; caseId: string }>;
@@ -258,7 +258,11 @@ export type InboxItemBody =
   /** Phase 6: a broken invariant on a record, for the domain owner (24 §4). */
   | { kind: 'flag'; id: string; flag: RecordFlag; domain: string; title: string; since: string }
   /** Phase 6: firings held by the storm guard, for the workflow's owner (24 §7). */
-  | { kind: 'trigger-hold'; id: string; triggerId: string; workflowId: string; held: number; description: string; since: string };
+  | { kind: 'trigger-hold'; id: string; triggerId: string; workflowId: string; held: number; description: string; since: string }
+  /** Stage 5: a change request waiting for a signature: the raiser's (send to QA) or QA's (26 §8). */
+  | { kind: 'change-request'; id: string; changeRequest: import('./regulated/types.ts').ChangeRequestSummary; signoff: 'raiser' | 'qa'; since: string }
+  /** Stage 5: an inspector's question, for the domain's owner (26 §8). */
+  | { kind: 'inspector-question'; id: string; question: import('./regulated/types.ts').InspectorQuestionView; since: string };
 
 export interface CaseSummary {
   caseId: string; runId: string; workflowId: string; workflowVersion: number; workflowHash: string;
@@ -316,6 +320,10 @@ export type KernelChange =
   | { kind: 'records'; entity: string; recordId?: string }
   /** Phase 6: a trigger fired or firings were held or released. */
   | { kind: 'triggers' }
+  /** Stage 5: a change request, inspector link or question of a project changed. */
+  | { kind: 'regulated'; project: string }
+  /** Stage 5: an entry was added to a project's audit log. */
+  | { kind: 'audit'; project: string }
   /** Stage 3: a project was made, started, archived, changed, or its template moved on. */
   | { kind: 'projects'; projectId?: string }
   /** Pages (26 §4): a page or a page change was written. */
@@ -410,7 +418,11 @@ export interface Authoring {
   /** Checks, example cases (TestRunner), past cases replayed, impact; writes report.json. */
   check(draftId: string, opts?: { pastCases?: number }): Promise<DraftReport>;
   /** Apply the draft to the project folder as the next version, if its content hash is still `hash`. */
-  publish(draftId: string, opts: { hash: string; by?: string; runId?: string; source: 'app' | 'cli' }): Promise<PublishResult>;
+  publish(draftId: string, opts: {
+    hash: string; by?: string; runId?: string; source: 'app' | 'cli';
+    /** Stage 5: the change request publishing it (QA signed); a draft with a request is published only by it. */
+    changeRequest?: string;
+  }): Promise<PublishResult>;
   /** Start create-playbook (no workflowId) or change-playbook at its conversation step. */
   startBuild(input: { workflowId?: string; request?: string; title?: string }, by: Extract<Actor, { kind: 'person' }>): Promise<{ runId: string; caseId: string; stepRunId: string }>;
   /** Send an edited draft to review: change-playbook started at its check step with the draft. */
@@ -1237,3 +1249,6 @@ export interface PagesService {
 export interface KernelPages {
   readonly pages: PagesService;
 }
+// ================================================================ Stage 5 (docs/memwise/26-projects-and-pages.md §8)
+import type { KernelRegulated } from './regulated/types.ts';
+export type * from './regulated/types.ts';

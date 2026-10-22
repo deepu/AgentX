@@ -327,6 +327,7 @@ export const domainFormat = z.strictObject({
   description: z.string().optional(),
   owner: z.string().optional().meta({ description: 'Role that gets flags and held triggers, and owns triggered cases by default.' }),
   regulated: z.boolean().optional().meta({ description: 'Regulated mode: e-signatures, required reasons, audit export.' }),
+  qa: z.string().optional().meta({ description: 'Regulated domains: the role whose signature makes a change request live (QA). Default the owner.' }),
   retention: duration.optional().meta({ description: 'How long records are kept, e.g. 25y.' }),
   accepts_from: names.optional().meta({ description: "Domains whose workflows may start or call this domain's workflows." }),
   intake: z.strictObject({ address: z.string() }).optional().meta({ description: "Incoming messages to this address start the domain's message triggers." }),

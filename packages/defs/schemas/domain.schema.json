@@ -20,6 +20,10 @@
       "description": "Regulated mode: e-signatures, required reasons, audit export.",
       "type": "boolean"
     },
+    "qa": {
+      "description": "Regulated domains: the role whose signature makes a change request live (QA). Default the owner.",
+      "type": "string"
+    },
     "retention": {
       "description": "How long records are kept, e.g. 25y.",
       "anyOf": [

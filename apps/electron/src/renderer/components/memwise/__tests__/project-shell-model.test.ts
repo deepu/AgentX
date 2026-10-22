@@ -10,7 +10,9 @@ import {
   anchorKeyOf, chatAnchorFor, groupByApp, initials, pickProject, playbookStartTag, pluralTitle, projectPlaybooks, shellProjects, sortWaiting, waitingIn, writtenPagePlace,
 } from '../project/project-model'
 import { shellRouteFor, type ShellRouteData } from '../project/shell-routes'
+import { shellStartProject } from '../project/shell-context'
 import { changesSince, RECENT_CHANGES_KEPT, withChange } from '../../../atoms/memwise'
+import { projectsChangeMatters } from '../../../hooks/useMemwiseProjects'
 import { parseRouteToNavigationState } from '../../../../shared/route-parser'
 import { routes } from '../../../../shared/routes'
 
@@ -67,6 +69,17 @@ describe('projects from domains', () => {
     expect(sortWaiting([...inbox, due])[0]!.id).toBe('d')
   })
 
+  test('Stage 5 on Stage 3: a change request or inspector question waits in every project running its app', () => {
+    const cr = { kind: 'change-request', id: 'change-request:cr_1:raiser', domain: 'etmf', workflowId: 'file-document', caseTitle: 'CR-014 · Skip QC', since: '2026-10-21T09:00:00Z' } as unknown as MwInboxItem
+    const step = { ...item('s', 'activate-site', '2026-10-21T08:00:00Z'), project: 'mw207' } as MwInboxItem
+    expect(waitingIn('mw301', [cr, step], { playbooks, domains }, ['etmf']).map(i => i.id)).toEqual([cr.id])
+    expect(waitingIn('mw207', [cr, step], { playbooks, domains }, ['etmf']).map(i => i.id)).toEqual([cr.id, 's'])
+    // Not in a project of another app.
+    expect(waitingIn('firm', [cr, step], { playbooks, domains }, ['gst'])).toEqual([])
+    // A change request moving changes the projects' waiting counts.
+    expect(projectsChangeMatters({ kind: 'regulated', project: 'etmf' } as never)).toBe(true)
+  })
+
   test('the sidebar leaves the meta playbooks out and tags how each playbook starts', () => {
     expect(projectPlaybooks('etmf', playbooks).map(p => p.id)).toEqual(['activate-site', 'route-message'])
     const triggers = [
@@ -103,6 +116,10 @@ describe('the chat beside each page', () => {
     expect(chatAnchorFor('literature', { type: 'change', changeId: 'pch_1' })).toEqual({ kind: 'project', id: 'literature' })
     expect(chatAnchorFor('literature', { type: 'change', changeId: 'pch_1' }, null, 'pg_1')).toEqual({ kind: 'page', id: 'pg_1' })
     expect(anchorKeyOf({ kind: 'record', entity: 'etmf.Site', id: 's1' })).toBe('record:etmf.Site:s1')
+    // Stage 5: a change request's chat edits it; the audit trail and the TMF index have their own.
+    expect(chatAnchorFor('etmf', { type: 'cr', crId: 'CR-014' })).toEqual({ kind: 'change', id: 'CR-014', project: 'etmf' })
+    expect(chatAnchorFor('etmf', { type: 'audit', entity: 'etmf.Document', recordId: 'd1' })).toEqual({ kind: 'audit', id: 'etmf' })
+    expect(chatAnchorFor('etmf', { type: 'tmf', zone: 'site-management' })).toEqual({ kind: 'tmf', id: 'etmf' })
   })
 })
 
@@ -128,6 +145,27 @@ describe('older routes open inside a project', () => {
     expect(to(routes.view.domains({ type: 'domain', domain: 'etmf' }))).toBe('mw/etmf')
     expect(to(routes.view.allSessions('chat1'))).toBe('mw/edc/home/chat1')
     expect(to(routes.view.allSessions())).toBe('mw/edc')
+  })
+
+  test('the regulated screens (Stage 5): a change request, the audit trail, inspector access, the TMF index', () => {
+    expect(to(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'change', id: 'CR-014' }))).toBe('mw/etmf/cr/CR-014')
+    expect(to(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'audit' }))).toBe('mw/etmf/audit')
+    expect(to(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'audit', id: 'etmf.Document:d1' }))).toBe('mw/etmf/audit/etmf.Document%3Ad1')
+    expect(to(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'inspectors' }))).toBe('mw/etmf/settings/inspectors')
+    expect(to(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'tmf', id: 'site-management' }))).toBe('mw/etmf/tmf/site-management')
+  })
+
+  test('Stage 3 and 5: a regulated screen opens in the study it names, or the study running its app', () => {
+    const stored: ShellRouteData = {
+      ...data,
+      currentProject: 'mw301',
+      hasProject: id => ['mw301', 'mw207'].includes(id),
+      projectForApp: app => (app === 'etmf' ? 'mw301' : undefined),
+    }
+    const go = (route: string) => shellRouteFor(parseRouteToNavigationState(route)!, stored)
+    expect(go(routes.view.domains({ type: 'regulated', domain: 'mw207', screen: 'change', id: 'CR-014' }))).toBe('mw/mw207/cr/CR-014')
+    expect(go(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'audit' }))).toBe('mw/mw301/audit')
+    expect(go(routes.view.domains({ type: 'regulated', domain: 'etmf', screen: 'inspectors' }))).toBe('mw/mw301/settings/inspectors')
   })
 
   test('Stage 3: a domain id is no project id; its routes open in the project that runs the app, or the app home', () => {
@@ -188,5 +226,14 @@ describe('pushes that land in one render', () => {
     expect(changesSince(last, null)).toEqual([{ kind: 'pages' }])
     expect(changesSince(last, 1)).toHaveLength(RECENT_CHANGES_KEPT)
     expect(changesSince(null, null)).toEqual([])
+  })
+})
+
+describe('Start case in the project shell', () => {
+  test('starts in the project the shell shows, and in none from "all projects" or outside the shell', () => {
+    const showChat = () => {}
+    expect(shellStartProject({ projectId: 'mw301', showChat })).toBe('mw301')
+    expect(shellStartProject({ projectId: '*', showChat })).toBeUndefined()
+    expect(shellStartProject(null)).toBeUndefined()
   })
 })

@@ -50,7 +50,7 @@ export {
   createDraft, listDrafts, readDraft, updateDraftMeta, writeDraftFiles, setDraftEditStatus, discardDraftEdit,
   draftContentHash, loadDraft, diffDraft, applyDraft, writeDraftReport, draftDir, badDraftPath, setWorkflowVersion,
   DraftConflictError, DraftStaleError, WORKFLOW_ID_PATTERN, type CreateDraftInput, type DraftFiles, type WriteDraftOptions,
-  createBindingDraft, type CreateBindingDraftInput,
+  createBindingDraft, type CreateBindingDraftInput, draftPlaybookFolder, livePlaybookFolder,
 } from './drafts.ts';
 export { exampleToYaml } from './example-yaml.ts';
 export { initProject, INTAKE_TEMPLATE_DIR, META_PLAYBOOKS, type InitOptions } from './init.ts';

@@ -34,7 +34,8 @@ export function hasProjectCalls(api: MemwiseApi | null = getMemwiseApi()): boole
 
 /** Pushes after which project lists and counts may differ. */
 export function projectsChangeMatters(c: MwChange): boolean {
-  return c.kind === 'projects' || c.kind === 'status' || c.kind === 'definitions' || c.kind === 'inbox' || c.kind === 'run' || c.kind === 'case'
+  // Stage 5: a change request moving or an inspector asking changes what waits (`regulated`).
+  return c.kind === 'projects' || c.kind === 'status' || c.kind === 'definitions' || c.kind === 'inbox' || c.kind === 'run' || c.kind === 'case' || c.kind === 'regulated'
 }
 
 /** Waiting counts across every project of every app (the switcher's "Waiting for you, all projects"). */

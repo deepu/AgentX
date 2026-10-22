@@ -28,9 +28,11 @@ export interface DomainViewProps {
   onOpenPlaybook?: (workflowId: string) => void
   onOpenPage?: (pageId: string) => void
   onOpenAutomations?: () => void
+  /** Stage 5: a regulated domain's change requests, audit trail, inspector access and TMF index. */
+  regulated?: React.ReactNode
 }
 
-export function DomainView({ domain, playbooks, tab, onOpenEntities, onOpenPlaybook, onOpenPage, onOpenAutomations }: DomainViewProps) {
+export function DomainView({ domain, playbooks, tab, onOpenEntities, onOpenPlaybook, onOpenPage, onOpenAutomations, regulated }: DomainViewProps) {
   const { t } = useTranslation()
   const rulesRef = React.useRef<HTMLDivElement>(null)
   React.useEffect(() => {
@@ -57,6 +59,7 @@ export function DomainView({ domain, playbooks, tab, onOpenEntities, onOpenPlayb
       {domain.regulated && (
         <p className="rounded-md bg-fill-hover/60 px-3.5 py-2.5 text-label-sm text-secondary" data-regulated-note>{t('memwise.domains.regulatedNote')}</p>
       )}
+      {domain.regulated && regulated}
 
       <Info_Section title={t('memwise.entities.title')} count={domain.entities.length} actions={onOpenEntities ? <Button size="sm" variant="ghost" onClick={() => onOpenEntities()}>{t('memwise.domains.openEntities')}</Button> : undefined}>
         <div className="flex flex-wrap gap-1.5 p-3">

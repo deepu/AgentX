@@ -57,7 +57,7 @@ export function parseWorkspaceFile(text: string, file: string, folderName = 'Wor
  * policy are filled in by the loader.
  */
 export function parseDomainFile(text: string, file: string, id: string, dir: string): ParseResult<DomainDef> {
-  const { data, report, locate } = readMap(text, file, 'a domain: domain, name, owner, regulated, retention, accepts_from, intake, home, pages');
+  const { data, report, locate } = readMap(text, file, 'a domain: domain, name, owner, regulated, qa, retention, accepts_from, intake, home, pages');
   if (!data) return { diagnostics: report.diagnostics };
   report.validate(domainFormat, data);
   const written = asString(data.domain);
@@ -71,6 +71,7 @@ export function parseDomainFile(text: string, file: string, id: string, dir: str
     description: asString(data.description),
     owner: asString(data.owner),
     regulated: typeof data.regulated === 'boolean' ? data.regulated : undefined,
+    qa: asString(data.qa),
     retentionMs: typeof retention === 'string' || typeof retention === 'number' ? parseDuration(retention) : undefined,
     acceptsFrom: Array.isArray(data.accepts_from) ? asStrings(data.accepts_from) : undefined,
     intake: isRecord(data.intake) && typeof data.intake.address === 'string' ? { address: data.intake.address.trim() } : undefined,

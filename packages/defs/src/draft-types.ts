@@ -49,6 +49,13 @@ export interface DraftMeta {
   createdAt: string;
   /** The meta-playbook run building or changing it (create-playbook / change-playbook), if any. */
   runId?: string;
+  /**
+   * The playbook's project-relative folder when it isn't `workflows/<workflowId>`: a playbook of a
+   * named domain (`domains/etmf/workflows/file-document`). Such a draft copies `workspace.yaml` and
+   * every domain's definitions, so it loads as a project; it may change the playbook's folder and
+   * its domain's `policy.yaml` and `entities/` (Stage 5, docs/memwise/26-projects-and-pages.md §8).
+   */
+  folder?: string;
   /** Set when published. */
   publishedVersion?: number;
   publishedAt?: string;

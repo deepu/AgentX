@@ -5,7 +5,7 @@
 import { actorLabel, PgVersionStore } from '@memwise/db';
 import {
   applyDraft, checkProject, createDraft, describeStructuralDiff, diffDraft, discardDraftEdit, DraftConflictError, draftContentHash,
-  draftDir, DraftStaleError, exampleToYaml, listDrafts, loadDraft, loadWorkflow, readDraft, SCALAR_TYPES, setDraftEditStatus,
+  draftDir, draftPlaybookFolder, DraftStaleError, exampleToYaml, livePlaybookFolder, listDrafts, loadDraft, loadWorkflow, readDraft, SCALAR_TYPES, setDraftEditStatus,
   updateDraftMeta, WORKFLOW_ID_PATTERN, writeDraftFiles, writeDraftReport,
   type CheckEnvironment, type Diagnostic, type DraftReport, type ExampleCase, type ExampleOutcome, type Impact,
   type DiffNameKind, type ImpactTool, type PastCaseOutcome, type ProjectDefs, type StructuralDiff, type WorkflowDef,
@@ -41,6 +41,17 @@ export interface AuthoringDeps {
   caseToExample(caseId: string, opts?: { name?: string; correction?: { step: string; outcome: string; note?: string } }): Promise<ExampleCase>;
   testRunner: TestRunner;
   emit(change: KernelChange): void;
+  /**
+   * Stage 5 (26 §8): change requests. A person's new change draft of a regulated domain's playbook
+   * opens one; a draft with one is published only by it (QA's signature).
+   */
+  changes?: {
+    onDraftCreated(meta: { id: string; workflowId: string; title: string; kind: string }, by: Actor): Promise<void>;
+    publishRefusal(draft: { id: string; workflowId: string; kind: string }, changeRequest: string | undefined): Promise<string | undefined>;
+    /** Why the draft's files can't change now (its request was sent to QA or closed), if they can't. */
+    writeRefusal(draftId: string): Promise<string | undefined>;
+    regulated(workflowId: string): boolean;
+  };
 }
 
 /** Past cases replayed by a check, by default. */
@@ -57,9 +68,13 @@ const VALUE_FORMS = ['Identifier(<scheme>)', 'Quantity(<unit>)', 'Enum[<a>, <b>]
 /** A project-relative path a draft or the live project may be read at. */
 function readablePath(path: string): boolean {
   const parts = path.split('/');
-  return (parts[0] === 'domain' || parts[0] === 'workflows') && parts.length > 1
+  if (path === 'workspace.yaml') return true;
+  return (parts[0] === 'domain' || parts[0] === 'workflows' || parts[0] === 'domains') && parts.length > 1
     && !parts.some((p) => p === '' || p === '.' || p === '..' || p.startsWith('.')) && !path.includes('\\');
 }
+
+/** `domains/<d>/workflows/<id>` → `d`. */
+const domainOfFolder = (folder: string) => /^domains\/([^/]+)\/workflows\//.exec(`${folder}/`)?.[1];
 
 async function listFiles(dir: string, prefix = ''): Promise<string[]> {
   let entries;
@@ -156,6 +171,10 @@ function entitiesOf(workflow: WorkflowDef, entities: Record<string, unknown>): S
   return out;
 }
 
+/** A regulated domain's playbook changes only through a change request (26 §8, D115). */
+const regulatedRefusal = (name: string) =>
+  new Error(`${name} is in a regulated domain: a change to it is a change request (open one, then QA's signature makes it live)`);
+
 export function createAuthoring(deps: AuthoringDeps): Authoring {
   const root = resolve(deps.projectDir);
   const versions = new PgVersionStore();
@@ -200,9 +219,12 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         }
       }
     }
-    // Only what this draft is about: its playbook's folder and the domain.
-    const mine = (file?: string) => !file || file.startsWith('domain/') || file === 'domain' || file.startsWith(`workflows/${meta.workflowId}/`)
-      || file === `workflows/${meta.workflowId}`;
+    // Only what this draft is about: its playbook's folder and the domain (a named domain's own folder).
+    const folder = draftPlaybookFolder(meta);
+    const named = domainOfFolder(folder);
+    const mine = (file?: string) => !file || file.startsWith(`${folder}/`) || file === folder
+      || (named ? file === `domains/${named}` || (file.startsWith(`domains/${named}/`) && !file.startsWith(`domains/${named}/workflows/`))
+        : file.startsWith('domain/') || file === 'domain');
     return all.filter((d) => mine(d.file));
   }
 
@@ -375,6 +397,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
 
     async createDraft(input, by) {
       const meta = await createDraft(root, { workflowId: input.workflowId, title: input.title, kind: input.kind, createdBy: byLabel(by), ...(input.runId ? { runId: input.runId } : {}) });
+      await deps.changes?.onDraftCreated(meta, by);
       emit(meta.id);
       return meta;
     },
@@ -383,17 +406,24 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       // The id becomes a folder path: a chat must not list folders outside the project with it.
       if (workflowId !== undefined && !WORKFLOW_ID_PATTERN.test(workflowId)) throw new Error(`\`${workflowId}\` is not a playbook id`);
       let base = root;
-      let workflow = workflowId;
+      let folder = workflowId ? (await livePlaybookFolder(root, workflowId)) ?? `workflows/${workflowId}` : undefined;
       if (draftId) {
         const { meta } = await requireDraft(draftId);
         base = draftDir(root, draftId);
-        workflow = meta.workflowId;
+        folder = draftPlaybookFolder(meta);
       }
       if (path === undefined) {
+        // A named domain's playbook: its folder, and its domain's rules and record types beside it.
+        const named = folder ? domainOfFolder(folder) : undefined;
         const files = [
-          ...(await listFiles(join(base, 'domain'))).map((f) => `domain/${f}`),
-          ...(workflow
-            ? (await listFiles(join(base, 'workflows', workflow))).map((f) => `workflows/${workflow}/${f}`)
+          ...(named
+            ? [
+              ...(existsSync(join(base, 'domains', named, 'policy.yaml')) ? [`domains/${named}/policy.yaml`] : []),
+              ...(await listFiles(join(base, 'domains', named, 'entities'))).map((f) => `domains/${named}/entities/${f}`),
+            ]
+            : (await listFiles(join(base, 'domain'))).map((f) => `domain/${f}`)),
+          ...(folder
+            ? (await listFiles(join(base, folder))).map((f) => `${folder}/${f}`)
             : (await listFiles(join(base, 'workflows'))).map((f) => `workflows/${f}`)),
         ];
         return { files };
@@ -404,6 +434,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async write(input, by) {
+      const refused = await deps.changes?.writeRefusal(input.draftId);
+      if (refused) throw new Error(refused);
       const edit = await writeDraftFiles(root, input.draftId, input.files, {
         by: byLabel(by), via: input.via, summary: input.summary, ...(input.chatId ? { chatId: input.chatId } : {}),
       });
@@ -412,6 +444,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async keepEdit(draftId, editId) {
+      const refused = await deps.changes?.writeRefusal(draftId);
+      if (refused) return { applied: false, message: refused };
       try {
         await setDraftEditStatus(root, draftId, editId, 'kept');
         emit(draftId);
@@ -422,6 +456,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     },
 
     async discardEdit(draftId, editId) {
+      const refused = await deps.changes?.writeRefusal(draftId);
+      if (refused) return { applied: false, message: refused };
       const r = await discardDraftEdit(root, draftId, editId);
       if (r.applied) emit(draftId);
       return { applied: r.applied, ...(r.message ? { message: r.message } : {}), ...(r.conflicts ? { conflicts: r.conflicts } : {}) };
@@ -490,6 +526,8 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         return { status: 'failed', message: `draft ${draftId} was already published` };
       }
       if (d.meta.status !== 'open') return { status: 'failed', message: `draft ${draftId} is ${d.meta.status}` };
+      const refusal = await deps.changes?.publishRefusal({ id: draftId, workflowId: d.meta.workflowId, kind: d.meta.kind }, opts.changeRequest);
+      if (refusal) return { status: 'failed', message: refusal };
       if ((await draftContentHash(root, draftId)) !== opts.hash) return { status: 'stale', message: 'the draft changed after it was checked; check it again' };
       try {
         await applyDraft(root, draftId, { hash: opts.hash });
@@ -498,7 +536,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         if (e instanceof DraftStaleError) return { status: 'stale', message: e.message };
         return { status: 'failed', message: e instanceof Error ? e.message : String(e) };
       }
-      const { workflow } = await loadWorkflow(join(root, 'workflows', d.meta.workflowId), root);
+      const { workflow } = await loadWorkflow(join(root, draftPlaybookFolder(d.meta)), root);
       if (!workflow) return { status: 'failed', message: `the published playbook ${d.meta.workflowId} does not load` };
       // Recorded before indexing, so the index finds the hash known and doesn't record it as `files`.
       await versions.record(deps.pool, {
@@ -518,6 +556,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       }
       const live = await liveWorkflow(input.workflowId);
       if (!live) throw new Error(`there is no playbook ${input.workflowId} to change`);
+      if (deps.changes?.regulated(input.workflowId)) throw regulatedRefusal(live.title ?? live.id);
       const runId = newRunId();
       const title = input.title ?? `Change ${live.title ?? live.id}`;
       const meta = await createDraft(root, { workflowId: input.workflowId, title, kind: 'change', createdBy: by.personId, runId });
@@ -539,6 +578,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     async submitDraft(draftId, by) {
       const { meta, edits } = await requireDraft(draftId);
       if (meta.status !== 'open') throw new Error(`draft ${draftId} is ${meta.status}`);
+      if (meta.kind === 'change' && deps.changes?.regulated(meta.workflowId)) throw regulatedRefusal(meta.workflowId);
       const diff = await diffDraft(root, draftId).catch(() => undefined);
       const said = edits.filter((e) => e.status !== 'discarded').map((e) => e.summary).filter(Boolean);
       // The reviewer reads this on the review card: steps by their titles, no ids.
@@ -577,11 +617,12 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         draftId = meta.id;
       }
       // The file is named for the example, as a slug unique in the folder; the name as typed stays inside it.
-      const examplesDir = join(draftDir(root, draftId), 'workflows', workflowId, 'examples');
+      const { meta: target } = await requireDraft(draftId);
+      const examplesDir = join(draftDir(root, draftId), draftPlaybookFolder(target), 'examples');
       const base = exampleFileSlug(example.name) || exampleFileSlug(exampleNameFor(input.caseId));
       let file = base;
       for (let n = 2; existsSync(join(examplesDir, `${file}.yaml`)) || existsSync(join(examplesDir, `${file}.yml`)); n++) file = `${base}-${n}`;
-      const path = `workflows/${workflowId}/examples/${file}.yaml`;
+      const path = `${draftPlaybookFolder(target)}/examples/${file}.yaml`;
       const { file: _file, ...doc } = example;
       await writeDraftFiles(root, draftId, [{ path, content: exampleToYaml(doc) }], {
         by: byLabel(by), via: 'editor', summary: input.correction ? `Example case ${example.name} from a correction` : `Example case ${example.name} from a past case`,

@@ -68,6 +68,7 @@ export type RelayRoute =
 const FORWARDED_METHODS: Record<(typeof FORWARDED_PREFIXES)[number], string[]> = {
   '/f/': ['GET', 'HEAD', 'POST', 'PUT'],
   '/i/': ['GET', 'HEAD', 'POST', 'PUT'],
+  '/v/': ['GET', 'HEAD', 'POST'],
   '/h/': ['GET', 'POST'],
   '/assets/': ['GET', 'HEAD'],
 };

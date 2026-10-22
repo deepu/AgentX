@@ -16,6 +16,7 @@ import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { getSessionTitle } from '@/utils/session'
 import { Info_Page } from '@/components/info/Info_Page'
 import { DomainView } from '../domains/DomainView'
+import { AuditTrailScreen, InspectorSetup, RegulatedDomainLinks } from '../regulated'
 import { ProjectSettingsScreen } from '../projects/ProjectScreens'
 import { AutomationsPage } from '../domains/DomainsPages'
 import { relativeTime } from '../format'
@@ -24,14 +25,17 @@ import type { ShellProject } from './project-model'
 import { saveShellLayout, shellLayoutAtom } from './useProjectShell'
 import { setShellRouteRewriter } from './shell-routes'
 
-const TABS = ['project', 'definitions', 'automations', 'advanced'] as const
+const TABS = ['project', 'definitions', 'automations', 'inspectors', 'audit', 'advanced'] as const
 type Tab = typeof TABS[number]
+/** Tabs only a regulated project has (Stage 5): inspector access and the audit trail. */
+const REGULATED_TABS: readonly Tab[] = ['inspectors', 'audit']
 const CHATS_SHOWN = 60
 
 export function ProjectSettingsPage({ project, tab }: { project: ShellProject; tab?: string }) {
   const { t } = useTranslation()
   // Stage 3: the Project tab is the stored project's settings; what its app holds moves to its own tab.
-  const tabs: readonly Tab[] = project.stored ? TABS : TABS.filter(k => k !== 'definitions')
+  // Stage 5: inspector access and the audit trail only on a regulated project.
+  const tabs: readonly Tab[] = TABS.filter(k => (project.stored || k !== 'definitions') && (project.regulated || !REGULATED_TABS.includes(k)))
   const definitions: Tab = project.stored ? 'definitions' : 'project'
   const current: Tab = (tabs as readonly string[]).includes(tab ?? '') ? tab as Tab : tab === 'rules' ? definitions : 'project'
   const go = (next: Tab) => navigate(routes.view.project(project.id, { type: 'settings', ...(next === 'project' ? {} : { tab: next }) }))
@@ -53,6 +57,8 @@ export function ProjectSettingsPage({ project, tab }: { project: ShellProject; t
         {current === 'project' && project.stored && <ProjectSettingsScreen projectId={project.id} />}
         {current === definitions && <ProjectTab project={project} rules={tab === 'rules'} />}
         {current === 'automations' && <AutomationsPage domainId={project.domain} />}
+        {current === 'inspectors' && <InspectorSetup projectId={project.id} />}
+        {current === 'audit' && <AuditTrailScreen projectId={project.id} />}
         {current === 'advanced' && <AdvancedTab />}
       </div>
     </div>
@@ -73,6 +79,7 @@ function ProjectTab({ project, rules }: { project: ShellProject; rules: boolean 
           onOpenEntities={entity => entity && navigate(routes.view.project(project.id, { type: 'records', entity }))}
           onOpenPlaybook={workflowId => navigate(routes.view.project(project.id, { type: 'playbook', workflowId }))}
           onOpenPage={pageId => navigate(routes.view.project(project.id, { type: 'dashboard', domain: domain.id, pageId }))}
+          regulated={<RegulatedDomainLinks domain={domain} />}
         />
       )}
     </Info_Page>

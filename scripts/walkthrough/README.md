@@ -45,6 +45,22 @@ switcher, a study's Home and Project settings, publishes template v5 and reviews
 does it; MW-207 tested and taken), Waiting for you across projects, the app home, New project from a
 template card, and New project described in chat (the scripted model calls `project_draft`), then
 Start study.
+
+`regulated-etmf.mjs` is the Stage 5 walkthrough (change request, audit trail, inspector access, TMF index). Its agent
+steps need tool calls, so start the scripted model with the classifier and verifier of `regulated-tools.mjs`, and
+give both processes the same index file (the flow writes it; the classifier reads it):
+```sh
+WALKTHROUGH_INDEX=$dir/index.json node scripts/walkthrough/fake-anthropic.mjs 8800 \
+  scripts/walkthrough/regulated-replies.json scripts/walkthrough/regulated-tools.mjs
+WALKTHROUGH_INDEX=$dir/index.json MEMWISE_REPO=$PWD xvfb-run -a -s "-screen 0 1440x900x24" \
+  node scripts/walkthrough/launch.mjs <configDir> <projectDir> <outDir> $PWD/scripts/walkthrough/regulated-etmf.mjs
+```
+Playbook steps read the model connection's key when the app starts: the first launch saves a placeholder key for
+the scripted connection and stops; launch again on the same config folder, with an empty `postgres` folder and a
+fresh copy of the example. The QA signature isn't in it (a regulated project allows no "act as"); the exit test
+`stage5-exit.test.ts` covers it, and writes the inspector's page as `EInspector-*.png` when
+`MEMWISE_WALKTHROUGH_DIR` is set.
+
 `shell-edc.mjs` (Stage 6) needs the fake Rave running and its address in the environment
 (`RAVE_URL=http://127.0.0.1:4790/RaveWebServices RAVE_USER=rave RAVE_PASSWORD=rave`, see the script's header), and
 the eTMF example's seeds, as for `stage3-projects.mjs` (`MEMWISE_EXAMPLE_PROJECT_DIR=$PWD/examples/etmf` and a

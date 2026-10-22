@@ -328,6 +328,8 @@ export interface MwStartCaseInput {
   workflowId: string
   /** Plain initial values (provenance `input`, by the current person). */
   values?: Record<string, unknown>
+  /** Stage 3: the project to run it in (a study); absent: its app's own project. */
+  project?: string
 }
 
 // ---------------------------------------------------------------- inbox
@@ -528,6 +530,39 @@ export type MwInboxItemBody =
       description: string
       since: string
     }
+  /** Stage 5: a change request waiting for a signature: the raiser's ("Send to QA") or QA's. No case. */
+  | {
+      kind: 'change-request'
+      id: string
+      /** The project (domain) it is in. */
+      domain?: string
+      caseId?: undefined
+      runId?: undefined
+      workflowId: string
+      /** `CR-014 · Stop the QC step for CVs`, for the list row. */
+      caseTitle: string
+      /** The playbook's title. */
+      stepTitle: string
+      signoff: 'raiser' | 'qa'
+      changeRequest: import('./memwise-regulated').MwChangeRequestSummary
+      since: string
+    }
+  /** Stage 5: an inspector asked the study team a question (answered in the app). No case. */
+  | {
+      kind: 'inspector-question'
+      id: string
+      /** The project (domain) it is in. */
+      domain?: string
+      caseId?: undefined
+      runId?: undefined
+      workflowId?: undefined
+      /** The question, for the list row. */
+      caseTitle: string
+      /** The inspection's name. */
+      stepTitle: string
+      question: import('./memwise-regulated').MwInspectorQuestion
+      since: string
+    }
 
 export interface MwSubmitStepInput {
   stepRunId: string
@@ -616,6 +651,12 @@ export type MwChatAnchor =
   | { kind: 'record'; entity: string; id: string }
   | { kind: 'project' | 'waiting'; id: string }
   | { kind: 'dashboard'; domain: string; id: string }
+  /**
+   * Stage 5 (doc 26 §8): a change request (`id`: its id, or its label `CR-014` with its `project`:
+   * numbers are per project), and a project's audit trail and TMF index (`id`: the project).
+   */
+  | { kind: 'change'; id: string; project?: string }
+  | { kind: 'audit' | 'tmf'; id: string }
   /** Pages (26 §4): a chat that reads and writes the page (`page_get`, `page_update`, `page_create`). */
   | { kind: 'page'; id: string }
 
@@ -662,13 +703,19 @@ export interface MwChange {
   /**
    * `drafts`: a draft was created, edited, checked, published or discarded (`id` = draft id).
    * `plugins` (Phase 4): a plugin was installed, or a binding or identity link changed.
+   * `regulated` (Stage 5): a change request, inspector link or question of `project` changed.
+   * `audit` (Stage 5): `project`'s audit trail grew.
    */
   kind: 'run' | 'case' | 'inbox' | 'definitions' | 'status' | 'drafts' | 'plugins' | 'external' | 'relay' | 'records' | 'triggers' | 'pages'
     /** Stage 3: a project was made, started, archived or changed, or its template moved on (`id` = project id). */
     | 'projects'
+    /** Stage 5: a change request, inspector link or question moved (`regulated`), or the audit log grew (`audit`). */
+    | 'regulated' | 'audit'
   /** Pages (26 §4): the project, and the answer change when one changed (`id` is the page id). */
   projectId?: string
   changeId?: string
+  /** Stage 5 `regulated` / `audit`: the project (domain id). */
+  project?: string
   /** Phase 6 `records`: the entity key and record id that changed. */
   entity?: string
   /** The run id for `run` changes; the record id for `records`. */
@@ -877,6 +924,8 @@ export interface MwSubmitDraftResult {
   caseId?: string
   code?: string
   message?: string
+  /** Stage 5, `draft.change_request`: the change request the draft is (it goes to QA from its page). */
+  changeRequest?: { id: string; label: string; project: string }
 }
 
 export interface MwVersion {

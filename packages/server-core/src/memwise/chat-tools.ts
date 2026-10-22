@@ -11,6 +11,7 @@ import { untrustedRecordData } from '@memwise/session-tools-core'
 import type { Diagnostic, DraftDiff, DraftMeta, DraftReport } from '@memwise/defs'
 import { emitMemwiseChange, getMemwiseService } from './host'
 import { authoringOf, conversationState, isConversationStep, isProjectConversation, type ConversationState } from './conversation'
+import { buildChangeToolCallbacks } from './regulated'
 import type { MemwiseService, PersonActor } from './service'
 import type { ProjectDefs } from '@memwise/defs'
 import type { PageView, PageWriteResult, RecordField, RecordFieldSource, RecordPage, RecordQueryResult, RecordsService } from '@memwise/runtime'
@@ -68,7 +69,34 @@ export function reportForChat(r: DraftReport): Record<string, unknown> {
   }
 }
 
+/**
+ * The `playbook_*` tools of a chat: a conversation step's (below), or, for a chat anchored to a
+ * change request of a regulated playbook (Stage 5, 26 §8), the request's (`buildChangeToolCallbacks`).
+ * The anchor is read on every call, so a chat's tools follow it.
+ */
 export function buildMemwiseToolCallbacks(opts: MemwiseChatToolsOptions): MemwiseToolCallbacks {
+  const step = buildStepToolCallbacks(opts)
+  const change = buildChangeToolCallbacks(opts)
+  async function pick(): Promise<MemwiseToolCallbacks> {
+    const svc = getMemwiseService()
+    if (!svc) return step
+    const { PgChatAnchorStore } = await import('@memwise/db')
+    const anchor = await new PgChatAnchorStore().get(svc.kernel.pool, opts.sessionId).catch(() => null)
+    return anchor?.anchorKind === 'change' ? change : step
+  }
+  return {
+    // The step's other tools (Stage 3's project tools) belong to step chats only.
+    ...step,
+    vocabulary: async () => (await pick()).vocabulary(),
+    read: async (input) => (await pick()).read(input),
+    write: async (input) => (await pick()).write(input),
+    diff: async () => (await pick()).diff(),
+    check: async (input) => (await pick()).check(input),
+    finish: async (input) => (await pick()).finish(input),
+  }
+}
+
+function buildStepToolCallbacks(opts: MemwiseChatToolsOptions): MemwiseToolCallbacks {
   const { sessionId } = opts
   /** Step runs this chat finished: the step's record catches up a moment later. */
   const finished = new Set<string>()

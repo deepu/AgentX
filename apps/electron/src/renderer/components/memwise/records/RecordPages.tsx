@@ -18,7 +18,7 @@ import { roleTitle } from '../format'
 import type { RecordPageActions } from './RecordBlocks'
 import type { ReviewQueue, ReviewSubmit } from './DocumentReview'
 import { RecordPageView, type ViewerFile } from './RecordPageView'
-import { useProjectShell } from '../project/shell-context'
+import { shellStartProject, useProjectShell } from '../project/shell-context'
 import { RecordOwnedFacts } from '../edc/EdcScreens'
 
 /** The bytes of the page's first document viewer. */
@@ -64,6 +64,9 @@ export function useRecordActions(page: MwRecordPage | null): RecordPageActions &
   const id = page?.id
   const domain = page?.domain
   const openChat = useOpenRecordChat(entity, id)
+  // A playbook started from a record runs in the record's project, else the one open in the shell.
+  const shellProject = shellStartProject(useProjectShell())
+  const startIn = page?.project ?? shellProject
   return React.useMemo<RecordPageActions & { openChat?: () => void }>(() => {
     if (!entity || !id) return {}
     const api = getMemwiseApi()
@@ -72,7 +75,7 @@ export function useRecordActions(page: MwRecordPage | null): RecordPageActions &
       openRecord: (e, r) => navigate(routes.view.record(e, r)),
       openCase: caseId => navigate(routes.view.cases(caseId)),
       openView: e => domain && navigate(routes.view.domains({ type: 'entities', domain, entity: e })),
-      startPlaybook: workflowId => setStartCase({ open: true, workflowId }),
+      startPlaybook: workflowId => setStartCase({ open: true, workflowId, ...(startIn ? { project: startIn } : {}) }),
       ...(api && typeof api.memwiseUpdateRecord === 'function' ? {
         update: (values, reason) => calls.update({ entity, id, values, ...(reason ? { reason } : {}) }),
         transition: (transition, reason) => calls.transition({ entity, id, transition, ...(reason ? { reason } : {}) }),
@@ -85,7 +88,7 @@ export function useRecordActions(page: MwRecordPage | null): RecordPageActions &
         },
       } : {}),
     }
-  }, [entity, id, domain, calls, setStartCase, openChat])
+  }, [entity, id, domain, calls, setStartCase, openChat, startIn])
 }
 
 export function RecordPage({ entity, recordId }: { entity: string; recordId: string }) {

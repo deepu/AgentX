@@ -433,7 +433,61 @@ Stage 6  EDC and studies across apps  a Rave connector, linked projects, one own
   - a CR fails validation once, is fixed from chat and passes;
   - QA signs, and the new version runs while old runs finish on the old one;
   - an inspector link shows no drafts or chats;
-  - the export verifies its chain.
+  - the export verifies its chain;
+  - a MW-301 inspector link can't open a MW-207 document;
+  - MW-301's audit trail page has no MW-207 entries.
+
+#### Stage 5 as built (D115–D119)
+
+- **Change requests (D115, D116).**
+  - A playbook draft in a regulated domain is a change request (`CR-014`, numbered per project and able to continue a paper log). It is opened from chat or the app, or made automatically when a draft of a regulated playbook is created. The rules and record types that ride in that draft come with it.
+  - Publishing such a draft any other way is refused (`draft.change_request`, from the app's submit and from `memwise publish`), and the refusal names the request.
+  - The page shows each changed step with word-level strikeouts: the title, the instructions, and each AI-check rule added or removed. It also shows the reason, the validation runs, and the sign-offs.
+  - **Validation** replays the changed agent step's AI check (the verifier role, on the result and evidence each case recorded) over the playbook's past cases. It compares the verdict with what the person at the next person step decided ("2 of 3 match QC"), and lists the mismatches.
+  - A request can be sent only when the latest run is on the current draft and passed.
+  - Signatures follow Part 11: password re-authentication, with the meaning stored. The raiser signs to send it to QA. QA (the domain's `qa:` role, else its owner, never the raiser) signs to publish the next version.
+  - While a request is with QA, its draft can't be written (from chat, the app's editor, keep or discard, or `memwise`). If the draft QA would sign is not the one the raiser signed, QA's sign sends it back: the request returns to `open` with a `change.returned` entry, and the raiser validates and signs again.
+  - QA's signature and a `change.publishing` entry are recorded in one transaction before the version is published, then the request is marked published. If publishing stops between the two, signing again finishes it from the version already published instead of publishing twice.
+  - A `change` draft of a regulated playbook that has no change request (an agent's, say) can't be published either.
+  - Calls that change a request (update, validate, sign, withdraw, its chat) take its `cr_…` id, or `CR-014` together with the project, since numbers are per project.
+  - Runs keep the version they pinned (D36), so old cases finish on the old version. The trail names their steps as that version did.
+- **The chat beside a change request** edits its draft with the playbook tools and can validate it, but it cannot sign or publish. While QA has the request, the draft is locked.
+- **Inspector access (D117).**
+  - Project settings → Inspector access makes a link (`/v/mwi_…`, shown once; only its sha256 is kept) with inspectors' names and an end date. A link can be extended or revoked.
+  - The page shows the TMF index, filed documents, their signatures and each document's audit trail. It has no drafts, chats, change requests, AI suggestions or notes.
+  - Every open, list, view and download is in the project's audit trail as the inspector.
+  - "Ask the study team" puts a question under Waiting for you for the people holding the domain's owner role (the study manager in the eTMF example). Their answer shows on the inspector's page.
+  - On the desktop the page is reachable only once a public address is set (server mode or the relay).
+- **Audit trail (D118).**
+  - There is one hash-chained log per project, written by database triggers on record versions, signatures, settled step runs, change requests and inspector activity.
+  - AI entries name the model, and the verifier's model when there is one, and quote the sentence relied on.
+  - The page filters to people and AI and scopes to one record. **Verify** checks the chain in the database.
+  - **Export** is canonical JSON signed with the kernel's Ed25519 key; `memwise audit verify <file> --key <public key>` and the page's verify both check it, and a changed entry fails at that entry. Without `--key` the file is reported unverified (exit 1), since anyone can sign an export with their own key. An export cut at the size limit says `complete: false`.
+  - The log starts when migration `0010_regulated` runs: earlier record versions, signatures and runs are not backfilled into it. A record of the default domain (an entity with no `domain.` prefix) is filed under the project `domain`.
+  - Inspectors see a record's own trail only: no change-request, inspector or audit entries, no other record's entries, and no AI rationale.
+- **TMF index (D119).** The eleven zones of the TMF Reference Model, with expected, filed, missing, in-QC and filed-late counts per zone. A zone's sub-page lists its sites and documents. A document's zone comes from its artifact name, and an unmatched artifact is "unplaced", never guessed. It appears in the sidebar under the project when the app keeps `Document` and `ExpectedDocument`.
+- **In the shell:**
+  - routes `mw/{project}/cr/{CR-014}`, `mw/{project}/audit[/{entity:id}]` and `mw/{project}/tmf[/{zone}]`;
+  - chats anchored to `change`, `audit` and `tmf`, with the page's content in the chat's context;
+  - CR sign-offs and inspector questions under Waiting for you;
+  - Inspector access and Audit trail as Project settings tabs on regulated projects.
+- **With Stage 3's projects inside apps:**
+  - A study (`mw301`) is a project of the eTMF app. Its change requests are the app's: a playbook is the app's. Its TMF index counts its own records, plus those every project of the app shares, and names its study.
+  - **Decision: the audit trail page and inspector links are per study** (one project per study, read-only inspector view). The database still writes one hash chain per app, and each entry carries the project it belongs to (`data.inProject`: a record version's or step's project, a signed record's or its case's, an inspector link's study, or for an app-level link the viewed document's project or the app; an export the project it was asked for). Only the app's change requests, and records every project shares, carry none. A study's trail page shows its own entries and those; an app's own project shows the whole app. Who may see it follows the grants: a grant in one study (`project: mw207`) reaches that study's trail, links and questions only, never another study's or the app's whole trail, and an unknown or unseen project is refused as not found. Change requests are the app's, so raising one or signing it as QA needs a role across the app (workspace-wide or a grant with no project), not a study's grant. An inspector link is given for a study: it lists, opens, downloads and shows the trail of that study's filed documents only (and those every project shares), and its views, downloads and questions go in that study's trail; a MW-301 link can't open a MW-207 document. The export stays the app's whole chain (a study's entries alone wouldn't chain), and its header says which project it was asked for (`askedFor`).
+  - A change request waits in every project that runs its app, and under its app in "Waiting for you, all projects". An inspector's question waits in the study whose link asked it.
+  - A study's run is in its study's trail (and the app's chain), although it runs the study's own copy of the playbook. Start case starts a case in the project the shell is showing.
+  - Record types added later (a new app's tables, as EDC's are) are audited with nothing of their own: every typed table writes `mw.record_versions` through its generated row trigger, and that is what the audit trigger watches.
+- **Tests:**
+  - `packages/server-core/src/memwise/__tests__/stage5-exit.test.ts`, the exit test: the CR fails 2 of 3, is fixed from its chat and passes 3 of 3; QA signs; old and new runs; trail, export and tamper; the inspector link; the TMF index. On Stage 3's studies: MW-301's trail page has no MW-207 entries, a MW-301 inspector link can't open, download or show the trail of a MW-207 document, its question waits in MW-301, and the export names the study it was asked for. It also writes `EInspector-*` screenshots when `MEMWISE_WALKTHROUGH_DIR` is set.
+  - `packages/runtime/tests/regulated.test.ts`.
+  - `apps/electron/.../__tests__/regulated-render.test.tsx` and `apps/external-form/src/__tests__/inspector.test.tsx`, the render tests.
+  - `scripts/walkthrough/regulated-etmf.mjs`, the desktop walkthrough with scripted classifier and verifier tool calls (`regulated-tools.mjs`).
+- **Upgrading:** `0010_regulated.sql` was edited in place while this stage was on its branch (it was never on `new-primitives`). A database that ran a pre-merge `regulated` build has the old checksum and must be recreated. Once merged, 0010 is frozen like every applied migration: later changes go in a new one.
+- **Kernel row rules:** the policies on `mw.cases`, `mw.runs` and `mw.step_runs` carry a version stamp (`comment on policy … is 'memwise-kernel-rls vN'`, `KERNEL_RLS_VERSION` in `packages/db/src/domain/tables.ts`). An index re-applies them only when the stamp differs, so a changed predicate reaches existing databases without taking those tables' locks mid-run on every re-index (the phase4 deadlock).
+- **Not built:**
+  - a change to a policy or record type outside a playbook draft is not yet gated by a request;
+  - the playbook page has no "change request open" banner;
+  - QA's signature can't be shown in a single-person desktop walkthrough, because act-as is off in regulated mode.
 
 ### Stage 6 · EDC and studies across apps (branch `edc`)
 

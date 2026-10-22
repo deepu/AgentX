@@ -23,6 +23,13 @@ const CASES: ProjectDetails[] = [
   { type: 'records', entity: 'etmf.Site' },
   { type: 'settings' },
   { type: 'settings', tab: 'advanced' },
+  // Stage 5
+  { type: 'cr', crId: 'CR-014' },
+  { type: 'audit' },
+  { type: 'audit', entity: 'etmf.Document', recordId: 'doc:101' },
+  { type: 'tmf' },
+  { type: 'tmf', zone: 'site-management' },
+  { type: 'settings', tab: 'inspectors' },
 ]
 
 describe('project shell routes', () => {
