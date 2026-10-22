@@ -67,6 +67,10 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
     const ids = missing.map((a) => a.id);
     const used = new Set((await deps.pool.query<{ project: string }>(
       `select distinct project from mw.runs where project = any($1::text[]) and not (workflow_id = any($2::text[]))`, [ids, [...APP_PLAYBOOKS]])).rows.map((r) => r.project));
+    // Pages written in it (26 §4) count too.
+    try {
+      for (const r of (await deps.pool.query<{ project: string }>(`select distinct project from mw.pages where project = any($1::text[]) and status <> 'archived'`, [ids])).rows) used.add(r.project);
+    } catch { /* no pages table */ }
     for (const e of Object.values(deps.entities())) {
       const app = e.domain ?? 'domain';
       if (!projectScoped(e) || !ids.includes(app) || used.has(app)) continue;
