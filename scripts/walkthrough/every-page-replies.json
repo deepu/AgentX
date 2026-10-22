@@ -21,7 +21,25 @@
     }
    }
   ],
-  "reply": "Done: from the second reminder on, the reminder is sent to the site coordinator **and copies the site's CRA**. It's a draft of **Study MW-301's own copy** of the playbook; the live copy hasn't changed, and other studies keep theirs.\n\nI ran the draft on **site 101** in a throwaway copy: it found 2 missing documents, drafted the reminder to Owen Price, and would record it as sent, copying Priya Shah (the CRA). Nothing was sent.\n\nWhen you're happy with it, use **Send for review** on the page."
+  "reply": "Done: from the second reminder on, the reminder is sent to the site coordinator **and copies the site's CRA**. eTMF is regulated, so this isn't a study's own copy: it's change request **CR-001** for the whole eTMF app (every study's reminders), and the live playbook hasn't changed.\n\nI ran the draft on **site 101** in a throwaway copy: it found 2 missing documents, drafted the reminder to Owen Price, and would record it as sent, copying Priya Shah (the CRA). Nothing was sent.\n\nWhen you're happy with it, open **CR-001** on the page and send it to QA; it goes live when QA signs it."
+ },
+ {
+  "match": "who gets the reminders",
+  "tools": [
+   {
+    "name": "playbook_write",
+    "input": {
+     "files": [
+      {
+       "path": "domains/edc/workflows/chase-old-queries/steps/send.md",
+       "content": "---\ntitle: Send the reminders to each site's study coordinator\nperformer: system\nstrictness: strict\nreads: [case.reminders]\ntools:\n  allowed:  [email.send]\n  required: [email.send]\nmap:\n  email.send:\n    each:    case.reminders\n    to:      item.to\n    subject: item.subject\n    body:    item.body\noutcomes: [sent]\n---\nEmail each site's coordinator their reminder. Every email is outgoing, so each one waits for a\nperson to approve its exact text first.\n"
+      }
+     ],
+     "summary": "Name who gets the reminders in the send step"
+    }
+   }
+  ],
+  "reply": "Done: the send step now says who gets the reminders: **each site's study coordinator**, as Rave names them. It's a draft of **Study MW-207's own copy** of the playbook in EDC; the live copy hasn't changed, and Study MW-301 keeps its own.\n\nWhen you're happy with it, use **Send for review** on the page."
  },
  {
   "match": "missing documents|still owe|missing",

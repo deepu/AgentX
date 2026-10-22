@@ -1,12 +1,13 @@
 // Stage 4 walkthrough (doc 26 §11, "Everything has a page"): the playbook, run, record list, record
 // and sign pages inside a study (Stage 3's shell), each holding that study's records, runs and
 // waiting items only, and the two flows:
-//   1. In Study MW-301, on "Send document reminders", the chat changes the study's own copy of the
-//      playbook ("also copy the CRA on the second reminder") into a draft, runs it on site 101, and
-//      the page sends it for review.
+//   1. In Study MW-301, on "Send document reminders", the chat changes the playbook ("also copy the
+//      CRA on the second reminder") and runs the draft on site 101. eTMF is regulated (Stage 5), so
+//      the edit is change request CR-001 for the whole app, and the page opens the request.
 //   2. On MW-301's Sites, the chat filters the list ("which sites are still missing documents?") and
 //      the filter is saved as a page in the study.
-// Then the sidebar's counts in EDC's Study MW-207 (6 sites, 1 study) and eTMF's Study MW-207.
+// Then the sidebar's counts in EDC's Study MW-207 (6 sites, 1 study) and eTMF's Study MW-207, and in
+// EDC (not regulated) a playbook chat drafting Study MW-207's own copy, which the page sends for review.
 // The chat's words and its tool calls are scripted (every-page-replies.json); the tools themselves,
 // the kernel, the test run and the screens are real. Needs the eTMF example's seeds and the fake Rave
 // (README.md).
@@ -66,10 +67,10 @@ export default async ({ win, shot }) => {
   console.log('CHASE', JSON.stringify(chase && { caseId: chase.caseId, state: chase.state, project: chase.project }))
 
   // ---- Playbook page: Study MW-301's own copy (the sidebar lists four playbooks, then "N more")
-  const openPlaybook = async () => {
+  const openPlaybook = async (title = 'Send document reminders') => {
     const more = side.getByText(/^\d+ more$/)
     if (await more.count()) { await more.first().click(); await wait(win, 800) }
-    await side.getByText('Send document reminders', { exact: false }).first().click()
+    await side.getByText(title, { exact: false }).first().click()
   }
   await openPlaybook(); await wait(win, 3500)
   await shot('02-playbook')
@@ -87,23 +88,12 @@ export default async ({ win, shot }) => {
   const toggle = page.locator('[data-action="toggle-draft"]')
   if (await toggle.count()) { await toggle.first().click(); await wait(win, 1500) }
   await shot('04-draft-changes-and-test-run')
-  await page.locator('[data-action="send-for-review"]').first().click()
-  await wait(win, 2500)
-  await shot('05-sent-for-review-checking')
-  const sent = await poll(win, 'the draft in review', async (id) => {
-    const ws = new URLSearchParams(location.search).get('workspaceId')
-    const d = await window.electronAPI.memwiseGetDraft(ws, id)
-    return d.stage === 'in_review' ? { stage: d.stage, caseId: d.caseId, files: d.files?.map((f) => f.writesTo ?? f.path) } : false
-  }, draft?.id, 300000)
-  console.log('SENT', JSON.stringify(sent))
-  await wait(win, 2500)
-  await shot('06-in-review')
-  if (sent?.caseId) {
-    // The change run waits at its review step (the review is a manager's).
-    await page.locator('[data-testid="playbook-draft"] button', { hasText: /open the review/i }).first().click().catch((e) => console.log('open review', e.message))
-    await wait(win, 3500)
-    await shot('07-change-run-at-review')
-  }
+  // eTMF is regulated (Stage 5): the chat's edit opened a change request for the whole app; the page
+  // offers it in place of Send for review, and the request goes to QA from its own page.
+  console.log('CR', JSON.stringify(draft?.changeRequest ?? null))
+  await page.locator('[data-action="open-change-request"]').first().click().catch((e) => console.log('open CR', e.message))
+  await wait(win, 4000)
+  await shot('05-change-request')
 
   // ---- Run page: the reminder's run, its waiting step answered in place
   await openPlaybook(); await wait(win, 2500)
@@ -192,4 +182,28 @@ export default async ({ win, shot }) => {
   await shot('24-edc-mw207-home')
   await side.getByText('Sites', { exact: true }).click(); await wait(win, 3500)
   await shot('25-edc-mw207-sites')
+
+  // ---- EDC isn't regulated: there the playbook chat drafts Study MW-207's own copy, and the page
+  // sends it for review (the Phase 3 path)
+  await openPlaybook('Chase old queries'); await wait(win, 3000)
+  await ask(win, 'Name who gets the reminders in the send step', 4000)
+  const own = await poll(win, "EDC MW-207's own-copy draft", async () => {
+    const ws = new URLSearchParams(location.search).get('workspaceId')
+    const ds = await window.electronAPI.memwiseListDrafts(ws)
+    return ds.find((d) => d.workflowId === 'chase-old-queries' && d.chatId && d.changedFiles > 0) ?? false
+  }, undefined, 180000)
+  console.log('EDC DRAFT', JSON.stringify(own && { id: own.id, project: own.project, changeRequest: own.changeRequest ?? null, stage: own.stage }))
+  await wait(win, 4000)
+  const edcToggle = page.locator('[data-action="toggle-draft"]')
+  if (await edcToggle.count()) { await edcToggle.first().click(); await wait(win, 1200) }
+  await shot('26-edc-own-copy-draft')
+  await page.locator('[data-action="send-for-review"]').first().click().catch((e) => console.log('send EDC', e.message))
+  const edcSent = await poll(win, 'the EDC draft sent', async (id) => {
+    const ws = new URLSearchParams(location.search).get('workspaceId')
+    const d = await window.electronAPI.memwiseGetDraft(ws, id)
+    return d.stage === 'in_review' || d.caseId ? { stage: d.stage, caseId: d.caseId, files: d.files?.map((f) => f.writesTo ?? f.path) } : false
+  }, own?.id, 240000)
+  console.log('EDC SENT', JSON.stringify(edcSent))
+  await wait(win, 3000)
+  await shot('27-edc-sent-for-review')
 }
