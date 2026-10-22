@@ -343,6 +343,11 @@ const CASE_SCOPED: [table: string, caseColumn: string][] = [['mw.cases', 'id'], 
  * also holds calculated and followed fields.
  */
 export function compileRls(entities: Record<string, EntityTypeDef>, opts: DomainSchemaOptions = {}): string[] {
+  return [...compileKernelRls(), ...compileDomainRls(entities, opts)];
+}
+
+/** The kernel tables' row rules (the same for every set of definitions). */
+export function compileKernelRls(): string[] {
   const sql: string[] = [];
   const app = q(APP_ROLE);
   for (const [t, col] of CASE_SCOPED) {
@@ -357,7 +362,13 @@ export function compileRls(entities: Record<string, EntityTypeDef>, opts: Domain
         ` with check (mw.actor_kind() = 'step' and ${col} = mw.token_case())`,
     );
   }
+  return sql;
+}
 
+/** The domain tables' row and field rules. */
+function compileDomainRls(entities: Record<string, EntityTypeDef>, opts: DomainSchemaOptions = {}): string[] {
+  const sql: string[] = [];
+  const app = q(APP_ROLE);
   for (const def of Object.values(entities)) {
     const t = table(def);
     const cols = entityColumns(def);
@@ -399,11 +410,28 @@ export function compileRls(entities: Record<string, EntityTypeDef>, opts: Domain
  * Tables, rules, views and row triggers in one transaction; rows written before Phase 6 get
  * their first version ("recorded before version history"). Returns the notes from the sync.
  */
+/** Whether the kernel tables have row security on, with this version's two policies each. */
+async function kernelRlsInPlace(db: Queryable): Promise<boolean> {
+  const tables = CASE_SCOPED.map(([t]) => t.replace(/^mw\./, ''));
+  const { rows } = await db.query<{ secured: number; policies: number }>(
+    `select (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
+              where n.nspname = 'mw' and c.relname = any($1::text[]) and c.relrowsecurity) as secured,
+            (select count(*)::int from pg_policies p
+              where p.schemaname = 'mw' and p.tablename = any($1::text[])
+                and ((p.policyname = 'mw_person_all' and p.qual like '%project_visible%' and p.with_check like '%project_visible%')
+                  or (p.policyname = 'mw_step_own_case' and p.qual like '%token_case%'))) as policies`, [tables]);
+  return rows[0]!.secured === tables.length && rows[0]!.policies === tables.length * 2;
+}
+
 export async function applyDomainSchema(pool: pg.Pool, entities: Record<string, EntityTypeDef>, opts: DomainSchemaOptions = {}): Promise<string[]> {
   return withTransaction(pool, async (db) => {
     await db.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [DOMAIN_LOCK]);
     const notes = await syncTablesIn(db, entities);
-    for (const stmt of compileRls(entities, opts)) await db.query(stmt);
+    // The kernel tables' rules don't depend on the definitions: set them only when they aren't
+    // in place yet. Re-setting them takes an exclusive lock on mw.cases, mw.runs and mw.step_runs
+    // while runs are going (a binding re-indexes mid-run), and deadlocks with a run starting.
+    if (!(await kernelRlsInPlace(db))) for (const stmt of compileKernelRls()) await db.query(stmt);
+    for (const stmt of compileDomainRls(entities, opts)) await db.query(stmt);
     for (const stmt of compileRecordTriggers(entities, opts)) await db.query(stmt);
     for (const stmt of backfillVersionsSql(entities)) await db.query(stmt);
     return notes;

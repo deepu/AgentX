@@ -98,6 +98,25 @@ describe.skipIf(!postgresAvailable())('domain tables and row rules', () => {
     await applyDomainSchema(db.pool, project.entities, { creators: domainCreators(project.entities, project.workflows) });
   });
 
+  test('re-applying the schema leaves the kernel tables alone while runs hold them (no deadlock with a run starting)', async () => {
+    const other = await db.pool.connect();
+    try {
+      // A run mid-transaction: it holds mw.runs and mw.cases (a re-index used to wait for both,
+      // holding one of them, and deadlock).
+      await other.query('begin');
+      await other.query('lock table mw.runs, mw.cases, mw.step_runs in row exclusive mode');
+      const applied = applyDomainSchema(db.pool, project.entities, { creators: domainCreators(project.entities, project.workflows) }).then(() => 'applied');
+      const waited = new Promise((r) => setTimeout(() => r('waited'), 5000));
+      expect(await Promise.race([applied, waited])).toBe('applied');
+    } finally {
+      await other.query('rollback').catch(() => undefined);
+      other.release();
+    }
+    // The rules are still in place.
+    const { rows } = await db.pool.query(`select count(*)::int as n from pg_policies where schemaname = 'mw' and tablename in ('cases', 'runs', 'step_runs')`);
+    expect(rows[0].n).toBe(6);
+  });
+
   test('a step token sees only its own case in mw.cases, mw.runs and mw.step_runs', async () => {
     const actor = stepActor('case_a', 'run_case_a/1/onboard');
     const seen = await withActor(db.pool, actor, async (c) => ({
