@@ -9,7 +9,8 @@
 //   6. Single-domain examples still load as one project each.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { entityTableName, PgPageStore, withActor, type TestDatabase } from '@memwise/db';
-import { loadProject, type ExampleCase } from '@memwise/defs';
+import { loadProject, resolveEntity, type ExampleCase } from '@memwise/defs';
+import { parseSeed, SEED_FILE } from '../src/projects/seed.ts';
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -363,5 +364,20 @@ let hash301 = '';
     expect(Object.keys(literature.projects ?? {})).toEqual(['literature']);
     expect(literature.projects!.literature).toMatchObject({ name: 'Literature search', app: 'literature' });
     expect(literature.projects!.literature!.implicit).toBeUndefined();
+  });
+
+  test("every example's seed.yaml names only record types its project's apps have", async () => {
+    for (const example of ['etmf', 'intake', 'literature']) {
+      const { project } = await loadProject(join(EXAMPLES, example));
+      for (const p of Object.values(project.projects ?? {})) {
+        if (!p.dir) continue;
+        const file = join(EXAMPLES, example, p.dir, SEED_FILE);
+        if (!existsSync(file)) continue;
+        for (const e of parseSeed(readFileSync(file, 'utf8'))) {
+          const found = (p.apps?.length ? p.apps : [p.app]).some((app) => resolveEntity(project.entities, app, e.entity));
+          expect({ example, project: p.id, key: e.key, found }).toEqual({ example, project: p.id, key: e.key, found: true });
+        }
+      }
+    }
   });
 });
