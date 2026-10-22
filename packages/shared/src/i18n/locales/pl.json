@@ -1151,6 +1151,7 @@
   "memwise.draft.tab.steps": "Kroki",
   "memwise.draft.title": "Wersja robocza",
   "memwise.draft.versionChange": "Wersja {{from}} → {{to}}",
+  "memwise.edc.also.inProject": "Połączone przez {{project}}",
   "memwise.edc.also.none": "{{study}} nie ma jeszcze w innej aplikacji.",
   "memwise.edc.also.open": "Otwórz",
   "memwise.edc.also.sameStudy": "To samo badanie w {{app}}",

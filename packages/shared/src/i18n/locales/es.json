@@ -1119,6 +1119,7 @@
   "memwise.draft.tab.steps": "Pasos",
   "memwise.draft.title": "Borrador",
   "memwise.draft.versionChange": "Versión {{from}} → {{to}}",
+  "memwise.edc.also.inProject": "Vinculado a través de {{project}}",
   "memwise.edc.also.none": "{{study}} aún no está en otra app.",
   "memwise.edc.also.open": "Abrir",
   "memwise.edc.also.sameStudy": "El mismo estudio en {{app}}",

@@ -51,7 +51,11 @@ export async function pairRecord(db: Queryable, entities: Record<string, EntityT
   if (!pairs.length || pairs.some(([mine]) => empty(row.values[mine]))) return 'none';
   const params: Record<string, unknown> = {};
   const filter = pairs.map(([, theirs], i) => { params[`k${i}`] = row.values[pairs[i]![0]]; return `${theirs} = params.k${i}`; }).join(' and ');
-  const matches = await entityStore.query(db, to, entities, { filter, params, limit: 20 });
+  // Stage 6 Part B: one study is linked across apps through its projects. A record of a project
+  // naming a study pairs only within the other app's projects of the same study (site 104 of
+  // MW-301, never 104 of another study); without such a project, anywhere, as before.
+  const projects = await sameStudyProjects(db, row.project, domainOfEntity(to));
+  const matches = await entityStore.query(db, to, entities, { filter, params, limit: 20, ...(projects ? { projects } : {}) });
   const said = pairs.map(([mine]) => `${mine} ${JSON.stringify(row.values[mine])}`).join(', ');
   // The other side's records already paired with another of ours can't pair again (one to one).
   const free: typeof matches.rows = [];
@@ -77,6 +81,15 @@ export async function pairRecord(db: Queryable, entities: Record<string, EntityT
     return 'candidates';
   }
   return 'none';
+}
+
+/** The projects running `app` with the same study as `project`; undefined when there are none. */
+async function sameStudyProjects(db: Queryable, project: string | undefined, app: string): Promise<string[] | undefined> {
+  if (!project) return undefined;
+  const { rows } = await db.query<{ id: string }>(
+    `select o.id from mw.projects p join mw.projects o on o.study = p.study
+      where p.id = $1 and p.study is not null and $2 = any(mw.project_apps(o.id)) order by o.id`, [project, app]);
+  return rows.length ? rows.map((r) => r.id) : undefined;
 }
 
 /**

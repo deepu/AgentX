@@ -1119,6 +1119,7 @@
   "memwise.draft.tab.steps": "Lépések",
   "memwise.draft.title": "Piszkozat",
   "memwise.draft.versionChange": "{{from}}. verzió → {{to}}. verzió",
+  "memwise.edc.also.inProject": "Kapcsolat ezen keresztül: {{project}}",
   "memwise.edc.also.none": "A(z) {{study}} még nincs másik alkalmazásban.",
   "memwise.edc.also.open": "Megnyitás",
   "memwise.edc.also.sameStudy": "Ugyanez a vizsgálat itt: {{app}}",

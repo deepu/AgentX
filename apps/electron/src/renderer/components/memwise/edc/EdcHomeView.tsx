@@ -158,7 +158,10 @@ export function EdcHomeView({ home, apps, now, onOpenRecord, onOpenCase }: EdcHo
   )
 }
 
-function AppRow({ app, onOpenRecord }: { app: MwStudyApp; onOpenRecord: (entity: string, id: string) => void }) {
+/** Opens the study's record in another app: in that app's project of the same study, when it has one. */
+export type OpenOtherRecord = (entity: string, id: string, projectId?: string) => void
+
+function AppRow({ app, onOpenRecord }: { app: MwStudyApp; onOpenRecord: OpenOtherRecord }) {
   const { t, i18n } = useTranslation()
   const facts = app.facts.filter(f => f.value !== null && f.value !== undefined)
     .map(f => `${f.label}: ${formatTypedValue(f.type, f.value, t, i18n.language)}`)
@@ -168,8 +171,9 @@ function AppRow({ app, onOpenRecord }: { app: MwStudyApp; onOpenRecord: (entity:
         type="button"
         className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-fill-hover disabled:hover:bg-transparent"
         disabled={!app.record}
-        onClick={() => app.record && onOpenRecord(app.record.entity, app.record.id)}
+        onClick={() => app.record && onOpenRecord(app.record.entity, app.record.id, app.project?.id)}
         data-other-app={app.domain}
+        {...(app.project ? { 'data-other-project': app.project.id } : {})}
       >
         <OwnerTag app={{ domain: app.domain, name: app.domainName }} />
         <span className="flex min-w-0 flex-1 flex-col">
@@ -177,6 +181,7 @@ function AppRow({ app, onOpenRecord }: { app: MwStudyApp; onOpenRecord: (entity:
             <strong>{t('memwise.edc.also.sameStudy', { app: app.domainName })}</strong>
             {facts.length > 0 && <span className="text-secondary"> · {facts.join(' · ')}</span>}
           </span>
+          {app.project && <span className="truncate text-label-sm text-secondary">{t('memwise.edc.also.inProject', { project: app.project.name })}</span>}
           {app.shares.length > 0 && <span className="text-label-sm text-tertiary">{t('memwise.edc.also.shares', { things: app.shares.join(', ').toLocaleLowerCase(i18n.language) })}</span>}
         </span>
         {app.record && <span className="shrink-0 text-label text-accent">{t('memwise.edc.also.open')}</span>}
@@ -186,18 +191,18 @@ function AppRow({ app, onOpenRecord }: { app: MwStudyApp; onOpenRecord: (entity:
 }
 
 /** The other apps' rows, without a section around them. */
-export function AlsoInOtherAppsList({ apps, onOpenRecord }: { apps: MwStudyApps; onOpenRecord: (entity: string, id: string) => void }) {
+export function AlsoInOtherAppsList({ apps, onOpenRecord }: { apps: MwStudyApps; onOpenRecord: OpenOtherRecord }) {
   const { t } = useTranslation()
   if (apps.apps.length === 0) return <p className="px-3.5 py-3 text-label text-tertiary" data-also-none>{t('memwise.edc.also.none', { study: apps.study.key })}</p>
   return (
     <ul className="divide-y divide-separator" data-also-in>
-      {apps.apps.map(a => <AppRow key={a.domain} app={a} onOpenRecord={onOpenRecord} />)}
+      {apps.apps.map(a => <AppRow key={`${a.domain}:${a.project?.id ?? ''}`} app={a} onOpenRecord={onOpenRecord} />)}
     </ul>
   )
 }
 
 /** "Also in other apps": the same study in each other app, with a headline or two and a way there. */
-export function AlsoInOtherAppsView({ apps, onOpenRecord }: { apps: MwStudyApps; onOpenRecord: (entity: string, id: string) => void }) {
+export function AlsoInOtherAppsView({ apps, onOpenRecord }: { apps: MwStudyApps; onOpenRecord: OpenOtherRecord }) {
   const { t } = useTranslation()
   return (
     <Info_Section title={t('memwise.edc.also.title')} count={apps.apps.length}>

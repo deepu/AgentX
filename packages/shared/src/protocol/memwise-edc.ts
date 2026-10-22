@@ -82,6 +82,8 @@ export interface MwStudyApp {
   facts: { name: string; label: string; type: string; value: unknown }[]
   /** What the two apps share, by link (D71): entity titles, plural ("Sites"). */
   shares: string[]
+  /** The project of that app naming the same study (Stage 6 Part B), which the record opens in. */
+  project?: { id: string; name: string }
 }
 
 export interface MwStudyApps {

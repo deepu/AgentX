@@ -1119,6 +1119,7 @@
   "memwise.draft.tab.steps": "Steps",
   "memwise.draft.title": "Draft",
   "memwise.draft.versionChange": "Version {{from}} → {{to}}",
+  "memwise.edc.also.inProject": "Linked through {{project}}",
   "memwise.edc.also.none": "{{study}} is not in another app yet.",
   "memwise.edc.also.open": "Open",
   "memwise.edc.also.sameStudy": "Same study in {{app}}",

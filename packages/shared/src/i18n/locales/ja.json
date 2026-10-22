@@ -1119,6 +1119,7 @@
   "memwise.draft.tab.steps": "ステップ",
   "memwise.draft.title": "下書き",
   "memwise.draft.versionChange": "バージョン {{from}} → {{to}}",
+  "memwise.edc.also.inProject": "{{project}} でつながっています",
   "memwise.edc.also.none": "{{study}} はまだ他のアプリにありません。",
   "memwise.edc.also.open": "開く",
   "memwise.edc.also.sameStudy": "{{app}} の同じ試験",

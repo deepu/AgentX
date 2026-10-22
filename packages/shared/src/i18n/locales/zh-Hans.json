@@ -1119,6 +1119,7 @@
   "memwise.draft.tab.steps": "步骤",
   "memwise.draft.title": "草稿",
   "memwise.draft.versionChange": "版本 {{from}} → {{to}}",
+  "memwise.edc.also.inProject": "通过 {{project}} 关联",
   "memwise.edc.also.none": "{{study}} 尚未出现在其他应用中。",
   "memwise.edc.also.open": "打开",
   "memwise.edc.also.sameStudy": "{{app}} 中的同一研究",

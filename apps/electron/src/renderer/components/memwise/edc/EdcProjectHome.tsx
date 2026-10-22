@@ -107,7 +107,7 @@ export function EdcProjectHome({ project, domain, waiting, running }: EdcProject
         )}
         {apps.data && (
           <ShellSection title={t('memwise.edc.also.title')} count={apps.data.apps.length}>
-            <div className="-mx-3.5"><AlsoInOtherAppsList apps={apps.data} onOpenRecord={openRecord} /></div>
+            <div className="-mx-3.5"><AlsoInOtherAppsList apps={apps.data} onOpenRecord={(entity, id, projectId) => navigate(routes.view.project(projectId ?? project.id, { type: 'record', entity, recordId: id }))} /></div>
           </ShellSection>
         )}
         {running}
