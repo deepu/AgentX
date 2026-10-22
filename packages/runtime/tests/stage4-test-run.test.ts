@@ -1,6 +1,6 @@
-// Stage 4 (docs/memwise/26-projects-and-pages.md §5): a change to a playbook in a domain's folder
-// (eTMF's Chase missing documents) drafted, run on one site in a throwaway database, and sent for
-// review. A real kernel on the eTMF example with the meta playbooks; the live case runs on the
+// Stage 4 (docs/memwise/26-projects-and-pages.md §5): a change to Study MW-301's own copy of a
+// playbook in a domain's folder (eTMF's Send document reminders) drafted, run on one of MW-301's
+// sites in a throwaway database, and sent for review. A real kernel on the eTMF example with the meta playbooks; the live case runs on the
 // example's scripted model turns, and the test run goes through the real `memwise test` CLI.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { TestDatabase } from '@memwise/db';
@@ -23,6 +23,7 @@ let manager: PersonActor;
 let cra: PersonActor;
 let root = '';
 let siteId = '';
+let otherStudySite = '';
 let draftId = '';
 
 /** The example's scripted writer turns: the live case drafts its email with them. */
@@ -56,32 +57,30 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
       name: 'Anika Rao', email: 'anika@northlight.example', roles: ['study_manager', 'tmf_specialist', 'manager', 'staff'],
     })).id);
     cra = await kernel.people.actorFor((await kernel.people.create({ name: 'Ola Nowak', email: 'ola@northlight.example', roles: ['cra', 'staff'] })).id);
-    // Site DE-104 with three documents missing and one reminder sent; picking it starts the chase.
-    const create = async (entity: string, values: Record<string, unknown>, status?: string) => {
-      const r = await kernel.records.create({ entity, values, ...(status ? { status } : {}), reason: 'study set-up' }, { kind: 'system' });
+    // In Study MW-301: site DE-104 with three documents missing and one reminder sent, its
+    // reminders started by the study manager. Study MW-207 has a site of its own.
+    const create = async (entity: string, values: Record<string, unknown>, project = 'mw301') => {
+      const r = await kernel.records.create({ entity, values, project, reason: 'study set-up' }, { kind: 'system' });
       if (!r.applied) throw new Error(`${entity}: ${r.message}`);
       return r.id!;
     };
-    const sponsor = await create('etmf.Sponsor', { name: 'Aster Bio' });
+    const sponsor = await create('etmf.Sponsor', { name: 'Meridian Pharma' });
     const study = await create('etmf.Study', { code: 'MW-301', sponsor });
-    siteId = await create('etmf.Site', {
-      site_number: 'DE-104', study, coordinator_email: 'coordinator@charite-studien.example',
-      cra_name: 'Priya Shah', cra_email: 'priya.shah@northlight.example',
-    });
+    siteId = await create('etmf.Site', { site_number: 'DE-104', study, cra_name: 'Priya Shah', cra_email: 'priya.shah@northlight.example' });
     for (const artifact of ['Protocol signature page', 'Lab normal ranges', 'Sub-investigator CVs']) {
       await create('etmf.ExpectedDocument', { site: siteId, study, artifact, phase: 'start_up' });
     }
     await create('etmf.Reminder', { site: siteId, sent_to: 'coordinator@charite-studien.example', subject: 'MW-301: 3 documents needed' });
-    const moved = await kernel.records.transition({ entity: 'etmf.Site', id: siteId, transition: 'picked', reason: 'Selected' }, manager);
-    expect(moved.applied).toBe(true);
-    await kernel.triggers.settle(30_000);
+    const study207 = await create('etmf.Study', { code: 'MW-207', sponsor }, 'mw207');
+    otherStudySite = await create('etmf.Site', { site_number: 'AT-005', study: study207 }, 'mw207');
+    await kernel.startRun({ workflowId: 'remind-site', case: { site: siteId }, project: 'mw301', by: manager.personId });
   }, 180_000);
 
   afterAll(async () => { await kernel?.shutdown(); await db?.drop(); });
 
   test('the live chase drafts its email and waits for the study manager', async () => {
-    const { rows } = await db.pool.query(`select id from mw.runs where workflow_id = 'remind-site'`);
-    expect(rows).toHaveLength(1);
+    const { rows } = await db.pool.query(`select id, project from mw.runs where workflow_id = 'remind-site'`);
+    expect(rows).toEqual([{ id: expect.any(String), project: 'mw301' }]);
     const run = await kernel.waitForRun(rows[0].id, { until: (r) => r.state === 'approve_email' || r.status !== 'active', timeoutMs: 60_000 });
     expect(run.state).toBe('approve_email');
     const kase = await kernel.getCase(run.caseId);
@@ -90,10 +89,10 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     expect(kase!.values.email_to?.value).toBe('coordinator@charite-studien.example');
   }, 90_000);
 
-  test('a change draft of a playbook in a domain folder copies the domain and keeps to the playbook', async () => {
-    const meta = await authoring.createDraft({ workflowId: 'remind-site', title: 'Copy the CRA', kind: 'change', chatId: 'chat-1' }, manager);
+  test('a change draft of a project\'s copy of a playbook copies the domain and keeps to the playbook', async () => {
+    const meta = await authoring.createDraft({ workflowId: 'remind-site', title: 'Copy the CRA', kind: 'change', chatId: 'chat-1', project: 'mw301' }, manager);
     draftId = meta.id;
-    expect(meta).toMatchObject({ folder: CHASE, chatId: 'chat-1', baseVersion: 2 });
+    expect(meta).toMatchObject({ folder: CHASE, chatId: 'chat-1', baseVersion: 1, project: { id: 'mw301', dir: 'projects/mw301' } });
     const listed = await authoring.read({ draftId });
     expect('files' in listed && listed.files).toContain(`${CHASE}/steps/send.md`);
     expect('files' in listed && listed.files.some((f) => f.startsWith('domains/etmf/workflows/file-document'))).toBe(false);
@@ -109,8 +108,12 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     // Another playbook of the domain can't be written from this draft.
     await expect(authoring.write({ draftId, files: [{ path: 'domains/etmf/workflows/file-document/workflow.yaml', content: 'x' }], summary: 'no', via: 'chat' }, manager))
       .rejects.toThrow('only holds');
+    // Publishing writes MW-301's own copy, never the app's template.
     const diff = await authoring.diff(draftId);
-    expect(diff.files.map((f) => f.path)).toEqual([`${CHASE}/steps/send.md`, `${CHASE}/workflow.yaml`]);
+    expect(diff.files.map((f) => [f.path, f.writesTo])).toEqual([
+      [`${CHASE}/steps/send.md`, 'projects/mw301/overrides/workflows/remind-site/steps/send.md'],
+      [`${CHASE}/workflow.yaml`, 'projects/mw301/overrides/workflows/remind-site/workflow.yaml'],
+    ]);
     expect(diff.structure?.steps.send?.parts).toEqual(expect.arrayContaining(['title', 'map']));
   });
 
@@ -127,6 +130,10 @@ describe.skipIf(!pgAvailable)('Stage 4: a test run of a draft on one record', ()
     expect(reminder?.args).toMatchObject({ sent_to: 'coordinator@charite-studien.example', copied: 'priya.shah@northlight.example' });
     expect(await authoring.lastTestRun(draftId)).toMatchObject({ status: 'pass', hash: run.hash });
   }, 180_000);
+
+  test('a draft of MW-301\'s copy runs only on MW-301\'s records', async () => {
+    await expect(authoring.testRun(draftId, { entity: 'etmf.Site', id: otherStudySite }, manager)).rejects.toThrow('not found');
+  }, 60_000);
 
   test('what the run saw goes back only to who ran it, and never into the project folder', async () => {
     const file = readFileSync(join(root, 'drafts', draftId, 'test-run.json'), 'utf8');

@@ -3,7 +3,6 @@ fields:
   site:              { type: Ref<Site>, required: true, description: The site being chased }
   missing_documents: { type: Number, description: Expected documents the site still owes }
   reminders_sent:    { type: Number, description: Reminders sent before this one }
-  coordinator_email: Email
   cra_name:          PersonName
   cra_email:         Email
   email_to:          Email

@@ -7,7 +7,7 @@ import {
   applyDraft, checkProject, createDraft, draftPlaybookFolder, findPlaybookFolder, readDraftTestRun, writeDraftTestRun, describeStructuralDiff, diffDraft, discardDraftEdit, DraftConflictError, draftContentHash,
   draftDir, DraftStaleError, exampleToYaml, listDrafts, loadDraft, loadWorkflow, readDraft, SCALAR_TYPES, setDraftEditStatus,
   updateDraftMeta, WORKFLOW_ID_PATTERN, writeDraftFiles, writeDraftReport,
-  DEFAULT_DOMAIN, type CheckEnvironment, type Diagnostic, type DraftReport, type DraftTestRun, type EffectClass, type ExampleCase, type ExampleOutcome, type Impact,
+  DEFAULT_DOMAIN, type CheckEnvironment, type Diagnostic, type DraftMeta, type DraftReport, type DraftTestRun, type EffectClass, type ExampleCase, type ExampleOutcome, type Impact,
   type DiffNameKind, type ImpactTool, type PastCaseOutcome, type ProjectDefs, type StructuralDiff, type WorkflowDef,
 } from '@memwise/defs';
 import type { ToolGateway } from '@memwise/gateway';
@@ -216,9 +216,11 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     return all.filter((d) => mine(d.file));
   }
 
-  async function liveWorkflow(workflowId: string): Promise<WorkflowDef | undefined> {
-    const { project } = await deps.project();
-    return project.workflows[workflowId] ?? (await latestWorkflowDef(deps.pool, workflowId));
+  /** The live playbook; with `project`, that project's own copy of it (Stage 3). */
+  async function liveWorkflow(workflowId: string, project?: string): Promise<WorkflowDef | undefined> {
+    const { project: defs } = await deps.project();
+    if (project) return defs.projects?.[project]?.workflows[workflowId];
+    return defs.workflows[workflowId] ?? (await latestWorkflowDef(deps.pool, workflowId));
   }
 
   /**
@@ -226,13 +228,14 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
    * first, then cases that finished on earlier versions (a case started before the last change
    * finishes on its own version, and is still the best evidence of what the playbook is for).
    */
-  async function pastCaseExamples(live: WorkflowDef | undefined, n: number): Promise<{ caseId: string; title: string; livePath: string[]; example: ExampleCase }[]> {
+  async function pastCaseExamples(live: WorkflowDef | undefined, n: number, project?: string): Promise<{ caseId: string; title: string; livePath: string[]; example: ExampleCase }[]> {
     if (!live || n <= 0) return [];
+    // A project's draft replays that project's cases only.
     const { rows } = await deps.pool.query(
       `select r.id, r.case_id, c.values from mw.runs r join mw.cases c on c.id = r.case_id
-        where r.workflow_id = $1 and r.status = 'done'
+        where r.workflow_id = $1 and r.status = 'done' and ($4::text is null or r.project = $4)
         order by (r.workflow_hash = $2) desc, r.updated_at desc, r.id desc limit $3`,
-      [live.id, live.hash, n]);
+      [live.id, live.hash, n, project ?? null]);
     const out = [];
     for (const r of rows) {
       try {
@@ -260,11 +263,12 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     return { ...base, status, differences: o.differences.length ? o.differences : [o.reason ?? 'failed'], draftPath: got ? [p.livePath[0]!, got] : [] };
   }
 
-  async function impact(draft: { project: ProjectDefs; workflow?: WorkflowDef }, structure: StructuralDiff | undefined, live: WorkflowDef | undefined): Promise<Impact | undefined> {
+  async function impact(draft: { project: ProjectDefs; workflow?: WorkflowDef; meta?: DraftMeta }, structure: StructuralDiff | undefined, live: WorkflowDef | undefined): Promise<Impact | undefined> {
     const after = draft.workflow;
     if (!after || !structure) return undefined;
     const { rows } = await deps.pool.query(
-      `select state, count(*)::int as n from mw.runs where workflow_id = $1 and status = 'active' group by state order by state`, [after.id]);
+      `select state, count(*)::int as n from mw.runs where workflow_id = $1 and status = 'active' and ($2::text is null or project = $2)
+        group by state order by state`, [after.id, draft.meta?.project?.id ?? null]);
     const byState = Object.fromEntries(rows.map((r) => [r.state, r.n as number]));
     const total = rows.reduce((a, r) => a + (r.n as number), 0);
     const removedStatesWithCases = Object.entries(structure.states).filter(([s, c]) => c === 'removed' && byState[s])
@@ -351,14 +355,15 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
    * model turns (and its plugin tools' recorded results) are replayed. A case with fields hidden
    * from them isn't replayed (as exampleFromCase refuses to save it), and the run says so.
    */
-  async function replayableCase(workflowId: string, field: string | undefined, recordId: string, by: Actor): Promise<{ id: string; example?: ExampleCase; hidden?: true } | undefined> {
+  async function replayableCase(workflowId: string, field: string | undefined, recordId: string, by: Actor, project?: string): Promise<{ id: string; example?: ExampleCase; hidden?: true } | undefined> {
     if (!field) return undefined;
     const { rows } = await deps.pool.query<{ id: string; values: Record<string, unknown> }>(
-      `select id, values from mw.cases where workflow_id = $1 and values->$2->>'value' = $3 order by created_at desc limit 1`,
-      [workflowId, field, recordId]);
+      `select id, values from mw.cases where workflow_id = $1 and values->$2->>'value' = $3 and ($4::text is null or project = $4)
+        order by created_at desc limit 1`,
+      [workflowId, field, recordId, project ?? null]);
     const row = rows[0];
     if (!row) return undefined;
-    const live = await liveWorkflow(workflowId);
+    const live = await liveWorkflow(workflowId, project);
     const fields = live?.caseType.fields ?? {};
     if (Object.keys(row.values ?? {}).some((k) => !maySee(by, fields[k], live?.domain ?? DEFAULT_DOMAIN))) return { id: row.id, hidden: true };
     const example = await deps.caseToExample(row.id).catch(() => undefined);
@@ -374,11 +379,13 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     if (errors) throw new Error(`the draft has ${plural(errors, 'error')}; fix ${errors === 1 ? 'it' : 'them'} before a test run`);
     const hash = await draftContentHash(root, draftId);
     const field = recordCaseField(draft.project, draft.workflow, record.entity);
-    const latest = await replayableCase(draft.meta.workflowId, field, record.id, by);
+    // A project's draft runs its copy of the playbook on one of that project's records, with its records.
+    const project = draft.meta.project?.id;
+    const latest = await replayableCase(draft.meta.workflowId, field, record.id, by, project);
     const latestCase = latest?.example;
     const built = await testRunExample({
       project: draft.project, workflow: draft.workflow, record,
-      query: (q) => deps.queryRecords!(q, by),
+      query: (q) => deps.queryRecords!(project ? { ...q, project } : q, by),
       ...(latestCase && latest ? { latestCase, latestCaseId: latest.id } : {}),
       effectOf: (name) => deps.toolEffect?.(name),
       fromPlugin: (name) => !!deps.toolFromPlugin?.(name),
@@ -451,6 +458,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       const meta = await createDraft(root, {
         workflowId: input.workflowId, title: input.title, kind: input.kind, createdBy: byLabel(by),
         ...(input.runId ? { runId: input.runId } : {}), ...(input.chatId ? { chatId: input.chatId } : {}), ...(input.domain ? { domain: input.domain } : {}),
+        ...(input.project ? { project: input.project } : {}),
       });
       emit(meta.id);
       return meta;
@@ -525,13 +533,13 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       const hash = await draftContentHash(root, draftId);
       const diagnostics = await quickCheck(draftId);
       const errors = errorCount(diagnostics);
-      const live = meta.kind === 'change' ? await liveWorkflow(meta.workflowId) : undefined;
+      const live = meta.kind === 'change' ? await liveWorkflow(meta.workflowId, meta.project?.id) : undefined;
       const diff = await diffDraft(root, draftId).catch(() => undefined);
 
       let examples: ExampleOutcome[] = [];
       let pastCases: PastCaseOutcome[] = [];
       if (!errors && draft.workflow) {
-        const past = await pastCaseExamples(live, opts.pastCases ?? PAST_CASES);
+        const past = await pastCaseExamples(live, opts.pastCases ?? PAST_CASES, meta.project?.id);
         const outcomes = await deps.testRunner({
           projectDir: draftDir(root, draftId), workflowId: meta.workflowId,
           ...(past.length ? { extraExamples: past.map((p) => p.example) } : {}),
@@ -583,6 +591,10 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
     async publish(draftId, opts) {
       const d = await readDraft(root, draftId);
       if (!d) return { status: 'failed', message: `there is no draft ${draftId}` };
+      if (d.meta.status === 'published' && d.meta.project) {
+        const copy = await liveWorkflow(d.meta.workflowId, d.meta.project.id);
+        return copy ? { status: 'published', workflowId: copy.id, version: d.meta.publishedVersion ?? copy.version, hash: copy.hash } : { status: 'failed', message: `draft ${draftId} was already published` };
+      }
       if (d.meta.status === 'published') {
         // Publishing again (a retried publish step) finds the version it made.
         const { rows } = await deps.pool.query(
@@ -598,6 +610,14 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         if (e instanceof DraftConflictError) return { status: 'conflict', message: e.message };
         if (e instanceof DraftStaleError) return { status: 'stale', message: e.message };
         return { status: 'failed', message: e instanceof Error ? e.message : String(e) };
+      }
+      if (d.meta.project) {
+        // The project's own copy changed (its overrides): the template's versions are not its.
+        await deps.index();
+        const copy = await liveWorkflow(d.meta.workflowId, d.meta.project.id);
+        emit(draftId);
+        if (!copy) return { status: 'failed', message: `${d.meta.project.id}'s copy of ${d.meta.workflowId} does not load` };
+        return { status: 'published', workflowId: copy.id, version: copy.version, hash: copy.hash };
       }
       const { workflow } = await loadWorkflow(join(root, draftPlaybookFolder(d.meta)), root);
       if (!workflow) return { status: 'failed', message: `the published playbook ${d.meta.workflowId} does not load` };
@@ -617,11 +637,11 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
         const started = await deps.startRun({ workflowId: CREATE_PLAYBOOK, case: values, by: by.personId });
         return { ...started, stepRunId: await waitingConversation(started.runId) };
       }
-      const live = await liveWorkflow(input.workflowId);
+      const live = await liveWorkflow(input.workflowId, input.project);
       if (!live) throw new Error(`there is no playbook ${input.workflowId} to change`);
       const runId = newRunId();
       const title = input.title ?? `Change ${live.title ?? live.id}`;
-      const meta = await createDraft(root, { workflowId: input.workflowId, title, kind: 'change', createdBy: by.personId, runId });
+      const meta = await createDraft(root, { workflowId: input.workflowId, title, kind: 'change', createdBy: by.personId, runId, ...(input.project ? { project: input.project } : {}) });
       let started;
       try {
         started = await deps.startRun({
@@ -644,7 +664,7 @@ export function createAuthoring(deps: AuthoringDeps): Authoring {
       const said = edits.filter((e) => e.status !== 'discarded').map((e) => e.summary).filter(Boolean);
       // The reviewer reads this on the review card: steps by their titles, no ids.
       const named = diff?.structure
-        ? namesInWords((await loadDraft(root, draftId).catch(() => undefined))?.workflow, meta.kind === 'change' ? await liveWorkflow(meta.workflowId) : undefined)
+        ? namesInWords((await loadDraft(root, draftId).catch(() => undefined))?.workflow, meta.kind === 'change' ? await liveWorkflow(meta.workflowId, meta.project?.id) : undefined)
         : undefined;
       const summary = (diff?.structure ? describeStructuralDiff(diff.structure, named ? { name: named } : {}) : said).join(' ') || meta.title;
       const runId = newRunId();

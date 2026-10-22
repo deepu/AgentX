@@ -56,6 +56,14 @@ export interface DraftMeta {
    * absent for `workflows/<id>`. Such a draft also copies `workspace.yaml` and the domains' definitions.
    */
   folder?: string;
+  /**
+   * Stage 4 with Stage 3 (26 §3, §5): the project whose own copy of the playbook the draft
+   * changes (`id`, its folder `dir`). The playbook's files start as that copy: the template at the
+   * project's version, each file replaced by the project's override. Publishing writes the files
+   * it changed as the project's overrides (`<dir>/overrides/workflows/<id>/…`), so the template and
+   * the app's other projects don't change. Only the playbook's existing files can change.
+   */
+  project?: { id: string; dir: string };
   /** Set when published. */
   publishedVersion?: number;
   publishedAt?: string;
@@ -92,6 +100,8 @@ export interface FileChange {
   hunks: DiffHunk[];
   /** The live file changed since the draft was made (publishing would overwrite someone's change). */
   conflict?: boolean;
+  /** A project draft: where publishing writes it (the project's override of the file). */
+  writesTo?: string;
 }
 
 /** Parts of a step a change can touch; the editor highlights these. */

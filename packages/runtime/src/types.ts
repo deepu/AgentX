@@ -395,7 +395,8 @@ export interface Authoring {
   listDrafts(filter?: { workflowId?: string; status?: DraftMeta['status'] }): Promise<DraftMeta[]>;
   getDraft(draftId: string): Promise<{ meta: DraftMeta; edits: DraftEdit[]; report?: DraftReport; contentHash: string } | undefined>;
   /** A change draft copies the live playbook; a create draft starts empty (workflowId must be new). */
-  createDraft(input: { workflowId: string; title: string; kind?: DraftMeta['kind']; runId?: string; chatId?: string; domain?: string }, by: Actor): Promise<DraftMeta>;
+  /** `project`: change that project's own copy of the playbook (Stage 4 with Stage 3, DraftMeta.project). */
+  createDraft(input: { workflowId: string; title: string; kind?: DraftMeta['kind']; runId?: string; chatId?: string; domain?: string; project?: string }, by: Actor): Promise<DraftMeta>;
   /** Files of the live project (no draftId) or of a draft: without `path` the list, with it the content. */
   read(input: { draftId?: string; workflowId?: string; path?: string }): Promise<{ files: string[] } | { path: string; content: string | null }>;
   /** Write (or delete, content null) whole files in a draft; records one edit; returns the checks after it. */
@@ -414,7 +415,7 @@ export interface Authoring {
   /** Apply the draft to the project folder as the next version, if its content hash is still `hash`. */
   publish(draftId: string, opts: { hash: string; by?: string; runId?: string; source: 'app' | 'cli' }): Promise<PublishResult>;
   /** Start create-playbook (no workflowId) or change-playbook at its conversation step. */
-  startBuild(input: { workflowId?: string; request?: string; title?: string }, by: Extract<Actor, { kind: 'person' }>): Promise<{ runId: string; caseId: string; stepRunId: string }>;
+  startBuild(input: { workflowId?: string; request?: string; title?: string; project?: string }, by: Extract<Actor, { kind: 'person' }>): Promise<{ runId: string; caseId: string; stepRunId: string }>;
   /** Send an edited draft to review: change-playbook started at its check step with the draft. */
   submitDraft(draftId: string, by: Extract<Actor, { kind: 'person' }>): Promise<{ runId: string; caseId: string }>;
   /**

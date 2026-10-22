@@ -6,7 +6,6 @@ fields:
   study:            { type: Ref<Study>, required: true }
   sponsor_approved: Boolean
   activated_on:     Date
-  coordinator_email: { type: Email, description: "The site coordinator, who uploads the site's documents" }
   cra_name:          { type: PersonName, description: The CRA who monitors the site }
   cra_email:         Email
 relationships:

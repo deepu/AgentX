@@ -13,9 +13,11 @@ records:
       site_number: DE-104
       study: stud_mw301
       status: activating
-      coordinator_email: coordinator@charite-studien.example
       cra_name: Priya Shah
       cra_email: priya.shah@northlight.example
+  # The coordinator's address is EDC's (read from Rave), followed by the eTMF site through its link.
+  edc.Site:
+    - { id: edcs_de104, site_number: DE-104, name: Charité Studienzentrum, coordinator: Lena Hoffmann, coordinator_email: coordinator@charite-studien.example }
   ExpectedDocument:
     - { id: expe_de104_protocol, site: site_de104, study: stud_mw301, artifact: Protocol signature page, phase: start_up, status: missing }
     - { id: expe_de104_lab, site: site_de104, study: stud_mw301, artifact: Lab normal ranges, phase: start_up, status: missing }
@@ -28,6 +30,7 @@ case:
 model:
   writer:
     - toolCalls:
+        - { name: etmf.site.get, args: { id: site_de104 } }
         - { name: etmf.expected_document.list, args: { filter: "site = 'site_de104' and status = 'missing'" } }
     - toolCalls:
         - name: step.finish

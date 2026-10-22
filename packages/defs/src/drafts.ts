@@ -13,6 +13,7 @@ import { lineDiff, structuralDiff } from './diff.ts';
 import { DRAFTS_DIR, type DraftDiff, type DraftEdit, type DraftKind, type DraftMeta, type DraftReport, type DraftTestRunSummary, type FileChange } from './draft-types.ts';
 import { loadProject, loadWorkflow } from './load.ts';
 import { parseWorkflowFile } from './parse-workflow.ts';
+import { parseProjectFile } from './parse-projects.ts';
 import { PLUGIN_ID_PATTERN, type BindingDef } from './plugin-types.ts';
 import { isRecord } from './source.ts';
 import type { Diagnostic, ProjectDefs, WorkflowDef } from './types.ts';
@@ -108,6 +109,38 @@ async function readText(p: string): Promise<string | null> {
 }
 
 /**
+ * A project draft's playbook in the live folder: the template's folder at the project's version
+ * now, and the folder of the project's overrides of it (26 §3).
+ */
+async function projectPlaybook(abs: string, meta: Pick<DraftMeta, 'workflowId' | 'folder' | 'project'>): Promise<{ template: string; overrides: string }> {
+  const project = meta.project!;
+  const app = /^domains\/([^/]+)\/workflows\//.exec(meta.folder ?? '')?.[1] ?? '';
+  const pfText = await readText(join(abs, project.dir, 'project.yaml'));
+  const pf = pfText ? parseProjectFile(pfText, `${project.dir}/project.yaml`, project.id).value : undefined;
+  const appText = await readText(join(abs, 'domains', app, 'app.yaml'));
+  let appVersion = 1;
+  try { const v = appText ? (parseYaml(appText) as { version?: unknown } | null)?.version : undefined; if (typeof v === 'number') appVersion = v; } catch { /* version 1 */ }
+  const version = pf?.version ?? appVersion;
+  const tdir = version === appVersion ? `domains/${app}` : `domains/${app}/versions/${version}`;
+  return { template: `${tdir}/workflows/${meta.workflowId}`, overrides: `${project.dir}/overrides/workflows/${meta.workflowId}` };
+}
+
+/**
+ * The live content of a draft's file and where publishing writes it. For a project draft, a file
+ * of the playbook is the project's override when it has one, else the template's at its version,
+ * and it is written as the override.
+ */
+async function liveFileOf(abs: string, meta: DraftMeta, path: string): Promise<{ bytes: Buffer | null; target: string }> {
+  const folder = draftPlaybookFolder(meta);
+  const at = async (rel: string) => ((await isFile(join(abs, rel))) ? await readFile(join(abs, rel)) : null);
+  if (!meta.project || !path.startsWith(`${folder}/`)) return { bytes: await at(path), target: path };
+  const rel = path.slice(folder.length + 1);
+  const pb = await projectPlaybook(abs, meta);
+  const override = `${pb.overrides}/${rel}`;
+  return { bytes: (await at(override)) ?? (await at(`${pb.template}/${rel}`)), target: override };
+}
+
+/**
  * Sets `version:` in a workflow.yaml text, touching only that line (comments and layout stay):
  * replaces the value, or adds the line after `workflow:` when there is none.
  */
@@ -173,6 +206,11 @@ export interface CreateDraftInput {
   chatId?: string;
   /** Stage 4: a new playbook in this domain's folder (`domains/<domain>/workflows/<id>`). */
   domain?: string;
+  /**
+   * Stage 4 with Stage 3: change this project's own copy of the playbook (see DraftMeta.project),
+   * not the app's template.
+   */
+  project?: string;
 }
 
 /**
@@ -195,7 +233,15 @@ export async function createDraft(root: string, input: CreateDraftInput): Promis
   const inDomain = folder !== `workflows/${workflowId}`;
 
   let live: WorkflowDef | undefined;
-  if (kind === 'change') {
+  let project: DraftMeta['project'];
+  if (input.project !== undefined) {
+    if (kind !== 'change') throw new Error('a project changes its own copy of a playbook the app has; a new playbook is made in the app');
+    const p = (await loadProject(abs)).project.projects?.[input.project];
+    if (!p || p.implicit || !p.dir) throw new Error(`there is no project ${input.project} with its own folder (projects/${input.project}/project.yaml)`);
+    live = p.workflows[workflowId];
+    if (!live || folder !== `domains/${p.app}/workflows/${workflowId}`) throw new Error(`${p.name} has no copy of the playbook ${workflowId}`);
+    project = { id: p.id, dir: p.dir };
+  } else if (kind === 'change') {
     live = (await loadWorkflow(liveDir, abs)).workflow;
     if (!live) throw new Error(`the playbook ${workflowId} doesn't load; fix workflows/${workflowId}/workflow.yaml first`);
   }
@@ -210,11 +256,21 @@ export async function createDraft(root: string, input: CreateDraftInput): Promis
   const files = kind === 'change' || inDomain
     ? (await contentFiles(abs, workflowId, kind, inDomain ? folder : undefined)).filter((f) => kind === 'change' || !f.startsWith(`${folder}/`))
     : (await listFiles(join(abs, 'domain'))).map((f) => `domain/${f}`);
-  for (const rel of files) {
-    const bytes = await readFile(join(abs, rel));
+  const copy = async (rel: string, bytes: Buffer) => {
     base[rel] = hashOf(bytes);
     await mkdir(dirname(join(dir, rel)), { recursive: true });
     await writeFile(join(dir, rel), bytes);
+  };
+  for (const rel of files) {
+    if (project && rel.startsWith(`${folder}/`)) continue; // the project's copy, below
+    await copy(rel, await readFile(join(abs, rel)));
+  }
+  if (project) {
+    const pb = await projectPlaybook(abs, { workflowId, folder, project });
+    for (const rel of await listFiles(join(abs, pb.template))) {
+      const own = join(abs, pb.overrides, rel);
+      await copy(`${folder}/${rel}`, await readFile((await isFile(own)) ? own : join(abs, pb.template, rel)));
+    }
   }
   await mkdir(join(dir, folder), { recursive: true });
   if (live) {
@@ -236,6 +292,7 @@ export async function createDraft(root: string, input: CreateDraftInput): Promis
     ...(input.runId ? { runId: input.runId } : {}),
     ...(input.chatId ? { chatId: input.chatId } : {}),
     ...(inDomain ? { folder } : {}),
+    ...(project ? { project } : {}),
   };
   await writeMeta(dir, meta);
   await writeFile(join(dir, 'edits.jsonl'), '');
@@ -395,6 +452,22 @@ export function badDraftPath(path: string, workflowId: string, kind?: DraftKind,
   return undefined;
 }
 
+/**
+ * Why a project draft can't write `path`: it changes only its copy of the playbook, and only the
+ * files the template's playbook has (an override replaces a whole file; it can't add or remove one).
+ */
+async function badProjectDraftPath(root: string, meta: DraftMeta, path: string, content: string | null): Promise<string | undefined> {
+  if (!meta.project) return undefined;
+  const folder = draftPlaybookFolder(meta);
+  const who = `${meta.project.id}'s copy of ${meta.workflowId}`;
+  if (!path.startsWith(`${folder}/`)) return `a draft of ${who} changes only that playbook (${folder}/...); record types, roles and the app's other files are the template's`;
+  const pb = await projectPlaybook(resolve(root), meta);
+  const inTemplate = await isFile(join(resolve(root), pb.template, path.slice(folder.length + 1)));
+  if (!inTemplate) return `${who} can only change the playbook's existing files; a new file is a change to the app's template`;
+  if (content === null) return `${who} can't remove a file of the playbook; that is a change to the app's template`;
+  return undefined;
+}
+
 const fileList = (files: DraftFiles) => (Array.isArray(files) ? files : Object.entries(files).map(([path, content]) => ({ path, content })));
 
 /**
@@ -408,7 +481,7 @@ export async function writeDraftFiles(root: string, id: string, files: DraftFile
   const list = fileList(files);
   const seen = new Set<string>();
   for (const f of list) {
-    const why = badDraftPath(f.path, meta.workflowId, meta.kind, meta.folder);
+    const why = badDraftPath(f.path, meta.workflowId, meta.kind, meta.folder) ?? (await badProjectDraftPath(root, meta, f.path, f.content));
     if (why) throw new Error(`can't write \`${f.path}\`: ${why}`);
     if (f.content !== null && typeof f.content !== 'string') throw new Error(`can't write \`${f.path}\`: the content is text, or null to delete the file`);
     if (seen.has(f.path)) throw new Error(`\`${f.path}\` is written twice in one edit`);
@@ -507,7 +580,8 @@ export async function loadDraft(root: string, id: string): Promise<{ project: Pr
   return { project, diagnostics, meta, ...(workflow ? { workflow } : {}) };
 }
 
-interface PendingChange { path: string; draft: string | null; live: string | null; conflict: boolean }
+/** `target`: where publishing writes it (a project draft's playbook files: the project's overrides). */
+interface PendingChange { path: string; target: string; draft: string | null; live: string | null; conflict: boolean }
 
 /**
  * The files a draft changed compared with its base (only these are published), each with the
@@ -523,10 +597,10 @@ async function changedFiles(root: string, dir: string, meta: DraftMeta): Promise
     const baseHash = meta.base[path];
     const draftHash = draftBytes ? hashOf(draftBytes) : undefined;
     if (draftHash === baseHash) continue; // the draft didn't touch it
-    const liveBytes = (await isFile(join(abs, path))) ? await readFile(join(abs, path)) : null;
+    const { bytes: liveBytes, target } = await liveFileOf(abs, meta, path);
     const liveHash = liveBytes ? hashOf(liveBytes) : undefined;
     if (liveHash === draftHash) continue; // live already has exactly this
-    out.push({ path, draft: draftBytes?.toString('utf8') ?? null, live: liveBytes?.toString('utf8') ?? null, conflict: liveHash !== baseHash });
+    out.push({ path, target, draft: draftBytes?.toString('utf8') ?? null, live: liveBytes?.toString('utf8') ?? null, conflict: liveHash !== baseHash });
   }
   return out;
 }
@@ -546,6 +620,21 @@ async function playbookMovedOn(root: string, meta: DraftMeta): Promise<string[]>
   }
   const folder = draftPlaybookFolder(meta);
   const prefix = `${folder}/`;
+  if (meta.project) {
+    // The project's copy: the template's files at its version, each replaced by its override.
+    const abs = resolve(root);
+    const pb = await projectPlaybook(abs, meta);
+    const rels = new Set([
+      ...(await listFiles(join(abs, pb.template))), ...(await listFiles(join(abs, pb.overrides))),
+      ...Object.keys(meta.base).filter((p) => p.startsWith(prefix)).map((p) => p.slice(prefix.length)),
+    ]);
+    const out: string[] = [];
+    for (const rel of [...rels].sort()) {
+      const { bytes } = await liveFileOf(abs, meta, prefix + rel);
+      if ((bytes ? hashOf(bytes) : undefined) !== meta.base[prefix + rel]) out.push(prefix + rel);
+    }
+    return out;
+  }
   const live = (await listFiles(join(resolve(root), folder))).map((f) => prefix + f);
   const paths = [...new Set([...Object.keys(meta.base).filter((p) => p.startsWith(prefix)), ...live])].sort();
   const out: string[] = [];
@@ -573,6 +662,7 @@ export async function diffDraft(root: string, id: string, opts: { context?: numb
     ...(c.draft !== null ? { after: c.draft } : {}),
     hunks: lineDiff(c.live ?? '', c.draft ?? '', opts.context ?? 3),
     ...(c.conflict ? { conflict: true } : {}),
+    ...(c.target !== c.path ? { writesTo: c.target } : {}),
   }));
   const diff: DraftDiff = { draftId: id, workflowId: meta.workflowId, files, conflicts: await conflictsOf(root, meta, changes) };
   if (meta.kind === 'binding') return diff; // no playbook, so no structural diff
@@ -580,7 +670,8 @@ export async function diffDraft(root: string, id: string, opts: { context?: numb
   const after = draft.project.workflows[meta.workflowId];
   if (after) {
     const live = await loadProject(root);
-    diff.structure = structuralDiff(live.project.workflows[meta.workflowId], after, {
+    const before = meta.project ? live.project.projects?.[meta.project.id]?.workflows[meta.workflowId] : live.project.workflows[meta.workflowId];
+    diff.structure = structuralDiff(before, after, {
       before: Object.keys(live.project.roles),
       after: Object.keys(draft.project.roles),
     });
@@ -610,6 +701,10 @@ export async function applyDraft(root: string, id: string, opts: { hash?: string
   const changes = await changedFiles(abs, dir, meta);
   const conflicts = await conflictsOf(abs, meta, changes);
   if (conflicts.length) throw new DraftConflictError(conflicts);
+  if (meta.project) {
+    const odd = changes.filter((c) => c.draft === null || c.live === null || c.target === c.path);
+    if (odd.length) throw new Error(`${meta.project.id}'s copy can only change the playbook's existing files; ${odd.map((c) => c.path).join(', ')} would change the app's template`);
+  }
 
   let version: number;
   if (meta.kind === 'binding') {
@@ -628,28 +723,32 @@ export async function applyDraft(root: string, id: string, opts: { hash?: string
   // Dotfile names, so a watcher re-indexing meanwhile never reads a half-written file.
   const tmpOf = (path: string) => join(abs, dirname(path), `.${basename(path)}${suffix}`);
   const done: PendingChange[] = [];
+  // What each written file held, to put back on failure (a project's override may not exist yet).
+  const before = new Map<string, string | null>();
+  for (const c of changes) before.set(c.target, await readText(join(abs, c.target)));
   try {
     for (const c of changes) {
       if (c.draft === null) continue;
-      await mkdir(dirname(join(abs, c.path)), { recursive: true });
-      await writeFile(tmpOf(c.path), c.draft);
+      await mkdir(dirname(join(abs, c.target)), { recursive: true });
+      await writeFile(tmpOf(c.target), c.draft);
     }
     for (const c of changes) {
-      if (c.draft === null) await rm(join(abs, c.path), { force: true });
-      else await rename(tmpOf(c.path), join(abs, c.path));
+      if (c.draft === null) await rm(join(abs, c.target), { force: true });
+      else await rename(tmpOf(c.target), join(abs, c.target));
       done.push(c);
     }
   } catch (e) {
     // Put back what was already replaced, then drop the temporary files.
     for (const c of done.reverse()) {
       try {
-        if (c.live === null) await rm(join(abs, c.path), { force: true });
-        else await writeFile(join(abs, c.path), c.live);
+        const was = before.get(c.target) ?? null;
+        if (was === null) await rm(join(abs, c.target), { force: true });
+        else await writeFile(join(abs, c.target), was);
       } catch { /* best effort; the error below says publishing failed */ }
     }
-    for (const c of changes) if (c.draft !== null) await rm(tmpOf(c.path), { force: true }).catch(() => {});
+    for (const c of changes) if (c.draft !== null) await rm(tmpOf(c.target), { force: true }).catch(() => {});
     throw e;
   }
   await updateDraftMeta(abs, id, { status: 'published', publishedVersion: version, publishedAt: new Date().toISOString() });
-  return { workflowId: meta.workflowId, version, files: changes.map((c) => c.path) };
+  return { workflowId: meta.workflowId, version, files: changes.map((c) => c.target) };
 }
