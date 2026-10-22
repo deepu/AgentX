@@ -162,7 +162,7 @@ describe('in a project (Stage 3)', () => {
     expect(runsThisWeek([mine, theirs], 'client-intake', now).map(r => r.caseId)).toEqual(['case_301', 'case_207'])
     const d = (id: string, project?: string): MwDraftSummary => ({
       id, kind: 'change', workflowId: 'client-intake', stage: 'editing', updatedAt: '2026-10-01T00:00:00Z', ...(project ? { project } : {}),
-    } as MwDraftSummary)
+    } as unknown as MwDraftSummary)
     const drafts = [d('template'), d('d301', 'mw301'), d('d207', 'mw207')]
     expect(pageDraft(drafts, 'client-intake', 'mw301')?.id).toBe('d301')
     expect(pageDraft(drafts, 'client-intake')?.id).toBe('template')
