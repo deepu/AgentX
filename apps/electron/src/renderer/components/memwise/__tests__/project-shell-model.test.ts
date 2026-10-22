@@ -11,6 +11,7 @@ import {
 } from '../project/project-model'
 import { shellRouteFor, type ShellRouteData } from '../project/shell-routes'
 import { changesSince, RECENT_CHANGES_KEPT, withChange } from '../../../atoms/memwise'
+import { projectsChangeMatters } from '../../../hooks/useMemwiseProjects'
 import { parseRouteToNavigationState } from '../../../../shared/route-parser'
 import { routes } from '../../../../shared/routes'
 
@@ -74,6 +75,8 @@ describe('projects from domains', () => {
     expect(waitingIn('mw207', [cr, step], { playbooks, domains }, ['etmf']).map(i => i.id)).toEqual([cr.id, 's'])
     // Not in a project of another app.
     expect(waitingIn('firm', [cr, step], { playbooks, domains }, ['gst'])).toEqual([])
+    // A change request moving changes the projects' waiting counts.
+    expect(projectsChangeMatters({ kind: 'regulated', project: 'etmf' } as never)).toBe(true)
   })
 
   test('the sidebar leaves the meta playbooks out and tags how each playbook starts', () => {
