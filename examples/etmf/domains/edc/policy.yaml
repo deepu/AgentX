@@ -1,0 +1,5 @@
+policy: edc-domain
+effects:
+  outbound: approve            # every reminder to a site is seen before it goes
+  irreversible: deny
+modelRoles: [chaser]

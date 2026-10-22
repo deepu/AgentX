@@ -54,6 +54,8 @@ export function applyTransform(t: Transform, value: unknown, record: unknown): u
     }
     return value;
   }
+  // The kernel resolves an outside id to the linked domain record (Stage 6); here it stays the id.
+  if ('link' in t) return value;
   return fillTemplate(t.template, record);
 }
 

@@ -244,7 +244,7 @@ describe('the example plugins', () => {
   it('are found next to the example project', () => {
     const found = findExamplePlugins([REPO])
     expect(found).toBe(PLUGINS)
-    expect(listExamplePlugins(found).map((p) => p.name)).toEqual(['client-intake', 'connectors', 'email-smtp', 'sample-crm', 'sample-email', 'whatsapp-cloud'])
+    expect(listExamplePlugins(found).map((p) => p.name)).toEqual(['client-intake', 'connectors', 'email-smtp', 'medidata-rave', 'sample-crm', 'sample-email', 'whatsapp-cloud'])
     expect(findExamplePlugins([tempDir('none-')])).toBe(PLUGINS) // walks up from cwd in the repo
     expect(listExamplePlugins(undefined)).toEqual([])
   })

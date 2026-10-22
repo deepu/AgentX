@@ -32,7 +32,7 @@ function write(root: string, files: Record<string, string>) {
 
 const codes = (ds: Diagnostic[]) => ds.filter((d) => d.severity === 'error').map((d) => `${d.code} ${d.file ?? ''}`).sort();
 const waitFor = (p: ProjectDefs, id: string) => p.projects![id]!.workflows['chase-missing']!.states.wait_for_documents!.wait?.timeout;
-const ROLES = { roles: ['tmf_specialist', 'study_manager', 'cra', 'qa'] };
+const ROLES = { roles: ['tmf_specialist', 'study_manager', 'cra', 'data_manager', 'qa'] };
 async function load(dir: string) {
   const { project, diagnostics } = await loadProject(dir);
   return { project, all: [...diagnostics, ...checkProject(project, { tools: {}, ...ROLES })] };
@@ -60,8 +60,12 @@ describe('apps and projects', () => {
       title: 'eTMF', version: 4, nouns: { one: 'study', many: 'studies' }, home: { title: 'TMF across studies', link: 'All studies' },
       templates: [{ id: 'phase3', title: 'Phase 3 study', description: 'Many sites, visits' }, { id: 'phase1', title: 'Phase 1 study', without: ['workflows/chase-missing'] }],
     });
-    // EDC has no projects of its own: one implicit project. eTMF has its three studies and no implicit one.
-    expect(Object.keys(project.projects!).sort()).toEqual(['edc', 'mw207', 'mw301', 'mw310']);
+    // eTMF has its three studies; EDC its two (Stage 6 Part B), each naming its study and reading it
+    // from Rave through its connection. Neither app has an implicit project.
+    expect(Object.keys(project.projects!).sort()).toEqual(['edc-mw207', 'edc-mw301', 'mw207', 'mw301', 'mw310']);
+    expect(project.projects!['edc-mw301']).toMatchObject({
+      app: 'edc', apps: ['edc'], study: 'MW-301', connections: [{ id: 'rave', title: 'Medidata Rave', plugin: 'memwise/medidata-rave', access: 'read' }],
+    });
     expect(project.projects!.mw301).toMatchObject({
       app: 'etmf', name: 'Study MW-301', study: 'MW-301', version: 4, status: 'active', template: 'phase3',
       from: { template: 'phase3', version: 4 }, overrides: ['workflows/chase-missing/workflow.yaml'],
@@ -167,7 +171,7 @@ describe('the app home and app playbooks', () => {
     expect(ops.apps).toEqual(['etmf', 'edc']);
     // EDC's playbooks are copied into it, like the template's own.
     const edcWorkflows = Object.values(project.workflows).filter((w) => w.domain === 'edc' && !w.project).map((w) => w.id).sort();
-    expect(edcWorkflows).toEqual(['edc-check']);
+    expect(edcWorkflows).toEqual(['chase-old-queries', 'edc-check']);
     for (const id of edcWorkflows) expect(ops.workflows[id]).toMatchObject({ project: 'ops', domain: 'edc' });
     // EDC is run by "ops" now: it has no implicit project; the studies still have only eTMF.
     expect(project.projects!.edc).toBeUndefined();
@@ -204,7 +208,7 @@ describe('the app home and app playbooks', () => {
     const { project } = await load(ETMF);
     expect(project.workflows['create-project']).toBeDefined();
     for (const p of Object.values(project.projects!)) expect(p.workflows['create-project']).toBeUndefined();
-    expect(Object.keys(project.projects!.mw301!.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'file-document', 'fix-rejected-document', 'route-message', 'watch-expiries']);
+    expect(Object.keys(project.projects!.mw301!.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'file-document', 'fix-rejected-document', 'new-coordinator', 'route-message', 'watch-expiries']);
   });
 });
 

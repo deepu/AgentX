@@ -21,6 +21,10 @@ model's. Everything else (the kernel, Postgres, the playbooks, the screens) is r
      node scripts/walkthrough/launch.mjs <configDir> <projectDir> <outDir> $PWD/scripts/walkthrough/shell-etmf.mjs
    ```
 
+Both eTMF flows need the fake Rave too (EDC's sites come only from Rave): start
+`bun packages/runtime/tests/fixtures/fake-rave-http.ts --port 4790 --user rave --password rave` and launch with
+`RAVE_URL=http://127.0.0.1:4790/RaveWebServices RAVE_USER=rave RAVE_PASSWORD=rave`.
+
 `shell-etmf.mjs` seeds the eTMF example through the app's own calls (`seed-etmf.mjs`) and goes Home → asks →
 Waiting for you → opens and approves the activation → a page from the tree → a playbook → a record.
 `shell-literature.mjs` walks the Literature example rebuilt on pages (doc 26 §6). Start it with
@@ -35,7 +39,8 @@ When another MemWise window is already open on the machine, pass `--user-data-di
 `stage3-projects.mjs` (Stage 3, replies in `stage3-replies.json`) needs the eTMF example's seeds, which
 run only when the project folder is made from the example at start: set
 `MEMWISE_EXAMPLE_PROJECT_DIR=$PWD/examples/etmf` and give a `<projectDir>` that doesn't exist yet. Its
-config needs a workspace already listed, or the first run drops the connection. It goes through the
+config needs a workspace already listed, or the first run drops the connection. Run it with the fake Rave too: the seeded
+sites are numbered as in Rave, and take their names from EDC's sites, which come only from Rave. It goes through the
 switcher, a study's Home and Project settings, publishes template v5 and reviews it (MW-301 already
 does it; MW-207 tested and taken), Waiting for you across projects, the app home, New project from a
 template card, and New project described in chat (the scripted model calls `project_draft`), then
@@ -55,3 +60,11 @@ the scripted connection and stops; launch again on the same config folder, with 
 fresh copy of the example. The QA signature isn't in it (a regulated project allows no "act as"); the exit test
 `stage5-exit.test.ts` covers it, and writes the inspector's page as `EInspector-*.png` when
 `MEMWISE_WALKTHROUGH_DIR` is set.
+
+`shell-edc.mjs` (Stage 6) needs the fake Rave running and its address in the environment
+(`RAVE_URL=http://127.0.0.1:4790/RaveWebServices RAVE_USER=rave RAVE_PASSWORD=rave`, see the script's header), and
+the eTMF example's seeds, as for `stage3-projects.mjs` (`MEMWISE_EXAMPLE_PROJECT_DIR=$PWD/examples/etmf` and a
+`<projectDir>` that doesn't exist yet). It waits for the first read of Rave into EDC's two study projects, then
+goes through the switcher (XSwitcher), EDC's Study MW-301 (XEdcHome) with its link to eTMF's Study MW-301, the old
+queries page (XQueries), site 104 in EDC (XSite) and with "Open in eTMF" the same site in eTMF, the study opened in
+eTMF's project (XStudy-etmf), and EDC's Study MW-207 (XEdcHome-207).

@@ -1,0 +1,46 @@
+name: asks-for-cv
+description: >
+  Rave names Mira Schulz the new coordinator of site 104. The site's staff gains her, her CV and
+  GCP training certificate are expected, and she is asked for both by email, approved first.
+records:
+  Sponsor:
+    - { id: spon_meridian, name: Meridian Pharma }
+  Study:
+    - { id: stud_mw301, code: MW-301, sponsor: spon_meridian }
+  Site:
+    - { id: site_104, site_number: "104", study: stud_mw301, status: open }
+  edc.Site:
+    - { id: edcs_104, site_number: "104", name: Kliniken am Stadtpark, coordinator: Mira Schulz, coordinator_email: mira.schulz@site104.example, coordinator_since: "2026-10-19" }
+case:
+  site: site_104
+model:
+  requester:
+    - toolCalls:
+        - { name: etmf.person.list, args: { filter: "site = 'site_104'" } }
+        - { name: etmf.expected_document.list, args: { filter: "site = 'site_104'" } }
+    - toolCalls:
+        - { name: etmf.person.create, args: { name: Mira Schulz, role: Study Coordinator, site: site_104 } }
+        - { name: etmf.expected_document.create, args: { site: site_104, study: stud_mw301, artifact: "CV, Mira Schulz (coordinator)", phase: conduct } }
+        - { name: etmf.expected_document.create, args: { site: site_104, study: stud_mw301, artifact: "GCP training, Mira Schulz (coordinator)", phase: conduct } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: drafted
+            writes:
+              subject: "MW-301: your CV and GCP training certificate"
+              body: |
+                Dear Mira Schulz,
+
+                Welcome to study MW-301 at site 104. For the trial master file, please send us your
+                signed and dated CV and your GCP training certificate, by replying to this email.
+
+                Thank you,
+                The TMF team
+            rationale: Mira Schulz is new at site 104 and not yet on its staff; neither document is expected yet.
+approvals:
+  email.send: approve
+expect:
+  outcome: done
+  state: end
+  writes: { coordinator: Mira Schulz, coordinator_email: mira.schulz@site104.example, site_number: "104" }
+  effects: { etmf.expected_document.create: 2, email.send: 1 }

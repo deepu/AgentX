@@ -17,7 +17,7 @@ calculated:
 links:
   edc.Site:
     match: [site_number]                     # paired with the EDC site of the same number
-    follow: [name, address, principal_investigator]
+    follow: [name, address, principal_investigator, coordinator, coordinator_email, coordinator_since]
 lifecycle:
   initial: selected
   states:

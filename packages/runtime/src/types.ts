@@ -40,6 +40,11 @@ export interface KernelOptions extends PhaseFiveKernelOptions {
   testDatabaseUrl?: string;
   /** Phase 4: implementations for plugin tools with `run: { builtin: <name> }`, by tool name. */
   builtins?: ToolDefinition[];
+  /**
+   * Stage 6 (26 §9): read connectors whose binding says `sync:` again when due, once a minute
+   * (default true). Tests that read on their own (`identity.resolve`) turn it off.
+   */
+  sourceSyncs?: boolean;
   /** Phase 4: resolves an MCP server declared `{ source: <slug> }` (a connector set up in the app), with its credentials. */
   resolveMcpSource?: (slug: string) => Promise<import('@memwise/defs').McpServerDef | undefined>;
 }
@@ -529,8 +534,36 @@ export interface PluginsService {
   binding(pluginId: string, opts?: { draftId?: string }): Promise<BindingView | undefined>;
 }
 
+/** Stage 6 (26 §9): when a plugin's record sources were last read, and what that found. */
+export interface SourceSync {
+  plugin: string;
+  /** The last read that finished. */
+  at?: string;
+  /** When the sweep reads them again (a binding's `sync:`); absent: only on demand. */
+  nextDue?: string;
+  counts: Partial<ResolveCounts>;
+  /** The last read's error, until a read succeeds. */
+  error?: string;
+  errorAt?: string;
+}
+
+/**
+ * What one read of a plugin's record sources did. `refreshed` (Stage 6, present when any were):
+ * linked records whose plugin-owned fields changed.
+ */
+export interface ResolveCounts { linked: number; candidates: number; unmatched: number; created: number; refreshed?: number }
+
 export interface IdentityService {
-  resolve(input: { plugin: string; source?: string }): Promise<{ linked: number; candidates: number; unmatched: number; created: number }>;
+  /**
+   * Reads the plugin's mapped record sources: links, proposes or creates (22 §6), and (Stage 6)
+   * refreshes the fields the plugin owns on records already linked, so a change outside is an
+   * entity event here. Recorded as the plugin's last sync.
+   */
+  resolve(input: { plugin: string; source?: string }): Promise<ResolveCounts>;
+  /** Stage 6: the last read of each bound plugin with record sources. */
+  syncs(): Promise<SourceSync[]>;
+  /** Stage 6: reads every plugin whose binding's `sync:` is due (the kernel's minute sweep calls it). */
+  syncDue(now?: Date): Promise<{ plugin: string; counts?: ResolveCounts; error?: string }[]>;
   /**
    * Identity candidates, with the outside records' values. With `actor`, only for someone who may
    * decide identity matches (the bind-plugin owner role); anyone else gets none.
@@ -644,7 +677,8 @@ import type {
 /** Where a field's value on a record page comes from (24 §6). */
 export type RecordFieldSource =
   | { kind: 'domain' }
-  | { kind: 'plugin'; plugin: string }
+  /** `asOf`: a synced binding's copy (D110), read from the plugin at this time. */
+  | { kind: 'plugin'; plugin: string; asOf?: string; /** The connector hasn't linked this record: its fields aren't from it (yet). */ unlinked?: true }
   | { kind: 'link'; domain: string; entity: string; recordId?: string }
   | { kind: 'calculated' }
   /** The version that last changed it was written by this step run, person or source. */
@@ -957,8 +991,8 @@ export interface RecordsService {
   update(input: { entity: string; id: string; values: Record<string, unknown>; reason?: string }, actor: Actor): Promise<RecordWriteResult>;
   transition(input: { entity: string; id: string; transition: string; reason?: string }, actor: Actor): Promise<RecordWriteResult>;
   query(query: RecordQuery, actor: Actor): Promise<RecordQueryResult>;
-  tree(domain: string, actor: Actor, opts?: { parent?: { entity: string; id: string } }): Promise<TreeNode[]>;
-  dashboard(domain: string, pageId: string, params: Record<string, string>, actor: Actor): Promise<DashboardData>;
+  tree(domain: string, actor: Actor, opts?: { parent?: { entity: string; id: string }; project?: string }): Promise<TreeNode[]>;
+  dashboard(domain: string, pageId: string, params: Record<string, string>, actor: Actor, opts?: { project?: string }): Promise<DashboardData>;
   views(domain: string, actor: Actor, opts?: { entity?: string }): Promise<(ViewDef & { personal: boolean; domain: string })[]>;
   saveView(domain: string, view: ViewDef, actor: Actor): Promise<ViewDef>;
   saveNote(input: { entity: string; id: string; body: string; reason?: string }, actor: Actor): Promise<RecordWriteResult>;

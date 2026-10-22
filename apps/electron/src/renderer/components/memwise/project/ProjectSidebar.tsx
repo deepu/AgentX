@@ -120,7 +120,7 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
           </>
         )}
         <WrittenPages projectId={project.id} details={details} />
-        {domain && <PageTree domain={domain} projectId={project.id} details={details} written={written} />}
+        {domain && <PageTree domain={domain} projectId={project.id} {...(project.stored ? { scope: project.id } : {})} details={details} written={written} />}
 
         {ownPlaybooks.length > 0 && <Section title={t('memwise.shell.playbooks')} {...(peopleOnly ? {} : { onAdd: () => openNewPlaybook(true) })} addLabel={t('memwise.shell.newPlaybook')} />}
         {shownPlaybooks.map(p => (
@@ -305,7 +305,7 @@ type TreeCache = Record<string, MwTreeNode[] | 'loading'>
  * PAGES after the written pages (Stage 2): the project's dashboards, then its record tree
  * (records that have pages of their own, a level at a time, from memwise:records:tree).
  */
-function PageTree({ domain, projectId, details, written }: { domain: MwDomain; projectId: string; details: ProjectDetails; written: Map<string, MwPageSummary> }) {
+function PageTree({ domain, projectId, scope, details, written }: { domain: MwDomain; projectId: string; scope?: string; details: ProjectDetails; written: Map<string, MwPageSummary> }) {
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
   const lastChange = useAtomValue(memwiseLastChangeAtom)
   const [cache, setCache] = React.useState<TreeCache>({})
@@ -320,14 +320,15 @@ function PageTree({ domain, projectId, details, written }: { domain: MwDomain; p
     if (!force && cacheRef.current[key] !== undefined) return
     if (!force) setCache(c => ({ ...c, [key]: 'loading' }))
     try {
-      const nodes = await api.memwiseRecordTree(workspaceId, { domain: domain.id, ...(parent ? { parent } : {}) })
+      // A project's own records (Stage 3): EDC's Study MW-301 lists MW-301's sites, not MW-207's.
+      const nodes = await api.memwiseRecordTree(workspaceId, { domain: domain.id, ...(parent ? { parent } : {}), ...(scope ? { project: scope } : {}) })
       setCache(c => ({ ...c, [key]: nodes }))
     } catch {
       setCache(c => ({ ...c, [key]: [] }))
     }
-  }, [workspaceId, domain.id])
+  }, [workspaceId, domain.id, scope])
 
-  React.useEffect(() => { cacheRef.current = {}; setCache({}); setOpen(new Set()) }, [domain.id])
+  React.useEffect(() => { cacheRef.current = {}; setCache({}); setOpen(new Set()) }, [domain.id, projectId])
   React.useEffect(() => { void load() }, [load])
   const seen = React.useRef<number | null>(null)
   React.useEffect(() => {

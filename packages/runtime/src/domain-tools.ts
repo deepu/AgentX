@@ -39,17 +39,43 @@ export interface EntityToolRuntime {
   emit?(change: KernelChange): void;
 }
 
+export interface WriteGuardOptions {
+  creating?: boolean;
+  /** Plugins whose binding reads this entity on a schedule (`sync:`) → the identity keys a create may give. */
+  synced?: Map<string, Set<string>>;
+}
+
+/** For one entity: each connector that fills it on a schedule (`sync:`), with the keys it matches records by. */
+export function syncedOwners(project: ProjectDefs | undefined, entityKey: string): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const b of Object.values(project?.bindings ?? {})) {
+    if (!b.sync) continue;
+    for (const r of Object.values(b.records ?? {})) {
+      if (r.entity !== entityKey) continue;
+      const keys = out.get(b.plugin) ?? new Set<string>();
+      for (const k of r.identity?.keys ?? []) keys.add(k);
+      out.set(b.plugin, keys);
+    }
+  }
+  return out;
+}
+
 /**
  * Fields a step (or a person) may not write: calculated, followed through a link, or owned by a
  * plugin (D10). Field -> why, in plain words.
  */
-export function readOnlyFields(def: EntityTypeDef, fields: string[], opts: { creating?: boolean } = {}): Record<string, string> {
+export function readOnlyFields(def: EntityTypeDef, fields: string[], opts: WriteGuardOptions = {}): Record<string, string> {
   const out: Record<string, string> = {};
   const followed = new Map(Object.entries(def.links ?? {}).flatMap(([key, l]) => l.follow.map((f) => [f, l.target || key] as const)));
   for (const f of fields) {
+    const owner = def.ownership?.[f];
+    const synced = owner && owner !== 'domain' ? opts.synced?.get(owner) : undefined;
     if (def.calculated?.[f]) out[f] = `${f} is calculated from other values, so it can't be written`;
     else if (followed.has(f)) out[f] = `${f} comes from ${followed.get(f)} through a link; change it there`;
-    else if (!opts.creating && def.ownership?.[f] && def.ownership[f] !== 'domain') out[f] = `${f} is kept by the ${def.ownership[f]} plugin; change it there`;
+    else if (!opts.creating && owner && owner !== 'domain') out[f] = `${f} is kept by the ${owner} plugin; change it there`;
+    // One owner per fact (Stage 6): a connector that reads its source on a schedule is the only
+    // writer of its fields, even on create. A person may give only the key it is matched by.
+    else if (opts.creating && synced && !synced.has(f)) out[f] = `${f} is read from the ${owner} connector; it arrives with its next read (only ${[...synced].join(', ') || 'no field'} may be given here)`;
     else if (!(f in def.fields) && def.relationships[f]?.cardinality !== 'one') out[f] = `a ${def.entity} has no field ${f}`;
   }
   return out;
@@ -60,7 +86,7 @@ export function readOnlyFields(def: EntityTypeDef, fields: string[], opts: { cre
  * may give a plugin-owned field its first value (Phase 2/4 behaviour); changing one may not.
  */
 export function fieldErrors(def: EntityTypeDef, entities: Record<string, EntityTypeDef>, values: Record<string, unknown>,
-  opts: { creating?: boolean } = {}): Record<string, string[]> {
+  opts: WriteGuardOptions = {}): Record<string, string[]> {
   const scoped = scopedEntities(entities, domainOfEntity(def));
   const errors: Record<string, string[]> = {};
   for (const [f, why] of Object.entries(readOnlyFields(def, Object.keys(values), opts))) errors[f] = [why];
@@ -135,7 +161,7 @@ export function domainTools(entities: Record<string, EntityTypeDef>, runtime?: (
       idempotent: true,
       source,
       async execute(args: Record<string, unknown>, ctx: ToolContext) {
-        const errors = fieldErrors(def, entities, args, { creating: true });
+        const errors = fieldErrors(def, entities, args, { creating: true, synced: syncedOwners(rt().project(), keyOf(def)) });
         if (Object.keys(errors).length) throw new Error(`the ${label} can't be created: ${plainErrors(errors)}`);
         const opts = { idempotencyKey: ctx.idempotencyKey, stepRunId: ctx.token.stepRunId };
         // Keyed (25 §3, D80): the record with this key, made now or found as it was (as the

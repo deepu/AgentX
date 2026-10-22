@@ -43,7 +43,7 @@ export default async ({ win, shot }) => {
   if (await health.count()) { await health.click(); await wait(win, 3500); await shot('08-page'); } else console.log('no TMF health in tree');
   await side.getByText('Activate a site', { exact: true }).click(); await wait(win, 3000); await shot('09-playbook');
   await side.getByText('Sites', { exact: true }).click(); await wait(win, 3000);
-  await win.locator('[data-testid="shell-page-column"]').getByText('DE-104', { exact: false }).first().click(); await wait(win, 3500);
+  await win.locator('[data-testid="shell-page-column"]').getByText('104 · ', { exact: false }).first().click(); await wait(win, 3500);
   await shot('10-record');
   const seen = await win.evaluate(() => [...document.querySelectorAll('body *')].filter(e => e.children.length === 0 && /^(All Sessions|New Session|Flagged|Archived|Labels)$/.test(e.textContent.trim()) && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden').map(e => e.textContent.trim()));
   console.log('CHAT LIST VISIBLE?', JSON.stringify(seen));

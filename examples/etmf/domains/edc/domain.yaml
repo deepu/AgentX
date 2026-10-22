@@ -1,4 +1,4 @@
 domain: edc
 name: EDC
-description: The study's electronic data capture system, the source of truth for sites and their staff.
-owner: study_manager
+description: "The study's data in Medidata Rave, read only: sites and their staff, subjects and open queries. Data entry stays in Rave; MemWise reads it, builds pages from questions and chases old queries."
+owner: data_manager            # flags, held automations and triggered cases go to the data manager

@@ -1,0 +1,23 @@
+name: nothing-old
+description: The only old query was closed in Rave already, so nobody is chased and nothing is sent.
+records:
+  Site:
+    - { id: site_104, site_number: "104", name: Kliniken am Stadtpark, study: MW-301, coordinator: Lena Hoffmann, coordinator_email: lena.hoffmann@site104.example }
+  Query:
+    - { id: quer_5, site: site_104, site_number: "104", subject_key: 104-005, visit: Visit 2, text: Weight not entered, query_status: Closed, opened_on: "2026-01-05", closed_on: "2026-01-20" }
+case:
+  older_than: 14
+model:
+  chaser:
+    - toolCalls:
+        - { name: edc.query.list, args: { filter: "query_status = 'Open' and days_open > 14" } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: nothing_old
+            writes: { sites: 0, queries: 0, summary: No query is older than 14 days }
+            rationale: No query is open; the old one was closed in Rave.
+expect:
+  outcome: nothing_old
+  state: end
+  effects: { email.send: 0 }

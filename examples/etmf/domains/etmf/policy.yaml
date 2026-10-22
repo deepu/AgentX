@@ -5,4 +5,4 @@ effects:
 budgets:
   tokens: 200000
   modelCalls: 60
-modelRoles: [router, classifier, checker, verifier, extractor, explainer]
+modelRoles: [router, classifier, checker, verifier, extractor, explainer, requester]

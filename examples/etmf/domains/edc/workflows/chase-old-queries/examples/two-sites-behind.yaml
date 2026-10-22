@@ -1,0 +1,70 @@
+name: two-sites-behind
+description: >
+  Monday's chase. Three queries are open longer than 14 days, two at site 104 and one at 109; a
+  newer one at 104 and a closed old one at 102 are left alone. The chaser drafts one reminder per
+  site to its coordinator, each is approved with its exact text, and both are sent.
+records:
+  Site:
+    - { id: site_104, site_number: "104", name: Kliniken am Stadtpark, study: MW-301, coordinator: Lena Hoffmann, coordinator_email: lena.hoffmann@site104.example, rave_ref: MW-301(Prod)/104 }
+    - { id: site_109, site_number: "109", name: Cedar Valley Research, study: MW-301, coordinator: Ben Foster, coordinator_email: ben.foster@site109.example, rave_ref: MW-301(Prod)/109 }
+    - { id: site_102, site_number: "102", name: Riverside Clinical Research Centre, study: MW-301, coordinator: Sophie Bell, coordinator_email: sophie.bell@site102.example, rave_ref: MW-301(Prod)/102 }
+  Query:
+    - { id: quer_1, site: site_104, site_number: "104", subject_key: 104-007, visit: Visit 3, text: Weight not entered, query_status: Open, opened_on: "2026-01-05" }
+    - { id: quer_2, site: site_104, site_number: "104", subject_key: 104-003, visit: Visit 3, text: Weight not entered, query_status: Open, opened_on: "2026-01-12" }
+    - { id: quer_3, site: site_109, site_number: "109", subject_key: 109-012, visit: Visit 2, text: Lab sample date is 9 days after the visit, query_status: Open, opened_on: "2026-01-10" }
+    - { id: quer_5, site: site_102, site_number: "102", subject_key: 102-005, visit: Visit 2, text: Concomitant medication dose missing, query_status: Closed, opened_on: "2025-12-27" }
+case:
+  older_than: 14
+model:
+  chaser:
+    - toolCalls:
+        - { name: edc.query.list, args: { filter: "query_status = 'Open' and days_open > 14" } }
+    - toolCalls:
+        - { name: edc.site.get, args: { id: site_104 } }
+        - { name: edc.site.get, args: { id: site_109 } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: drafted
+            writes:
+              reminders:
+                - site: site_104
+                  to: lena.hoffmann@site104.example
+                  subject: "MW-301: 2 queries open for more than two weeks at site 104"
+                  queries: 2
+                  body: |
+                    Dear Lena Hoffmann,
+
+                    Two queries at site 104 in study MW-301 have been open for more than two weeks:
+
+                    - 104-007, Visit 3: Weight not entered (31 days)
+                    - 104-003, Visit 3: Weight not entered (24 days)
+
+                    Please answer them in Rave. Thank you.
+
+                    The MW-301 data management team
+                - site: site_109
+                  to: ben.foster@site109.example
+                  subject: "MW-301: 1 query open for more than two weeks at site 109"
+                  queries: 1
+                  body: |
+                    Dear Ben Foster,
+
+                    One query at site 109 in study MW-301 has been open for more than two weeks:
+
+                    - 109-012, Visit 2: Lab sample date is 9 days after the visit (26 days)
+
+                    Please answer it in Rave. Thank you.
+
+                    The MW-301 data management team
+              sites: 2
+              queries: 3
+              summary: Sites 104 and 109 · 3 queries older than 14 days
+            rationale: Three open queries are older than 14 days, at sites 104 (two) and 109 (one).
+approvals:
+  email.send: approve
+expect:
+  outcome: drafted
+  state: end
+  writes: { sites: 2, queries: 3 }
+  effects: { email.send: 2 }

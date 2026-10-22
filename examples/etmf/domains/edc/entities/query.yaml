@@ -1,0 +1,37 @@
+entity: Query
+title: "{subject_key} · {visit}: {text}"
+parent: site
+# A data query raised in Rave and answered there by the site. MemWise reads it (read only, owned by
+# the Rave connector) and chases the old ones; it never opens, answers or closes one.
+fields:
+  subject_key:   { type: Text, description: "The subject it is about, like 104-007" }
+  site_number:   Text
+  site:          Ref<Site>
+  subject:       Ref<Subject>
+  study:         Text
+  visit:         { type: Text, description: "The folder in Rave, like Visit 3" }
+  form:          Text
+  field:         Text
+  text:          { type: Text, description: What the query asks }
+  marking_group: Text
+  query_status:  { type: Text, description: "Open, Answered or Closed" }
+  opened_on:     Date
+  closed_on:     Date
+  rave_ref:      { type: Text, description: "The query in Medidata Rave, like MW-301(Prod)/Q50001" }
+calculated:
+  days_open: { formula: "days_since(opened_on)", description: Days since it was opened }
+ownership:
+  subject_key: memwise/medidata-rave
+  site_number: memwise/medidata-rave
+  site: memwise/medidata-rave
+  subject: memwise/medidata-rave
+  study: memwise/medidata-rave
+  visit: memwise/medidata-rave
+  form: memwise/medidata-rave
+  field: memwise/medidata-rave
+  text: memwise/medidata-rave
+  marking_group: memwise/medidata-rave
+  query_status: memwise/medidata-rave
+  opened_on: memwise/medidata-rave
+  closed_on: memwise/medidata-rave
+  rave_ref: memwise/medidata-rave

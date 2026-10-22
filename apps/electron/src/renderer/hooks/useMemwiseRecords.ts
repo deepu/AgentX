@@ -90,13 +90,14 @@ export function useMemwiseRecordQuery(input: MwRecordQueryInput | null): Memwise
   )
 }
 
-export function useMemwiseDashboard(domain: string | null, pageId: string | null, params?: Record<string, string>): MemwiseQuery<MwDashboard> {
-  const key = domain && pageId ? `dashboard:${domain}:${pageId}:${JSON.stringify(params ?? {})}` : null
+export function useMemwiseDashboard(domain: string | null, pageId: string | null, params?: Record<string, string>, project?: string): MemwiseQuery<MwDashboard> {
+  const key = domain && pageId ? `dashboard:${domain}:${pageId}:${JSON.stringify(params ?? {})}:${project ?? ''}` : null
   return useMemwiseQuery<MwDashboard>(
     key,
     async (api, ws) => {
       if (typeof api.memwiseGetDashboard !== 'function') throw new Error(i18n.t('memwise.notAvailable'))
-      return api.memwiseGetDashboard(ws, { domain: domain!, pageId: pageId!, ...(params && Object.keys(params).length ? { params } : {}) })
+      // Stage 3: a project's page counts that project's records only.
+      return api.memwiseGetDashboard(ws, { domain: domain!, pageId: pageId!, ...(params && Object.keys(params).length ? { params } : {}), ...(project ? { project } : {}) })
     },
     // A dashboard is computed on read: any record write may move it.
     c => c.kind === 'records' || c.kind === 'definitions' || c.kind === 'status',

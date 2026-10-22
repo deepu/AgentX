@@ -1,0 +1,25 @@
+workflow: chase-old-queries
+version: 1
+title: Chase old queries
+owner: data_manager
+# Every Monday: one reminder per site with queries open longer than 14 days, to the site's study
+# coordinator as Rave names them. Each reminder is an outgoing email, so a person approves it (with
+# the exact text) before it goes. Sites answer the queries in Rave; this playbook never touches one.
+start: draft
+starts_on:
+  - every: 1w
+    on: monday
+    at: "08:00"
+steps:
+  draft:
+    on:
+      drafted:      send
+      nothing_old:  end
+      needs_person: needs_person
+      failed:       needs_person
+  send:
+    on: { sent: end, needs_person: needs_person }
+  needs_person:                                      # the agent couldn't draft them, or an approval timed out
+    assignee: data_manager
+    on: { retry: draft, closed: end }
+    wait: { timeout: 7d → end }
