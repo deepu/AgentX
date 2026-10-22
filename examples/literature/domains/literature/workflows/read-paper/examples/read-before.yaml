@@ -1,6 +1,6 @@
 name: read-before
 description: >
-  ATTAIN-2 was read last week, when another topic's check found it. This topic's check calls
+  ATTAIN-2 was read last week, when another page's refresh found it. This page's refresh calls
   "Read a paper" for it too, and the case ends at once: no model is asked and nothing changes.
 records:
   Article:

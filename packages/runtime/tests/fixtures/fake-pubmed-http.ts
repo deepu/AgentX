@@ -101,6 +101,27 @@ export const EXAMPLE_TRIAL_C: FakeArticle = {
 
 export const FAKE_ARTICLES: FakeArticle[] = [ATTAIN_2, EXAMPLE_TRIAL_A, EXAMPLE_REVIEW_B, EXAMPLE_TRIAL_C];
 
+/**
+ * Made up: a trial PubMed "adds" during a test (`add`), so a page's refresh finds it. Its entry
+ * date is given when it is added.
+ */
+export const EXAMPLE_TRIAL_D: Omit<FakeArticle, 'entry_date'> = {
+  identifiers: { pmid: '99000004', doi: '10.0000/example.trial-d' },
+  title: 'Example Trial D: stopping oral semaglutide 25 mg because of adverse events in adults with obesity: a 52-week randomised, placebo-controlled trial.',
+  abstract: 'This is an invented abstract for testing. In this 52-week, phase 3, double-blind trial, 640 adults with obesity were randomly assigned to once-daily oral semaglutide 25 mg or placebo. Treatment was stopped because of adverse events by 7·2% of participants on oral semaglutide and 2·9% on placebo, most often for nausea. Funded by Example Pharma.',
+  journal: { title: 'Example Journal of Obesity', iso_abbreviation: 'Ex J Obes' },
+  authors: [author('Example', 'Dana', 'D'), author('Sample', 'Lee', 'L')],
+  publication_date: { year: '2026', month: '06', day: '01' },
+  mesh_terms: ['Humans', 'Obesity', 'Administration, Oral', 'Glucagon-Like Peptide-1 Receptor Agonists'],
+  article_types: ['Journal Article', 'Randomized Controlled Trial', 'Clinical Trial, Phase III'],
+  language: 'eng',
+  citation: { volume: '12', issue: '6', pages: '101-110' },
+};
+
+/** Papers added with `add` while a fake runs; searched and read like the others. */
+const added: FakeArticle[] = [];
+const all = (): FakeArticle[] => [...FAKE_ARTICLES, ...added];
+
 /** The search the literature example's GLP-1 topic uses; it finds ATTAIN-2, Example Trial A and Example Review B. */
 export const GLP1_QUERY = '(orforglipron OR "oral semaglutide" OR "oral GLP-1") AND ("type 2 diabetes" OR "diabetes mellitus, type 2"[MeSH Terms]) AND (obesity OR weight)';
 
@@ -314,15 +335,15 @@ function search(args: Record<string, unknown>) {
   const which = (a: FakeArticle) => (args.datetype === 'edat' || args.datetype === 'mdat' ? a.entry_date : pubDate(a));
   const from = typeof args.date_from === 'string' ? day(args.date_from, false) : undefined;
   const to = typeof args.date_to === 'string' ? day(args.date_to, true) : undefined;
-  const found = FAKE_ARTICLES
+  const found = all()
     .filter((a) => matches(query, a) && (!from || which(a) >= from) && (!to || which(a) <= to))
     .sort((a, b) => (args.sort === 'title' ? a.title.localeCompare(b.title) : b.entry_date.localeCompare(a.entry_date)));
   const pmids = found.slice(retstart, retstart + max).map((a) => a.identifiers.pmid);
   return { pmids, total_count: found.length, returned_count: pmids.length, query, query_translation: translate(query), has_more: retstart + pmids.length < found.length };
 }
 
-const byPmid = (pmid: string) => FAKE_ARTICLES.find((a) => a.identifiers.pmid === pmid);
-const byPmc = (pmc: string) => FAKE_ARTICLES.find((a) => a.identifiers.pmc && a.identifiers.pmc.replace(/^PMC/, '') === pmc.replace(/^PMC/, ''));
+const byPmid = (pmid: string) => all().find((a) => a.identifiers.pmid === pmid);
+const byPmc = (pmc: string) => all().find((a) => a.identifiers.pmc && a.identifiers.pmc.replace(/^PMC/, '') === pmc.replace(/^PMC/, ''));
 
 function metadata(a: FakeArticle) {
   const { entry_date: _e, full_text: _f, ...rest } = a;
@@ -345,7 +366,7 @@ function answer(name: string, args: Record<string, unknown>): Record<string, unk
       const links = linkname === 'pubmed_pmc'
         ? ids.map(byPmid).flatMap((a) => (a?.identifiers.pmc ? [a.identifiers.pmc.replace(/^PMC/, '')] : []))
         : linkname === 'pubmed_pubmed'
-          ? [...ids, ...FAKE_ARTICLES.map((a) => a.identifiers.pmid).filter((p) => !ids.includes(p))]
+          ? [...ids, ...all().map((a) => a.identifiers.pmid).filter((p) => !ids.includes(p))]
           : [];
       return { linksets: [{ dbfrom: 'pubmed', ids, linksetdbs: links.length ? [{ dbto: linkname.split('_')[1], linkname, links: links.slice(0, max) }] : [] }] };
     }
@@ -353,7 +374,7 @@ function answer(name: string, args: Record<string, unknown>): Record<string, unk
       const citations = (Array.isArray(args.citations) ? args.citations : []) as Record<string, unknown>[];
       return {
         citations: citations.map((c) => {
-          const hit = FAKE_ARTICLES.find((a) =>
+          const hit = all().find((a) =>
             (c.journal === undefined || [a.journal.title, a.journal.iso_abbreviation].includes(String(c.journal)))
             && (c.year === undefined || a.publication_date.year === String(c.year))
             && (c.volume === undefined || a.citation.volume === String(c.volume))
@@ -365,7 +386,7 @@ function answer(name: string, args: Record<string, unknown>): Record<string, unk
     }
     case 'convert_article_ids': {
       const type = String(args.id_type ?? 'pmid');
-      const find = (id: string) => (type === 'doi' ? FAKE_ARTICLES.find((a) => a.identifiers.doi === id) : type === 'pmcid' ? byPmc(id) : byPmid(id));
+      const find = (id: string) => (type === 'doi' ? all().find((a) => a.identifiers.doi === id) : type === 'pmcid' ? byPmc(id) : byPmid(id));
       return {
         status: 'ok',
         records: list('ids').map((id) => {
@@ -414,7 +435,11 @@ function server(calls: { name: string; args: Record<string, unknown> }[]): Serve
  * Starts the fake on a random local port. `url` is its MCP endpoint (`.../mcp`); `calls` lists
  * every tool call it answered, in order. Stateless: a fresh server and transport per request.
  */
-export async function startFakePubmed(): Promise<{ url: string; stop: () => Promise<void>; calls: { name: string; args: Record<string, unknown> }[] }> {
+export async function startFakePubmed(): Promise<{
+  url: string; stop: () => Promise<void>; calls: { name: string; args: Record<string, unknown> }[];
+  /** PubMed adds a paper (until `stop`). */
+  add: (article: FakeArticle) => void;
+}> {
   const calls: { name: string; args: Record<string, unknown> }[] = [];
   const http = Bun.serve({
     port: 0,
@@ -435,6 +460,7 @@ export async function startFakePubmed(): Promise<{ url: string; stop: () => Prom
   return {
     url: `http://127.0.0.1:${http.port}/mcp`,
     calls,
-    stop: async () => { await http.stop(true); },
+    add: (article) => { added.push(article); },
+    stop: async () => { added.length = 0; await http.stop(true); },
   };
 }

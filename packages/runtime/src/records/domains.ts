@@ -2,6 +2,7 @@
 // counts under the viewer's row rules, playbooks, pages, views, open flags), the workspace itself,
 // and people's grants (a role in one domain, optionally limited to records).
 import { PgFlagStore, PgGrantStore, PgPageStore, viewOf, withActor } from '@memwise/db';
+import { REFRESH_PAGE } from '../pages/service.ts';
 import { DEFAULT_DOMAIN, META_PLAYBOOKS, hasRole, keyOf, type Grant } from '@memwise/defs';
 import type { Actor, DomainsService, DomainSummary } from '../types.ts';
 import { domainDef, domainOfEntity, type RecordsDeps } from './context.ts';
@@ -41,8 +42,10 @@ export function createDomainsService(deps: RecordsDeps): DomainsService {
           }
           const written = await pageStore.list(db, id);
           const flags = await flagStore.list(db, { domain: id, open: true, limit: 1000 });
-          const workflows = d.workflows.length ? d.workflows
-            : Object.values(project?.workflows ?? {}).filter((w) => (w.domain ?? DEFAULT_DOMAIN) === id).map((w) => w.id);
+          // "Refresh a page" (built in, or the app's own) keeps pages current; it is not a playbook people start (26 §5).
+          const refresh = d.pageRules?.refresh;
+          const workflows = (d.workflows.length ? d.workflows
+            : Object.values(project?.workflows ?? {}).filter((w) => (w.domain ?? DEFAULT_DOMAIN) === id).map((w) => w.id)).filter((w) => w !== refresh && w !== REFRESH_PAGE);
           // A project of named domains has no default one of its own: the meta playbooks the app adds
           // (building and changing playbooks, binding plugins) don't make one appear in the sidebar.
           const onlyMeta = workflows.every((w) => (META_PLAYBOOKS as readonly string[]).includes(w));
@@ -58,6 +61,7 @@ export function createDomainsService(deps: RecordsDeps): DomainsService {
             ],
             views: Object.values(d.views).map((v) => ({ id: v.id, title: v.title, entity: v.entity })),
             flags: flags.length,
+            ...(refresh ? { pageRefresh: refresh } : {}),
           });
         }
       });

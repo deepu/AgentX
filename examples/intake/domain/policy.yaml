@@ -7,4 +7,4 @@ tools:
 budgets:
   tokens: 200000
   modelCalls: 60
-modelRoles: [checker, verifier, extractor, explainer, binder]
+modelRoles: [checker, verifier, extractor, explainer, binder, writer]

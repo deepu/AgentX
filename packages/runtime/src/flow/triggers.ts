@@ -288,6 +288,7 @@ export function createTriggers(deps: FlowDeps, more: { settle: TriggersService['
           deps.log?.(`trigger ${t.id}: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
+      await deps.extraSweep?.(now).catch((e) => deps.log?.(`sweep: ${e instanceof Error ? e.message : String(e)}`));
       return out;
     },
 

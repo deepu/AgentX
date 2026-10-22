@@ -42,6 +42,15 @@ const outcomesOf = (step: StepDef) => (step.performer === 'system' && !step.outc
 export const isConversationStep = (step: StepDef): boolean => step.performer === 'agent' && step.engine === 'open';
 
 /** Steps the run waits on: a person, someone outside the business, or a chat. */
+/** Built-in playbooks whose person steps the kernel routes itself (no `assignee`). */
+export const KERNEL_ROUTED_PLAYBOOKS = ['refresh-page'] as const;
+
+/** A built-in, or the playbook a domain names as its own "Refresh a page" (`pages.refresh`). */
+function kernelRouted(workflow: WorkflowDef, project?: CheckOptions['project']): boolean {
+  if ((KERNEL_ROUTED_PLAYBOOKS as readonly string[]).includes(workflow.id)) return true;
+  return Object.values(project?.domains ?? {}).some((dom) => dom.pageRules?.refresh === workflow.id);
+}
+
 const waitsOnSomeone = (step: StepDef) => step.performer === 'person' || step.performer === 'external' || isConversationStep(step);
 
 class Diagnostics {
@@ -145,7 +154,7 @@ export function checkWorkflow(workflow: WorkflowDef, env: CheckEnvironment, opts
   // ---- steps
   for (const [name, state] of Object.entries(states)) {
     const step = state.step ? workflow.steps[state.step] : undefined;
-    if (step) checkStep(d, workflow, name, step, env, entities);
+    if (step) checkStep(d, workflow, name, step, env, entities, kernelRouted(workflow, opts.project));
   }
 
   // ---- example cases
@@ -175,7 +184,7 @@ function unknownReadSegment(path: string, workflow: WorkflowDef, entities?: Reco
   return undefined;
 }
 
-function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, step: StepDef, env: CheckEnvironment, entities?: Record<string, EntityTypeDef>): void {
+function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, step: StepDef, env: CheckEnvironment, entities?: Record<string, EntityTypeDef>, routed = false): void {
   const at = (severity: Severity, code: string, message: string, path: PathKey[]) => d.add(severity, code, message, step.file, step, path);
   const shape = (severity: Severity, code: string, message: string, path: PathKey[]) => d.add(severity, code, message, shapeFileOf(workflow), workflow, path);
   const state = workflow.states[stateName]!;
@@ -202,7 +211,9 @@ function checkStep(d: Diagnostics, workflow: WorkflowDef, stateName: string, ste
   if (waitsOnSomeone(step)) {
     const roles = env.roles;
     const kind = conversation ? 'conversation' : step.performer;
-    if (roles && step.assignee === undefined) {
+    // "Refresh a page" (26 §4), built in or an app's own, asks the page's owner or the domain's
+    // `pages.reviewer`: the kernel routes its review, so it names no role.
+    if (roles && step.assignee === undefined && !routed) {
       at('error', 'missing-assignee', `a ${kind} step names the role that does it, e.g. \`assignee: ${roles[0] ?? 'staff'}\``, []);
     } else if (roles && step.assignee !== undefined && !roles.includes(step.assignee)) {
       at('error', 'unknown-role', `assignee \`${step.assignee}\` is not a role in domain/roles.yaml (roles: ${roles.join(', ') || 'none'})`, ['assignee']);

@@ -2074,6 +2074,7 @@ export function shouldAllowToolInMode(
         includeRecordKeep: true,
         includeRecordUpdate: true,
         includeRecordsFilter: true,
+        includePageTools: true,
       });
 
       if (safeAllowedSessionTools.has(toolName)) {

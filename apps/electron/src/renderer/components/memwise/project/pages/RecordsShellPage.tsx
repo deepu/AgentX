@@ -34,10 +34,6 @@ function readLayout(entity: string): Layout {
   try { return localStorage.getItem(LAYOUT_KEY + entity) === 'cards' ? 'cards' : 'list' } catch { return 'list' }
 }
 
-/** Stage 2's "Save as a page" (`memwise:pages:create`), when this build has it. */
-type CreatePage = (workspaceId: string, input: { projectId: string; title: string; body?: string; status?: 'draft' | 'kept' }) =>
-  Promise<{ applied: boolean; message?: string; page?: { id: string } }>
-
 export function RecordsShellPage({ projectId, entity }: { projectId: string; entity: string }) {
   const { t, i18n } = useTranslation()
   const domains = useAtomValue(memwiseDomainsAtom)
@@ -71,26 +67,18 @@ export function RecordsShellPage({ projectId, entity }: { projectId: string; ent
     try { localStorage.setItem(LAYOUT_KEY + entity, l) } catch { /* the choice just isn't remembered */ }
   }
 
+  // "Save as a page": a Stage 2 page holding a live `records` block of what the list shows (D123).
   const saveAsPage = async (f: MwRecordsChatFilter) => {
     const api = getMemwiseApi()
     if (!api || !workspaceId) { toast.error(t('memwise.notAvailable')); return }
     setSaving(true)
     try {
       const pageTitle = `${title}: ${f.label}`
-      const create = (api as unknown as { memwiseCreatePage?: CreatePage }).memwiseCreatePage
-      if (typeof create === 'function') {
-        const r = await create(workspaceId, { projectId, title: pageTitle, body: recordsFence({ entity, filter: f.filter, title: pageTitle, ...(f.columns ? { columns: f.columns } : {}), ...(f.sort ? { sort: f.sort } : {}) }), status: 'kept' })
-        if (!r.applied || !r.page) { toast.error(r.message ?? t('memwise.inbox.notApplied')); return }
-        toast.success(t('memwise.everyPage.savedAsPage', { title: pageTitle }))
-        navigate(routes.view.project(shell?.projectId ?? projectId, { type: 'page', pageId: r.page.id }))
-        return
-      }
-      // No pages in this build: keep it as a saved view of the list.
-      const view = await api.memwiseSaveView(workspaceId, {
-        domain: domain?.id ?? projectId,
-        view: { id: '', title: pageTitle, entity, filter: f.filter, ...(f.sort ? { sort: f.sort } : {}), ...(f.columns ? { columns: f.columns } : {}), layout: 'table' },
-      })
-      toast.success(t('memwise.everyPage.savedAsView', { title: view.title }))
+      const body = recordsFence({ entity, filter: filter ?? f.filter, title: pageTitle, ...(asked ? { columns: asked } : {}), ...(sort?.length ? { sort } : {}) })
+      const r = await api.memwiseCreatePage(workspaceId, { projectId: shell?.projectId ?? projectId, title: pageTitle, body, status: 'kept' })
+      if (!r.applied || !r.page) { toast.error(r.message ?? t('memwise.inbox.notApplied')); return }
+      toast.success(t('memwise.everyPage.savedAsPage', { title: pageTitle }))
+      navigate(routes.view.project(shell?.projectId ?? projectId, { type: 'page', pageId: r.page.id }))
     } catch (err) {
       toast.error(t('memwise.inbox.notApplied'), { description: err instanceof Error ? err.message : String(err) })
     } finally {

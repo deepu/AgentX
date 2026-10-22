@@ -102,6 +102,7 @@ export {
   readSessionMemwiseContext,
   sessionHasPlaybookTools,
   sessionHasRecordTools,
+  sessionHasPageTools,
   memwiseSessionToolOptions,
   anchorReadsRecords,
   chatChangesPlaybook,

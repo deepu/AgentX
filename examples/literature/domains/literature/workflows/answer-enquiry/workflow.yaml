@@ -1,0 +1,33 @@
+workflow: answer-enquiry
+version: 1
+title: Answer an enquiry
+owner: lead
+# A doctor emails a question to the enquiries address (26 §6). It is kept as an Enquiry; the
+# searcher looks for the evidence in the project's kept pages first, then in PubMed; the writer
+# drafts the reply with its references; the medical affairs lead reads it, corrects it and signs
+# it, or sends it back to be redrafted; the signed reply is emailed to the doctor.
+start: record
+starts_on:
+  - message: { address: enquiries }
+    with:
+      sender:      message.from
+      subject:     message.subject
+      question:    message.text
+      received_at: message.receivedAt
+steps:
+  record:                      # the enquiry, as it came in
+    on: { done: find }
+  find:                        # pages first, then PubMed
+    on: { found: draft, nothing_found: draft }
+  draft:                       # the reply, every claim with its reference
+    on: { drafted: save_draft }
+  save_draft:
+    on: { done: sign }
+  sign:                        # the medical affairs lead signs it, or sends it back
+    assignee: lead
+    on: { signed: send, sent_back: redraft }
+    wait: { remind: 2d, timeout: 14d → end }
+  redraft:
+    on: { done: draft }
+  send:                        # the signed reply goes to the doctor
+    on: { sent: end }

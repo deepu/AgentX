@@ -12,6 +12,8 @@ import { MarkdownJsonBlock } from './MarkdownJsonBlock'
 import { MarkdownMermaidBlock } from './MarkdownMermaidBlock'
 import { MarkdownDatatableBlock } from './MarkdownDatatableBlock'
 import { MarkdownChartBlock } from './MarkdownChartBlock'
+import { MarkdownPageBlock } from './MarkdownPageBlock'
+import { PAGE_BLOCK_LANGS } from './page-blocks'
 import { MarkdownSpreadsheetBlock } from './MarkdownSpreadsheetBlock'
 import { MarkdownHtmlBlock } from './MarkdownHtmlBlock'
 import { MarkdownImageBlock } from './MarkdownImageBlock'
@@ -291,6 +293,10 @@ function createComponents(
           if (match?.[1] === 'chart') {
             return wrapBlock('chart', code, <MarkdownChartBlock code={code} className="my-2" onUrlClick={onUrlClick} onFileClick={onFileClick} />, props.node?.position)
           }
+          // MemWise page blocks (26 §4) → tiles, tables with quotes, live records and sub-pages
+          if (match?.[1] && PAGE_BLOCK_LANGS.has(match[1])) {
+            return wrapBlock(match[1], code, <MarkdownPageBlock lang={match[1]} code={code} className="my-2" onUrlClick={onUrlClick} />, props.node?.position)
+          }
           // Spreadsheet code blocks → Excel-style grid
           if (match?.[1] === 'spreadsheet') {
             return wrapBlock('spreadsheet', code, <MarkdownSpreadsheetBlock code={code} className="my-2" />, props.node?.position)
@@ -432,6 +438,10 @@ function createComponents(
         // Chart code blocks → the chart kit (bar, line, donut, interval)
         if (match?.[1] === 'chart') {
           return wrapBlock('chart', code, <MarkdownChartBlock code={code} className="my-2" onUrlClick={onUrlClick} onFileClick={onFileClick} />, props.node?.position)
+        }
+        // MemWise page blocks (26 §4) → tiles, tables with quotes, live records and sub-pages
+        if (match?.[1] && PAGE_BLOCK_LANGS.has(match[1])) {
+          return wrapBlock(match[1], code, <MarkdownPageBlock lang={match[1]} code={code} className="my-2" onUrlClick={onUrlClick} />, props.node?.position)
         }
         // Spreadsheet code blocks → Excel-style grid
         if (match?.[1] === 'spreadsheet') {

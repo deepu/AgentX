@@ -5,7 +5,7 @@
  * and the project id is the domain id. Pure functions, so the screens and tests share them.
  */
 
-import type { MwChatAnchor, MwDomain, MwInboxItem, MwPlaybookSummary, MwTrigger } from '@memwise/shared/protocol'
+import type { MwChatAnchor, MwDomain, MwInboxItem, MwPageSummary, MwPlaybookSummary, MwTrigger } from '@memwise/shared/protocol'
 import type { ProjectDetails } from '../../../../shared/project-route'
 import { inboxItemProject } from '@memwise/shared/protocol'
 import { isMetaPlaybook } from '../draft/draft-model'
@@ -172,9 +172,18 @@ export function anchorKeyOf(anchor: MwChatAnchor): string {
 /**
  * What the chat beside a page is about (doc 26 §2): Home and the project's lists talk about the
  * project; Waiting for you about what waits; an item about its step; a dashboard, playbook, run
- * or record about itself. Stage 2 adds written pages.
+ * or record about itself; a written page about the page (it can change the page, with Undo), and
+ * an answer change opened outside Waiting for you about its page (`changePageId`, once known).
  */
-export function chatAnchorFor(projectId: string, details: ProjectDetails, item?: MwInboxItem | null): MwChatAnchor {
+/**
+ * Where a written page shows in the sidebar (26 §4): at the top of PAGES, or, when it was written
+ * under a record (`under`), in the record tree under that record.
+ */
+export function writtenPagePlace(p: Pick<MwPageSummary, 'under'>): 'top' | 'record-tree' {
+  return p.under ? 'record-tree' : 'top'
+}
+
+export function chatAnchorFor(projectId: string, details: ProjectDetails, item?: MwInboxItem | null, changePageId?: string): MwChatAnchor {
   switch (details.type) {
     case 'waiting':
       if (details.itemId && item) {
@@ -187,6 +196,8 @@ export function chatAnchorFor(projectId: string, details: ProjectDetails, item?:
     case 'run': return { kind: 'case', id: details.caseId }
     case 'record': return { kind: 'record', entity: details.entity, id: details.recordId }
     case 'records': return { kind: 'records', id: details.entity }
+    case 'page': return { kind: 'page', id: details.pageId }
+    case 'change': return changePageId ? { kind: 'page', id: changePageId } : { kind: 'project', id: projectId }
     default: return { kind: 'project', id: projectId }
   }
 }
