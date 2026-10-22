@@ -2309,7 +2309,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const { svc, actor, d } = await begin(ctx)
       if (!input?.domain) throw new Error('Choose a domain.')
       const parent = input.parent?.entity && input.parent.id ? { parent: { entity: input.parent.entity, id: input.parent.id } } : undefined
-      return (await recordsOf(svc).tree(input.domain, actor, parent)).map(d.toTreeNode)
+      const project = typeof input.project === 'string' && input.project ? { project: input.project } : undefined
+      return (await recordsOf(svc).tree(input.domain, actor, parent || project ? { ...parent, ...project } : undefined)).map(d.toTreeNode)
     },
 
     async saveNote(ctx: RequestContext, input: MwSaveNoteInput): Promise<MwRecordWriteResult> {
@@ -2326,7 +2327,8 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
       const { svc, actor, d } = await begin(ctx)
       if (!input?.domain || !input.pageId) throw new Error('That page was not found.')
       const params = Object.fromEntries(Object.entries(input.params ?? {}).filter(([, v]) => typeof v === 'string')) as Record<string, string>
-      return d.toDashboard(input.domain, await recordsOf(svc).dashboard(input.domain, input.pageId, params, actor))
+      const project = typeof input.project === 'string' && input.project ? { project: input.project } : undefined
+      return d.toDashboard(input.domain, await recordsOf(svc).dashboard(input.domain, input.pageId, params, actor, project))
     },
 
     async listViews(ctx: RequestContext, input: { domain: string; entity?: string }): Promise<MwView[]> {

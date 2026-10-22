@@ -979,8 +979,8 @@ export interface RecordsService {
   update(input: { entity: string; id: string; values: Record<string, unknown>; reason?: string }, actor: Actor): Promise<RecordWriteResult>;
   transition(input: { entity: string; id: string; transition: string; reason?: string }, actor: Actor): Promise<RecordWriteResult>;
   query(query: RecordQuery, actor: Actor): Promise<RecordQueryResult>;
-  tree(domain: string, actor: Actor, opts?: { parent?: { entity: string; id: string } }): Promise<TreeNode[]>;
-  dashboard(domain: string, pageId: string, params: Record<string, string>, actor: Actor): Promise<DashboardData>;
+  tree(domain: string, actor: Actor, opts?: { parent?: { entity: string; id: string }; project?: string }): Promise<TreeNode[]>;
+  dashboard(domain: string, pageId: string, params: Record<string, string>, actor: Actor, opts?: { project?: string }): Promise<DashboardData>;
   views(domain: string, actor: Actor, opts?: { entity?: string }): Promise<(ViewDef & { personal: boolean; domain: string })[]>;
   saveView(domain: string, view: ViewDef, actor: Actor): Promise<ViewDef>;
   saveNote(input: { entity: string; id: string; body: string; reason?: string }, actor: Actor): Promise<RecordWriteResult>;

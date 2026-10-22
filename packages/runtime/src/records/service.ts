@@ -154,7 +154,7 @@ export function createRecordsService(deps: RecordsDeps): RecordsService {
     query: (q, actor): Promise<RecordQueryResult> => queryRecords(deps, defOf(q.entity, q.domain), q, actor),
 
     tree: (domain, actor, opts) => buildTree(deps, service, domain, actor, opts),
-    dashboard: (domain, pageId, params, actor) => buildDashboard(deps, service, domain, pageId, params, actor),
+    dashboard: (domain, pageId, params, actor, opts) => buildDashboard(deps, service, domain, pageId, params, actor, opts),
 
     async views(domain, actor, opts = {}) {
       const d = deps.project()?.domains?.[domain];

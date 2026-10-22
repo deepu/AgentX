@@ -208,9 +208,9 @@ export function EntitiesPage({ domainId, entity, projectId }: { domainId: string
 
 // ---------------------------------------------------------------- dashboard
 
-export function DashboardPage({ domainId, pageId, params }: { domainId: string; pageId: string; params?: Record<string, string> }) {
+export function DashboardPage({ domainId, pageId, params, projectId }: { domainId: string; pageId: string; params?: Record<string, string>; projectId?: string }) {
   const { t } = useTranslation()
-  const { data, error, loading, reload } = useMemwiseDashboard(domainId, pageId, params)
+  const { data, error, loading, reload } = useMemwiseDashboard(domainId, pageId, params, projectId)
   return (
     <Info_Page loading={loading && !data} error={!data && error ? error : undefined}>
       <Info_Page.Header title={data?.title ?? t('memwise.dashboard.title')} />
