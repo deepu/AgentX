@@ -68,4 +68,7 @@ export {
   PgNoteStore, PgMentionStore, mentionTokens, type RecordNote, type NewMention, type MentionRow, type MentionSourceKind,
 } from './stores/notes.ts';
 export { PgFlagStore, type FlagRow } from './stores/flags.ts';
-export { PgViewStore, PgPageStore, type WrittenPage, type WrittenPageVersion } from './stores/pages.ts';
+export {
+  PgViewStore, PgPageStore, PgPageChangeStore, type WrittenPage, type WrittenPageVersion, type PageStatus, type PageRefresh, type NewPage,
+  type VersionNote, type PageChange, type PageChangeStatus, type PageChangeSummary,
+} from './stores/pages.ts';

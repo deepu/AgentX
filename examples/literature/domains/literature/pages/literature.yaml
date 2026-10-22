@@ -1,33 +1,18 @@
 title: Literature
-description: Every topic's papers and the evidence kept from them, and what is waiting for a reviewer.
+description: The papers read into Papers and the doctors' enquiries, with what is waiting for the medical lead.
 blocks:
   - kpi:
-      label: Topics watched
-      value: { count: Topic, where: "status = 'active'" }
+      label: Papers
+      value: { count: Article }
   - kpi:
       label: Papers read
       value: { count: Article, where: "status = 'read'" }
   - kpi:
-      label: Papers included
-      value: { count: Screening, where: "decision = 'include'" }
-  - kpi:
-      label: Evidence to review
-      value: { count: Evidence, where: "status = 'kept'" }
-  - chart: { kind: bar, entity: Screening, where: "decision = 'include'", by: year, title: Included papers by year }
-  - chart: { kind: donut, entity: Screening, where: "decision = 'include'", by: phase, title: Included papers by trial phase }
-  - chart:
-      kind: interval
-      entity: Evidence
-      where: "status != 'rejected'"
-      label: "{intervention} vs {comparator}"
-      value: effect
-      low: ci_low
-      high: ci_high
-      title: Effects kept as evidence
-  - table:
-      title: Evidence to review
-      view: evidence-to-review
+      label: Enquiries open
+      value: { count: Enquiry, where: "status != 'sent'" }
+  - chart: { kind: bar, entity: Article, where: "status = 'read'", by: year, title: Papers read by year }
+  - chart: { kind: donut, entity: Article, where: "status = 'read'", by: phase, title: Papers read by trial phase }
   - text: |
-      Papers come from PubMed, searched once a week per topic. Cite them with their DOI links.
-      To ask what a topic's papers say, open the topic and choose "Ask about this topic"; findings
-      kept from the chat wait here until a reviewer checks them against the paper.
+      Papers come from PubMed when a kept page refreshes, and each is read once whichever page found
+      it. The answers themselves live on the pages: ask a question on the Literature home and keep
+      the page to have it refreshed every week.

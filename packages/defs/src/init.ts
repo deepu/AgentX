@@ -14,8 +14,11 @@ export const INTAKE_TEMPLATE_DIR = import.meta.url
   ? fileURLToPath(new URL('../../../examples/intake', import.meta.url))
   : resolve('examples/intake');
 
-/** Playbooks every project ships with: building and changing playbooks, and binding plugins, are runs of these (20 §3, 22 §4). */
-export const META_PLAYBOOKS = ['create-playbook', 'change-playbook', 'bind-plugin'] as const;
+/**
+ * Playbooks every project ships with: building and changing playbooks, binding plugins and
+ * refreshing a kept page are runs of these (20 §3, 22 §4, 26 §4).
+ */
+export const META_PLAYBOOKS = ['create-playbook', 'change-playbook', 'bind-plugin', 'refresh-page'] as const;
 
 const EMPTY_ROLES = `# The roles people can have. Steps name one as their assignee; playbooks name one as owner.
 roles:

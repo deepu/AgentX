@@ -36,15 +36,22 @@ function systemText(system) {
 function replyFor(body) {
   const user = lastUserText(body.messages ?? [])
   const sys = systemText(body.system)
-  if (/\btitle\b/i.test(sys) && /(generate|create|write).{0,40}title/i.test(sys + user)) {
+  // A title request has no tools; a chat whose tools mention titles (page_create) is not one.
+  const hasTools = Array.isArray(body.tools) && body.tools.length > 0
+  if (!hasTools && /\btitle\b/i.test(sys) && /(generate|create|write).{0,40}title/i.test(sys + user)) {
     // The question itself, cut short: the app names chats this way.
     const words = user.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ')
     return words.replace(/[?.!]+$/, '') || 'Chat'
   }
   // The person's own words come last in the turn; system reminders may be wrapped around them.
   const plain = user.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim()
-  for (const s of script) {
-    if (new RegExp(s.match, 'i').test(plain)) return s.reply
+  // Context the app puts before the person's words (a page, a record) may hold any text, so their
+  // last paragraph is matched first, then the whole turn.
+  const last = plain.replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, ' ').trim().split(/\n\s*\n/).filter(Boolean).pop() ?? plain
+  for (const text of [last, plain]) {
+    for (const s of script) {
+      if (new RegExp(s.match, 'i').test(text)) return s.reply
+    }
   }
   return FALLBACK
 }

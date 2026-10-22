@@ -1,0 +1,27 @@
+name: nothing-new
+description: >
+  A refresh that finds nothing new writes the body back unchanged: the compare step records
+  "nothing new" on the page's history and no one is asked to review anything.
+case:
+  page: page_weight_loss
+  reason: schedule
+tools:
+  page.get:
+    page: page_weight_loss
+    question: How much weight do people lose on GLP-1 drugs?
+    body: "People lose 15% of their weight on average across 9 trials."
+  page.compare: { outcome: nothing_new }
+model:
+  writer:
+    - toolCalls:
+        - { name: page.get, args: { page: page_weight_loss } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: written
+            writes: { body: "People lose 15% of their weight on average across 9 trials." }
+            rationale: Nothing new since the last refresh.
+expect:
+  outcome: written
+  state: end
+  effects: { page.compare: 1, page.accept_change: 0 }

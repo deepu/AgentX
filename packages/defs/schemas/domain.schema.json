@@ -66,12 +66,12 @@
           "type": "string"
         },
         "entity": {
-          "type": "string",
-          "description": "The entity a question becomes a draft of (a bare name in this domain), e.g. Topic. It needs a lifecycle."
+          "description": "The entity a question becomes a draft of (a bare name in this domain), e.g. Topic. It needs a lifecycle. Without one, a question makes a draft page.",
+          "type": "string"
         },
         "question": {
-          "type": "string",
-          "description": "The draft's Text field the question goes into."
+          "description": "The draft's Text field the question goes into (needed with entity).",
+          "type": "string"
         },
         "name": {
           "description": "The draft's Text field for a short name; the chat writes a better one.",
@@ -89,10 +89,25 @@
           }
         }
       },
-      "required": [
-        "entity",
-        "question"
-      ],
+      "additionalProperties": false
+    },
+    "pages": {
+      "description": "Pages built from questions: how kept pages are refreshed and who reviews answer changes.",
+      "type": "object",
+      "properties": {
+        "refresh": {
+          "description": "The playbook that refreshes a kept page in this app (started with { page, reason }); default the built-in refresh-page.",
+          "type": "string"
+        },
+        "reviewer": {
+          "description": "The role that reviews answer changes, besides the page's owner.",
+          "type": "string"
+        },
+        "every": {
+          "description": "The default schedule when a page is kept: mon … sun, daily or month.",
+          "type": "string"
+        }
+      },
       "additionalProperties": false
     }
   },

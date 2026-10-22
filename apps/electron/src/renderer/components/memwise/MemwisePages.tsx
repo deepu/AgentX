@@ -57,7 +57,7 @@ import { PlaybookDrafts, VersionLine } from './playbook/VersionLine'
 import { WorkflowMap } from './map'
 import { peopleById, resultMessage, roleTitle, sortInbox } from './format'
 import { DraftView, type DraftActions, type DraftTab } from './draft'
-import { isMetaPlaybook } from './draft/draft-model'
+import { isMetaPlaybook, isPlaybookBuilder } from './draft/draft-model'
 import { SaveAsExampleDialog, openBuildChat } from './BuildDialogs'
 import { DocumentReviewPage } from './records/RecordPages'
 import { isReviewItem, queueNeighbour, sameKindItems, type ReviewItem } from './records/record-model'
@@ -101,7 +101,7 @@ function useOpenChatBeside() {
 
 /** The draft a playbook change's case is about (its `draft` value). */
 function caseDraftId(kase: Pick<MwCase, 'workflowId' | 'values'> | null | undefined): string | undefined {
-  if (!kase || !isMetaPlaybook(kase.workflowId)) return undefined
+  if (!kase || !isPlaybookBuilder(kase.workflowId)) return undefined
   const value = kase.values.draft?.value
   return typeof value === 'string' && value ? value : undefined
 }
@@ -287,7 +287,7 @@ export function CasePage({ caseId }: { caseId: string | null }) {
   // A person's own sign-in has no chats
   const peopleOnly = useAtomValue(memwisePeopleOnlyAtom)
   const api = getMemwiseApi()
-  const canSaveExample = !!kase && !isMetaPlaybook(kase.workflowId) && typeof api?.memwiseExampleFromCase === 'function'
+  const canSaveExample = !!kase && !isPlaybookBuilder(kase.workflowId) && typeof api?.memwiseExampleFromCase === 'function'
   const draftId = caseDraftId(kase)
   const external = useMemwiseExternal()
   const reloadCase = reload

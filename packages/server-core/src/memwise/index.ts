@@ -27,3 +27,19 @@ export async function stopMemwiseService(): Promise<void> {
 export function memwiseKernelRequested(env: NodeJS.ProcessEnv = process.env): boolean {
   return !!env.MEMWISE_DATABASE_URL || env.MEMWISE_KERNEL === '1' || env.MEMWISE_KERNEL === 'true'
 }
+
+/**
+ * The Literature search home as the mocks show it (26 §6, mock LHome), on the running service's
+ * kernel: pages, Papers, Enquiries, an answer change and a reply waiting (seed-literature.ts).
+ * Does nothing when the project already has its GLP-1 page.
+ */
+export async function seedLiteratureHome(
+  opts: import('./seed-literature').LiteratureSeedOptions,
+): Promise<import('./seed-literature').LiteratureSeed> {
+  const { getMemwiseService } = await import('./host')
+  const svc = getMemwiseService()
+  if (!svc) throw new Error('MemWise is not running')
+  const { seedLiteratureHome: seed } = await import('./seed-literature')
+  return seed(svc.kernel, opts)
+}
+export type { LiteratureSeed, LiteratureSeedOptions } from './seed-literature'

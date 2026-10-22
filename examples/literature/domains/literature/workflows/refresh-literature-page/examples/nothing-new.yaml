@@ -1,0 +1,44 @@
+name: nothing-new
+description: >
+  Monday's refresh of "Heart failure": PubMed added nothing since the last refresh, so no paper is
+  stored or read; the writer gives the page back as it was and the compare step notes "nothing new"
+  in the page's history. Nobody is asked to review anything.
+case:
+  page: page_heart_failure
+  reason: schedule
+tools:
+  page.get:
+    id: page_heart_failure
+    title: Heart failure
+    question: Do SGLT2 inhibitors reduce heart failure hospitalisation?
+    body: "SGLT2 inhibitors cut hospitalisation for heart failure by about a quarter."
+    last_refresh: "2026-05-25T07:00:00Z"
+    sums_children: false
+  PubMed.search_articles: { pmids: [], total_count: 0, returned_count: 0, query: SGLT2 AND heart failure, query_translation: SGLT2 AND heart failure, has_more: false }
+  page.compare: { outcome: nothing_new }
+model:
+  searcher:
+    - toolCalls:
+        - { name: page.get, args: { page: page_heart_failure } }
+    - toolCalls:
+        - { name: PubMed.search_articles, args: { query: SGLT2 AND heart failure, datetype: edat, date_from: 2026/05/25, max_results: 50 } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: nothing_new
+            writes: { query: SGLT2 AND heart failure, searched_from: 2026/05/25, found_count: 0, new_articles: [] }
+            rationale: PubMed has added nothing for this search since 25 May.
+  writer:
+    - toolCalls:
+        - { name: page.get, args: { page: page_heart_failure } }
+    - toolCalls:
+        - name: step.finish
+          args:
+            outcome: written
+            writes: { body: "SGLT2 inhibitors cut hospitalisation for heart failure by about a quarter." }
+            rationale: Nothing new, so the page stays as it is.
+expect:
+  outcome: nothing_new
+  state: end
+  writes: { found_count: 0 }
+  effects: { page.compare: 1, page.accept_change: 0, literature.article.create: 0 }

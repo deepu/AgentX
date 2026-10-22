@@ -8,6 +8,7 @@
  *   home       `{chatId}`                (a chat asked from Home, shown in the left column)
  *   waiting    `{inboxItemId}`           (none: the Waiting for you page)
  *   page       `{pageId}`                (a written page)
+ *   change     `{changeId}`              (a page's answer change, for review or to read)
  *   dashboard  `{domain}:{pageId}` plus `?{params}`
  *   playbook   `{workflowId}`
  *   run        `{caseId}`
@@ -23,6 +24,7 @@ export type ProjectDetails =
   | { type: 'home'; chatId?: string }
   | { type: 'waiting'; itemId?: string }
   | { type: 'page'; pageId: string }
+  | { type: 'change'; changeId: string }
   | { type: 'dashboard'; domain: string; pageId: string; params?: Record<string, string> }
   | { type: 'playbook'; workflowId: string }
   | { type: 'run'; caseId: string }
@@ -30,7 +32,7 @@ export type ProjectDetails =
   | { type: 'records'; entity: string }
   | { type: 'settings'; tab?: string }
 
-export const PROJECT_DETAIL_TYPES = ['home', 'waiting', 'page', 'dashboard', 'playbook', 'run', 'record', 'records', 'settings'] as const
+export const PROJECT_DETAIL_TYPES = ['home', 'waiting', 'page', 'change', 'dashboard', 'playbook', 'run', 'record', 'records', 'settings'] as const
 
 /** Types whose id may be left out. */
 const OPTIONAL_ID: readonly string[] = ['home', 'waiting', 'settings']
@@ -51,6 +53,7 @@ export function packProjectDetail(d: ProjectDetails): string {
     case 'home': return d.chatId ?? ''
     case 'waiting': return d.itemId ?? ''
     case 'page': return d.pageId
+    case 'change': return d.changeId
     case 'dashboard': {
       const params = d.params && Object.keys(d.params).length
         ? `?${new URLSearchParams(Object.entries(d.params).sort(([a], [b]) => a.localeCompare(b))).toString()}`
@@ -72,6 +75,7 @@ export function unpackProjectDetail(type: string, id: string): ProjectDetails | 
     case 'home': return id ? { type: 'home', chatId: id } : { type: 'home' }
     case 'waiting': return id ? { type: 'waiting', itemId: id } : { type: 'waiting' }
     case 'page': return { type: 'page', pageId: id }
+    case 'change': return { type: 'change', changeId: id }
     case 'dashboard': {
       const [head, query] = splitFirst(id, '?')
       const [domain, pageId] = splitFirst(head, ':')

@@ -13,7 +13,9 @@ export const SAMPLE_ENV: CheckEnvironment = {
       // The meta playbooks' tools (Phase 3, bound by the kernel).
       'playbooks.check_draft', 'playbooks.publish_draft', 'playbooks.vocabulary', 'playbooks.read', 'playbooks.write', 'playbooks.diff', 'playbooks.check',
       // The bind-plugin meta playbook's tools (Phase 4, bound by the kernel).
-      'plugins.install_check', 'plugins.propose_binding', 'plugins.classify_tools', 'plugins.dry_run', 'plugins.freeze', 'identity.resolve']
+      'plugins.install_check', 'plugins.propose_binding', 'plugins.classify_tools', 'plugins.dry_run', 'plugins.freeze', 'identity.resolve',
+      // "Refresh a page" (26 §4, bound by the kernel).
+      'page.get', 'page.list', 'page.compare', 'page.accept_change', 'page.send_back_change']
       .map((t) => [t, {}]),
   ),
 };

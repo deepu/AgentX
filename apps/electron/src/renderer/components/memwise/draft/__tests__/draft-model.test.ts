@@ -3,7 +3,8 @@ import { initReactI18next, setI18n } from 'react-i18next'
 import { setupI18n } from '@memwise/shared/i18n/setupI18n'
 import type { MwDraft } from '@memwise/shared/protocol'
 import { applyStepEdit, readStepFile, splitStepFile, yamlScalar } from '../step-file'
-import { changeLines, draftFileText, fileLabel, pendingEdits, sortDrafts, stepIdOfPath, stepsTouchedBy } from '../draft-model'
+import { changeLines, draftFileText, fileLabel, isMetaPlaybook, isPlaybookBuilder, META_PLAYBOOKS, pendingEdits, sortDrafts, stepIdOfPath, stepsTouchedBy } from '../draft-model'
+import { META_PLAYBOOKS as DEFS_META_PLAYBOOKS } from '../../../../../../../../packages/defs/src/init.ts'
 import { mergeForChange, eventName } from '../../map/change'
 import { sampleDraft, sampleDraftPlaybook, sampleDraftSummaries, sampleLivePlaybook, sampleStructure } from '../sample-draft'
 
@@ -140,5 +141,18 @@ describe('draft model', () => {
 
   it('sorts open drafts first, newest first', () => {
     expect(sortDrafts(sampleDraftSummaries).map(d => d.id)).toEqual(['drf_sanctions', 'drf_letter', 'drf_old'])
+  })
+})
+
+describe('meta playbooks', () => {
+  it('mirrors the meta playbooks of @memwise/defs, refreshing a page among them', () => {
+    expect([...META_PLAYBOOKS].sort()).toEqual([...DEFS_META_PLAYBOOKS].sort())
+    expect(isMetaPlaybook('refresh-page')).toBe(true)
+  })
+  it('counts only the playbook builders as drafts', () => {
+    expect(isPlaybookBuilder('create-playbook')).toBe(true)
+    expect(isPlaybookBuilder('change-playbook')).toBe(true)
+    expect(isPlaybookBuilder('refresh-page')).toBe(false)
+    expect(isPlaybookBuilder('bind-plugin')).toBe(false)
   })
 })

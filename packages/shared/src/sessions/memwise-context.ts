@@ -25,11 +25,16 @@ export type MemwiseChatAnchor =
   | { kind: 'case' | 'step' | 'workflow'; id: string }
   | { kind: 'record'; entity: string; id: string }
   /** The project shell (doc 26 §2): a project's Home or Waiting for you (id: the project), a dashboard (`<domain>:<page>`). */
-  | { kind: 'project' | 'waiting' | 'dashboard'; id: string };
+  | { kind: 'project' | 'waiting' | 'dashboard'; id: string }
+  /** A page (26 §4): the chat reads and writes it with `page_get` / `page_update` / `page_create`. */
+  | { kind: 'page'; id: string };
 
-/** Anchors whose chat may look records up (`record_get`, `record_query`): a record, and the project shell's pages. */
+/**
+ * Anchors whose chat may look records up (`record_get`, `record_query`): a record, the project
+ * shell's pages, and a page (it reads the records of the page's project).
+ */
 export function anchorReadsRecords(kind: MemwiseChatAnchor['kind'] | undefined): boolean {
-  return kind === 'record' || kind === 'project' || kind === 'waiting' || kind === 'dashboard';
+  return kind === 'record' || kind === 'project' || kind === 'waiting' || kind === 'dashboard' || kind === 'page';
 }
 
 export interface SessionMemwiseContext {
@@ -61,7 +66,9 @@ export function writeSessionMemwiseContext(workspaceRootPath: string, sessionId:
   const value: SessionMemwiseContext = {
     anchor: ctx.anchor.kind === 'record'
       ? { kind: 'record', entity: ctx.anchor.entity, id: ctx.anchor.id }
-      : { kind: ctx.anchor.kind, id: ctx.anchor.id },
+      : ctx.anchor.kind === 'page'
+        ? { kind: 'page', id: ctx.anchor.id }
+        : { kind: ctx.anchor.kind, id: ctx.anchor.id },
     ...(ctx.conversation ? { conversation: true } : {}),
     ...(ctx.anchor.kind === 'record' && ctx.keep?.length ? { keep: ctx.keep.map((k) => ({ entity: k.entity, name: k.name })) } : {}),
     ...(ctx.anchor.kind === 'record' && ctx.draft ? { draft: true } : {}),
@@ -96,22 +103,30 @@ export function sessionHasPlaybookTools(workspaceRootPath: string | undefined, s
   return readSessionMemwiseContext(workspaceRootPath, sessionId)?.conversation === true;
 }
 
-/** Whether the session is a chat anchored to a record or a project page (offers `record_get` and `record_query`). */
+/** Whether the session offers `record_get` and `record_query` (see `anchorReadsRecords`). */
 export function sessionHasRecordTools(workspaceRootPath: string | undefined, sessionId: string | undefined): boolean {
   if (!workspaceRootPath || !sessionId) return false;
   return anchorReadsRecords(readSessionMemwiseContext(workspaceRootPath, sessionId)?.anchor.kind);
 }
 
+/** Whether the session is a chat anchored to a page (offers `page_get`, `page_update`, `page_create`). */
+export function sessionHasPageTools(workspaceRootPath: string | undefined, sessionId: string | undefined): boolean {
+  if (!workspaceRootPath || !sessionId) return false;
+  return readSessionMemwiseContext(workspaceRootPath, sessionId)?.anchor.kind === 'page';
+}
+
 /**
  * Which MemWise session tools a session is offered: `playbook_*` in a conversation-step chat,
  * `record_get`/`record_query` in a record chat, and `record_keep` too when the record's domain
- * has an entity with `keep_from_chat`. One read of the context file for all three.
+ * has an entity with `keep_from_chat`; `page_*` in a chat anchored to a page. One read of the
+ * context file for all of them.
  */
 export function memwiseSessionToolOptions(workspaceRootPath: string | undefined, sessionId: string | undefined): {
   includePlaybookTools: boolean;
   includeRecordTools: boolean;
   includeRecordKeep: boolean;
   includeRecordUpdate: boolean;
+  includePageTools: boolean;
 } {
   const ctx = workspaceRootPath && sessionId ? readSessionMemwiseContext(workspaceRootPath, sessionId) : null;
   const record = ctx?.anchor.kind === 'record';
@@ -120,5 +135,6 @@ export function memwiseSessionToolOptions(workspaceRootPath: string | undefined,
     includeRecordTools: anchorReadsRecords(ctx?.anchor.kind),
     includeRecordKeep: record && !!ctx?.keep?.length,
     includeRecordUpdate: record && ctx?.draft === true,
+    includePageTools: ctx?.anchor.kind === 'page',
   };
 }

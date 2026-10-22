@@ -27,7 +27,15 @@ Both eTMF flows need the fake Rave too (EDC's sites come only from Rave): start
 
 `shell-etmf.mjs` seeds the eTMF example through the app's own calls (`seed-etmf.mjs`) and goes Home → asks →
 Waiting for you → opens and approves the activation → a page from the tree → a playbook → a record.
-`shell-literature.mjs` asks on the Literature example's Home.
+`shell-literature.mjs` walks the Literature example rebuilt on pages (doc 26 §6). Start it with
+`MEMWISE_SEED=literature-home` (the owner becomes the lead, and the Home looks like mock `LHome`) and
+`literature-replies.json`. It goes Home → asks → a draft page with its chat (`LAsk`) → Keep → GLP-1 (`LTopic`) →
+Weight loss with a change waiting (`LBoard`) → Review an answer change (`LChange`) → Accept. The scripted model
+calls no tools, so a refresh it has to write (GLP-1's summary after the accept) stops at its write step.
+
+When another MemWise window is already open on the machine, pass `--user-data-dir=<dir>` in `launch.mjs`'s
+`args`, or the second app quits at once (one instance per user data folder).
+
 `shell-edc.mjs` (Stage 6) needs the fake Rave running and its address in the environment
 (`RAVE_URL=http://127.0.0.1:4790/RaveWebServices RAVE_USER=rave RAVE_PASSWORD=rave`, see the script's header). It
 seeds eTMF's side of study MW-301, waits for the first read of Rave, and goes from the EDC Home (XEdcHome) to the old

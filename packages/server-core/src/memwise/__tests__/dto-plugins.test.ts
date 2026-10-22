@@ -263,20 +263,20 @@ describe('Literature walkthrough: tools on the playbook page', () => {
     const { project } = await loadProject(join(import.meta.dir, '..', '..', '..', '..', '..', 'examples', 'literature'))
     const builtins = new Map([['PubMed.search_articles', { name: 'PubMed.search_articles', description: 'from the builtin', effect: 'irreversible' as const }]])
     const tools = projectToolInfo(new Map(), builtins, entityTools(project.entities), boundPluginTools(project))
-    const wf = project.workflows['check-topic']!
+    const wf = project.workflows['refresh-literature-page']!
     const step = Object.values(wf.steps).find((s) => s.title === 'Search PubMed for new papers')!
     const out = toStep({ project, diagnostics: [], tools, jsonSchema: valueTypeToJsonSchema }, wf, step)
-    const reads = out.tools.filter((t) => t.name === 'literature.topic.get' || t.name.startsWith('PubMed.'))
+    const reads = out.tools.filter((t) => t.name === 'literature.article.list' || t.name.startsWith('PubMed.'))
     expect(reads.map((t) => [t.name, t.effect, t.classified])).toEqual([
-      ['literature.topic.get', 'read', true],
+      ['literature.article.list', 'read', true],
       ['PubMed.search_articles', 'read', true],
       ['PubMed.get_article_metadata', 'read', true],
     ])
     // The binding's class wins over a builtin of the same name; the plugin is named.
-    expect(reads[1]).toMatchObject({ plugin: 'claude/pubmed', required: true })
-    expect(tools.get('literature.topic.create')?.effect).toBe('write')
+    expect(reads[1]).toMatchObject({ plugin: 'claude/pubmed', required: false })
+    expect(tools.get('literature.article.create')?.effect).toBe('write')
     // A tool passed directly keeps its own entry.
-    const direct = projectToolInfo(new Map([['literature.topic.get', { name: 'literature.topic.get', effect: 'write' as const }]]), new Map(), entityTools(project.entities), {})
-    expect(direct.get('literature.topic.get')?.effect).toBe('write')
+    const direct = projectToolInfo(new Map([['literature.article.get', { name: 'literature.article.get', effect: 'write' as const }]]), new Map(), entityTools(project.entities), {})
+    expect(direct.get('literature.article.get')?.effect).toBe('write')
   })
 })

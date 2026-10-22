@@ -26,6 +26,11 @@ export interface SubmitDeps {
     Promise<Record<string, Provenance>>;
   /** Phase 6: e-signatures for steps with `sign:` (24 §9); absent: such a step can't be answered. */
   signing?: SigningDeps;
+  /**
+   * Who may answer beyond the step's role (a page's answer change: only its reviewers), read in
+   * the submitting transaction; a message refuses the answer. Absent: the role decides.
+   */
+  mayAnswer?(db: pg.PoolClient, s: WaitingStep, by: SubmitStepInput['by'], outcome: string): Promise<string | undefined>;
 }
 
 /** The waiting step run and its run, locked for the answer. */
@@ -148,6 +153,8 @@ export async function submitStep(deps: SubmitDeps, input: SubmitStepInput, opts:
     if (!step.outcomes.includes(input.outcome)) {
       return { applied: false, status: 'unknown-outcome', message: `"${input.outcome}" is not one of: ${step.outcomes.join(', ')}` };
     }
+    const refusal = await deps.mayAnswer?.(db, s, input.by, input.outcome);
+    if (refusal) return { applied: false, status: 'forbidden', message: refusal };
 
     const values = input.values ?? {};
     const errors = await answerErrors(db, step, s.case_id, values, recordTypesFor(deps.entities(), workflow));

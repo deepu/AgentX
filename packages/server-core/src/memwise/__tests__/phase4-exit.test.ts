@@ -200,7 +200,7 @@ describe.skipIf(!postgresAvailable())('Phase 4 exit: plugins and bindings', () =
 
   it('a fresh domain has its own Customer, the meta playbooks and no plugins', async () => {
     expect(svc.kernel.project && (await svc.kernel.project()).diagnostics.filter((x) => x.severity === 'error')).toEqual([])
-    expect(await playbookIds()).toEqual(['bind-plugin', 'change-playbook', 'create-playbook'])
+    expect(await playbookIds()).toEqual(['bind-plugin', 'change-playbook', 'create-playbook', 'refresh-page'])
     expect(await api.call<MwPluginSummary[]>(manager, ch.PLUGINS_LIST)).toEqual([])
     const types = await api.call<{ name: string }[]>(staff, ch.ENTITIES_TYPES)
     expect(types.map((t) => t.name)).toEqual(['Customer'])
@@ -252,7 +252,7 @@ describe.skipIf(!postgresAvailable())('Phase 4 exit: plugins and bindings', () =
     expect((await api.call<MwPluginSummary[]>(manager, ch.PLUGINS_LIST)).map((p) => [p.id, p.binding.status]))
       .toEqual([[CRM, 'unbound'], [INTAKE, 'unbound'], [EMAIL, 'unbound']])
     // Installed, not bound: no new playbook, no new tool.
-    expect(await playbookIds()).toEqual(['bind-plugin', 'change-playbook', 'create-playbook'])
+    expect(await playbookIds()).toEqual(['bind-plugin', 'change-playbook', 'create-playbook', 'refresh-page'])
     expect(await boundTools()).toEqual(freshTools)
     for (const t of ['gst.validate_gstin', 'email.send', 'crm.list_contacts', 'crm.get_contact', 'crm.create_contact']) expect(freshTools).not.toContain(t)
   }, 120_000)

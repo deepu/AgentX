@@ -57,7 +57,7 @@ export function parseWorkspaceFile(text: string, file: string, folderName = 'Wor
  * policy are filled in by the loader.
  */
 export function parseDomainFile(text: string, file: string, id: string, dir: string): ParseResult<DomainDef> {
-  const { data, report, locate } = readMap(text, file, 'a domain: domain, name, owner, regulated, retention, accepts_from, intake, home');
+  const { data, report, locate } = readMap(text, file, 'a domain: domain, name, owner, regulated, retention, accepts_from, intake, home, pages');
   if (!data) return { diagnostics: report.diagnostics };
   report.validate(domainFormat, data);
   const written = asString(data.domain);
@@ -75,6 +75,7 @@ export function parseDomainFile(text: string, file: string, id: string, dir: str
     acceptsFrom: Array.isArray(data.accepts_from) ? asStrings(data.accepts_from) : undefined,
     intake: isRecord(data.intake) && typeof data.intake.address === 'string' ? { address: data.intake.address.trim() } : undefined,
     home: homeOf(data.home),
+    pageRules: isRecord(data.pages) ? compact({ refresh: asString(data.pages.refresh), reviewer: asString(data.pages.reviewer), every: asString(data.pages.every) }) : undefined,
     dir,
     entities: [],
     workflows: [],
@@ -87,12 +88,14 @@ export function parseDomainFile(text: string, file: string, id: string, dir: str
 }
 
 function homeOf(raw: unknown): DomainHomeDef | undefined {
-  if (!isRecord(raw) || typeof raw.entity !== 'string' || typeof raw.question !== 'string') return undefined;
+  if (!isRecord(raw)) return undefined;
+  // A draft record needs both; without an entity, a question makes a draft page (26 §4).
+  if (typeof raw.entity === 'string' && typeof raw.question !== 'string') return undefined;
   return compact({
     ask: asString(raw.ask),
     placeholder: asString(raw.placeholder),
-    entity: raw.entity.trim(),
-    question: raw.question.trim(),
+    entity: asString(raw.entity),
+    question: asString(raw.question),
     name: asString(raw.name),
     page: asString(raw.page),
     suggested: Array.isArray(raw.suggested) ? asStrings(raw.suggested) : [],

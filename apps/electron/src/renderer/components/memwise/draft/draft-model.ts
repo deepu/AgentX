@@ -17,11 +17,20 @@ import type {
 import { humanize, stateTitle } from '../playbook/labels'
 import { humanize as words, toolLabel } from '../format'
 
-/** The playbooks that build and change playbooks (20 §3). */
-export const META_PLAYBOOKS = ['create-playbook', 'change-playbook'] as const
+/**
+ * The playbooks the app adds (building and changing playbooks, binding plugins, refreshing a kept
+ * page): not ones people start from a project. Mirrors `META_PLAYBOOKS` of `@memwise/defs`.
+ */
+export const META_PLAYBOOKS = ['create-playbook', 'change-playbook', 'bind-plugin', 'refresh-page'] as const
+/** The playbooks that build and change playbooks (20 §3): their runs are drafts. */
+export const PLAYBOOK_BUILDERS = ['create-playbook', 'change-playbook'] as const
 
 export function isMetaPlaybook(workflowId: string | undefined): boolean {
   return !!workflowId && (META_PLAYBOOKS as readonly string[]).includes(workflowId)
+}
+
+export function isPlaybookBuilder(workflowId: string | undefined): boolean {
+  return !!workflowId && (PLAYBOOK_BUILDERS as readonly string[]).includes(workflowId)
 }
 
 /** A draft still being worked on (shown in lists); published and discarded ones are history. */

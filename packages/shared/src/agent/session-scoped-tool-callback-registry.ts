@@ -121,6 +121,11 @@ export interface SessionScopedToolCallbacks {
    * person) is resolved at call time.
    */
   memwiseRecords?: import('@memwise/session-tools-core').MemwiseRecordToolCallbacks;
+  /**
+   * MemWise page tools (page_get/update/create; docs/memwise/26-projects-and-pages.md §4).
+   * Wired by SessionManager only for chats anchored to a page.
+   */
+  memwisePages?: import('@memwise/session-tools-core').MemwisePageToolCallbacks;
 }
 
 // Registry of callbacks keyed by sessionId

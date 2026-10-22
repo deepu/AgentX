@@ -1,0 +1,17 @@
+workflow: monthly-digest
+version: 1
+title: Monthly digest
+owner: lead
+# On the 1st of each month the writer reads the project's kept pages and what changed on them in
+# the month, and writes one digest; it is emailed to the medical affairs team.
+start: write
+starts_on:
+  - every: 30d
+    on: "1"
+    at: "08:00"
+    with: { recipients: medical-affairs@meridian.example }
+steps:
+  write:                       # the month across the kept pages
+    on: { written: send, nothing: end }
+  send:
+    on: { sent: end }
