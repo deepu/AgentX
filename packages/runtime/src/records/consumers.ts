@@ -55,6 +55,7 @@ export async function pairRecord(db: Queryable, entities: Record<string, EntityT
   // naming a study pairs only within the other app's projects of the same study (site 104 of
   // MW-301, never 104 of another study); without such a project, anywhere, as before.
   const projects = await sameStudyProjects(db, row.project, domainOfEntity(to));
+  if (projects && !projects.length) return 'none';
   const matches = await entityStore.query(db, to, entities, { filter, params, limit: 20, ...(projects ? { projects } : {}) });
   const said = pairs.map(([mine]) => `${mine} ${JSON.stringify(row.values[mine])}`).join(', ');
   // The other side's records already paired with another of ours can't pair again (one to one).
@@ -83,13 +84,20 @@ export async function pairRecord(db: Queryable, entities: Record<string, EntityT
   return 'none';
 }
 
-/** The projects running `app` with the same study as `project`; undefined when there are none. */
-async function sameStudyProjects(db: Queryable, project: string | undefined, app: string): Promise<string[] | undefined> {
+/**
+ * The projects running `app` with the same study as `project`. Undefined only when `project` names
+ * no study (pair anywhere, as before projects); a study no project of `app` names gives none ([]):
+ * its records pair with nothing there rather than with another study's.
+ */
+export async function sameStudyProjects(db: Queryable, project: string | undefined, app: string): Promise<string[] | undefined> {
   if (!project) return undefined;
-  const { rows } = await db.query<{ id: string }>(
-    `select o.id from mw.projects p join mw.projects o on o.study = p.study
-      where p.id = $1 and p.study is not null and $2 = any(mw.project_apps(o.id)) order by o.id`, [project, app]);
-  return rows.length ? rows.map((r) => r.id) : undefined;
+  const { rows } = await db.query<{ study: string | null; peers: string[] | null }>(
+    `select p.study, (select array_agg(o.id order by o.id) from mw.projects o
+                       where o.study = p.study and $2 = any(mw.project_apps(o.id))) as peers
+       from mw.projects p where p.id = $1`, [project, app]);
+  const r = rows[0];
+  if (!r?.study) return undefined;
+  return r.peers ?? [];
 }
 
 /**
