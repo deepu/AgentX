@@ -43,11 +43,13 @@ function byKey(a: string | null, b: string | null): number {
  * record's title.
  */
 export async function chartData(deps: RecordsDeps, actor: Actor, db: Queryable, def: EntityTypeDef, spec: ChartSpec,
-  filter: string | undefined, params: Record<string, unknown>): Promise<ChartData> {
+  filter: string | undefined, params: Record<string, unknown>, opts: { project?: string } = {}): Promise<ChartData> {
+  // Stage 3: a project's page counts its own records.
+  const inProject = opts.project ? { project: opts.project } : {};
   const base = { kind: spec.chart, ...(spec.title ? { title: spec.title } : {}) };
   if (spec.chart !== 'interval') {
     if (!spec.by) return { ...base, data: [], total: 0 };
-    const r = await queryRecords(deps, def, { ...(filter ? { filter } : {}), group: spec.by, limit: 1 }, actor, params, db);
+    const r = await queryRecords(deps, def, { ...(filter ? { filter } : {}), group: spec.by, limit: 1, ...inProject }, actor, params, db);
     const groups = [...(r.groups ?? [])].sort((a, b) => byKey(a.key, b.key));
     return {
       ...base,
@@ -55,7 +57,7 @@ export async function chartData(deps: RecordsDeps, actor: Actor, db: Queryable, 
       total: r.total,
     };
   }
-  const r = await queryRecords(deps, def, { ...(filter ? { filter } : {}), limit: INTERVAL_ROW_LIMIT }, actor, params, db);
+  const r = await queryRecords(deps, def, { ...(filter ? { filter } : {}), limit: INTERVAL_ROW_LIMIT, ...inProject }, actor, params, db);
   const data: ChartDatum[] = [];
   let skipped = 0;
   for (const row of r.rows) {

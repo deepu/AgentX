@@ -230,7 +230,7 @@ export async function buildDashboard(deps: RecordsDeps, _service: RecordsService
       } else if (block.kind === 'chart') {
         // Literature (25 §5): counts per `by`, or an interval per record, narrowed by the page's params.
         const def = defOf(block.entity);
-        const chart = await chartData(deps, actor, db, def, block, scopedFilter(def, block.where, bound), bound);
+        const chart = await chartData(deps, actor, db, def, block, scopedFilter(def, block.where, bound), bound, opts);
         out.push({ kind: 'chart', chart });
       } else if (block.kind === 'heatmap') {
         const def = defOf(block.rows.entity);
