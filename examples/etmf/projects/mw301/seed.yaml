@@ -1,10 +1,12 @@
 # Walkthrough records for Study MW-301 (26 §3): made once, into this study, when it has none
 # (kernel.projects.seed). 12 sites, their staff, the start-up pack, documents waiting for QC.
 # The sites are numbered as in Rave (Stage 6): each pairs with the EDC site of its number, which
-# Rave fills (name, investigator, coordinator), so no EDC record is made here.
+# Rave fills (name, investigator, coordinator), so no EDC record is made here. The study, site 101,
+# its PI and its missing CV keep fixed ids: "File a TMF document"'s example (files-a-pi-cv) names them,
+# so its scripted classification refers to these records.
 records:
   sponsor: { entity: Sponsor, match: [name], values: { name: "Meridian Pharma" } }
-  study: { entity: Study, values: { code: "MW-301", title: "MW-301: meriglutide once weekly in adults with type 2 diabetes (phase 3)", sponsor: "@sponsor" } }
+  study: { entity: Study, id: stud_mw301, values: { code: "MW-301", title: "MW-301: meriglutide once weekly in adults with type 2 diabetes (phase 3)", sponsor: "@sponsor" } }
   # 104 · Berlin
   site_de104: { entity: Site, status: open, values: { site_number: "104", study: "@study", sponsor_approved: true } }
   site_de104_pi: { entity: Person, values: { name: "Jonas Weber", role: "Principal Investigator", site: "@site_de104", cv_expires: "2027-01-03" } }
@@ -158,10 +160,10 @@ records:
   site_us044_d5: { entity: Document, status: filed, values: { file: { name: "107-lab-certification.pdf", text: "Lab certification for site 107 of MW-301." }, artifact: "Lab certification", study: "@study", site: "@site_us044", fills: "@site_us044_x5", document_date: "2026-07-22", sender: "site.107@meridian.example" } }
   site_us044_qc0: { entity: Document, status: in_qc, values: { file: { name: "107-visit-report-1.pdf", text: "Monitoring visit report 1 for site 107." }, artifact: "Monitoring visit report", study: "@study", site: "@site_us044", sender: "site.107@meridian.example", received_at: "2026-10-10T09:00:00Z" } }
   # 101 · Leeds
-  site_uk207: { entity: Site, status: activating, values: { site_number: "101", study: "@study", sponsor_approved: true } }
-  site_uk207_pi: { entity: Person, values: { name: "Helen Marsh", role: "Principal Investigator", site: "@site_uk207", cv_expires: "2027-01-07" } }
+  site_uk207: { entity: Site, id: site_101, status: activating, values: { site_number: "101", study: "@study", sponsor_approved: true } }
+  site_uk207_pi: { entity: Person, id: pers_marsh, values: { name: "Helen Marsh", role: "Principal Investigator", site: "@site_uk207", cv_expires: "2027-01-07" } }
   site_uk207_sc: { entity: Person, values: { name: "Owen Price", role: "Study Coordinator", site: "@site_uk207" } }
-  site_uk207_x0: { entity: ExpectedDocument, status: missing, values: { site: "@site_uk207", study: "@study", artifact: "Investigator CV", phase: "start_up" } }
+  site_uk207_x0: { entity: ExpectedDocument, id: expe_101_cv, status: missing, values: { site: "@site_uk207", study: "@study", artifact: "Investigator CV", phase: "start_up" } }
   site_uk207_x1: { entity: ExpectedDocument, status: missing, values: { site: "@site_uk207", study: "@study", artifact: "Medical licence", phase: "start_up" } }
   site_uk207_x2: { entity: ExpectedDocument, status: filed, values: { site: "@site_uk207", study: "@study", artifact: "IRB approval", phase: "start_up" } }
   site_uk207_d2: { entity: Document, status: filed, values: { file: { name: "101-irb-approval.pdf", text: "IRB approval for site 101 of MW-301." }, artifact: "IRB approval", study: "@study", site: "@site_uk207", fills: "@site_uk207_x2", document_date: "2026-02-16", sender: "site.101@meridian.example" } }

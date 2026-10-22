@@ -14,6 +14,7 @@ import { parseSeed, SEED_FILE } from '../src/projects/seed.ts';
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { createKernel } from '../src/kernel.ts';
 import { projectTools } from '../src/projects/tools.ts';
 import type { Actor, Kernel, PersonActor, TestRunner } from '../src/types.ts';
@@ -114,6 +115,18 @@ describe.skipIf(!pgAvailable)('Stage 3: projects inside apps', () => {
     await kernel.triggers.settle(30_000);
     expect(await rows(`select count(*)::int as n from mw.record_flags where closed_at is null and entity = 'etmf.Site'`)).toEqual([{ n: 0 }]);
   }, 120_000);
+
+  test("the CV example's classification names MW-301's own records, so the Sign page reads their titles", async () => {
+    // files-a-pi-cv's scripted classifier writes these ids; the seed gives MW-301's records the same.
+    const example = parseYaml(readFileSync(join(root, 'domains/etmf/workflows/file-document/examples/files-a-pi-cv.yaml'), 'utf8'));
+    const writes = example.model.classifier.flatMap((t: any) => t.toolCalls ?? []).find((c: any) => c.name === 'step.finish').args.writes;
+    const title = async (entity: string, id: string) => (await kernel.records.page(entity, id, anika)).title;
+    expect(await title('etmf.Study', writes.study)).toBe('MW-301: meriglutide once weekly in adults with type 2 diabetes (phase 3)');
+    expect(await title('etmf.Site', writes.site)).toMatch(/^101\b/);
+    expect(await title('etmf.Person', writes.about)).toBe('Helen Marsh');
+    expect(await rows(`select project, site_number from ${await table('etmf.Site')} where id = $1`, [writes.site])).toEqual([{ project: 'mw301', site_number: '101' }]);
+    expect(await rows(`select project, lifecycle from ${await table('etmf.ExpectedDocument')} where id = $1`, [writes.expected_document])).toEqual([{ project: 'mw301', lifecycle: 'missing' }]);
+  });
 
   let run301 = '';
   let run207 = '';

@@ -5,24 +5,24 @@ description: >
 startAt: qc
 records:
   Sponsor:
-    - { id: spon_aster, name: Aster Bio }
+    - { id: spon_meridian, name: Meridian Pharma }
   Study:
-    - { id: stud_ast301, code: AST-301, sponsor: spon_aster }
+    - { id: stud_mw301, code: MW-301, sponsor: spon_meridian }
   Site:
-    - { id: site_us012, site_number: US-012, study: stud_ast301, status: activating }
+    - { id: site_101, site_number: "101", study: stud_mw301, status: activating }
   Document:
-    - { id: docu_vogel_cv, file: vogel-cv.pdf, artifact: Investigator CV, study: stud_ast301, site: site_us012, status: in_qc }
+    - { id: docu_marsh_cv, file: marsh-cv.pdf, artifact: Investigator CV, study: stud_mw301, site: site_101, status: in_qc }
 case:
-  original: vogel-cv.pdf
-  document: docu_vogel_cv
+  original: marsh-cv.pdf
+  document: docu_marsh_cv
   artifact: Investigator CV
-  study: stud_ast301
-  site: site_us012
+  study: stud_mw301
+  site: site_101
 submit:
   qc:
     outcome: sent_back
     values:
-      qc_comment: The CV isn't signed. Please ask Dr. Vogel to sign and date the last page and send it again.
+      qc_comment: The CV isn't signed. Please ask Dr. Marsh to sign and date the last page and send it again.
 expect:
   outcome: sent_back
   state: end

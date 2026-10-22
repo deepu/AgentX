@@ -2,7 +2,8 @@
  * Walkthrough records (26 §3, the Stage 3 seed): `projects/<id>/seed.yaml` lists records to make
  * in that project, once, when it has none yet. Each entry has a key the others refer to as
  * `"@key"`; a Document's `file` is `{ name, text }`, saved as a file. An app-scoped record
- * (`scope: app`, a Sponsor) is shared: with `match: [field]` an existing one is reused.
+ * (`scope: app`, a Sponsor) is shared: with `match: [field]` an existing one is reused. `id:` gives
+ * the record that id (else a new one), so an example's scripted model turns can name it.
  *
  *   records:
  *     sponsor: { entity: Sponsor, match: [name], values: { name: Aster Bio } }
@@ -21,13 +22,13 @@ import type { Actor, DocumentValue, RecordWriteResult } from '../types.ts';
 
 export const SEED_FILE = 'seed.yaml';
 
-interface SeedEntry { key: string; entity: string; status?: string; match?: string[]; values: Record<string, unknown> }
+interface SeedEntry { key: string; entity: string; id?: string; status?: string; match?: string[]; values: Record<string, unknown> }
 
 export interface SeedDeps {
   pool: pg.Pool;
   root: string;
   entities(): Record<string, EntityTypeDef>;
-  create(input: { entity: string; values: Record<string, unknown>; status?: string; project?: string }, actor: Actor): Promise<RecordWriteResult>;
+  create(input: { entity: string; values: Record<string, unknown>; id?: string; status?: string; project?: string }, actor: Actor): Promise<RecordWriteResult>;
   saveFile(input: { name: string; mime: string; data: Uint8Array }, actor: Actor): Promise<DocumentValue>;
 }
 
@@ -43,6 +44,7 @@ export function parseSeed(text: string): SeedEntry[] {
     if (typeof r?.entity !== 'string') throw new Error(`seed.yaml: ${key} needs an entity`);
     return {
       key, entity: r.entity, values: (r.values ?? {}) as Record<string, unknown>,
+      ...(typeof r.id === 'string' && r.id ? { id: r.id } : {}),
       ...(typeof r.status === 'string' ? { status: r.status } : {}),
       ...(Array.isArray(r.match) ? { match: r.match.map(String) } : {}),
     };
@@ -99,7 +101,7 @@ export async function seedProjectRecords(deps: SeedDeps, project: { id: string; 
     }
     // Records of an app the project runs are its own (D105); of another app (an EDC site), that app's own project.
     const inApp = apps.includes(domainOf(def));
-    const r = await deps.create({ entity: keyOf(def), values, ...(e.status ? { status: e.status } : {}), ...(inApp ? { project: project.id } : {}) }, SYSTEM);
+    const r = await deps.create({ entity: keyOf(def), values, ...(e.id ? { id: e.id } : {}), ...(e.status ? { status: e.status } : {}), ...(inApp ? { project: project.id } : {}) }, SYSTEM);
     if (!r.applied || !r.id) throw new Error(`seed.yaml: ${e.key} (${e.entity}) was not made: ${r.message ?? r.status}${r.errors ? ` ${JSON.stringify(r.errors)}` : ''}`);
     ids.set(e.key, r.id);
     made.push({ def, id: r.id });
