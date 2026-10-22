@@ -10,6 +10,7 @@ import {
   anchorKeyOf, chatAnchorFor, groupByApp, initials, pickProject, playbookStartTag, pluralTitle, projectPlaybooks, shellProjects, sortWaiting, waitingIn, writtenPagePlace,
 } from '../project/project-model'
 import { shellRouteFor, type ShellRouteData } from '../project/shell-routes'
+import { changesSince, RECENT_CHANGES_KEPT, withChange } from '../../../atoms/memwise'
 import { parseRouteToNavigationState } from '../../../../shared/route-parser'
 import { routes } from '../../../../shared/routes'
 
@@ -165,5 +166,27 @@ describe('written pages in the sidebar', () => {
     expect(writtenPagePlace({})).toBe('top')
     expect(writtenPagePlace({ under: { entity: 'client', id: 'c1' } })).toBe('record-tree')
     expect(writtenPagePlace({ under: { entity: 'study' } })).toBe('record-tree')
+  })
+})
+
+describe('pushes that land in one render', () => {
+  test("a reader sees every push since the last one it handled, not only the last", () => {
+    // A refresh's page change, then its run and inbox, before the reader renders again.
+    let last = withChange(null, 1, { kind: 'records' })
+    const handled = last.seq
+    last = withChange(last, 2, { kind: 'pages', projectId: 'literature', changeId: 'pch_1' })
+    last = withChange(last, 3, { kind: 'run', id: 'run_1' })
+    last = withChange(last, 4, { kind: 'inbox' })
+    expect(changesSince(last, handled).map(c => c.kind)).toEqual(['pages', 'run', 'inbox'])
+    expect(changesSince(last, last.seq)).toEqual([])
+  })
+
+  test('a reader that just mounted gets the last push only; the log keeps the latest pushes', () => {
+    let last = withChange(null, 1, { kind: 'records' })
+    for (let i = 2; i <= RECENT_CHANGES_KEPT + 5; i++) last = withChange(last, i, { kind: 'pages' })
+    expect(last.recent).toHaveLength(RECENT_CHANGES_KEPT)
+    expect(changesSince(last, null)).toEqual([{ kind: 'pages' }])
+    expect(changesSince(last, 1)).toHaveLength(RECENT_CHANGES_KEPT)
+    expect(changesSince(null, null)).toEqual([])
   })
 })

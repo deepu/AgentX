@@ -12,7 +12,7 @@ import { BookOpen, ChevronDown, ChevronRight, Database, FileText, LayoutDashboar
 import type { MwDomain, MwPageSummary, MwTreeNode } from '@memwise/shared/protocol'
 import { cn } from '@/lib/utils'
 import { navigate, routes } from '@/lib/navigate'
-import { memwiseInstallPluginDialogAtom, memwiseLastChangeAtom, memwiseNewPlaybookDialogAtom, memwisePeopleOnlyAtom, memwisePlaybooksAtom, memwiseStatusAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
+import { changesSince, memwiseInstallPluginDialogAtom, memwiseLastChangeAtom, memwiseNewPlaybookDialogAtom, memwisePeopleOnlyAtom, memwisePlaybooksAtom, memwiseStatusAtom, memwiseWorkspaceIdAtom } from '@/atoms/memwise'
 import { getMemwiseApi } from '@/hooks/useMemwise'
 import { useMemwiseTriggers } from '@/hooks/useMemwiseRecords'
 import { useMemwisePages } from '@/hooks/useMemwisePages'
@@ -299,9 +299,10 @@ function PageTree({ domain, projectId, details, written }: { domain: MwDomain; p
   React.useEffect(() => { void load() }, [load])
   const seen = React.useRef<number | null>(null)
   React.useEffect(() => {
-    if (!lastChange || seen.current === lastChange.seq) return
-    seen.current = lastChange.seq
-    if (lastChange.change.kind !== 'records' && lastChange.change.kind !== 'definitions') return
+    const changes = changesSince(lastChange, seen.current)
+    if (!changes.length) return
+    seen.current = lastChange!.seq
+    if (!changes.some(c => c.kind === 'records' || c.kind === 'definitions')) return
     for (const key of Object.keys(cacheRef.current)) {
       if (!key) { void load(undefined, true); continue }
       const i = key.indexOf(':')
