@@ -108,7 +108,7 @@ export default async ({ win, shot }) => {
   await shot('09-sites-filtered-by-chat')
   await page.locator('[data-action="save-as-page"]').first().click().catch((e) => console.log('save', e.message))
   // A kept Stage 2 page opens, its records block live.
-  await win.waitForFunction(() => /[?&#/]page/.test(location.href) || !!document.querySelector('[data-block="records"], [data-records-block]'), null, { timeout: 20000 }).catch(() => console.log('no page opened'))
+  await win.waitForFunction(() => /[/=]page[/]/.test(decodeURIComponent(location.href)) || !!document.querySelector('[data-block="records"], [data-records-block]'), null, { timeout: 20000 }).catch(() => console.log('no page opened'))
   await wait(win, 3000)
   console.log('PAGE', JSON.stringify(await win.evaluate(() => ({ url: location.href.split('#').pop(), text: document.body.innerText.includes('FR-201') && document.body.innerText.includes('DE-104') && !document.body.innerText.includes('US-012') }))))
   await shot('10-saved-as-page')
