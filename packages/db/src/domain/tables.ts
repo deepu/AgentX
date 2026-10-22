@@ -347,6 +347,14 @@ export function compileRls(entities: Record<string, EntityTypeDef>, opts: Domain
 }
 
 /** The kernel tables' row rules (the same for every set of definitions). */
+/**
+ * The version of the kernel tables' row rules below, stamped on each of their policies (`comment on
+ * policy`). Bump it whenever the rules change: a database whose stamps differ gets them again at its
+ * next index, and one whose stamps match is left alone (no lock on the kernel tables mid-run).
+ */
+export const KERNEL_RLS_VERSION = 1;
+export const KERNEL_RLS_STAMP = `memwise-kernel-rls v${KERNEL_RLS_VERSION}`;
+
 export function compileKernelRls(): string[] {
   const sql: string[] = [];
   const app = q(APP_ROLE);
@@ -360,6 +368,8 @@ export function compileKernelRls(): string[] {
       `create policy mw_step_own_case on ${t} for all to ${app}` +
         ` using (mw.actor_kind() = 'step' and ${col} = mw.token_case())` +
         ` with check (mw.actor_kind() = 'step' and ${col} = mw.token_case())`,
+      `comment on policy mw_person_all on ${t} is '${KERNEL_RLS_STAMP}'`,
+      `comment on policy mw_step_own_case on ${t} is '${KERNEL_RLS_STAMP}'`,
     );
   }
   return sql;
@@ -413,13 +423,13 @@ function compileDomainRls(entities: Record<string, EntityTypeDef>, opts: DomainS
 /** Whether the kernel tables have row security on, with this version's two policies each. */
 async function kernelRlsInPlace(db: Queryable): Promise<boolean> {
   const tables = CASE_SCOPED.map(([t]) => t.replace(/^mw\./, ''));
+  // Row security on, and both policies of each table stamped with this version.
   const { rows } = await db.query<{ secured: number; policies: number }>(
     `select (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
               where n.nspname = 'mw' and c.relname = any($1::text[]) and c.relrowsecurity) as secured,
-            (select count(*)::int from pg_policies p
-              where p.schemaname = 'mw' and p.tablename = any($1::text[])
-                and ((p.policyname = 'mw_person_all' and p.qual like '%project_visible%' and p.with_check like '%project_visible%')
-                  or (p.policyname = 'mw_step_own_case' and p.qual like '%token_case%'))) as policies`, [tables]);
+            (select count(*)::int from pg_policy pol join pg_class c on c.oid = pol.polrelid join pg_namespace n on n.oid = c.relnamespace
+              where n.nspname = 'mw' and c.relname = any($1::text[]) and pol.polname in ('mw_person_all', 'mw_step_own_case')
+                and obj_description(pol.oid, 'pg_policy') = $2) as policies`, [tables, KERNEL_RLS_STAMP]);
   return rows[0]!.secured === tables.length && rows[0]!.policies === tables.length * 2;
 }
 
@@ -427,9 +437,10 @@ export async function applyDomainSchema(pool: pg.Pool, entities: Record<string, 
   return withTransaction(pool, async (db) => {
     await db.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [DOMAIN_LOCK]);
     const notes = await syncTablesIn(db, entities);
-    // The kernel tables' rules don't depend on the definitions: set them only when they aren't
-    // in place yet. Re-setting them takes an exclusive lock on mw.cases, mw.runs and mw.step_runs
-    // while runs are going (a binding re-indexes mid-run), and deadlocks with a run starting.
+    // The kernel tables' rules don't depend on the definitions: set them only when their version
+    // stamp (KERNEL_RLS_VERSION) isn't in place yet. Re-setting them takes an exclusive lock on
+    // mw.cases, mw.runs and mw.step_runs while runs are going (a binding re-indexes mid-run), and
+    // deadlocks with a run starting.
     if (!(await kernelRlsInPlace(db))) for (const stmt of compileKernelRls()) await db.query(stmt);
     for (const stmt of compileDomainRls(entities, opts)) await db.query(stmt);
     for (const stmt of compileRecordTriggers(entities, opts)) await db.query(stmt);
