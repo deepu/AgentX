@@ -13,7 +13,11 @@ tools:
   rave.list_studies:
     description: List the studies this Rave account can see, with their enrolment target and plan, and how many entered pages are source-verified.
     effect: read
-    input: { type: object, properties: {}, additionalProperties: false }
+    input:
+      type: object
+      properties:
+        study: { type: string, description: "The study: its OID (MW-301(Prod)) or protocol name (MW-301). Default: the connection's study, else every study this account sees." }
+      additionalProperties: false
     run: { builtin: rave.rws.list_studies }
   rave.list_sites:
     description: "List a study's sites with their principal investigator, study coordinator (and since when), enrolment target and how many entered pages are source-verified."

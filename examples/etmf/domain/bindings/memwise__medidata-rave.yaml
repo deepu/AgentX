@@ -5,7 +5,7 @@
 # coordinator) is a change event in MemWise (26 §9, D110).
 plugin: memwise/medidata-rave
 plugin_version: 1.0.0
-plugin_hash: 903bc5fd17262f453705f7cfcbadcf1c070600679d2475537a1be7241fc7c735
+plugin_hash: f621d9efe25b051f3cccc0c6832c3da9e30d5ff7b3566ce4fd9e5b68a7550407
 version: 1
 frozen:
   by: example

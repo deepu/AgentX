@@ -168,12 +168,13 @@ export function raveTools(opts: RaveToolsOptions = {}): ToolDefinition[] {
     ({ name, description, inputSchema, effect: 'read', idempotent: true, source, secrets: [...RAVE_SECRETS], execute })
 
   return [
-    tool<Record<string, never>>(RAVE_BUILTINS.listStudies, 'List the studies this Rave account can see, with their enrolment target and plan, and how many entered pages are source-verified.', object({}),
-      async (_args, ctx) => {
+    tool<{ study?: string }>(RAVE_BUILTINS.listStudies, 'List the studies this Rave account can see, with their enrolment target and plan, and how many entered pages are source-verified.', object({ study: studyArg }),
+      async ({ study }, ctx) => {
         const { client, settings } = clientOf(ctx)
         const studies = []
-        // The connection's study when it names one (RAVE_STUDY), else every study the account sees.
-        const all = await studiesFor(client, settings)
+        // The study named (a project's study, Stage 6 Part B), else the connection's (RAVE_STUDY),
+        // else every study the account sees.
+        const all = await studiesFor(client, settings, study)
         for (const [i, s] of all.entries()) {
           // With the study's form status, so a page can say "91% of pages verified" without a second
           // read: one call per study, so only for the first MAX_STUDIES_WITH_STATUS.

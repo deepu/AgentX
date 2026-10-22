@@ -106,6 +106,15 @@ function recordIn(result: unknown, source: RecordSourceDef): Record<string, unkn
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
 const blank = (v: unknown) => v === undefined || v === null || v === '';
+/**
+ * A project connection's settings as a tool's arguments: only the names the tool's input takes
+ * (`study` for Rave), never anything else. Connection settings hold no credentials (26 §3).
+ */
+export function argsFrom(settings: Record<string, unknown> | undefined, inputSchema: Record<string, unknown> | undefined): Record<string, unknown> {
+  const props = (inputSchema?.properties ?? {}) as Record<string, unknown>;
+  return Object.fromEntries(Object.entries(settings ?? {}).filter(([k, v]) => k in props && v !== undefined && v !== null && v !== ''));
+}
+
 /** A mapped record whose `{ link }` references found no linked record: those fields are kept as they are. */
 type LinkedMappedRecord = MappedRecord & { keep?: string[] };
 
@@ -751,15 +760,21 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
         const def = bp.manifest.records[name];
         const entity = entityDef(rb.entity);
         if (!def || !entity) continue;
-        const result = await readThrough(deps.tools(), def.list.tool, def.list.args ?? {}, `identity.${name}`, policies);
-        const items = valueAt(result, def.list.items);
-        if (!Array.isArray(items)) throw new Error(`${def.list.tool} returned no list${def.list.items ? ` at ${def.list.items}` : ''}`);
-        const map = compileRecordMapping(rb, def, ns, entity);
-        const mapped = await resolveLinkedRefs(pluginId, rb, items.map((i) => map((i ?? {}) as Record<string, unknown>)));
-        // Only a binding with `sync:` keeps a copy of what the plugin owns (D110); others read it through.
-        const owned = everyMs ? ownedFields(entity, bp.manifest, ns, name, rb) : [];
-        const counts = await resolveSource(pluginId, name, rb, entity, mapped, { owned, title: bp.manifest.title });
-        for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += counts[k];
+        // Stage 6 Part B: read once for each project whose connection goes through this plugin (its
+        // settings, like the study, fill the tool's arguments of the same name), into that project.
+        // No such project: once for the workspace, as before projects.
+        for (const target of await connectedProjects(project, pluginId, entity)) {
+          const args = { ...(def.list.args ?? {}), ...argsFrom(target?.settings, deps.tools().get(def.list.tool)?.inputSchema) };
+          const result = await readThrough(deps.tools(), def.list.tool, args, `identity.${name}${target ? `@${target.project}` : ''}`, policies);
+          const items = valueAt(result, def.list.items);
+          if (!Array.isArray(items)) throw new Error(`${def.list.tool} returned no list${def.list.items ? ` at ${def.list.items}` : ''}`);
+          const map = compileRecordMapping(rb, def, ns, entity);
+          const mapped = await resolveLinkedRefs(pluginId, rb, items.map((i) => map((i ?? {}) as Record<string, unknown>)));
+          // Only a binding with `sync:` keeps a copy of what the plugin owns (D110); others read it through.
+          const owned = everyMs ? ownedFields(entity, bp.manifest, ns, name, rb) : [];
+          const counts = await resolveSource(pluginId, name, rb, entity, mapped, { owned, title: bp.manifest.title, ...(target ? { project: target.project } : {}) });
+          for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += counts[k];
+        }
       }
     } catch (e) {
       failed = true;
@@ -776,6 +791,31 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
     if (!source) await recordSync(pluginId, { counts: result, everyMs });
     changed();
     return result;
+  }
+
+  /**
+   * The projects a plugin's record source is read for (Stage 6 Part B): each project running the
+   * entity's app with a connection through the plugin, with its study and that connection's settings. None: one
+   * read for the workspace (`undefined`), as before projects.
+   */
+  async function connectedProjects(project: ProjectDefs, pluginId: string, entity: EntityTypeDef): Promise<({ project: string; settings: Record<string, unknown> } | undefined)[]> {
+    const app = entity.domain ?? DEFAULT_DOMAIN;
+    const out: { project: string; settings: Record<string, unknown> }[] = [];
+    const candidates = Object.values(project.projects ?? {}).filter((p) => !p.implicit && p.apps.includes(app) && p.connections.some((x) => x.plugin === pluginId));
+    // The live status is the database's (the file's is where a project started).
+    const live = candidates.length
+      ? new Map((await deps.pool.query<{ id: string; status: string }>(`select id, status from mw.projects where id = any($1::text[])`, [candidates.map((p) => p.id)])).rows.map((r) => [r.id, r.status]))
+      : new Map<string, string>();
+    for (const p of candidates) {
+      // A draft runs nothing until it starts; an archived study is read no more.
+      if ((live.get(p.id) ?? p.status) !== 'active') continue;
+      const c = p.connections.find((x) => x.plugin === pluginId);
+      // The project's own study (`study:` in project.yaml) is the connection's study unless the
+      // connection names another: one study, named once, for every app the project runs.
+      if (c) out.push({ project: p.id, settings: { ...(p.study ? { study: p.study } : {}), ...(c.settings ?? {}) } });
+    }
+    // No project connects through it: one read for the workspace. Some do but none runs: none.
+    return candidates.length ? out.sort((a, b) => a.project.localeCompare(b.project)) : [undefined];
   }
 
   /** The binding's `sync:` interval, for recording a failure that came before the binding was read. */
@@ -938,7 +978,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
 
   /** Links, proposes or creates for one source's mapped records; counts where each record stands now. */
   async function resolveSource(pluginId: string, source: string, rb: RecordBinding, entity: EntityTypeDef, mapped: LinkedMappedRecord[],
-    opts: { owned?: string[]; title?: string } = {}) {
+    opts: { owned?: string[]; title?: string; project?: string } = {}) {
     const counts = { linked: 0, candidates: 0, unmatched: 0, created: 0, refreshed: 0 };
     const existing = new Map((await identityStore.linksOf(deps.pool, pluginId, source)).map((l) => [l.externalId, l]));
     const decided = await identityStore.candidates(deps.pool, { plugin: pluginId, source });
@@ -948,7 +988,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
     const linkedRecords = new Set((await deps.pool.query(`select record_id from mw.identity_links where plugin = $1 and source = $2`, [pluginId, source])).rows.map((r) => r.record_id as string));
     const wanted = [...new Set(mapped.flatMap((m) => { const l = m.externalId ? existing.get(m.externalId) : undefined; return l ? [l.recordId] : []; }))];
     const rowById = new Map((opts.owned?.length ? await entityStore.getMany(deps.pool, entity, wanted, { unrestricted: true }) : []).map((r) => [r.id, { id: r.id, values: r.values }]));
-    const rows = (await entityStore.unlinked(deps.pool, entity, { plugin: pluginId, source })).map((r) => ({ id: r.id, values: r.values }));
+    const rows = (await entityStore.unlinked(deps.pool, entity, { plugin: pluginId, source }, opts.project ? { project: opts.project } : {})).map((r) => ({ id: r.id, values: r.values }));
     const owned = opts.owned ?? [];
     for (const rec of mapped) {
       if (!rec.externalId) { counts.unmatched++; continue; }
@@ -990,7 +1030,7 @@ export function createPluginServices(deps: PluginServiceDeps): PluginServices {
         counts.candidates++;
       } else if (rb.identity.createMissing) {
         const values = Object.fromEntries(Object.entries(rec.values).filter(([k]) => k in entity.fields));
-        const id = await entityStore.create(deps.pool, entity, values, { idempotencyKey: `identity:${pluginId}:${source}:${rec.externalId}` });
+        const id = await entityStore.create(deps.pool, entity, values, { idempotencyKey: `identity:${pluginId}:${source}:${rec.externalId}`, ...(opts.project ? { project: opts.project } : {}) });
         await identityStore.link(deps.pool, { ...base, recordId: id, method: 'created', score: 0, reasons: ['nothing matched, so it was created'] });
         linkedRecords.add(id);
         counts.created++;

@@ -315,10 +315,12 @@ export class PgEntityStore {
    * Rows no identity link of this plugin source points at yet, newest first: the ones a source's
    * new records may match (Stage 6). The kernel's own read, from the table like `list`.
    */
-  async unlinked(db: Queryable, def: EntityTypeDef, link: { plugin: string; source: string }, opts: { limit?: number } = {}): Promise<StoredEntityRow[]> {
+  async unlinked(db: Queryable, def: EntityTypeDef, link: { plugin: string; source: string }, opts: { limit?: number; project?: string } = {}): Promise<StoredEntityRow[]> {
+    // Stage 3: within one project, when the source is read for a project.
+    const inProject = opts.project && projectScoped(def) ? ` and v.${PROJECT_COLUMN} = $4` : '';
     return this.select(db, def,
-      'where not exists (select 1 from mw.identity_links l where l.record_id = v.id and l.plugin = $1 and l.source = $2) order by v.created_at desc, v.id desc limit $3',
-      [link.plugin, link.source, opts.limit ?? 10_000], true);
+      `where not exists (select 1 from mw.identity_links l where l.record_id = v.id and l.plugin = $1 and l.source = $2)${inProject} order by v.created_at desc, v.id desc limit $3`,
+      [link.plugin, link.source, opts.limit ?? 10_000, ...(inProject ? [opts.project] : [])], true);
   }
 
   /** A view's records (24 §6): filter, sort, group counts, columns, paging, and the total. */

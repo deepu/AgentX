@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 import { parseValueType, type BindingDef, type EntityTypeDef, type ProjectDefs } from '@memwise/defs';
 import { readOnlyFields, syncedOwners } from '../src/domain-tools.ts';
-import { sameValue } from '../src/plugins/service.ts';
+import { argsFrom, sameValue } from '../src/plugins/service.ts';
 
 const RAVE = 'memwise/medidata-rave';
 const site = {
@@ -53,5 +53,15 @@ describe('the same value, by field type', () => {
     expect(sameValue('2026-09-02', '2026-09-03', T('Date'))).toBe(false);
     expect(sameValue(null, '', T('Text'))).toBe(true);
     expect(sameValue(null, 'x', T('Text'))).toBe(false);
+  });
+});
+
+describe('a project connection as a tool\'s arguments (Part B)', () => {
+  const listSites = { type: 'object', properties: { study: { type: 'string' } }, additionalProperties: false };
+  test('only what the tool takes: the study, never anything else', () => {
+    expect(argsFrom({ study: 'MW-301', mailbox: 'x@example.com', RAVE_PASSWORD: 'no' }, listSites)).toEqual({ study: 'MW-301' });
+    expect(argsFrom({ study: '' }, listSites)).toEqual({});
+    expect(argsFrom(undefined, listSites)).toEqual({});
+    expect(argsFrom({ study: 'MW-301' }, { type: 'object', properties: {} })).toEqual({});
   });
 });
