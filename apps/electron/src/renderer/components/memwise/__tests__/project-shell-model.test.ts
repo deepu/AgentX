@@ -10,6 +10,7 @@ import {
   anchorKeyOf, chatAnchorFor, groupByApp, initials, pickProject, playbookStartTag, pluralTitle, projectPlaybooks, shellProjects, sortWaiting, waitingIn, writtenPagePlace,
 } from '../project/project-model'
 import { shellRouteFor, type ShellRouteData } from '../project/shell-routes'
+import { shellStartProject } from '../project/shell-context'
 import { changesSince, RECENT_CHANGES_KEPT, withChange } from '../../../atoms/memwise'
 import { projectsChangeMatters } from '../../../hooks/useMemwiseProjects'
 import { parseRouteToNavigationState } from '../../../../shared/route-parser'
@@ -225,5 +226,14 @@ describe('pushes that land in one render', () => {
     expect(changesSince(last, null)).toEqual([{ kind: 'pages' }])
     expect(changesSince(last, 1)).toHaveLength(RECENT_CHANGES_KEPT)
     expect(changesSince(null, null)).toEqual([])
+  })
+})
+
+describe('Start case in the project shell', () => {
+  test('starts in the project the shell shows, and in none from "all projects" or outside the shell', () => {
+    const showChat = () => {}
+    expect(shellStartProject({ projectId: 'mw301', showChat })).toBe('mw301')
+    expect(shellStartProject({ projectId: '*', showChat })).toBeUndefined()
+    expect(shellStartProject(null)).toBeUndefined()
   })
 })
