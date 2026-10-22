@@ -49,13 +49,21 @@ export interface DraftMeta {
   createdAt: string;
   /** The meta-playbook run building or changing it (create-playbook / change-playbook), if any. */
   runId?: string;
+  /** Stage 4 (26 §5): the chat that started it, when a playbook's own chat drafted the change. */
+  chatId?: string;
   /**
-   * The playbook's project-relative folder when it isn't `workflows/<workflowId>`: a playbook of a
-   * named domain (`domains/etmf/workflows/file-document`). Such a draft copies `workspace.yaml` and
-   * every domain's definitions, so it loads as a project; it may change the playbook's folder and
-   * its domain's `policy.yaml` and `entities/` (Stage 5, docs/memwise/26-projects-and-pages.md §8).
+   * Stage 4: the playbook's folder when it lives in a domain's folder (`domains/etmf/workflows/chase-missing`);
+   * absent for `workflows/<id>`. Such a draft also copies `workspace.yaml` and the domains' definitions.
    */
   folder?: string;
+  /**
+   * Stage 4 with Stage 3 (26 §3, §5): the project whose own copy of the playbook the draft
+   * changes (`id`, its folder `dir`). The playbook's files start as that copy: the template at the
+   * project's version, each file replaced by the project's override. Publishing writes the files
+   * it changed as the project's overrides (`<dir>/overrides/workflows/<id>/…`), so the template and
+   * the app's other projects don't change. Only the playbook's existing files can change.
+   */
+  project?: { id: string; dir: string };
   /** Set when published. */
   publishedVersion?: number;
   publishedAt?: string;
@@ -92,6 +100,8 @@ export interface FileChange {
   hunks: DiffHunk[];
   /** The live file changed since the draft was made (publishing would overwrite someone's change). */
   conflict?: boolean;
+  /** A project draft: where publishing writes it (the project's override of the file). */
+  writesTo?: string;
 }
 
 /** Parts of a step a change can touch; the editor highlights these. */
@@ -136,6 +146,59 @@ export interface ExampleOutcome {
   status: 'pass' | 'fail' | 'skip';
   differences: string[];
   reason?: string;
+  /** Stage 4 (26 §5): what the run did, for a test run's result. */
+  trace?: ExampleTrace;
+}
+
+/** What an example's run did: the steps it went through, the calls it made and where it stopped. */
+export interface ExampleTrace {
+  /** Step runs in order: the state, its step's title and performer, how it ended. */
+  steps: { state: string; title?: string; performer?: string; status: string; outcome?: string }[];
+  /** The state the run stopped in, and the run's status there. */
+  state: string;
+  status: string;
+  /** Tool calls in order: the step they were made in, the tool, the arguments, and whether it was a stub. */
+  calls: { state: string; tool: string; args: Record<string, unknown>; stubbed?: boolean; error?: string }[];
+  /** The case values when the run stopped. */
+  values: Record<string, unknown>;
+}
+
+/**
+ * Stage 4 (26 §5, D121): the last test run of a draft on one record, `drafts/<id>/test-run.json`.
+ * It belongs to the content it ran on (`hash`): a later edit makes it stale.
+ */
+/**
+ * What `drafts/<id>/test-run.json` keeps of a test run: on which record, by whom, against which
+ * content and whether it passed. Never what the run saw (the record's values, the calls' arguments):
+ * the project folder is read by everyone who builds playbooks (D121).
+ */
+export interface DraftTestRunSummary {
+  draftId: string;
+  workflowId: string;
+  hash: string;
+  at: string;
+  /** Person id. */
+  by: string;
+  record: { entity: string; id: string };
+  /** `pass`: it ran with no problem; `skip`: it couldn't run. */
+  status: 'pass' | 'fail' | 'skip';
+}
+
+/** A test run as the person who ran it gets it back. */
+export interface DraftTestRun extends DraftTestRunSummary {
+  record: { entity: string; id: string; title: string };
+  differences: string[];
+  reason?: string;
+  trace?: ExampleTrace;
+  /** The case whose model turns were replayed, when the record had one the person may see whole. */
+  replayedCase?: string;
+  /** Records copied into the throwaway database, by entity key. */
+  copied: Record<string, number>;
+}
+
+/** A full test run, or (for anyone else, or after a restart) its summary. */
+export function isFullTestRun(r: DraftTestRunSummary | DraftTestRun): r is DraftTestRun {
+  return 'copied' in r && 'title' in r.record;
 }
 
 /** A past case replayed on the draft ("try it on past cases"). */

@@ -21,7 +21,7 @@ import { InstallPluginDialog } from '../plugins/PluginsList'
 import { nestTree, treeNodeKey } from '../records/record-model'
 import { useProjectRecordCounts } from '@/hooks/useMemwiseProjects'
 import { ProjectSwitcher } from './ProjectSwitcher'
-import { initials, playbookStartTag, projectPlaybooks, projectRecordTypes, writtenPagePlace, type ShellApp, type ShellProject } from './project-model'
+import { initials, playbookStartTag, projectPlaybooks, projectRecordTypes, sidebarRecordCounts, writtenPagePlace, type ShellApp, type ShellProject } from './project-model'
 import { useMemwiseChangeRequest } from '@/hooks/useMemwiseRegulated'
 import { keepsTmf } from '../regulated/RegulatedDomainLinks'
 import { TMF_ZONES, zoneName } from '../regulated/regulated-model'
@@ -55,7 +55,7 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
   const typeCounts = projectRecordTypes(domain)
   // Stage 3: a study's own counts, not every study's.
   const { data: own } = useProjectRecordCounts(project, typeCounts.map(r => r.key))
-  const records = own ? typeCounts.map(r => ({ ...r, count: own[r.key] ?? 0 })) : typeCounts
+  const records = sidebarRecordCounts(project, typeCounts, own)
   // Written pages list above as pages (26 §4); one written under a record stays in the record tree.
   const pageList = useMemwisePages(project.id).data
   const written = React.useMemo(() => new Map((pageList ?? []).map(p => [p.id, p])), [pageList])
@@ -143,7 +143,7 @@ export function ProjectSidebar({ apps, project, domain, details, totalWaiting, e
             key={r.key}
             icon={Database}
             label={r.title}
-            tag={r.count.toLocaleString()}
+            {...(r.count !== undefined ? { tag: r.count.toLocaleString() } : {})}
             active={(details.type === 'records' && details.entity === r.key) || (details.type === 'record' && details.entity === r.key)}
             onClick={() => go({ type: 'records', entity: r.key })}
           />

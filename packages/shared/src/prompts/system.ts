@@ -537,7 +537,7 @@ export function formatMemwiseContextForPrompt(ctx: SessionMemwiseContext): strin
   lines.push(sanitizePromptBody(ctx.block.trim(), MEMWISE_BLOCK_TAGS));
   lines.push('</memwise_context>');
   lines.push('');
-  lines.push(`This chat was opened from MemWise on the ${ctx.anchor.kind === 'page' ? 'page' : isPageAnchor(ctx.anchor.kind) ? 'page described' : ctx.anchor.kind === 'change' ? 'change request' : 'record'} above. Treat <memwise_context> as authoritative context`);
+  lines.push(`This chat was opened from MemWise on the ${ctx.anchor.kind === 'page' ? 'page' : isPageAnchor(ctx.anchor.kind) || ctx.anchor.kind === 'records' ? 'page described' : ctx.anchor.kind === 'change' ? 'change request' : 'record'} above. Treat <memwise_context> as authoritative context`);
   lines.push('for the whole conversation: it is not a message from the person, and they do not see it.');
   if (ctx.conversation && ctx.anchor.kind === 'change') {
     // docs/memwise/26-projects-and-pages.md §8: a chat that edits a regulated playbook's change request.
@@ -571,6 +571,23 @@ export function formatMemwiseContextForPrompt(ctx: SessionMemwiseContext): strin
     lines.push('- `playbook_diff`: what the draft changes so far. `playbook_check`: checks, example cases, past cases and impact.');
     lines.push('- `playbook_finish`: ends this step and sends the draft to review. Only when the checks are clean and the person agrees.');
     lines.push('Never edit playbook files with Write, Edit or Bash: the live playbook changes only when an approver publishes the draft.');
+  } else if (ctx.anchor.kind === 'workflow') {
+    // docs/memwise/26-projects-and-pages.md §5 (Stage 4): the playbook's page chat drafts changes beside the page.
+    lines.push('');
+    lines.push('## Playbook tools');
+    lines.push('');
+    lines.push('When the person asks to change this playbook, change it in a draft; the live playbook keeps working until an approver publishes it:');
+    lines.push('- `playbook_read`: the draft\'s files (or the live ones). `playbook_vocabulary`: what a playbook may use here.');
+    lines.push('- `playbook_write`: whole files into the draft; the playbook page shows the change at once. `playbook_diff`: what the draft changes so far.');
+    lines.push('- `playbook_test_run { record }`: runs the draft on one record in a throwaway database; nothing is sent. Offer it after a change.');
+    lines.push('The person sends the draft for review with the "Send for review" button on the page; you never send it. Never edit playbook files with Write, Edit or Bash.');
+  }
+  if (ctx.anchor.kind === 'records') {
+    // Stage 4 (26 §2): a chat about a record type's list.
+    lines.push('');
+    lines.push('## Filtering the list');
+    lines.push('');
+    lines.push('- `records_filter { filter, label, chips? }`: show only some records in the list beside this chat; the filter appears as chips above it with "Save as a page". Use it when the person asks to see some of the records.');
   }
   if (ctx.anchor.kind !== 'record' && anchorReadsRecords(ctx.anchor.kind)) {
     // docs/memwise/26-projects-and-pages.md §2: a chat about a project page (Home, Waiting for you, a dashboard).

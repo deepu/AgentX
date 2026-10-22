@@ -31,6 +31,7 @@ import {
   type ReviewDraft,
 } from './record-model'
 import { SignDialog } from './SignDialog'
+import { SignatureCard } from './SignatureCard'
 
 export interface ReviewSubmit {
   outcome: string
@@ -59,6 +60,8 @@ export interface ReviewPanelProps {
   queue?: ReviewQueue
   /** Open the signing dialog at once (the playground). */
   initialSigning?: boolean
+  /** Sign in the page itself (the Sign page, doc 26 §2) instead of in a dialog. */
+  inlineSignature?: boolean
 }
 
 function editable(p: MwProposedValue): 'text' | 'number' | 'date' | 'boolean' | null {
@@ -87,7 +90,7 @@ function provenanceText(p: MwProposedValue, t: ReturnType<typeof useTranslation>
   return [sure ? `${who} · ${sure}` : who, why === shared ? undefined : why].filter(Boolean).join(' · ')
 }
 
-export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, onPick, queue, initialSigning = false }: ReviewPanelProps) {
+export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, onPick, queue, initialSigning = false, inlineSignature = false }: ReviewPanelProps) {
   const { t, i18n } = useTranslation()
   const [draft, setDraft] = React.useState<ReviewDraft>(() => initialReviewDraft(review))
   const [comment, setComment] = React.useState('')
@@ -257,6 +260,23 @@ export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, on
         {commentError && <p className="text-label-sm text-destructive" role="alert">{commentError}</p>}
       </div>
 
+      {inlineSignature && review.sign && approve ? (
+        <SignatureCard
+          meaning={review.sign.meaning}
+          disabled={done}
+          busy={busy === approve ? 'sign' : busy === sendBack ? 'sendBack' : null}
+          onSign={async password => {
+            if (missing.length) {
+              const r: MwSubmitResult = { applied: false, message: t('memwise.review.fillRequired') }
+              setResult(r)
+              return r
+            }
+            return send(approve, password)
+          }}
+          onSendBack={sendBack ? doSendBack : undefined}
+          onNeedsPassword={() => setSigning(true)}
+        />
+      ) : (
       <div className="flex flex-wrap justify-end gap-2" data-review-actions>
         {sendBack && (
           <Button variant="secondary" onClick={doSendBack} disabled={!!busy || done} data-outcome={sendBack}>
@@ -271,6 +291,7 @@ export function ReviewPanel({ review, submit, onDone, roleTitle, activeField, on
           </Button>
         )}
       </div>
+      )}
 
       {result && !result.applied && (
         <Info_Alert variant="error" inline icon={<AlertTriangle />}>

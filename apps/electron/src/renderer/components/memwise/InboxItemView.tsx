@@ -16,6 +16,7 @@ import type {
   MwExtractInput,
   MwExtractResult,
   MwExtractSuggestion,
+  MwField,
   MwInboxItem,
   MwRole,
   MwSendEventInput,
@@ -115,6 +116,8 @@ export interface InboxItemViewProps {
   now?: number
   /** Phase 6: who signs a step with `sign:` (the signing dialog names them). */
   signer?: Signer
+  /** Stage 4: only the item's body, without its page header (shown in place on a run's page). */
+  bare?: boolean
 }
 
 const KIND_ICON: Record<MwInboxItem['kind'], React.ReactNode> = {
@@ -180,6 +183,12 @@ function ResultMessage({ result }: { result: MwSubmitResult | null }) {
   )
 }
 
+/** A Text field written in lines (an email's body, a note): a text area, so its line breaks show. */
+function isMultilineText(field: Pick<MwField, 'name' | 'type'>, value: unknown): boolean {
+  if (field.type.trim() !== 'Text') return false
+  return (typeof value === 'string' && value.includes('\n')) || /(^|_)(body|note|notes|comment|description|summary|message)$/i.test(field.name)
+}
+
 function CommentBox({ value, onChange, error, placeholder, disabled }: {
   value: string
   onChange: (v: string) => void
@@ -201,7 +210,7 @@ function CommentBox({ value, onChange, error, placeholder, disabled }: {
   )
 }
 
-export function InboxItemView({ item, actions: given, people = {}, roles, reviewDraftId, bindingView, bindingError, playbookTitles, now: fixedNow, signer }: InboxItemViewProps) {
+export function InboxItemView({ item, actions: given, people = {}, roles, reviewDraftId, bindingView, bindingError, playbookTitles, now: fixedNow, signer, bare }: InboxItemViewProps) {
   const { t, i18n } = useTranslation()
   const now = useNow(fixedNow)
   const since = relativeTime(item.since, now, i18n.language)
@@ -212,9 +221,10 @@ export function InboxItemView({ item, actions: given, people = {}, roles, review
   const actions = React.useMemo(() => ({ ...given, submitStep: gate.submit }), [given, gate.submit])
   const special = !!step && !step.binding && (step.review?.kind === 'table' || step.review?.kind === 'diff')
 
+  const Frame = bare ? BareFrame : Info_Page.Content
   return (
-    <Info_Page.Content>
-      <Info_Page.Hero
+    <Frame>
+      {!bare && <Info_Page.Hero
         avatar={<div className="grid size-full place-items-center bg-fill-hover text-secondary [&_svg]:size-4">{KIND_ICON[item.kind]}</div>}
         title={inboxItemStepTitle(item, t)}
         meta={
@@ -243,7 +253,7 @@ export function InboxItemView({ item, actions: given, people = {}, roles, review
             {dueAt && <span>{t('memwise.inbox.due', { time: relativeTime(dueAt, now, i18n.language) })}</span>}
           </>
         }
-      />
+      />}
       {(item.kind === 'input' || item.kind === 'decision') && item.binding && (
         <BindingBody item={item} binding={item.binding} actions={actions} people={people} roles={roles} view={bindingView} error={bindingError} now={now} />
       )}
@@ -276,8 +286,13 @@ export function InboxItemView({ item, actions: given, people = {}, roles, review
         />
       )}
       {gate.dialog}
-    </Info_Page.Content>
+    </Frame>
   )
+}
+
+/** The item's body on its own (a run page shows the waiting step in place). */
+function BareFrame({ children }: { children?: React.ReactNode }) {
+  return <div className="space-y-4" data-inbox-bare>{children}</div>
 }
 
 // ---------------------------------------------------------------- input
@@ -402,6 +417,7 @@ function InputBody({ item, actions, people }: { item: Extract<MwInboxItem, { kin
             serverErrors={result?.errors}
             onUpload={actions.uploadFile}
             disabled={!!busy || result?.applied}
+            multiline={f => isMultilineText(f, values[f.name])}
           />
           {offersComment && (
             <CommentBox

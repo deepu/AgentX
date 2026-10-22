@@ -105,6 +105,7 @@ export {
   sessionHasPageTools,
   memwiseSessionToolOptions,
   anchorReadsRecords,
+  chatChangesPlaybook,
   isPageAnchor,
   type SessionMemwiseContext,
   type MemwiseChatAnchor,

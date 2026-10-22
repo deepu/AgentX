@@ -2074,6 +2074,7 @@ export function shouldAllowToolInMode(
         includeRecordTools: true,
         includeRecordKeep: true,
         includeRecordUpdate: true,
+        includeRecordsFilter: true,
         includePageTools: true,
       });
 

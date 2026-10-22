@@ -52,7 +52,7 @@ describe('MemWise session context', () => {
     writeSessionMemwiseContext(ws, 'p1', { anchor: { kind: 'step', id: 'sr_9' }, conversation: true, project: true, block: 'New study' });
     expect(readSessionMemwiseContext(ws, 'p1')).toMatchObject({ conversation: true, project: true });
     expect(sessionHasPlaybookTools(ws, 'p1')).toBe(true);
-    expect(memwiseSessionToolOptions(ws, 'p1')).toEqual({ includePlaybookTools: false, includeProjectTools: true, includeRecordTools: false, includeRecordKeep: false, includeRecordUpdate: false, includePageTools: false });
+    expect(memwiseSessionToolOptions(ws, 'p1')).toEqual({ includePlaybookTools: false, includeProjectTools: true, includeRecordTools: false, includeRecordKeep: false, includeRecordUpdate: false, includeRecordsFilter: false, includePageTools: false });
     const names = getSessionToolNames(memwiseSessionToolOptions(ws, 'p1'));
     expect(names.has('project_options') && names.has('project_draft')).toBe(true);
     expect(names.has('playbook_write')).toBe(false);
@@ -81,21 +81,41 @@ describe('MemWise session context', () => {
     });
     expect(sessionHasRecordTools(ws, 'r1')).toBe(true);
     expect(sessionHasPlaybookTools(ws, 'r1')).toBe(false);
-    expect(memwiseSessionToolOptions(ws, 'r1')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: true, includeRecordKeep: true, includeRecordUpdate: false, includePageTools: false });
+    expect(memwiseSessionToolOptions(ws, 'r1')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: true, includeRecordKeep: true, includeRecordUpdate: false, includeRecordsFilter: false, includePageTools: false });
     const names = getSessionToolNames(memwiseSessionToolOptions(ws, 'r1'));
     expect(['record_get', 'record_query', 'record_keep'].every((n) => names.has(n))).toBe(true);
 
     writeSessionMemwiseContext(ws, 'r2', { anchor: { kind: 'record', entity: 'etmf.Site', id: 's1' }, block: 'Site' });
-    expect(memwiseSessionToolOptions(ws, 'r2')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: true, includeRecordKeep: false, includeRecordUpdate: false, includePageTools: false });
+    expect(memwiseSessionToolOptions(ws, 'r2')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: true, includeRecordKeep: false, includeRecordUpdate: false, includeRecordsFilter: false, includePageTools: false });
     expect(getSessionToolNames(memwiseSessionToolOptions(ws, 'r2')).has('record_keep')).toBe(false);
 
     // Neither elsewhere: a case chat, a conversation, an ordinary chat
     writeSessionMemwiseContext(ws, 'c1', { anchor: { kind: 'case', id: 'c_1' }, keep: [{ entity: 'x.y', name: 'Y' }], block: 'x' } as never);
     expect(readSessionMemwiseContext(ws, 'c1')!.keep).toBeUndefined();
-    expect(memwiseSessionToolOptions(ws, 'c1')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: false, includeRecordKeep: false, includeRecordUpdate: false, includePageTools: false });
-    expect(memwiseSessionToolOptions(ws, 'none')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: false, includeRecordKeep: false, includeRecordUpdate: false, includePageTools: false });
+    expect(memwiseSessionToolOptions(ws, 'c1')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: false, includeRecordKeep: false, includeRecordUpdate: false, includeRecordsFilter: false, includePageTools: false });
+    expect(memwiseSessionToolOptions(ws, 'none')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: false, includeRecordKeep: false, includeRecordUpdate: false, includeRecordsFilter: false, includePageTools: false });
     const plain = getSessionToolNames({});
     expect(['record_get', 'record_query', 'record_keep'].some((n) => plain.has(n))).toBe(false);
+  });
+
+  // docs/memwise/26-projects-and-pages.md §5 and §2 (Stage 4)
+  it('a playbook chat gets the playbook tools with the test run, and a list chat records_filter', () => {
+    const ws = workspace();
+    writeSessionMemwiseContext(ws, 'p1', { anchor: { kind: 'workflow', id: 'chase-missing' }, block: 'Playbook' });
+    expect(sessionHasPlaybookTools(ws, 'p1')).toBe(true);
+    const playbook = getSessionToolNames(memwiseSessionToolOptions(ws, 'p1'));
+    expect(['playbook_read', 'playbook_write', 'playbook_test_run'].every((n) => playbook.has(n))).toBe(true);
+    expect(playbook.has('records_filter')).toBe(false);
+    const prompt = formatMemwiseContextForPrompt({ anchor: { kind: 'workflow', id: 'chase-missing' }, block: 'x', setAt: 1 });
+    expect(prompt).toContain('playbook_test_run');
+    expect(prompt).toContain('Send for review');
+
+    writeSessionMemwiseContext(ws, 'l1', { anchor: { kind: 'records', id: 'etmf.Site' }, block: 'Sites' });
+    expect(memwiseSessionToolOptions(ws, 'l1')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: true, includeRecordKeep: false, includeRecordUpdate: false, includeRecordsFilter: true, includePageTools: false });
+    const list = getSessionToolNames(memwiseSessionToolOptions(ws, 'l1'));
+    expect(['record_query', 'records_filter'].every((n) => list.has(n))).toBe(true);
+    expect(list.has('playbook_write')).toBe(false);
+    expect(formatMemwiseContextForPrompt({ anchor: { kind: 'records', id: 'etmf.Site' }, block: 'x', setAt: 1 })).toContain('records_filter');
   });
 
   // docs/memwise/26-projects-and-pages.md §4
@@ -105,7 +125,7 @@ describe('MemWise session context', () => {
     expect(readSessionMemwiseContext(ws, 'p1')).toMatchObject({ anchor: { kind: 'page', id: 'page_1' } });
     expect(sessionHasPageTools(ws, 'p1')).toBe(true);
     expect(sessionHasRecordTools(ws, 'p1')).toBe(true);
-    expect(memwiseSessionToolOptions(ws, 'p1')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: true, includeRecordKeep: false, includeRecordUpdate: false, includePageTools: true });
+    expect(memwiseSessionToolOptions(ws, 'p1')).toEqual({ includePlaybookTools: false, includeProjectTools: false, includeRecordTools: true, includeRecordKeep: false, includeRecordUpdate: false, includeRecordsFilter: false, includePageTools: true });
     const names = getSessionToolNames(memwiseSessionToolOptions(ws, 'p1'));
     expect(['page_get', 'page_update', 'page_create', 'record_get', 'record_query'].every((n) => names.has(n))).toBe(true);
     expect(names.has('record_update')).toBe(false);

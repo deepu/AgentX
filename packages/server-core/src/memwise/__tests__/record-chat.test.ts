@@ -134,7 +134,7 @@ describe('opening a chat on a record', () => {
     // Read as the person
     expect(pageCalls[0]!.slice(0, 3)).toEqual(['literature.topic', 'topic_1', { kind: 'person', personId: LEAD.id, roles: ['lead'] }])
     const insert = queries.find((q) => /insert into mw\.chat_anchors/.test(q.sql))!
-    expect(insert.params).toEqual([sessionId, 'record', 'literature.topic:topic_1', LEAD.id])
+    expect(insert.params).toEqual([sessionId, 'record', 'literature.topic:topic_1', LEAD.id, null])
 
     const ctx = sessions.contexts.get(sessionId)!
     expect(ctx.anchor).toEqual({ kind: 'record', entity: 'literature.topic', id: 'topic_1' })

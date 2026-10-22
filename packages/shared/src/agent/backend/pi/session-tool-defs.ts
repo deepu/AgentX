@@ -28,6 +28,8 @@ export function getSessionToolProxyDefs(opts?: {
   includeRecordKeep?: boolean;
   /** Per session: record_update, in a chat opened on a draft from a domain's question box. */
   includeRecordUpdate?: boolean;
+  /** Per session: records_filter, in a chat about a record type's list (Stage 4). */
+  includeRecordsFilter?: boolean;
   /** Per session: page_get / page_update / page_create, for chats anchored to a page. */
   includePageTools?: boolean;
 }): SessionToolProxyDef[] {
@@ -37,6 +39,7 @@ export function getSessionToolProxyDefs(opts?: {
     includeRecordTools: opts?.includeRecordTools ?? false,
     includeRecordKeep: opts?.includeRecordKeep ?? false,
     includeRecordUpdate: opts?.includeRecordUpdate ?? false,
+    includeRecordsFilter: opts?.includeRecordsFilter ?? false,
     includePageTools: opts?.includePageTools ?? false,
     prefix: 'mcp__session__',
     includeDeveloperFeedback: FEATURE_FLAGS.developerFeedback,

@@ -3,7 +3,7 @@
  * ever sees these. Pure functions over the indexed definitions, so they are easy to test.
  */
 import type {
-  CaseTypeDef, Diagnostic, DraftEdit, DraftMeta, DraftReport, EffectClass, EntityTypeDef, FieldDef, FileChange, Impact,
+  CaseTypeDef, Diagnostic, DraftEdit, DraftMeta, DraftReport, DraftTestRun, DraftTestRunSummary, EffectClass, EntityTypeDef, FieldDef, FileChange, Impact,
   JournalEntry, ProjectDefs, RecordTypeDef, StepDef, StepRecord, StructuralDiff, WorkflowDef, WorkflowVersion, WriteDef,
 } from '@memwise/defs'
 import type { CompiledPolicy, RuleOrigin, Sourced } from '@memwise/policy'
@@ -19,7 +19,7 @@ import type {
   MwCase, MwCaseSummary, MwCaseValue, MwDiagnostic, MwEffectClass, MwEntityRow, MwEntityType, MwField, MwJournalEntry,
   MwPerformer, MwPerson, MwPlaybook, MwPolicyRule, MwRole, MwState, MwStep, MwStepRecord, MwStepRunSummary, MwToolRef,
   MwTransition, MwDraftStage, MwDraftSummary, MwDraftEdit, MwFileChange, MwStructuralDiff, MwImpact, MwDraftReport, MwVersion,
-  MwTreatment,
+  MwTreatment, MwDraftTestRun,
   MwBinding, MwBindingGap, MwBindingReport, MwBindingState, MwBindingVersion, MwBindingView, MwClassSource, MwEntityLinkBadge,
   MwEntityRecord, MwIdentityCandidate, MwIdentityLink, MwInboxItem, MwMappedRecord, MwMatchMethod, MwPluginDetail,
   MwPluginSummary, MwPluginTool, MwPolicyDoc, MwPolicyLine, MwTransform, MwWorkflowOrigin,
@@ -785,6 +785,12 @@ export interface DraftFacts {
   changedFiles: number
   playbookTitle: string
   names: Map<string, string>
+  /** Stage 4: the last test run on one record: in full for who ran it, else its summary (`drafts/<id>/test-run.json`). */
+  testRun?: DraftTestRunSummary | DraftTestRun
+  /** Stage 4: the viewer may change the draft. */
+  mayChange?: boolean
+  /** Stage 5: the change request the draft is (a regulated playbook's change). */
+  changeRequest?: { id: string; label: string; project: string }
 }
 
 /** Where a draft is: published/discarded from its meta; in review while its change run waits at `review`; checked or failed when the last report covers the current content. */
@@ -818,6 +824,27 @@ export function toDraftSummary(f: DraftFacts): MwDraftSummary {
     ...(m.publishedVersion !== undefined ? { publishedVersion: m.publishedVersion } : {}),
     ...(f.run ? { runId: f.run.runId, caseId: f.run.caseId } : m.runId ? { runId: m.runId } : {}),
     ...(m.status === 'open' && f.run?.status === 'active' && f.run.inChat ? { inChat: true } : {}),
+    ...(m.chatId ? { chatId: m.chatId } : {}),
+    ...(m.project ? { project: m.project.id } : {}),
+    ...(f.testRun && f.testRun.hash === f.contentHash ? { testRun: f.testRun.status } : {}),
+    ...(f.mayChange !== undefined ? { mayChange: f.mayChange } : {}),
+    ...(f.changeRequest ? { changeRequest: { ...f.changeRequest } } : {}),
+  }
+}
+
+/** Stage 4 (26 §5): a draft's test run on one record, for its page. */
+export function toDraftTestRun(r: DraftTestRunSummary | DraftTestRun, names: Map<string, string>, title?: string): MwDraftTestRun {
+  const byName = names.get(r.by)
+  const base = { draftId: r.draftId, workflowId: r.workflowId, at: r.at, by: r.by, ...(byName ? { byName } : {}), status: r.status }
+  if (!('copied' in r)) {
+    return { ...base, record: { entity: r.record.entity, id: r.record.id, ...(title ? { title } : {}) }, detail: false, differences: [] }
+  }
+  return {
+    ...base, record: { ...r.record }, detail: true, differences: [...r.differences],
+    ...(r.reason ? { reason: r.reason } : {}),
+    ...(r.trace ? { trace: r.trace } : {}),
+    ...(r.replayedCase ? { replayedCase: r.replayedCase } : {}),
+    copied: { ...r.copied },
   }
 }
 
@@ -845,6 +872,7 @@ export function toFileChange(f: FileChange, pending: Map<string, string>): MwFil
     path: f.path, status: f.status,
     hunks: f.hunks.map((h) => ({ oldStart: h.oldStart, oldLines: h.oldLines, newStart: h.newStart, newLines: h.newLines, lines: h.lines.map((l) => ({ kind: l.kind, text: l.text })) })),
     ...(f.conflict ? { conflict: true } : {}),
+    ...(f.writesTo ? { writesTo: f.writesTo } : {}),
     ...(editId ? { pendingEditId: editId } : {}),
     ...(typeof f.before === 'string' ? { before: f.before } : {}),
     ...(typeof f.after === 'string' ? { after: f.after } : {}),

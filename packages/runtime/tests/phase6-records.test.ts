@@ -303,6 +303,10 @@ describe.skipIf(!pgAvailable)('Phase 6 records', () => {
     const q = await kernel.records.query({ entity: 'Report', domain: 'qa', filter: "status != 'released'", sort: [{ field: 'title' }], group: 'status' }, lead);
     expect(q.rows.map((r) => r.title)).toEqual(['Bioburden', 'Endotoxin']);
     expect(q.groups).toEqual([{ key: 'draft', count: 1 }, { key: 'in_review', count: 1 }]);
+    // Asking for a few columns (a page's records block) still names each row by its title.
+    const few = await kernel.records.query({ entity: 'Report', domain: 'qa', filter: "status != 'released'", sort: [{ field: 'title' }], columns: ['score'] }, lead);
+    expect(few.rows.map((r) => r.title)).toEqual(['Bioburden', 'Endotoxin']);
+    expect(few.columns.map((c) => c.name)).toEqual(['score']);
 
     const mineView = await kernel.records.saveView('qa', { id: 'my-high', title: 'High scores', entity: 'Report', filter: 'score >= 95', layout: 'table' }, lead);
     const views = await kernel.records.views('qa', lead, { entity: 'Report' });

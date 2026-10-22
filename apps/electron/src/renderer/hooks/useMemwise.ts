@@ -424,10 +424,11 @@ export function useMemwiseCase(caseId: string | null): MemwiseQuery<MwCase> {
   )
 }
 
-export function useMemwisePlaybook(playbookId: string | null): MemwiseQuery<MwPlaybook> {
+/** `project` (Stage 3): that project's own copy of the playbook. */
+export function useMemwisePlaybook(playbookId: string | null, project?: string): MemwiseQuery<MwPlaybook> {
   return useMemwiseQuery<MwPlaybook>(
-    playbookId ? `playbook:${playbookId}` : null,
-    (api, ws) => api.memwiseGetPlaybook(ws, playbookId!),
+    playbookId ? `playbook:${playbookId}:${project ?? ''}` : null,
+    (api, ws) => (project ? api.memwiseGetPlaybook(ws, playbookId!, project) : api.memwiseGetPlaybook(ws, playbookId!)),
     c => c.kind === 'definitions' || c.kind === 'status',
   )
 }

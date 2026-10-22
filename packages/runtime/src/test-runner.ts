@@ -51,14 +51,15 @@ export function parseOutcomes(stdout: string): ExampleOutcome[] | undefined {
       status,
       differences: Array.isArray(o.differences) ? o.differences.map(String) : [],
       ...(typeof o.reason === 'string' ? { reason: o.reason } : {}),
+      ...(o.trace && typeof o.trace === 'object' ? { trace: o.trace as ExampleOutcome['trace'] } : {}),
     };
   });
 }
 
 export function defaultTestRunner(opts: TestRunnerOptions = {}): TestRunner {
-  return async ({ projectDir, workflowId, extraExamples }) => {
+  return async ({ projectDir, workflowId, extraExamples, only }) => {
     const { command, env } = opts.command ? { command: opts.command, env: {} } : cliCommand();
-    const args = ['test', projectDir, '--workflow', workflowId, '--json'];
+    const args = ['test', projectDir, '--workflow', workflowId, '--json', ...(only ? ['--example', only, '--trace'] : [])];
     let tmp: string | undefined;
     if (extraExamples?.length) {
       tmp = mkdtempSync(join(tmpdir(), 'mw-examples-'));

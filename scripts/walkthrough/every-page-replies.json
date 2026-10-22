@@ -1,0 +1,79 @@
+[
+ {
+  "match": "copy the cra|cc the cra",
+  "tools": [
+   {
+    "name": "playbook_write",
+    "input": {
+     "files": [
+      {
+       "path": "domains/etmf/workflows/remind-site/steps/send.md",
+       "content": "---\ntitle: Send, wait 5 days, remind again, and copy the CRA from the second reminder\nperformer: system\nstrictness: strict\nreads: [case.site, case.email_to, case.email_cc, case.email_subject, case.email_body]\ntools:\n  allowed:  [etmf.reminder.create]\n  required: [etmf.reminder.create]\nmap:\n  etmf.reminder.create:\n    site:    case.site\n    sent_to: case.email_to\n    copied:  case.email_cc\n    subject: case.email_subject\n    body:    case.email_body\n    sent_at: { now: true }\noutcomes: [sent]\n---\nSend the approved reminder to the site and keep it on the site's record, so the next round knows how\nmany reminders came before. Then the site has 5 days to upload; the next reminder goes out unless\nthe start-up pack is complete by then.\n"
+      }
+     ],
+     "summary": "Copy the CRA on the reminder from the second one on"
+    }
+   },
+   {
+    "name": "playbook_test_run",
+    "input": {
+     "record": "site 101"
+    }
+   }
+  ],
+  "reply": "Done: from the second reminder on, the reminder is sent to the site coordinator **and copies the site's CRA**. eTMF is regulated, so this isn't a study's own copy: it's change request **CR-001** for the whole eTMF app (every study's reminders), and the live playbook hasn't changed.\n\nI ran the draft on **site 101** in a throwaway copy: it found 2 missing documents, drafted the reminder to Owen Price, and would record it as sent, copying Priya Shah (the CRA). Nothing was sent.\n\nWhen you're happy with it, open **CR-001** on the page and send it to QA; it goes live when QA signs it."
+ },
+ {
+  "match": "who gets the reminders",
+  "tools": [
+   {
+    "name": "playbook_write",
+    "input": {
+     "files": [
+      {
+       "path": "domains/edc/workflows/chase-old-queries/steps/send.md",
+       "content": "---\ntitle: Send the reminders to each site's study coordinator\nperformer: system\nstrictness: strict\nreads: [case.reminders]\ntools:\n  allowed:  [email.send]\n  required: [email.send]\nmap:\n  email.send:\n    each:    case.reminders\n    to:      item.to\n    subject: item.subject\n    body:    item.body\noutcomes: [sent]\n---\nEmail each site's coordinator their reminder. Every email is outgoing, so each one waits for a\nperson to approve its exact text first.\n"
+      }
+     ],
+     "summary": "Name who gets the reminders in the send step"
+    }
+   }
+  ],
+  "reply": "Done: the send step now says who gets the reminders: **each site's study coordinator**, as Rave names them. It's a draft of **Study MW-207's own copy** of the playbook in EDC; the live copy hasn't changed, and Study MW-301 keeps its own.\n\nWhen you're happy with it, use **Send for review** on the page."
+ },
+ {
+  "match": "missing documents|still owe|missing",
+  "tools": [
+   {
+    "name": "records_filter",
+    "input": {
+     "filter": "missing_documents > 0",
+     "label": "Missing documents",
+     "chips": [
+      "Missing documents"
+     ],
+     "sort": [
+      {
+       "field": "missing_documents",
+       "desc": true
+      }
+     ],
+     "columns": [
+      "start_up_pack_complete",
+      "missing_documents",
+      "reminders_sent"
+     ]
+    }
+   }
+  ],
+  "reply": "3 of Study MW-301's sites still owe documents: **109** (6 missing), **101** (2) and **110** (1). The list beside this chat now shows just those three; save it as a page to keep it."
+ },
+ {
+  "match": "why|test run|what happened",
+  "reply": "The test run copied site 101, its study and its expected documents into a throwaway database and replayed the latest reminder run's model turns. It stopped at **Wait for the upload**, where the next reminder waits 5 days."
+ },
+ {
+  "match": ".",
+  "reply": "Ask me to change the playbook, or to filter the list, and I'll do it here."
+ }
+]

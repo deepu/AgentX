@@ -159,6 +159,8 @@ export interface MwPlaybook {
   startFields?: string[]
   /** Phase 4: a plugin's workflow (referenced through its binding) or a fork of one. */
   origin?: MwWorkflowOrigin
+  /** Stage 4 with Stage 3: read as a project's own copy that changes the template (its overrides). */
+  overridden?: boolean
 }
 
 /** Live mode of the map: where the open cases are. */
@@ -328,7 +330,7 @@ export interface MwStartCaseInput {
   workflowId: string
   /** Plain initial values (provenance `input`, by the current person). */
   values?: Record<string, unknown>
-  /** Stage 3: the project to run it in (a study); absent: its app's own project. */
+  /** Stage 3: the project to run it in (its own copy of the playbook); absent: as the kernel decides. */
   project?: string
 }
 
@@ -647,10 +649,14 @@ export interface MwOpenChatInput {
  * you page (`waiting`), both by project id, and a dashboard (`dashboard`: domain and page id).
  */
 export type MwChatAnchor =
-  | { kind: 'case' | 'step' | 'workflow'; id: string }
+  | { kind: 'case' | 'step'; id: string }
+  /** A playbook; `project` (Stage 4 with Stage 3): a study's own copy of it, whose chat drafts changes to that copy. */
+  | { kind: 'workflow'; id: string; project?: string }
   | { kind: 'record'; entity: string; id: string }
   | { kind: 'project' | 'waiting'; id: string }
   | { kind: 'dashboard'; domain: string; id: string }
+  /** Stage 4 (26 §2): a record type's list (`id`: the entity key); its chat may filter the list (`records_filter`). */
+  | { kind: 'records'; id: string; project?: string }
   /**
    * Stage 5 (doc 26 §8): a change request (`id`: its id, or its label `CR-014` with its `project`:
    * numbers are per project), and a project's audit trail and TMF index (`id`: the project).
@@ -765,6 +771,22 @@ export interface MwDraftSummary {
   caseId?: string
   /** The run is still at its chat step: the draft is finished (and sent for review) from that chat. */
   inChat?: boolean
+  /** Stage 4 (26 §5): the playbook's own chat drafted it (the chat's session id). */
+  chatId?: string
+  /** Stage 4 with Stage 3: the project whose own copy of the playbook it changes (absent: the app's template). */
+  project?: string
+  /**
+   * Stage 5 (26 §8): the change request this draft is, for a regulated playbook. It changes the
+   * app's playbook for every study and goes to QA from the request's page, not "Send for review".
+   */
+  changeRequest?: { id: string; label: string; project: string }
+  /** Stage 4: the last test run's status, when it covers the current content. */
+  testRun?: 'pass' | 'fail' | 'skip'
+  /**
+   * Stage 4: whether the viewer may change this draft (write, keep, discard, send for review, run
+   * a test): they may change the playbook, and the draft is theirs.
+   */
+  mayChange?: boolean
 }
 
 export interface MwDraftEdit {
@@ -788,6 +810,8 @@ export interface MwFileChange {
   hunks: MwDiffHunk[]
   /** The live file changed since the draft was made. */
   conflict?: boolean
+  /** A project's draft: where publishing writes it (the project's override of the file). */
+  writesTo?: string
   /** Which pending chat edit last touched it (for highlighting). */
   pendingEditId?: string
   /** The live file's text (absent for an added file). */
@@ -871,13 +895,89 @@ export interface MwDraft extends MwDraftSummary {
    * plus the domain files it changes (for the step editor). Absent once the draft is closed.
    */
   fileTexts?: Record<string, string>
+  /** Stage 4 (26 §5): the last test run on one record. */
+  lastTestRun?: MwDraftTestRun
+  /** The draft changed since `lastTestRun`. */
+  testRunStale?: boolean
 }
+
+/** What a run did: the steps it went through, the calls it made and where it stopped. */
+export interface MwRunTrace {
+  steps: { state: string; title?: string; performer?: string; status: string; outcome?: string }[]
+  state: string
+  status: string
+  /** `stubbed`: the call would leave the building, so it was approved but not made. */
+  calls: { state: string; tool: string; args: Record<string, unknown>; stubbed?: boolean; error?: string }[]
+  values: Record<string, unknown>
+}
+
+/**
+ * Stage 4 (26 §5, D121): a draft run on one record in a throwaway database. The record and the
+ * records around it are copied in, the model turns of the record's latest case are replayed, person
+ * steps take their first outcome and nothing leaves the building.
+ */
+export interface MwDraftTestRun {
+  draftId: string
+  workflowId: string
+  at: string
+  by: string
+  byName?: string
+  /** `title` when the viewer may see the record. */
+  record: { entity: string; id: string; title?: string }
+  status: 'pass' | 'fail' | 'skip'
+  /**
+   * D121: what the run saw (differences, trace, copied records) is only for the person who ran it,
+   * until the app restarts; everyone else gets whether it passed, on which record, who and when.
+   */
+  detail: boolean
+  differences: string[]
+  reason?: string
+  trace?: MwRunTrace
+  replayedCase?: string
+  copied?: Record<string, number>
+}
+
+export interface MwTestRunDraftInput {
+  draftId: string
+  record: { entity: string; id: string }
+}
+
+export interface MwTestRunDraftResult {
+  applied: boolean
+  testRun?: MwDraftTestRun
+  code?: string
+  message?: string
+}
+
+/**
+ * Stage 4 (26 §2): the filter a list's chat put on it (`records_filter`), shown as chips above the
+ * list. `filter` is the records filter expression; each chip is one part of it, in words.
+ */
+export interface MwRecordsChatFilter {
+  entity: string
+  /** The chat that set it. */
+  sessionId: string
+  filter: string
+  /** Short words for the whole filter ("Below 80%"), and for each part. */
+  label: string
+  chips: string[]
+  sort?: { field: string; desc?: boolean }[]
+  columns?: string[]
+  /** Stage 4 with Stage 3: the project whose list it filters. */
+  project?: string
+  at: string
+}
+
+/** `project`: the list of that project (Stage 3). */
+export interface MwRecordsChatFilterInput { entity: string; project?: string }
 
 export interface MwCreateDraftInput {
   /** The playbook to change; with `create`, the new playbook's id. */
   workflowId: string
   title: string
   kind?: 'create' | 'change'
+  /** Stage 4 with Stage 3: change this project's own copy of the playbook, not the app's template. */
+  project?: string
 }
 
 /** Editor edits: whole files, project-relative paths (`workflows/<id>/steps/check.md`). */

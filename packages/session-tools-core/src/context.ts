@@ -904,6 +904,13 @@ export interface PlaybookFinishInput {
   rationale?: string;
 }
 
+/** Stage 4 (26 §5): run the draft on one record, by id or words of its title ("site 104"). */
+export interface PlaybookTestRunInput {
+  record: string;
+  /** The record's type, when the playbook could start from several. */
+  entity?: string;
+}
+
 /** A diagnostic as the tools report it. */
 export interface PlaybookToolDiagnostic {
   severity: 'error' | 'warning';
@@ -931,6 +938,8 @@ export interface MemwiseToolCallbacks {
   diff(): Promise<unknown>;
   check(input: PlaybookCheckInput): Promise<unknown>;
   finish(input: PlaybookFinishInput): Promise<{ applied: boolean; message?: string; [k: string]: unknown }>;
+  /** Stage 4: the draft run on one record in a throwaway database; nothing is sent. */
+  testRun?(input: PlaybookTestRunInput): Promise<unknown>;
 }
 
 /** Make or change the draft project a create-project chat is about. */
@@ -970,6 +979,20 @@ export interface RecordKeepInput {
   rows: Record<string, unknown>[];
 }
 
+/** Stage 4 (26 §2): filter the list beside the chat (a chat about a record type's list). */
+export interface RecordsFilterInput {
+  /** A records filter expression, as `record_query` takes it. */
+  filter: string;
+  /** Short words for it, shown as the chip ("Below 80%"). */
+  label: string;
+  /** One chip per part of the filter, when it has several. */
+  chips?: string[];
+  sort?: { field: string; desc?: boolean }[];
+  columns?: string[];
+  /** Default: the list's own record type. */
+  entity?: string;
+}
+
 /** Fill in the chat's own draft record (a chat opened from a domain's question box). */
 export interface RecordUpdateInput {
   values: Record<string, unknown>;
@@ -994,6 +1017,8 @@ export interface MemwiseRecordToolCallbacks {
   keep?(input: RecordKeepInput): Promise<{ entity: string; rows: RecordKeepRowResult[]; [k: string]: unknown }>;
   /** Absent unless the chat was opened on a draft (a domain's question box). */
   update?(input: RecordUpdateInput): Promise<{ applied: boolean; message?: string; errors?: Record<string, string[]>; [k: string]: unknown }>;
+  /** Stage 4: filter the list beside the chat (a chat about a record type's list). */
+  filter?(input: RecordsFilterInput): Promise<{ applied: boolean; [k: string]: unknown }>;
 }
 
 export interface SessionInfo {

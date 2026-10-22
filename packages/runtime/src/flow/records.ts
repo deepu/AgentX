@@ -1,7 +1,7 @@
 // The little the flow piece reads of domain records itself: a date column for date triggers,
 // a record's state for timers, and its title for the case view and the Automations screen.
 import { entityColumns, entityTableName } from '@memwise/db';
-import type { EntityTypeDef } from '@memwise/defs';
+import { fillTitle, type EntityTypeDef } from '@memwise/defs';
 import type { Queryable } from '../runs.ts';
 import type { RecordRef } from '../types.ts';
 
@@ -17,8 +17,7 @@ export const columnOf = (def: EntityTypeDef, field: string) => entityColumns(def
 export function titleOf(def: EntityTypeDef, id: string, values: Record<string, unknown>): string {
   if (def.title) {
     // A field still empty leaves no dangling separator ("US-012 ·").
-    const t = def.title.replace(/\{([A-Za-z0-9_]+)\}/g, (_, f: string) => (values[f] === null || values[f] === undefined ? '' : String(values[f])))
-      .replace(/^[\s·:|,–—-]+|[\s·:|,–—-]+$/g, '').trim();
+    const t = fillTitle(def.title, (f) => values[f]).title;
     if (t) return t;
   }
   const text = Object.entries(def.fields).find(([k, f]) => f.type.kind === 'scalar' && (f.type.name === 'Text' || f.type.name === 'PersonName') && values[k]);

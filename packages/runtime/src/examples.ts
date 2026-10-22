@@ -1,7 +1,7 @@
 // Example cases as acceptance tests (05 §12): each runs on a fresh database with a scripted
 // model, stubbed tools and scripted approval answers, and is compared with its `expect`.
 import { createTestDatabase } from '@memwise/db';
-import { DEFAULT_DOMAIN, END_STATE, isConversationStep, keyOf, type ExampleCase, type ExampleSubmission, type ProjectDefs, type StepDef, type WorkflowDef } from '@memwise/defs';
+import { DEFAULT_DOMAIN, END_STATE, isConversationStep, keyOf, type ExampleCase, type ExampleSubmission, type ExampleTrace, type ProjectDefs, type StepDef, type WorkflowDef } from '@memwise/defs';
 import { scriptedProvider, stubTools, type ToolDefinition } from '@memwise/gateway';
 import { isDeepStrictEqual } from 'node:util';
 import { authoringToolDefinitions } from './authoring-tools.ts';
@@ -18,7 +18,7 @@ import { projectTools } from './projects/tools.ts';
 import type { Actor, Kernel, RunRecord } from './types.ts';
 
 export type ExampleResult =
-  | { status: 'pass' | 'fail'; workflow: string; example: string; differences: string[]; run?: RunRecord }
+  | { status: 'pass' | 'fail'; workflow: string; example: string; differences: string[]; run?: RunRecord; trace?: ExampleTrace }
   | { status: 'skip'; workflow: string; example: string; reason: string };
 
 export interface RunExampleOptions {
@@ -122,13 +122,40 @@ export async function runExample(project: ProjectDefs, workflow: WorkflowDef, ex
           if (!hit) differences.push(`entities.${entity}[${i}]: no row with ${show(fields)}`);
         });
       }
-      return { ...ids, status: differences.length ? 'fail' : 'pass', differences, run };
+      const trace = await traceOf(kernel, workflow, run.id, values, new Set(Object.keys(example.tools ?? {}))).catch(() => undefined);
+      return { ...ids, status: differences.length ? 'fail' : 'pass', differences, run, ...(trace ? { trace } : {}) };
     } finally {
       await kernel.shutdown();
     }
   } finally {
     await db.drop();
   }
+}
+
+/** What the run did (Stage 4 test runs show it): its step runs, tool calls and values, in order. */
+async function traceOf(kernel: Kernel, workflow: WorkflowDef, runId: string, values: Record<string, { value: unknown }>, stubbed: Set<string>): Promise<ExampleTrace> {
+  const run = (await kernel.getRun(runId))!;
+  const { rows: steps } = await kernel.pool.query<{ id: string; step_id: string; status: string; outcome: string | null }>(
+    `select id, step_id, status, outcome from mw.step_runs where run_id = $1 order by started_at, id`, [runId]);
+  const { rows: calls } = await kernel.pool.query<{ step_id: string; name: string; request: { args?: Record<string, unknown> } | null; error: string | null }>(
+    `select s.step_id, j.name, j.request, j.error from mw.step_journal j join mw.step_runs s on s.id = j.step_run_id
+      where s.run_id = $1 and j.kind = 'tool' order by s.started_at, s.id, j.started_at, j.journal_key`, [runId]);
+  return {
+    steps: steps.map((s) => {
+      const step = stepIn(workflow, s.step_id);
+      return {
+        state: s.step_id, status: s.status,
+        ...(step?.title ? { title: step.title } : {}), ...(step ? { performer: step.performer } : {}), ...(s.outcome ? { outcome: s.outcome } : {}),
+      };
+    }),
+    state: run.state,
+    status: run.status,
+    calls: calls.map((c) => ({
+      state: c.step_id, tool: c.name, args: c.request?.args ?? {},
+      ...(stubbed.has(c.name) ? { stubbed: true } : {}), ...(c.error ? { error: c.error } : {}),
+    })),
+    values: Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v.value])),
+  };
 }
 
 /** The example person's password, so signed steps can be answered. */

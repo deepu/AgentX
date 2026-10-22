@@ -208,7 +208,7 @@ describe('the app home and app playbooks', () => {
     const { project } = await load(ETMF);
     expect(project.workflows['create-project']).toBeDefined();
     for (const p of Object.values(project.projects!)) expect(p.workflows['create-project']).toBeUndefined();
-    expect(Object.keys(project.projects!.mw301!.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'file-document', 'fix-rejected-document', 'new-coordinator', 'route-message', 'watch-expiries']);
+    expect(Object.keys(project.projects!.mw301!.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'file-document', 'fix-rejected-document', 'new-coordinator', 'remind-site', 'route-message', 'watch-expiries']);
   });
 });
 

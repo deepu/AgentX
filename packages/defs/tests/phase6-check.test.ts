@@ -364,8 +364,8 @@ describe('the eTMF example (examples/etmf)', () => {
     expect(Object.keys(project.domains!).sort()).toEqual(['domain', 'edc', 'etmf']);
     expect(project.domains!.etmf).toMatchObject({ name: 'eTMF', regulated: true, retentionMs: 25 * 365 * 86_400_000, owner: 'study_manager', qa: 'qa', intake: { address: 'etmf' } });
     expect(project.domains!.etmf!.policy!.modelRoles).toEqual(expect.arrayContaining(['router', 'classifier', 'verifier']));
-    expect(Object.keys(project.entities).sort()).toEqual(['edc.Query', 'edc.Site', 'edc.Study', 'edc.Subject', 'etmf.Document', 'etmf.ExpectedDocument', 'etmf.Person', 'etmf.Site', 'etmf.Sponsor', 'etmf.Study']);
-    expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'chase-old-queries', 'create-project', 'file-document', 'fix-rejected-document', 'new-coordinator', 'route-message', 'watch-expiries']);
+    expect(Object.keys(project.entities).sort()).toEqual(['edc.Query', 'edc.Site', 'edc.Study', 'edc.Subject', 'etmf.Document', 'etmf.ExpectedDocument', 'etmf.Person', 'etmf.Reminder', 'etmf.Site', 'etmf.Sponsor', 'etmf.Study']);
+    expect(Object.keys(project.workflows).sort()).toEqual(['activate-site', 'chase-missing', 'chase-old-queries', 'create-project', 'file-document', 'fix-rejected-document', 'new-coordinator', 'remind-site', 'route-message', 'watch-expiries']);
     expect(Object.keys(project.domains!.etmf!.views).sort()).toEqual(['documents-in-qc', 'missing-documents', 'sites', 'sites-board']);
     expect(Object.keys(project.domains!.etmf!.pages)).toEqual(['tmf-health']);
 
@@ -385,7 +385,7 @@ describe('the eTMF example (examples/etmf)', () => {
     ]);
     // One model role per agent step, so the scripted provider plays each its own script.
     const agentRoles = Object.values(project.workflows).flatMap((w) => Object.values(w.steps)).filter((s) => s.performer === 'agent').map((s) => s.model);
-    expect(agentRoles.sort()).toEqual(['chaser', 'classifier', 'requester', 'router']);
+    expect(agentRoles.sort()).toEqual(['chaser', 'classifier', 'escalator', 'requester', 'router', 'writer']);
     // A new coordinator in Rave reaches eTMF as a change on the followed field (26 §9).
     expect(project.workflows['new-coordinator']!.startsOn).toEqual([{ kind: 'changed', entity: 'Site', fields: ['coordinator'], with: { site: 'record' }, as: 'tmf_specialist' }]);
     for (const wf of Object.values(project.workflows)) expect(wf.examples.length).toBeGreaterThan(0);
@@ -424,14 +424,14 @@ describe('the eTMF example (examples/etmf)', () => {
       'domain edc', 'domain etmf',
       'entity_type edc.Query', 'entity_type edc.Site', 'entity_type edc.Study', 'entity_type edc.Subject',
       'entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person',
-      'entity_type etmf.Site', 'entity_type etmf.Sponsor', 'entity_type etmf.Study',
+      'entity_type etmf.Reminder', 'entity_type etmf.Site', 'entity_type etmf.Sponsor', 'entity_type etmf.Study',
       'page edc/enrolment', 'page edc/old-queries', 'page etmf/tmf-health',
       'policy domain:edc', 'policy domain:etmf', 'policy workspace',
       'view edc/old-queries', 'view edc/open-queries', 'view edc/sites', 'view edc/sites-with-old-queries',
       'view etmf/documents-in-qc', 'view etmf/missing-documents', 'view etmf/sites', 'view etmf/sites-board',
     ]);
     const from = (id: string) => [...new Set(refs.filter((r) => r.fromId === id).map((r) => `${r.toKind} ${r.toId}`))].sort();
-    expect(from('etmf.Site')).toEqual(['entity_type edc.Site', 'entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person', 'entity_type etmf.Study']);
+    expect(from('etmf.Site')).toEqual(['entity_type edc.Site', 'entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person', 'entity_type etmf.Reminder', 'entity_type etmf.Study']);
     expect(from('route-message')).toEqual(expect.arrayContaining(['policy domain:etmf', 'policy workspace', 'workflow file-document']));
     expect(from('activate-site')).toEqual(expect.arrayContaining(['entity_type etmf.Site']));
     expect(from('etmf/tmf-health')).toEqual(['entity_type etmf.Document', 'entity_type etmf.ExpectedDocument', 'entity_type etmf.Person', 'entity_type etmf.Site', 'entity_type etmf.Study']);

@@ -22,8 +22,8 @@ export async function seedEtmf(win) {
       if (i >= 60) throw new Error('no EDC sites: start the fake Rave and give the app RAVE_URL, RAVE_USER and RAVE_PASSWORD (scripts/walkthrough/README.md)');
       await new Promise((r) => setTimeout(r, 2000));
     }
-    const sponsor = await create('etmf.Sponsor', { name: 'Aster Bio' });
-    const study = await create('etmf.Study', { code: 'MW-301', title: 'A phase 3 study of MW-301 in solid tumours', sponsor });
+    const sponsor = await create('etmf.Sponsor', { name: 'Meridian Pharma' });
+    const study = await create('etmf.Study', { code: 'MW-301', title: 'MW-301: meriglutide once weekly in adults with type 2 diabetes (phase 3)', sponsor });
     const artifacts = ['Protocol signature page', 'FDA Form 1572', 'GCP certificates', 'Financial disclosure', 'Lab normal ranges',
       'Sub-investigator CVs', 'Clinical trial agreement', 'IRB approval', 'Lab certification', 'Investigator CV'];
     const sites = [

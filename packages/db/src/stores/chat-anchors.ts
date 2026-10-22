@@ -12,10 +12,11 @@ import { compact, iso } from '../rows.ts';
 /**
  * The project shell (doc 26 §2) adds chats about a whole project (its Home), its Waiting for you
  * page and a dashboard: `project` and `waiting` anchor ids are the project id, `dashboard` ids
- * are `<domain>:<page id>`. Stage 5 adds `change` (a change request, `cr_…`), and `audit` and
- * `tmf` (a project's audit trail and TMF index; ids are the project id).
+ * are `<domain>:<page id>`. Stage 4 adds `records`, a record type's list (id: the entity key).
+ * Stage 5 adds `change` (a change request, `cr_…`), and `audit` and `tmf` (a project's audit trail
+ * and TMF index; ids are the project id).
  */
-export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record' | 'page' | 'page_change' | 'project' | 'waiting' | 'dashboard' | 'change' | 'audit' | 'tmf';
+export type ChatAnchorKind = 'case' | 'step' | 'workflow' | 'record' | 'page' | 'page_change' | 'project' | 'waiting' | 'dashboard' | 'records' | 'change' | 'audit' | 'tmf';
 
 /** The `anchor_id` of a record anchor: `literature.topic:rec_1`. Entity keys have no colon. */
 export function recordAnchorId(entity: string, id: string): string {
@@ -34,18 +35,24 @@ export interface ChatAnchor {
   anchorKind: ChatAnchorKind;
   anchorId: string;
   personId?: string;
+  /**
+   * The project the chat belongs to (`mw.chat_anchors.project`, Stage 3). Stage 4: a playbook's
+   * or a list's chat opened in a study gives it, so it changes or filters that study's own.
+   */
+  scope?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export class PgChatAnchorStore {
   /** Anchors the chat (or re-anchors it). */
-  async set(db: Queryable, a: Pick<ChatAnchor, 'chatId' | 'anchorKind' | 'anchorId' | 'personId'>): Promise<ChatAnchor> {
+  async set(db: Queryable, a: Pick<ChatAnchor, 'chatId' | 'anchorKind' | 'anchorId' | 'personId' | 'scope'>): Promise<ChatAnchor> {
     const { rows } = await db.query<AnchorRow>(
-      `insert into mw.chat_anchors (chat_id, anchor_kind, anchor_id, person_id) values ($1, $2, $3, $4)
+      `insert into mw.chat_anchors (chat_id, anchor_kind, anchor_id, person_id, project) values ($1, $2, $3, $4, $5)
        on conflict (chat_id) do update
-         set anchor_kind = excluded.anchor_kind, anchor_id = excluded.anchor_id, person_id = excluded.person_id, updated_at = now()
-       returning *`, [a.chatId, a.anchorKind, a.anchorId, a.personId ?? null]);
+         set anchor_kind = excluded.anchor_kind, anchor_id = excluded.anchor_id, person_id = excluded.person_id,
+             project = coalesce($5, mw.chat_anchors.project), updated_at = now()
+       returning *`, [a.chatId, a.anchorKind, a.anchorId, a.personId ?? null, a.scope ?? null]);
     return toAnchor(rows[0]!);
   }
 
@@ -54,11 +61,16 @@ export class PgChatAnchorStore {
     return rows[0] && toAnchor(rows[0]);
   }
 
-  /** Chats anchored to a case, step or record (optionally only one person's), most recent first. */
-  async forAnchor(db: Queryable, anchorKind: ChatAnchor['anchorKind'], anchorId: string, personId?: string): Promise<ChatAnchor[]> {
+  /**
+   * Chats anchored to a case, step or record (optionally only one person's), most recent first.
+   * `scope`: only that project's chats; `null`: only chats of no project (an app's playbook page
+   * mustn't pick up a study's chat, whose tools change that study's copy); left out: any.
+   */
+  async forAnchor(db: Queryable, anchorKind: ChatAnchor['anchorKind'], anchorId: string, personId?: string, scope?: string | null): Promise<ChatAnchor[]> {
     const { rows } = await db.query<AnchorRow>(
       `select * from mw.chat_anchors where anchor_kind = $1 and anchor_id = $2 and ($3::text is null or person_id = $3)
-       order by updated_at desc, chat_id`, [anchorKind, anchorId, personId ?? null]);
+         and (case when $5::boolean then project is null else ($4::text is null or project = $4) end)
+       order by updated_at desc, chat_id`, [anchorKind, anchorId, personId ?? null, scope ?? null, scope === null]);
     return rows.map(toAnchor);
   }
 
@@ -68,11 +80,11 @@ export class PgChatAnchorStore {
   }
 }
 
-interface AnchorRow { chat_id: string; anchor_kind: ChatAnchorKind; anchor_id: string; person_id: string | null; created_at: Date; updated_at: Date }
+interface AnchorRow { chat_id: string; anchor_kind: ChatAnchorKind; anchor_id: string; person_id: string | null; project?: string | null; created_at: Date; updated_at: Date }
 
 function toAnchor(r: AnchorRow): ChatAnchor {
   return {
     chatId: r.chat_id, anchorKind: r.anchor_kind, anchorId: r.anchor_id, createdAt: iso(r.created_at), updatedAt: iso(r.updated_at),
-    ...compact({ personId: r.person_id }),
+    ...compact({ personId: r.person_id, scope: r.project ?? null }),
   };
 }

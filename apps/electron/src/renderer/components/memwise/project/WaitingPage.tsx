@@ -28,7 +28,7 @@ export function ShellPageFrame({ crumb, title, count, subtitle, actions, childre
   children: React.ReactNode
 }) {
   return (
-    <div className="h-full overflow-y-auto" data-testid="shell-page">
+    <div className="h-full min-h-0 overflow-y-auto" data-testid="shell-page">
       <div className="mx-auto max-w-[760px] px-7 pb-16 pt-6">
         {crumb && <div className="mb-1.5 text-label-sm text-secondary">{crumb}</div>}
         <div className="flex items-start gap-3">

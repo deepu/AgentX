@@ -9,7 +9,7 @@
  * memwise/chat-tools.ts); this package stays free of @memwise/* kernel imports.
  */
 
-import type { SessionToolContext, RecordGetInput, RecordKeepInput, RecordQueryInput, RecordUpdateInput } from '../context.ts';
+import type { SessionToolContext, RecordGetInput, RecordKeepInput, RecordQueryInput, RecordUpdateInput, RecordsFilterInput } from '../context.ts';
 import type { ToolResult } from '../types.ts';
 import { successResponse, errorResponse } from '../response.ts';
 
@@ -123,5 +123,27 @@ export async function handleRecordUpdate(ctx: SessionToolContext, args: RecordUp
     return successResponse(JSON.stringify({ ...result, summary: `Saved ${Object.keys(values).join(', ')} on the draft.` }, null, 2));
   } catch (error) {
     return errorResponse(`Could not fill in the draft: ${toError(error)}`);
+  }
+}
+
+export type RecordsFilterArgs = RecordsFilterInput;
+
+/** Stage 4 (26 §2): filter the list beside the chat; the list shows the filter as chips. */
+export async function handleRecordsFilter(ctx: SessionToolContext, args: RecordsFilterArgs): Promise<ToolResult> {
+  if (!ctx.memwiseRecords) return errorResponse(RECORDS_UNAVAILABLE);
+  if (!ctx.memwiseRecords.filter) return errorResponse('Only a chat about a list of records can filter it.');
+  if (!args?.filter?.trim()) return errorResponse('filter is required: a records filter expression, as record_query takes it.');
+  if (!args.label?.trim()) return errorResponse('label is required: a few words for the filter, shown as its chip.');
+  try {
+    return successResponse(JSON.stringify(await ctx.memwiseRecords.filter({
+      filter: args.filter.trim(),
+      label: args.label.trim(),
+      ...(Array.isArray(args.chips) && args.chips.length ? { chips: args.chips.filter((c) => typeof c === 'string' && c.trim()) } : {}),
+      ...(Array.isArray(args.sort) && args.sort.length ? { sort: args.sort } : {}),
+      ...(Array.isArray(args.columns) && args.columns.length ? { columns: args.columns } : {}),
+      ...(args.entity?.trim() ? { entity: args.entity.trim() } : {}),
+    }), null, 2));
+  } catch (error) {
+    return errorResponse(`Could not filter the list: ${toError(error)}`);
   }
 }

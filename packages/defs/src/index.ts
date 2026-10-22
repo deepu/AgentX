@@ -15,6 +15,7 @@ export * from './project-types.ts';
 export { parseCondition, conditionNames, CONDITION_FUNCTIONS } from './condition.ts';
 export { entityKey, keyOf, splitEntityKey, domainOf, scopedEntities, resolveEntity, domainEntities, hasRole, rolesIn, grantInProject, seesProject, seesProjectIn } from './domains.ts';
 export { crashPoint } from './testing.ts';
+export { fillTitle } from './record-title.ts';
 // Literature (docs/memwise/25-literature-poc.md §4): the one quote normaliser.
 export { normalizeQuoteText, quoteIn, quoteInValue, textsOf, findQuote } from './quotes.ts';
 
@@ -48,9 +49,9 @@ export {
 export { lineDiff, structuralDiff, describeStructuralDiff, stepParts, splitLines, type DiffNameKind } from './diff.ts';
 export {
   createDraft, listDrafts, readDraft, updateDraftMeta, writeDraftFiles, setDraftEditStatus, discardDraftEdit,
-  draftContentHash, loadDraft, diffDraft, applyDraft, writeDraftReport, draftDir, badDraftPath, setWorkflowVersion,
+  draftContentHash, loadDraft, diffDraft, applyDraft, writeDraftReport, draftDir, badDraftPath, setWorkflowVersion, draftPlaybookFolder, findPlaybookFolder, readDraftTestRun, writeDraftTestRun,
   DraftConflictError, DraftStaleError, WORKFLOW_ID_PATTERN, type CreateDraftInput, type DraftFiles, type WriteDraftOptions,
-  createBindingDraft, type CreateBindingDraftInput, draftPlaybookFolder, livePlaybookFolder,
+  createBindingDraft, type CreateBindingDraftInput, livePlaybookFolder,
 } from './drafts.ts';
 export { exampleToYaml } from './example-yaml.ts';
 export { initProject, INTAKE_TEMPLATE_DIR, META_PLAYBOOKS, type InitOptions } from './init.ts';

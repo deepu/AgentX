@@ -66,9 +66,10 @@ import {
   handlePlaybookDiff,
   handlePlaybookCheck,
   handlePlaybookFinish,
+  handlePlaybookTestRun,
 } from './handlers/playbooks.ts';
 import { handleProjectOptions, handleProjectDraft } from './handlers/projects.ts';
-import { handleRecordGet, handleRecordQuery, handleRecordKeep, handleRecordUpdate } from './handlers/records.ts';
+import { handleRecordGet, handleRecordQuery, handleRecordKeep, handleRecordUpdate, handleRecordsFilter } from './handlers/records.ts';
 import { handlePageGet, handlePageUpdate, handlePageCreate } from './handlers/memwise-pages.ts';
 
 // ============================================================
@@ -223,6 +224,11 @@ export const PlaybookFinishSchema = z.object({
   rationale: z.string().optional().describe('Why it is ready (recorded on the step).'),
 });
 
+export const PlaybookTestRunSchema = z.object({
+  record: z.string().describe('The record to run the draft on: its id, or words of its title (e.g. "site 104").'),
+  entity: z.string().optional().describe('Its record type, when the playbook could start from several.'),
+});
+
 // MemWise projects (a chat answering an app's create-project step; docs/memwise/26-projects-and-pages.md §3)
 export const ProjectOptionsSchema = z.object({});
 
@@ -262,6 +268,15 @@ export const RecordKeepSchema = z.object({
   entity: z.string().describe('Entity key of an entity that may be kept from chat, e.g. "literature.evidence".'),
   rows: z.array(z.record(z.string(), z.unknown())).min(1).max(50)
     .describe('The rows to keep: field → value, as the entity defines them (Ref fields take the record id). Each quote must be copied exactly from a record read with record_get.'),
+});
+
+export const RecordsFilterSchema = z.object({
+  filter: z.string().describe('A records filter expression, as record_query takes it, e.g. "completeness < 80".'),
+  label: z.string().describe('A few words for the filter, shown as its chip above the list, e.g. "Below 80%".'),
+  chips: z.array(z.string()).max(6).optional().describe('One chip per part of the filter, when it has several.'),
+  sort: z.array(z.object({ field: z.string(), desc: z.boolean().optional() })).optional(),
+  columns: z.array(z.string()).optional(),
+  entity: z.string().optional().describe('Default: the list\'s own record type.'),
 });
 
 export const RecordUpdateSchema = z.object({
@@ -712,6 +727,10 @@ Call this before writing steps, and use only what it lists. A tool that is not l
 
   playbook_check: `Check the draft fully: structure and policy checks, its example cases (run in a throwaway database), recent past cases replayed on it, and the impact of publishing it (open cases, new tools and how policy treats them). Takes a while; run it when the draft looks complete.`,
 
+  playbook_test_run: `Run the draft on one real record in a throwaway database: the record and the records around it are copied in, the model turns of its latest case are replayed, person steps take their first outcome and nothing is sent or changed. Returns the steps it went through, the calls it would make (with their arguments) and where it stopped. Takes a minute.`,
+
+  records_filter: `Filter the list beside this chat (a record type's list): the list then shows only the matching records, with the filter as chips and "Save as a page". The filter is tried first and refused with the reason when it doesn't parse. Use it when the person asks to see some of the records ("sites missing documents"); answer with the count in a sentence.`,
+
   playbook_finish: `Finish building: ends this chat's step and sends the draft on to be checked and then reviewed by an approver. Only when the checks have no errors and the person agrees it is ready. Refused while the draft has errors.`,
 
   project_options: `What a new project of this app can start from: its template cards (with what each leaves out), the projects you may copy, the roles, the pages and playbooks of the template, and the people in the workspace. Read it before drafting.`,
@@ -942,6 +961,8 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'playbook_diff', description: TOOL_DESCRIPTIONS.playbook_diff, inputSchema: PlaybookDiffSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handlePlaybookDiff },
   { name: 'playbook_check', description: TOOL_DESCRIPTIONS.playbook_check, inputSchema: PlaybookCheckSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handlePlaybookCheck },
   { name: 'playbook_finish', description: TOOL_DESCRIPTIONS.playbook_finish, inputSchema: PlaybookFinishSchema, executionMode: 'registry', safeMode: 'block', handler: handlePlaybookFinish },
+  // A test run changes nothing anyone relies on (a throwaway database; nothing is sent): every mode.
+  { name: 'playbook_test_run', description: TOOL_DESCRIPTIONS.playbook_test_run, inputSchema: PlaybookTestRunSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handlePlaybookTestRun },
   // MemWise projects (registry — ctx.memwise callbacks; advertised only in a chat answering an app's create-project step).
   // A draft project runs nothing until the person starts it (effect class `draft`): every mode.
   { name: 'project_options', description: TOOL_DESCRIPTIONS.project_options, inputSchema: ProjectOptionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleProjectOptions },
@@ -953,6 +974,8 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'record_keep', description: TOOL_DESCRIPTIONS.record_keep, inputSchema: RecordKeepSchema, executionMode: 'registry', safeMode: 'block', handler: handleRecordKeep },
   // Filling in the chat's own draft changes nothing anyone relies on yet (effect class `draft`, like playbook_write): every mode.
   { name: 'record_update', description: TOOL_DESCRIPTIONS.record_update, inputSchema: RecordUpdateSchema, executionMode: 'registry', safeMode: 'allow', handler: handleRecordUpdate },
+  // Filtering the list beside the chat changes only what the person sees: every mode.
+  { name: 'records_filter', description: TOOL_DESCRIPTIONS.records_filter, inputSchema: RecordsFilterSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleRecordsFilter },
   // MemWise pages (26 §4): every write is a new version with Undo on the page, acting as the person, so no prompt.
   { name: 'page_get', description: TOOL_DESCRIPTIONS.page_get, inputSchema: PageGetSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handlePageGet },
   { name: 'page_update', description: TOOL_DESCRIPTIONS.page_update, inputSchema: PageUpdateSchema, executionMode: 'registry', safeMode: 'allow', handler: handlePageUpdate },
@@ -1012,13 +1035,15 @@ export interface SessionToolFilterOptions {
   includeRecordKeep?: boolean;
   /** Include `record_update` (with the record tools): the chat was opened on a draft from a domain's question box. */
   includeRecordUpdate?: boolean;
+  /** Include `records_filter` (with the record tools): the chat is about a record type's list (Stage 4). */
+  includeRecordsFilter?: boolean;
   /** Include `page_get`, `page_update`, `page_create`: the chat is anchored to a MemWise page (26 §4). */
   includePageTools?: boolean;
 }
 
 /** The MemWise playbook tools (hidden unless `includePlaybookTools`). */
 export const PLAYBOOK_TOOL_NAMES = new Set([
-  'playbook_vocabulary', 'playbook_read', 'playbook_write', 'playbook_diff', 'playbook_check', 'playbook_finish',
+  'playbook_vocabulary', 'playbook_read', 'playbook_write', 'playbook_diff', 'playbook_check', 'playbook_finish', 'playbook_test_run',
 ]);
 
 /** The MemWise project-chat tools (hidden unless `includeProjectTools`). */
@@ -1033,6 +1058,8 @@ export const RECORD_KEEP_TOOL_NAME = 'record_keep';
 /** Filling in the chat's own draft (a chat from a domain's question box). */
 export const RECORD_UPDATE_TOOL_NAME = 'record_update';
 
+/** Filtering the list beside the chat (a chat about a record type's list). */
+export const RECORDS_FILTER_TOOL_NAME = 'records_filter';
 /** The MemWise page-chat tools (hidden unless `includePageTools`). */
 export const PAGE_TOOL_NAMES = new Set(['page_get', 'page_update', 'page_create']);
 
@@ -1050,6 +1077,7 @@ export function getSessionToolDefs(options?: SessionToolFilterOptions): SessionT
   const includeRecordTools = options?.includeRecordTools ?? false;
   const includeRecordKeep = includeRecordTools && (options?.includeRecordKeep ?? false);
   const includeRecordUpdate = includeRecordTools && (options?.includeRecordUpdate ?? false);
+  const includeRecordsFilter = includeRecordTools && (options?.includeRecordsFilter ?? false);
   const includePageTools = options?.includePageTools ?? false;
 
   return SESSION_TOOL_DEFS.filter(def => {
@@ -1069,6 +1097,9 @@ export function getSessionToolDefs(options?: SessionToolFilterOptions): SessionT
       return false;
     }
     if (!includeRecordUpdate && def.name === RECORD_UPDATE_TOOL_NAME) {
+      return false;
+    }
+    if (!includeRecordsFilter && def.name === RECORDS_FILTER_TOOL_NAME) {
       return false;
     }
     if (!includeDeveloperFeedback && def.name === 'send_developer_feedback') {
@@ -1195,6 +1226,7 @@ export function getToolDefsAsJsonSchema(opts?: {
   includeRecordTools?: boolean;
   includeRecordKeep?: boolean;
   includeRecordUpdate?: boolean;
+  includeRecordsFilter?: boolean;
   includePageTools?: boolean;
 }): JsonSchemaToolDef[] {
   const prefix = opts?.prefix || '';
@@ -1206,6 +1238,7 @@ export function getToolDefsAsJsonSchema(opts?: {
     includeRecordTools: opts?.includeRecordTools,
     includeRecordKeep: opts?.includeRecordKeep,
     includeRecordUpdate: opts?.includeRecordUpdate,
+    includeRecordsFilter: opts?.includeRecordsFilter,
     includePageTools: opts?.includePageTools,
   });
 

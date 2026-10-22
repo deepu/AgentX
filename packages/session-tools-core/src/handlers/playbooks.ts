@@ -12,6 +12,7 @@
 
 import type {
   SessionToolContext,
+  PlaybookTestRunInput,
   PlaybookCheckInput,
   PlaybookFinishInput,
   PlaybookReadInput,
@@ -118,5 +119,19 @@ export async function handlePlaybookFinish(ctx: SessionToolContext, args: Playbo
     return json(result);
   } catch (error) {
     return errorResponse(`Could not finish: ${toError(error)}`);
+  }
+}
+
+export type PlaybookTestRunArgs = PlaybookTestRunInput;
+
+/** Stage 4 (26 §5): the draft run on one record in a throwaway database; nothing is sent. */
+export async function handlePlaybookTestRun(ctx: SessionToolContext, args: PlaybookTestRunArgs): Promise<ToolResult> {
+  if (!ctx.memwise) return errorResponse(MEMWISE_UNAVAILABLE);
+  if (!ctx.memwise.testRun) return errorResponse('Test runs are not available in this version.');
+  if (!args?.record?.trim()) return errorResponse('record is required: the record to run the draft on (its id, or words of its title such as "site 104").');
+  try {
+    return json(await ctx.memwise.testRun({ record: args.record.trim(), ...(args.entity?.trim() ? { entity: args.entity.trim() } : {}) }));
+  } catch (error) {
+    return errorResponse(`Could not run the draft: ${toError(error)}`);
   }
 }

@@ -21,6 +21,7 @@ import { Info_Page } from '@/components/info/Info_Page'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { absoluteTime } from '../format'
+import { ShellButton } from '../project/pages/shell-ui'
 import { DocumentViewer, type ViewerQuote } from './DocumentViewer'
 import { TextViewer } from './TextViewer'
 import { ReviewPanel, type ReviewPanelProps } from './DocumentReview'
@@ -60,6 +61,12 @@ export interface RecordPageViewProps {
   /** Shown found/missing quotes in tests and the playground (the viewer works them out from the PDF). */
   missingQuotes?: number[]
   now?: number
+  /**
+   * In the project shell (doc 26 §2, mocks `Site`, `Document`, `Sign`): the shell's header (a
+   * crumb, the title, one line of facts, Export audit trail) in place of the hero, and the
+   * layout's columns side by side at the narrower width of the shell's page column.
+   */
+  shell?: { crumb: React.ReactNode; /** Facts after the record's own (the step a review comes from). */ subtitle?: React.ReactNode }
   /** Stage 6: blocks the container adds below the columns (the same record in other apps). */
   extra?: React.ReactNode
 }
@@ -70,7 +77,18 @@ const LAYOUT_GRID: Record<MwRecordPage['layout']['layout'], string> = {
   sidebar: '@3xl/record:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]',
 }
 
-export function RecordPageView({ page, actions, files = {}, review, missingQuotes, now, extra }: RecordPageViewProps) {
+const SHELL_LAYOUT_GRID: Record<MwRecordPage['layout']['layout'], string> = {
+  single: '',
+  split: '@xl/record:grid-cols-2',
+  // A sidebar's field rows need room: in the shell's page column it stays under the main column.
+  sidebar: '@3xl/record:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]',
+}
+
+function ShellFrame({ children }: { children: React.ReactNode; wide?: boolean }) {
+  return <div className="mx-auto max-w-[1080px] px-7 pb-16 pt-6">{children}</div>
+}
+
+export function RecordPageView({ page, actions, files = {}, review, missingQuotes, now, shell, extra }: RecordPageViewProps) {
   const { t, i18n } = useTranslation()
   const [activeField, setActiveField] = React.useState<string | null>(null)
   const move = useReasonedWrite(page.regulated)
@@ -78,6 +96,8 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
   const { columns, below } = layoutColumns(page.layout)
 
   // The quote picked in a Text viewer (25 §4): which viewer, and which of its highlights.
+  const [exporting, setExporting] = React.useState(false)
+  const exportAudit = actions?.exportAudit
   const [textActive, setTextActive] = React.useState<{ field: string; index: number } | null>(null)
   React.useEffect(() => { setActiveField(null); setTextActive(null) }, [page.id, page.review?.stepRunId])
   const quoteTargets = React.useMemo(() => valueQuoteTargets(page), [page])
@@ -183,14 +203,43 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
     }
   }
 
+  const Frame = shell ? ShellFrame : Info_Page.Content
   const area = (name: AreaName) => areaBlocks(page.layout, name).map((b, i) => renderBlock(b, `${name}:${i}:${b.kind}`, { area: name, index: i }))
 
   // Review mode: the document (the layout's viewer blocks) on one side, the review on the other.
   const viewerBlocks = Object.values(page.layout.areas).flat().filter((b): b is Extract<MwPageBlock, { kind: 'viewer' }> => b?.kind === 'viewer')
 
   return (
-    <Info_Page.Content wide={page.layout.layout !== 'single' || reviewing}>
-      <div className="@container/record space-y-6" data-record-page={`${page.entity}:${page.id}`} data-layout={page.layout.layout} data-mode={reviewing ? 'review' : 'page'}>
+    <Frame wide={page.layout.layout !== 'single' || reviewing}>
+      <div className="@container/record space-y-6" data-record-page={`${page.entity}:${page.id}`} data-layout={page.layout.layout} data-mode={reviewing ? 'review' : 'page'} data-shell={shell ? '' : undefined}>
+        {shell ? (
+          <header data-shell-header>
+            <div className="mb-1.5 text-label-sm text-secondary" data-breadcrumbs>{shell.crumb}</div>
+            <div className="flex items-start gap-3">
+              <h1 className="min-w-0 flex-1 text-[24px] font-semibold leading-tight tracking-[-0.01em] text-foreground">{page.title}</h1>
+              {page.regulated && exportAudit && !reviewing && (
+                <ShellButton
+                  busy={exporting}
+                  onClick={() => {
+                    setExporting(true)
+                    exportAudit('pdf').catch(() => undefined).finally(() => setExporting(false))
+                  }}
+                  data-action="export-audit"
+                >
+                  {t('memwise.record.exportAudit')}
+                </ShellButton>
+              )}
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-label text-secondary">
+              {headerFields(page).map((f, i) => (
+                <span key={f.name} data-header-field={f.name}>{i > 0 && <span className="mr-1.5 text-tertiary">·</span>}{t('memwise.record.headerField', { label: f.label, value: formatFieldValue(f, t, i18n.language) })}</span>
+              ))}
+              {page.status && <StatusPill status={page.status} />}
+              {shell.subtitle}
+            </div>
+          </header>
+        ) : (
+        <>
         <nav className="flex flex-wrap items-center gap-1 text-label-sm text-tertiary" aria-label={t('memwise.record.breadcrumbs')} data-breadcrumbs>
           <span>{page.domainName}</span>
           {page.parents.map(p => (
@@ -222,6 +271,8 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
             <Button variant="secondary" size="sm" onClick={actions.openChat}><MessageSquare />{t('memwise.record.askInChat')}</Button>
           ) : undefined}
         />
+        </>
+        )}
 
         {!reviewing && transitions.length > 0 && (
           <div className="space-y-2">
@@ -243,8 +294,8 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
         ))}
 
         {reviewing ? (
-          <div className={cn('grid items-start gap-6', viewerBlocks.length > 0 && '@3xl/record:grid-cols-2')}>
-            {viewerBlocks.length > 0 && <div className="min-w-0 space-y-6 @3xl/record:sticky @3xl/record:top-0">{viewerBlocks.map((b, i) => renderBlock(b, `review-viewer:${i}`))}</div>}
+          <div className={cn('grid items-start gap-6', viewerBlocks.length > 0 && (shell ? '@xl/record:grid-cols-2' : '@3xl/record:grid-cols-2'))}>
+            {viewerBlocks.length > 0 && <div className={cn('min-w-0 space-y-6', shell ? '@xl/record:sticky @xl/record:top-0' : '@3xl/record:sticky @3xl/record:top-0')}>{viewerBlocks.map((b, i) => renderBlock(b, `review-viewer:${i}`))}</div>}
             <div className="min-w-0 space-y-6">
               <ReviewPanel review={page.review!} activeField={activeField} onPick={setActiveField} {...review!} />
               <ChecksBlock page={page} />
@@ -252,7 +303,7 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
           </div>
         ) : (
           <>
-            <div className={cn('grid items-start gap-6', LAYOUT_GRID[page.layout.layout])} data-columns={columns.join(' ')}>
+            <div className={cn('grid items-start gap-6', (shell ? SHELL_LAYOUT_GRID : LAYOUT_GRID)[page.layout.layout])} data-columns={columns.join(' ')}>
               {columns.map(c => <div key={c} className="min-w-0 space-y-6" data-area={c}>{area(c)}</div>)}
             </div>
             {extra}
@@ -260,6 +311,6 @@ export function RecordPageView({ page, actions, files = {}, review, missingQuote
           </>
         )}
       </div>
-    </Info_Page.Content>
+    </Frame>
   )
 }

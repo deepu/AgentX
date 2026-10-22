@@ -26,10 +26,14 @@ export const MEMWISE_CONTEXT_MAX_CHARS = 24_000;
  * regulated playbook (`id`: its `cr_…` id): the chat edits the request's draft and validates it.
  */
 export type MemwiseChatAnchor =
-  | { kind: 'case' | 'step' | 'workflow' | 'change'; id: string }
+  | { kind: 'case' | 'step' | 'change'; id: string }
+  /** A playbook; `project` (Stage 4 with Stage 3): that study's own copy of it. */
+  | { kind: 'workflow'; id: string; project?: string }
   | { kind: 'record'; entity: string; id: string }
   /** The project shell (doc 26 §2): a project's Home or Waiting for you (id: the project), a dashboard (`<domain>:<page>`). */
   | { kind: 'project' | 'waiting' | 'dashboard'; id: string }
+  /** Stage 4 (26 §2): a record type's list (id: the entity key); its chat filters the list (`records_filter`). */
+  | { kind: 'records'; id: string; project?: string }
   /** Stage 5: a project's audit trail and TMF index (id: the project). */
   | { kind: 'audit' | 'tmf'; id: string }
   /** A page (26 §4): the chat reads and writes it with `page_get` / `page_update` / `page_create`. */
@@ -40,12 +44,20 @@ export type MemwiseChatAnchor =
  * shell's pages, and a page (it reads the records of the page's project).
  */
 export function anchorReadsRecords(kind: MemwiseChatAnchor['kind'] | undefined): boolean {
-  return kind === 'record' || kind === 'page' || isPageAnchor(kind);
+  return kind === 'record' || kind === 'page' || kind === 'records' || isPageAnchor(kind);
 }
 
 /** Anchors that are a page of the project shell (described in the context block), not a record or a step. */
 export function isPageAnchor(kind: MemwiseChatAnchor['kind'] | undefined): boolean {
   return kind === 'project' || kind === 'waiting' || kind === 'dashboard' || kind === 'audit' || kind === 'tmf';
+}
+
+/**
+ * Whether the chat may change a playbook in a draft (`playbook_*`): a conversation step of a meta
+ * playbook, or (Stage 4, 26 §5) a chat about a playbook, which drafts the change beside its page.
+ */
+export function chatChangesPlaybook(ctx: Pick<SessionMemwiseContext, 'anchor' | 'conversation'> | null | undefined): boolean {
+  return ctx?.conversation === true || ctx?.anchor.kind === 'workflow';
 }
 
 export interface SessionMemwiseContext {
@@ -84,7 +96,9 @@ export function writeSessionMemwiseContext(workspaceRootPath: string, sessionId:
       ? { kind: 'record', entity: ctx.anchor.entity, id: ctx.anchor.id }
       : ctx.anchor.kind === 'page'
         ? { kind: 'page', id: ctx.anchor.id }
-        : { kind: ctx.anchor.kind, id: ctx.anchor.id },
+        : (ctx.anchor.kind === 'workflow' || ctx.anchor.kind === 'records') && ctx.anchor.project
+          ? { kind: ctx.anchor.kind, id: ctx.anchor.id, project: ctx.anchor.project }
+          : { kind: ctx.anchor.kind, id: ctx.anchor.id } as MemwiseChatAnchor,
     ...(ctx.conversation ? { conversation: true } : {}),
     ...(ctx.conversation && ctx.project ? { project: true } : {}),
     ...(ctx.anchor.kind === 'record' && ctx.keep?.length ? { keep: ctx.keep.map((k) => ({ entity: k.entity, name: k.name })) } : {}),
@@ -120,7 +134,7 @@ export function readSessionMemwiseContext(workspaceRootPath: string, sessionId: 
  */
 export function sessionHasPlaybookTools(workspaceRootPath: string | undefined, sessionId: string | undefined): boolean {
   if (!workspaceRootPath || !sessionId) return false;
-  return readSessionMemwiseContext(workspaceRootPath, sessionId)?.conversation === true;
+  return chatChangesPlaybook(readSessionMemwiseContext(workspaceRootPath, sessionId));
 }
 
 /** Whether the session offers `record_get` and `record_query` (see `anchorReadsRecords`). */
@@ -148,16 +162,18 @@ export function memwiseSessionToolOptions(workspaceRootPath: string | undefined,
   includeRecordTools: boolean;
   includeRecordKeep: boolean;
   includeRecordUpdate: boolean;
+  includeRecordsFilter: boolean;
   includePageTools: boolean;
 } {
   const ctx = workspaceRootPath && sessionId ? readSessionMemwiseContext(workspaceRootPath, sessionId) : null;
   const record = ctx?.anchor.kind === 'record';
   return {
-    includePlaybookTools: ctx?.conversation === true && ctx.project !== true,
+    includePlaybookTools: chatChangesPlaybook(ctx) && ctx?.project !== true,
     includeProjectTools: ctx?.conversation === true && ctx.project === true,
     includeRecordTools: anchorReadsRecords(ctx?.anchor.kind),
     includeRecordKeep: record && !!ctx?.keep?.length,
     includeRecordUpdate: record && ctx?.draft === true,
+    includeRecordsFilter: ctx?.anchor.kind === 'records',
     includePageTools: ctx?.anchor.kind === 'page',
   };
 }

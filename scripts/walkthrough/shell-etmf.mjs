@@ -34,7 +34,7 @@ export default async ({ win, shot }) => {
   await shot('06-after-sign');
   // Page from the tree, a playbook, a record
   const tree = side.locator('[data-active], div[role="button"]');
-  for (const label of ['Aster Bio', 'MW-301']) {
+  for (const label of ['Meridian Pharma', 'MW-301']) {
     const row = side.getByText(label, { exact: false }).first();
     if (await row.count()) { await row.locator('xpath=..').locator('button[aria-label="Expand"]').click().catch(() => {}); await wait(win, 1200); }
   }

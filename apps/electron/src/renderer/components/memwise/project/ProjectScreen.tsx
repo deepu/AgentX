@@ -20,10 +20,12 @@ import { useMemwiseChangeRequest } from '@/hooks/useMemwiseRegulated'
 import { useMemwisePage, useMemwisePageChange } from '@/hooks/useMemwisePages'
 import type { MwInboxItem } from '@memwise/shared/protocol'
 import { ALL_PROJECTS, projectRoute, type ProjectView } from '../../../../shared/project-route'
-import { CasePage, InboxDetailPage, PlaybookPage } from '../MemwisePages'
-import { DashboardPage, EntitiesPage } from '../domains/DomainsPages'
-import { RecordPage } from '../records/RecordPages'
+import { DashboardPage } from '../domains/DomainsPages'
 import { PageChangeScreen, PageScreen } from '../pages'
+import { PlaybookShellPage } from './pages/PlaybookShellPage'
+import { RecordShellPage, WaitingItemShellPage } from './pages/RecordShellPage'
+import { RecordsShellPage } from './pages/RecordsShellPage'
+import { RunShellPage } from './pages/RunShellPage'
 import { inboxItemStepTitle } from '../format'
 import { AnchoredChat } from './AnchoredChat'
 import { HomeChatColumn, HomePinnedPage } from './ProjectHome'
@@ -73,8 +75,9 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
   const [pinned, setPinned] = React.useState<{ route: string; sessionId: string } | null>(null)
   const shellValue = React.useMemo(() => ({
     projectId: project?.id ?? '',
+    ...(project?.name ? { projectName: project.name } : {}),
     showChat: (sessionId: string) => setPinned({ route: routeKey, sessionId }),
-  }), [project?.id, routeKey])
+  }), [project?.id, project?.name, routeKey])
   const pinnedChat = pinned?.route === routeKey ? pinned.sessionId : null
 
   // Where the Stage 3 screens go: inside the shell, and a chat into the chat column.
@@ -101,7 +104,7 @@ export function ProjectScreen({ view }: { view: ProjectView | null }) {
   const reviewing = item ? pageChangeOf(item) : undefined
   // Stage 3: an app's home and New project talk about the app (its own project, id = app id).
   const appAnchor = details.type === 'app' || details.type === 'new' ? details.appId : null
-  const anchor = appAnchor ? { kind: 'project' as const, id: appAnchor } : all ? { kind: 'waiting' as const, id: ALL_PROJECTS } : chatAnchorFor(project.id, details, item, openChange.data?.pageId)
+  const anchor = appAnchor ? { kind: 'project' as const, id: appAnchor } : all ? { kind: 'waiting' as const, id: ALL_PROJECTS } : chatAnchorFor(project.id, details, item, openChange.data?.pageId, project.stored ? project.id : undefined)
   const appOf = (id: string) => apps.find(a => a.id === id)
 
   // "Describe it in chat" from the chat column of New project: the app's create-project chat opens here.
@@ -206,6 +209,7 @@ function placeholderFor(type: string, all: boolean, t: (k: string) => string): s
   if (type === 'record') return t('memwise.shell.askRecord')
   if (type === 'playbook') return t('memwise.shell.askPlaybook')
   if (type === 'run') return t('memwise.shell.askRun')
+  if (type === 'records') return t('memwise.shell.askRecords')
   if (type === 'cr') return t('memwise.regulated.shell.askChange')
   if (type === 'audit') return t('memwise.regulated.shell.askAudit')
   if (type === 'tmf') return t('memwise.regulated.shell.askTmf')
@@ -235,7 +239,7 @@ function RecordInItsProject({ entity, recordId, projects }: { entity: string; re
     if (target) navigate(routes.view.project(target, { type: 'record', entity, recordId }))
   }, [target, entity, recordId])
   if (!loaded || target) return null
-  return <RecordPage entity={entity} recordId={recordId} />
+  return <RecordShellPage entity={entity} recordId={recordId} />
 }
 
 /** The page column: what the route names. */
@@ -261,7 +265,7 @@ function PageColumn({ view, project, projects, stored }: { view: ProjectView; pr
   if (d.type === 'app') return <AppHomeScreen key={d.appId} appId={d.appId} />
   if (d.type === 'new') return <NewProjectScreen key={d.appId} appId={d.appId} />
   if (view.projectId === ALL_PROJECTS) {
-    if (d.type === 'waiting' && d.itemId) return <InboxDetailPage itemId={d.itemId} />
+    if (d.type === 'waiting' && d.itemId) return <WaitingItemShellPage key={d.itemId} itemId={d.itemId} />
     if (d.type === 'record') return <RecordInItsProject key={`${d.entity}:${d.recordId}`} entity={d.entity} recordId={d.recordId} projects={projects} />
     return stored ? <WaitingAllScreen /> : <WaitingPage projectId={ALL_PROJECTS} projects={projects} />
   }
@@ -283,12 +287,12 @@ function PageColumn({ view, project, projects, stored }: { view: ProjectView; pr
           />
         )
       }
-      return d.itemId ? <InboxDetailPage itemId={d.itemId} /> : <WaitingPage projectId={project.id} projects={projects} />
+      return d.itemId ? <WaitingItemShellPage key={d.itemId} itemId={d.itemId} /> : <WaitingPage projectId={project.id} projects={projects} />
     case 'dashboard': return <DashboardPage key={`${project.id}:${d.domain}:${d.pageId}`} domainId={d.domain} pageId={d.pageId} {...(d.params ? { params: d.params } : {})} {...(project.stored ? { projectId: project.id } : {})} />
-    case 'playbook': return <PlaybookPage playbookId={d.workflowId} />
-    case 'run': return <CasePage caseId={d.caseId} />
-    case 'record': return <RecordPage key={`${d.entity}:${d.recordId}`} entity={d.entity} recordId={d.recordId} />
-    case 'records': return <EntitiesPage key={`${project.id}:${d.entity}`} domainId={project.domain} entity={d.entity} {...(project.stored ? { projectId: project.id } : {})} />
+    case 'playbook': return <PlaybookShellPage key={d.workflowId} playbookId={d.workflowId} {...(project.stored ? { scope: project.id } : {})} />
+    case 'run': return <RunShellPage key={d.caseId} caseId={d.caseId} />
+    case 'record': return <RecordShellPage key={`${d.entity}:${d.recordId}`} entity={d.entity} recordId={d.recordId} />
+    case 'records': return <RecordsShellPage key={`${project.id}:${d.entity}`} projectId={project.id} entity={d.entity} {...(project.stored ? { scope: project.id } : {})} />
     case 'settings': return <ProjectSettingsPage project={project} {...(d.tab ? { tab: d.tab } : {})} />
     case 'page': return <PageScreen key={d.pageId} projectId={project.id} pageId={d.pageId} {...pageActions} onOpenChange={openChange} />
     case 'change': return <PageChangeScreen key={d.changeId} projectId={project.id} changeId={d.changeId} {...pageActions} onDone={() => go({ type: 'waiting' })} />
