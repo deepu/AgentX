@@ -90,7 +90,8 @@ export const memwiseNewPlaybookDialogAtom = atom<boolean>(false)
 export const memwiseDraftOpenTabAtom = atom<{ draftId: string; tab: 'changes' | 'steps' | 'map' | 'checks' | 'history' } | null>(null)
 
 /** The "Start a case" dialog, openable from the cases list and a playbook. */
-export const memwiseStartCaseDialogAtom = atom<{ open: boolean; workflowId?: string }>({ open: false })
+/** The Start dialog; `project` (Stage 3): the project the case runs in (a study), when started inside one. */
+export const memwiseStartCaseDialogAtom = atom<{ open: boolean; workflowId?: string; project?: string }>({ open: false })
 
 /**
  * The connection advertised only the person channels (set by App once it has connected): a

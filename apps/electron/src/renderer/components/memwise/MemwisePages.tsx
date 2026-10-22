@@ -63,7 +63,7 @@ import { DocumentReviewPage } from './records/RecordPages'
 import { isReviewItem, queueNeighbour, sameKindItems, type ReviewItem } from './records/record-model'
 import type { ReviewQueue } from './records/DocumentReview'
 
-import { useProjectShell } from './project/shell-context'
+import { shellStartProject, useProjectShell } from './project/shell-context'
 
 const notAvailable = (): MwSubmitResult => ({ applied: false, message: i18n.t('memwise.notAvailable') })
 
@@ -377,6 +377,8 @@ export function PlaybookPage({ playbookId }: { playbookId: string | null }) {
   const roles = useAtomValue(memwiseRolesAtom)
   const summaries = useAtomValue(memwisePlaybooksAtom)
   const setStartCase = useSetAtom(memwiseStartCaseDialogAtom)
+  // Inside the project shell a case starts in the project open there (Stage 3).
+  const startIn = shellStartProject(useProjectShell())
   const setDraftTab = useSetAtom(memwiseDraftOpenTabAtom)
   const workspaceId = useAtomValue(memwiseWorkspaceIdAtom)
   const peopleOnly = useAtomValue(memwisePeopleOnlyAtom)
@@ -452,7 +454,7 @@ export function PlaybookPage({ playbookId }: { playbookId: string | null }) {
               </Button>
             )}
             {!meta && (
-              <Button variant="primary" size="sm" onClick={() => setStartCase({ open: true, workflowId: playbookId })}>
+              <Button variant="primary" size="sm" onClick={() => setStartCase({ open: true, workflowId: playbookId, ...(startIn ? { project: startIn } : {}) })}>
                 <Play />
                 {t('memwise.cases.startCase')}
               </Button>

@@ -1467,9 +1467,14 @@ export function createMemwiseApi(deps: Pick<HandlerDeps, 'sessionManager' | 'pla
     async startCase(ctx: RequestContext, input: MwStartCaseInput): Promise<MwCaseSummary | MwStartCaseRefusal> {
       const { svc, actor, c, d } = await begin(ctx)
       if (!c.project.workflows[input.workflowId]) throw new Error('That playbook was not found.')
+      // Stage 3: started inside a project (a study), it runs there; the person must see that project.
+      const project = typeof input.project === 'string' && input.project ? input.project : undefined
+      if (project && !c.project.domains?.[project] && !(await svc.kernel.projects.get(project, actor).catch(() => undefined))) {
+        throw new Error('That project was not found.')
+      }
       let caseId: string
       try {
-        ({ caseId } = await svc.kernel.startRun({ workflowId: input.workflowId, case: input.values ?? {}, by: actor.personId, ...(typeof input.project === 'string' && input.project ? { project: input.project } : {}) }))
+        ({ caseId } = await svc.kernel.startRun({ workflowId: input.workflowId, case: input.values ?? {}, by: actor.personId, ...(project ? { project } : {}) }))
       } catch (e) {
         // StartRunError: values that need fixing, reported per field like submitStep's
         const errors = (e as { status?: string; errors?: Record<string, string[]> })

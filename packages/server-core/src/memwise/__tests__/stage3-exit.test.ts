@@ -19,6 +19,7 @@ import { createTestDatabase, postgresAvailable, type TestDatabase } from '@memwi
 import type {
   MwApp, MwAppHome, MwDescribeProjectResult, MwInboxItem, MwProjectDetail, MwPublishTemplateResult, MwRecordQueryResult,
   MwTemplateUpdateReview, MwWaitingGroup,
+  MwCaseSummary,
 } from '@memwise/shared/protocol'
 import { RPC_CHANNELS } from '@memwise/shared/protocol'
 import type { RequestContext } from '../../transport/types'
@@ -120,6 +121,10 @@ describe.skipIf(!postgresAvailable())('Stage 3 exit: projects inside apps, throu
     expect(await sites(anika, 'study-mw-310')).toEqual([])
     await expect(svc.kernel.startRun({ workflowId: 'chase-missing', case: {}, project: 'study-mw-310' })).rejects.toThrow('is a draft')
     expect(await api.call<MwProjectDetail>(anika, ch.PROJECTS_START, 'study-mw-310')).toMatchObject({ status: 'active' })
+    // Start, inside the study: the case runs in it (the shell's Start passes its project).
+    const started = await api.call<MwCaseSummary>(anika, ch.CASES_START, { workflowId: 'chase-missing', project: 'study-mw-310' })
+    expect(started).toMatchObject({ project: 'study-mw-310' })
+    await expect(api.call(anika, ch.CASES_START, { workflowId: 'chase-missing', project: 'no-such-study' })).rejects.toThrow('That project was not found.')
     // Priya isn't the owner role: she can't make or start one.
     await expect(api.call(priya, ch.PROJECTS_CREATE, { app: 'etmf', name: 'Mine', template: 'phase1' })).rejects.toThrow('only the Study manager')
     // A draft that never ran can be discarded.
