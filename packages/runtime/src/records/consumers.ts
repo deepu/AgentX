@@ -106,13 +106,14 @@ export async function checkInvariants(db: Queryable, entities: Record<string, En
   const invariants = def.invariants ?? [];
   if (!invariants.length) return { raised, closed };
   const entity = keyOf(def);
-  if (!(await entityStore.get(db, def, recordId))) return { raised, closed };
+  const row = await entityStore.get(db, def, recordId);
+  if (!row) return { raised, closed };
   for (const invariant of invariants) {
     const r = await evaluateCondition(db, def, entities, recordId, invariant);
     if (r.holds) {
       if (await flagStore.close(db, entity, recordId, invariant)) closed.push(invariant);
     } else {
-      const f = await flagStore.raise(db, { entity, recordId, invariant, message: flagMessage(def, invariant, r.values) });
+      const f = await flagStore.raise(db, { entity, recordId, invariant, message: flagMessage(def, invariant, r.values), ...(row.project ? { project: row.project } : {}) });
       if (f.raised) raised.push(invariant);
     }
   }

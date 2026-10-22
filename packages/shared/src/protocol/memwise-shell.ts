@@ -14,6 +14,8 @@ export interface ProjectLookups {
 
 /** The project (domain) an inbox item is in; `domain` (the default domain) when nothing says. */
 export function inboxItemProject(item: MwInboxItem, lookups: ProjectLookups): string {
+  // Stage 3: the item says which project it belongs to.
+  if (item.project) return item.project
   if ('domain' in item && typeof item.domain === 'string' && item.domain) return item.domain
   if (item.kind === 'identity') return lookups.entityDomain(item.entity) ?? 'domain'
   if (item.workflowId) return lookups.workflowDomain(item.workflowId) ?? 'domain'

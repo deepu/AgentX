@@ -6,7 +6,7 @@
 // Chat writes pages through here too (`page_update`), acting as the person, each write a new
 // version that says it came from the chat, with Undo.
 import { PgPageChangeStore, PgPageStore, withTransaction, type PageChange, type PageChangeSummary, type Queryable, type WrittenPage } from '@memwise/db';
-import { hasRole, rolesIn, type ProjectDefs } from '@memwise/defs';
+import { hasRole, rolesIn, seesProjectIn, type ProjectDefs } from '@memwise/defs';
 import type pg from 'pg';
 import { derivedRunId } from '../flow/context.ts';
 import type {
@@ -98,8 +98,21 @@ export function createPagesService(deps: PagesDeps): PagesCore {
   const changed = (p: { project?: string; id?: string }, changeId?: string) =>
     deps.emit({ kind: 'pages', ...(p.project ? { project: p.project } : {}), ...(p.id ? { pageId: p.id } : {}), ...(changeId ? { changeId } : {}) });
 
-  /** The domain a project is a copy of (Stage 1 and 2: the project id is the domain id). */
-  const domainOfProject = (project: string) => project;
+  /**
+   * The domain a project is a copy of: a stored project's app (Stage 3: study `mw301` of the
+   * `etmf` app), else the project id itself (an app's own project, id = the app id).
+   */
+  const domainOfProject = (project: string) => deps.project()?.projects?.[project]?.app ?? project;
+  /** Stage 3: a person sees a stored project's pages only when their grants reach the project (D92). */
+  const seesProject = (actor: Actor, project: string) => {
+    const p = actor.kind === 'person' ? deps.project()?.projects?.[project] : undefined;
+    return !p || p.implicit || seesProjectIn(actor, p.apps?.length ? p.apps : [p.app], p.id);
+  };
+  /** A project the grants name (a stored one); an app's own project is the whole app's. */
+  const grantProject = (project: string | undefined) => {
+    const p = project ? deps.project()?.projects?.[project] : undefined;
+    return p && !p.implicit ? p.id : undefined;
+  };
   const domainDef = (domain: string) => deps.project()?.domains?.[domain];
   const regulated = (p: Pick<WrittenPage, 'domain'>) => !!domainDef(p.domain)?.regulated;
 
@@ -123,16 +136,16 @@ export function createPagesService(deps: PagesDeps): PagesCore {
     if (actor.kind !== 'person') return false;
     const reviewer = domainDef(p.domain)?.pageRules?.reviewer;
     if (p.owner === actor.personId) return true;
-    if (reviewer && hasRole(actor, reviewer, p.domain)) return true;
+    if (reviewer && hasRole(actor, reviewer, p.domain, grantProject(p.project))) return true;
     return !p.owner && !reviewer;
   }
 
-  /** Whether the actor may write a project's pages: a role in its domain, as for records (any person when the project has no roles). */
-  function mayWrite(actor: Actor, domain: string): boolean {
+  /** Whether the actor may write a project's pages: a role in its domain (in that project, when it is a stored one), as for records (any person when the project has no roles). */
+  function mayWrite(actor: Actor, domain: string, project?: string): boolean {
     if (actor.kind === 'system') return true;
     if (actor.kind !== 'person') return false;
     const roles = deps.project()?.roles;
-    return !roles || !Object.keys(roles).length || rolesIn(actor, domain).length > 0;
+    return !roles || !Object.keys(roles).length || rolesIn(actor, domain, grantProject(project)).length > 0;
   }
   const noWrite = (domain: string) => refusal('forbidden', `You have no role in ${domainDef(domain)?.name ?? domain}, so you can't change its pages.`);
 
@@ -271,7 +284,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       children: kids,
       history: hist,
       ...(fromChat ? { changedFromChat: fromChat } : {}),
-      canUndo: undoTarget(p, current) !== undefined && p.status !== 'archived' && !(regulated(p) && p.status === 'kept') && mayWrite(actor, p.domain),
+      canUndo: undoTarget(p, current) !== undefined && p.status !== 'archived' && !(regulated(p) && p.status === 'kept') && mayWrite(actor, p.domain, p.project),
       changes: recent,
     };
   }
@@ -315,8 +328,12 @@ export function createPagesService(deps: PagesDeps): PagesCore {
     const workflowId = refreshPlaybook(p.project);
     // The run is named after the page (`page_title`, when its case type has the field).
     const named = !!deps.project()?.workflows[workflowId]?.caseType?.fields?.page_title;
+    // Stage 3: the refresh runs in the page's project when that project runs the playbook's app.
+    const stored = deps.project()?.projects?.[p.project];
+    const wfDomain = deps.project()?.workflows[workflowId]?.domain;
+    const inProject = stored && !stored.implicit && wfDomain && (stored.apps ?? [stored.app]).includes(wfDomain) ? { project: p.project } : {};
     return deps.start({
-      workflowId, runId: derivedRunId(key), by: by ?? `page:${p.id}`,
+      workflowId, runId: derivedRunId(key), by: by ?? `page:${p.id}`, ...inProject,
       case: { ...(named ? { page_title: p.title } : {}), page: p.id, reason, ...(by ? { asked_by: by } : {}) },
     }, { ...(domainDef(p.domain)?.pageRules?.reviewer ? { actsFor: domainDef(p.domain)!.pageRules!.reviewer! } : domainDef(p.domain)?.owner ? { actsFor: domainDef(p.domain)!.owner! } : {}) });
   }
@@ -353,7 +370,8 @@ export function createPagesService(deps: PagesDeps): PagesCore {
   const core: PagesCore = {
     refreshPlaybook,
 
-    async list(project, _actor) {
+    async list(project, actor) {
+      if (!seesProject(actor, project)) return [];
       const out: PageSummary[] = [];
       const all = await pages.listProject(pool, project);
       for (const p of all) {
@@ -380,11 +398,12 @@ export function createPagesService(deps: PagesDeps): PagesCore {
 
     async get(id, actor) {
       const p = await pages.get(pool, id);
-      return p ? view(p, actor) : undefined;
+      return p && seesProject(actor, p.project) ? view(p, actor) : undefined;
     },
 
-    async versions(id, _actor) {
-      return pages.versions(pool, id);
+    async versions(id, actor) {
+      const p = await pages.get(pool, id);
+      return p && seesProject(actor, p.project) ? pages.versions(pool, id) : [];
     },
 
     async create(input, actor) {
@@ -394,7 +413,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       const domain = domainOfProject(input.project);
       const project = deps.project();
       if (project?.domains && Object.keys(project.domains).length && !project.domains[domain]) return refusal('invalid', `There is no project ${input.project}.`);
-      if (!mayWrite(actor, domain)) return noWrite(domain);
+      if (!mayWrite(actor, domain, input.project)) return noWrite(domain);
       const problem = await parentProblem(input.project, undefined, input.parent);
       if (problem) return refusal('invalid', problem);
       const p = await pages.save(pool, {
@@ -410,7 +429,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       if (actor.kind !== 'person' && actor.kind !== 'system') return refusal('forbidden', 'Only a person changes pages.');
       const p = await pages.get(pool, id);
       if (!p) return refusal('missing', `There is no page ${id}.`);
-      if (!mayWrite(actor, p.domain)) return noWrite(p.domain);
+      if (!mayWrite(actor, p.domain, p.project)) return noWrite(p.domain);
       if (p.status === 'archived') return refusal('invalid', `${p.title} is archived, so it can't be changed.`);
       if (input.expectedVersion !== undefined && input.expectedVersion !== p.version) {
         return refusal('stale', `The page changed since you opened it (version ${p.version}, not ${input.expectedVersion}).`);
@@ -453,7 +472,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       if (actor.kind !== 'person' && actor.kind !== 'system') return refusal('forbidden', 'Only a person undoes a change.');
       const p = await pages.get(pool, id);
       if (!p) return refusal('missing', `There is no page ${id}.`);
-      if (!mayWrite(actor, p.domain)) return noWrite(p.domain);
+      if (!mayWrite(actor, p.domain, p.project)) return noWrite(p.domain);
       if (p.status === 'archived') return refusal('invalid', `${p.title} is archived.`);
       if (p.status === 'kept' && regulated(p)) return refusal('regulated', `${p.title} is in a regulated project; a change there is undone by a change request.`);
       if (opts.version !== undefined && opts.version !== p.version) return refusal('stale', `The page changed again since (version ${p.version}); open it again before undoing.`);
@@ -475,7 +494,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       if (actor.kind !== 'person' && actor.kind !== 'system') return refusal('forbidden', 'Only a person keeps a page.');
       const p = await pages.get(pool, id);
       if (!p) return refusal('missing', `There is no page ${id}.`);
-      if (!mayWrite(actor, p.domain)) return noWrite(p.domain);
+      if (!mayWrite(actor, p.domain, p.project)) return noWrite(p.domain);
       if (p.status === 'archived') return refusal('invalid', `${p.title} is archived.`);
       // A kept page's schedule (and who reviews its changes) is its owner's or its reviewers' to change.
       if (p.status === 'kept' && p.owner && !mayReview(actor, p)) return refusal('forbidden', `${p.title} is kept by someone else; only they or its reviewers change how it refreshes.`);
@@ -505,7 +524,7 @@ export function createPagesService(deps: PagesDeps): PagesCore {
       if (actor.kind !== 'person' && actor.kind !== 'system') return refusal('forbidden', 'Only a person archives a page.');
       const p = await pages.get(pool, id);
       if (!p) return refusal('missing', `There is no page ${id}.`);
-      if (!mayWrite(actor, p.domain)) return noWrite(p.domain);
+      if (!mayWrite(actor, p.domain, p.project)) return noWrite(p.domain);
       if (!mayArchive(actor, p)) return refusal('forbidden', `Only ${p.title}'s owner or its reviewers archive it.`);
       const archived = (await pages.set(pool, id, { status: 'archived', refresh: null, pinned: false }))!;
       changed(archived);

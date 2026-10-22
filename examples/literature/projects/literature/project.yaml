@@ -1,0 +1,10 @@
+# The medical affairs team's one Literature project (26 §6): the paper library is shared by every
+# page in it. Its id is the app's, so what was there before projects stays in it.
+app: literature
+template: team
+name: Literature search
+people:
+  - { email: leah.morgan@meridian.example, name: Leah Morgan, roles: [lead], note: owner }
+  - { email: sam.ito@meridian.example, name: Sam Ito, roles: [reviewer] }
+connections:
+  pubmed: { title: PubMed, plugin: claude/pubmed, access: read }

@@ -1,0 +1,13 @@
+workflow: create-project
+version: 1
+title: Create a study
+owner: study_manager
+# "Describe it in chat" in New project (26 §3): a conversation that finds the right template or
+# study to copy and makes the new study as a draft. Nothing runs in it until someone presses
+# Start study. An app playbook: studies get no copy of it.
+case: ./case.yaml
+start: interview
+steps:
+  interview:                   # a conversation in chat with whoever asked for the study
+    on: { drafted: end }
+    wait: { remind: 3d, timeout: 30d → end }

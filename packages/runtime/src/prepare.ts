@@ -14,7 +14,7 @@ export async function prepareAgentStep(db: Queryable, run: RunRow, workflow: Wor
   const step = workflow.steps[run.state];
   if (!step) throw new Error(`state ${run.state} has no step`);
   const plugins = pluginLayers(await loadPluginPolicies(db), workflow, step);
-  const { effective, violations } = compilePolicy(layersFor({ ...policyLayersFor(await loadPolicySources(db), domainOf(workflow)), plugins, workflow, step }));
+  const { effective, violations } = compilePolicy(layersFor({ ...policyLayersFor(await loadPolicySources(db), domainOf(workflow), workflow.project), plugins, workflow, step }));
   if (violations.length) {
     return { stop: `policy violations: ${violations.map((v) => `${v.source ?? v.name} ${v.path}: ${v.message}`).join('; ')}` };
   }

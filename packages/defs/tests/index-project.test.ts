@@ -34,11 +34,14 @@ describe('indexProject', () => {
     expect(all).toContain('workflow change-playbook workflows/change-playbook');
     const rows = all.filter((r) => !/(create|change)-playbook|bind-plugin|plugin_binding|refresh-page|page_refresh/.test(r));
     expect(rows).toEqual([
+      // Stage 3: the default domain is an app with one (implicit) project.
+      'app domain domain',
       'case_type client_intake workflows/client-intake/case.yaml',
       'entity_type Customer domain/entities/customer.yaml',
       'entity_type Engagement domain/entities/engagement.yaml',
       'policy client-intake workflows/client-intake/policy.yaml',
       'policy domain domain/policy.yaml',
+      'project domain domain',
       'step client-intake/check workflows/client-intake/steps/check.md',
       'step client-intake/fill workflows/client-intake/steps/fill.md',
       'step client-intake/invite workflows/client-intake/steps/invite.md',

@@ -14,7 +14,8 @@ import {
   memwiseStatusAtom,
   memwiseWorkspaceIdAtom,
 } from '@/atoms/memwise'
-import { groupByApp, pickProject, shellProjects, type ShellApp, type ShellProject } from './project-model'
+import { hasProjectCalls, useMemwiseProjects } from '@/hooks/useMemwiseProjects'
+import { groupByApp, pickProject, shellProjects, storedShellApps, storedShellProjects, type ShellApp, type ShellProject } from './project-model'
 
 const LAYOUT_KEY = 'memwise-layout'
 const LAST_PROJECT_KEY = 'memwise-last-project.'
@@ -62,16 +63,31 @@ export interface ProjectShellData {
   apps: ShellApp[]
   domains: MwDomain[]
   totalWaiting: number
+  /** Stage 3: the projects are stored ones (not one per domain). */
+  stored: boolean
 }
 
+/**
+ * The shell's projects: as stored (Stage 3) when the host has the project calls and lists any,
+ * else one per domain (Stage 1).
+ */
 export function useShellProjects(workspaceName?: string): ProjectShellData {
   const domains = useAtomValue(memwiseDomainsAtom)
   const inbox = useAtomValue(memwiseInboxAtom)
   const playbooks = useAtomValue(memwisePlaybooksAtom)
+  const stored = useMemwiseProjects()
   return React.useMemo(() => {
+    if (stored.data && stored.data.some(a => a.projects.length > 0)) {
+      const projects = storedShellProjects(stored.data, domains, workspaceName)
+      // Everything waiting: the inbox, plus each template update (the inbox doesn't hold those).
+      const updates = projects.filter(p => p.update).length
+      return { projects, apps: storedShellApps(stored.data, projects), domains: domains ?? [], totalWaiting: (inbox?.length ?? 0) + updates, stored: true }
+    }
+    // Still asking for the stored ones: no projects yet, so no route is taken for a missing one.
+    if (hasProjectCalls() && !stored.data && !stored.error) return { projects: [], apps: [], domains: domains ?? [], totalWaiting: inbox?.length ?? 0, stored: false }
     const projects = shellProjects(domains, inbox, playbooks, workspaceName)
-    return { projects, apps: groupByApp(projects), domains: domains ?? [], totalWaiting: inbox?.length ?? 0 }
-  }, [domains, inbox, playbooks, workspaceName])
+    return { projects, apps: groupByApp(projects), domains: domains ?? [], totalWaiting: inbox?.length ?? 0, stored: false }
+  }, [domains, inbox, playbooks, workspaceName, stored.data, stored.error])
 }
 
 /** The project to land on when the shell opens with no project in the route. */

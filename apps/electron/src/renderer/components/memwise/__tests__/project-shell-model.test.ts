@@ -10,6 +10,7 @@ import {
   anchorKeyOf, chatAnchorFor, groupByApp, initials, pickProject, playbookStartTag, pluralTitle, projectPlaybooks, shellProjects, sortWaiting, waitingIn, writtenPagePlace,
 } from '../project/project-model'
 import { shellRouteFor, type ShellRouteData } from '../project/shell-routes'
+import { changesSince, RECENT_CHANGES_KEPT, withChange } from '../../../atoms/memwise'
 import { parseRouteToNavigationState } from '../../../../shared/route-parser'
 import { routes } from '../../../../shared/routes'
 
@@ -129,6 +130,30 @@ describe('older routes open inside a project', () => {
     expect(to(routes.view.allSessions())).toBe('mw/edc')
   })
 
+  test('Stage 3: a domain id is no project id; its routes open in the project that runs the app, or the app home', () => {
+    // Studies MW-301 (open) and MW-207 run eTMF; the firm runs GST and ITR; nothing runs Stock.
+    const stored: ShellRouteData = {
+      ...data,
+      currentProject: 'mw301',
+      cases: [{ caseId: 'k1', workflowId: 'activate-site', domain: 'etmf', project: 'mw207' }, { caseId: 'k2', workflowId: 'file-gst', domain: 'gst' }] as MwCaseSummary[],
+      workflowDomain: id => (id === 'file-gst' ? 'gst' : playbooks.find(p => p.id === id)?.domain),
+      hasProject: id => ['mw301', 'mw207', 'firm'].includes(id),
+      projectForApp: app => (app === 'etmf' ? 'mw301' : app === 'gst' ? 'firm' : undefined),
+    }
+    const go = (route: string) => shellRouteFor(parseRouteToNavigationState(route)!, stored)
+    // A record opens under all projects, where its page finds its own project.
+    expect(go(routes.view.record('etmf.Site', 's1'))).toBe('mw/*/record/etmf.Site%3As1')
+    // A case in its own project; one without, in the project running its app.
+    expect(go(routes.view.cases('k1'))).toBe('mw/mw207/run/k1')
+    expect(go(routes.view.cases('k2'))).toBe('mw/firm/run/k2')
+    expect(go(routes.view.playbooks('activate-site'))).toBe('mw/mw301/playbook/activate-site')
+    expect(go(routes.view.domains({ type: 'entities', domain: 'etmf', entity: 'etmf.Site' }))).toBe('mw/mw301/records/etmf.Site')
+    expect(go(routes.view.domains({ type: 'dashboard', domain: 'gst', pageId: 'returns' }))).toBe('mw/firm/dashboard/gst%3Areturns')
+    // No one project runs it: the app home.
+    expect(go(routes.view.domains({ type: 'domain', domain: 'stock' }))).toBe('mw/*/app/stock')
+    expect(go(routes.view.domains({ type: 'automations', domain: 'stock' }))).toBe('mw/*/app/stock')
+  })
+
   test('settings and the other app screens keep their own layout', () => {
     expect(to('settings')).toBeNull()
     expect(to(routes.view.draft('d1'))).toBeNull()
@@ -141,5 +166,27 @@ describe('written pages in the sidebar', () => {
     expect(writtenPagePlace({})).toBe('top')
     expect(writtenPagePlace({ under: { entity: 'client', id: 'c1' } })).toBe('record-tree')
     expect(writtenPagePlace({ under: { entity: 'study' } })).toBe('record-tree')
+  })
+})
+
+describe('pushes that land in one render', () => {
+  test("a reader sees every push since the last one it handled, not only the last", () => {
+    // A refresh's page change, then its run and inbox, before the reader renders again.
+    let last = withChange(null, 1, { kind: 'records' })
+    const handled = last.seq
+    last = withChange(last, 2, { kind: 'pages', projectId: 'literature', changeId: 'pch_1' })
+    last = withChange(last, 3, { kind: 'run', id: 'run_1' })
+    last = withChange(last, 4, { kind: 'inbox' })
+    expect(changesSince(last, handled).map(c => c.kind)).toEqual(['pages', 'run', 'inbox'])
+    expect(changesSince(last, last.seq)).toEqual([])
+  })
+
+  test('a reader that just mounted gets the last push only; the log keeps the latest pushes', () => {
+    let last = withChange(null, 1, { kind: 'records' })
+    for (let i = 2; i <= RECENT_CHANGES_KEPT + 5; i++) last = withChange(last, i, { kind: 'pages' })
+    expect(last.recent).toHaveLength(RECENT_CHANGES_KEPT)
+    expect(changesSince(last, null)).toEqual([{ kind: 'pages' }])
+    expect(changesSince(last, 1)).toHaveLength(RECENT_CHANGES_KEPT)
+    expect(changesSince(null, null)).toEqual([])
   })
 })

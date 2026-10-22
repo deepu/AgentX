@@ -34,7 +34,7 @@ export class PgDefinitionStore implements DefinitionStore {
 
   async getWorkflow(id: string, hash: string): Promise<WorkflowDef | undefined> {
     const { rows } = await this.db.query<{ body: WorkflowDef }>(
-      `select body from mw.definitions where kind = 'workflow' and id = $1 and hash = $2`, [id, hash]);
+      `select body from mw.definitions where kind in ('workflow', 'project_workflow') and id = $1 and hash = $2`, [id, hash]);
     return rows[0]?.body;
   }
 

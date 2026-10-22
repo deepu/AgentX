@@ -1,0 +1,15 @@
+# Study MW-310, copied from MW-301 (its way of working, never its records). A draft: nothing runs
+# until "Start study".
+app: etmf
+version: 4
+copied_from: mw301
+name: Study MW-310
+study: MW-310
+status: draft
+people:
+  - { email: anika.rao@northlight.example, name: Anika Rao, roles: [study_manager], note: owner }
+  - { email: priya.shah@northlight.example, name: Priya Shah, roles: [cra], note: writes visit reports }
+  - { email: tom.okafor@northlight.example, name: Tom Okafor, roles: [tmf_specialist], note: files documents }
+settings:
+  phase: 3
+  next_milestone: { label: First site, date: "2027-01-15" }

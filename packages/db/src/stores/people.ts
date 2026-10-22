@@ -229,8 +229,8 @@ export class PgPeopleStore {
     }>(
       `select p.id, p.name, p.email, p.disabled, p.created_at,
               coalesce(array(select role_id from mw.person_roles r where r.person_id = p.id order by role_id), '{}') as roles,
-              coalesce((select jsonb_agg(jsonb_strip_nulls(jsonb_build_object('role', g.role_id, 'domain', g.domain, 'scope', g.scope))
-                                   order by g.domain, g.role_id, g.id)
+              coalesce((select jsonb_agg(jsonb_strip_nulls(jsonb_build_object('role', g.role_id, 'domain', g.domain, 'project', g.project, 'scope', g.scope))
+                                   order by g.domain, g.project nulls first, g.role_id, g.id)
                         from mw.grants g where g.person_id = p.id), '[]'::jsonb) as grants,
               case when p.locked_until > now() then p.locked_until end as locked_until
        from mw.people p where ${where}`, values);
