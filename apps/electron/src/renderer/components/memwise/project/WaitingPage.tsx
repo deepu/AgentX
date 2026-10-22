@@ -65,7 +65,7 @@ export function WaitingPage({ projectId, projects }: { projectId: string; projec
   const cases = useAtomValue(memwiseCasesAtom)
   const now = useNow()
   const all = projectId === ALL_PROJECTS
-  const items = sortWaiting(waitingIn(projectId, inbox, { playbooks, domains }))
+  const items = sortWaiting(waitingIn(projectId, inbox, { playbooks, domains }, projects.find(p => p.id === projectId)?.apps))
   const lookups = projectLookups({ playbooks, domains })
   const projectName = (item: MwInboxItem) => projects.find(p => p.id === inboxItemProject(item, lookups))?.name
   const done = finishedThisWeek(cases, projectId, now)

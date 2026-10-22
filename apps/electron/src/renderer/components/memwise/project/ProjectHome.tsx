@@ -128,7 +128,7 @@ export function HomePinnedPage({ project, domain }: { project: ShellProject; dom
   const domains = useAtomValue(memwiseDomainsAtom)
   const cases = useAtomValue(memwiseCasesAtom)
   const now = useNow()
-  const waiting = sortWaiting(waitingIn(project.id, inbox, { playbooks, domains }))
+  const waiting = sortWaiting(waitingIn(project.id, inbox, { playbooks, domains }, project.apps))
   const board = domain?.pages[0]
   const dashboard = useMemwiseDashboard(board ? domain.id : null, board?.id ?? null)
   const home = domain?.home

@@ -49,6 +49,14 @@ const DEFAULT_NOUNS = { one: 'project', many: 'projects' };
 
 const isPerson = (a: Actor): a is Extract<Actor, { kind: 'person' }> => a.kind === 'person';
 
+/** The app an item waits in when it belongs to no one project (Stage 5: a change request, an inspector's question). */
+export function waitingAppOf(item: InboxItem): string | undefined {
+  if (item.project) return undefined;
+  if (item.kind === 'change-request') return item.changeRequest.project;
+  if (item.kind === 'inspector-question') return item.question.project;
+  return undefined;
+}
+
 export function createProjectsService(deps: ProjectsDeps): ProjectsService {
   async function defs(): Promise<ProjectDefs> {
     const d = await deps.project();
@@ -140,8 +148,16 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
   async function waitingByProject(actor: Actor): Promise<Map<string, number>> {
     const out = new Map<string, number>();
     if (!isPerson(actor)) return out;
+    const add = (id: string) => out.set(id, (out.get(id) ?? 0) + 1);
+    let running: MwProjectDef[] | undefined;
     for (const item of await deps.inbox(actor)) {
-      if (item.project) out.set(item.project, (out.get(item.project) ?? 0) + 1);
+      if (item.project) { add(item.project); continue; }
+      // Stage 5: a change request or an inspector's question is its app's (a playbook, the trail
+      // are the app's), so it waits in every project that runs the app.
+      const app = waitingAppOf(item);
+      if (!app) continue;
+      running ??= Object.values((await listed()).projects ?? {});
+      for (const p of running) if ((p.apps?.length ? p.apps : [p.app]).includes(app)) add(p.id);
     }
     return out;
   }
@@ -647,14 +663,15 @@ export function createProjectsService(deps: ProjectsDeps): ProjectsService {
           const p = project ? d.projects?.[project] : undefined;
           const appId = p?.app ?? (project && d.apps?.[project] ? project : '');
           g = {
-            project: key, projectName: (project && (r.get(project)?.name ?? p?.name)) || '', app: appId,
+            project: key, projectName: (project && (r.get(project)?.name ?? p?.name ?? d.apps?.[project]?.title)) || '', app: appId,
             appTitle: appId ? d.apps?.[appId]?.title ?? appId : '', items: [], updates: [],
           };
           groups.set(key, g);
         }
         return g;
       };
-      for (const item of items) group(item.project).items.push(item);
+      // A change request or an inspector's question waits under its app (Stage 5).
+      for (const item of items) group(item.project ?? waitingAppOf(item)).items.push(item);
       for (const u of updates) group(u.project).updates.push(u);
       // By app, then project name; what belongs to no project last.
       return [...groups.values()].sort((a, b) => (!a.project ? 1 : 0) - (!b.project ? 1 : 0) || a.appTitle.localeCompare(b.appTitle) || a.projectName.localeCompare(b.projectName));

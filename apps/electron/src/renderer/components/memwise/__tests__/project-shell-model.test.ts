@@ -67,6 +67,15 @@ describe('projects from domains', () => {
     expect(sortWaiting([...inbox, due])[0]!.id).toBe('d')
   })
 
+  test('Stage 5 on Stage 3: a change request or inspector question waits in every project running its app', () => {
+    const cr = { kind: 'change-request', id: 'change-request:cr_1:raiser', domain: 'etmf', workflowId: 'file-document', caseTitle: 'CR-014 · Skip QC', since: '2026-10-21T09:00:00Z' } as unknown as MwInboxItem
+    const step = { ...item('s', 'activate-site', '2026-10-21T08:00:00Z'), project: 'mw207' } as MwInboxItem
+    expect(waitingIn('mw301', [cr, step], { playbooks, domains }, ['etmf']).map(i => i.id)).toEqual([cr.id])
+    expect(waitingIn('mw207', [cr, step], { playbooks, domains }, ['etmf']).map(i => i.id)).toEqual([cr.id, 's'])
+    // Not in a project of another app.
+    expect(waitingIn('firm', [cr, step], { playbooks, domains }, ['gst'])).toEqual([])
+  })
+
   test('the sidebar leaves the meta playbooks out and tags how each playbook starts', () => {
     expect(projectPlaybooks('etmf', playbooks).map(p => p.id)).toEqual(['activate-site', 'route-message'])
     const triggers = [

@@ -68,11 +68,19 @@ export function projectLookups({ playbooks, domains }: Lookups) {
 }
 
 /** The items waiting in one project ('*': all of them). */
-export function waitingIn(projectId: string, inbox: MwInboxItem[] | null | undefined, lookups: Lookups): MwInboxItem[] {
+export function waitingIn(projectId: string, inbox: MwInboxItem[] | null | undefined, lookups: Lookups, apps?: readonly string[]): MwInboxItem[] {
   if (!inbox) return []
   if (projectId === '*') return inbox
   const l = projectLookups(lookups)
-  return inbox.filter(i => inboxItemProject(i, l) === projectId)
+  return inbox.filter(i => inboxItemProject(i, l) === projectId || (!!apps && isAppItem(i) && apps.includes(i.domain!)))
+}
+
+/**
+ * Stage 5 on Stage 3: a change request or an inspector's question is its app's (`domain`), not one
+ * project's, so it waits in every project that runs the app (`apps`, a study's `[etmf]`).
+ */
+function isAppItem(i: MwInboxItem): i is Extract<MwInboxItem, { kind: 'change-request' | 'inspector-question' }> {
+  return (i.kind === 'change-request' || i.kind === 'inspector-question') && !i.project && !!i.domain
 }
 
 /** Projects from the domains (Stage 1), with their waiting counts. */
